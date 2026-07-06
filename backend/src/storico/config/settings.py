@@ -25,6 +25,17 @@ class Settings(BaseSettings):
     judge_llm_model: str = "llama3.2"
     llm_timeout: int = 120
 
+    # Embedding
+    embedding_model: str = "nomic-embed-text"
+    embedding_dimensions: int = 768
+
+    # Vector store (Qdrant)
+    qdrant_collection: str = "storico_extractions"
+
+    # RAG
+    rag_similarity_threshold: float = 0.85
+    rag_max_examples: int = 3
+
     # CORS
     cors_origins: str = "http://localhost:4321"
 

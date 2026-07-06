@@ -10,8 +10,8 @@ from uuid import uuid4
 import pytest
 
 from storico.domain.entities import LLMConnectionError, ParseError
-from storico.domain.ports import LLMConfig, ParsedTask
-from storico.domain.services.extraction_service import ExtractionService
+from storico.domain.ports import ExtractionExample, LLMConfig, ParsedTask
+from storico.domain.services.extraction_service import ExtractionService, RAGConfig
 
 
 class TestExtractionService:
@@ -295,3 +295,163 @@ class TestExtractionService:
         result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
         assert result.status == "completed"
         # Confidence is None because judge failed, but extraction still succeeds
+
+    # ── RAG integration ──────────────────────────────────────────────
+
+    @pytest.fixture
+    def setup_with_rag(self):
+        """Create an ExtractionService with vector store mocked."""
+        llm_port = AsyncMock()
+        prompt_manager = MagicMock()
+        task_parser = MagicMock()
+        extraction_repo = AsyncMock()
+        task_repo = AsyncMock()
+        judge_service = AsyncMock()
+        vector_store = AsyncMock()
+
+        service = ExtractionService(
+            llm_port=llm_port,
+            prompt_manager=prompt_manager,
+            task_parser=task_parser,
+            extraction_repo=extraction_repo,
+            task_repo=task_repo,
+            judge_service=judge_service,
+            vector_store=vector_store,
+            rag_config=RAGConfig(max_examples=2, similarity_threshold=0.8),
+        )
+        return {
+            "service": service,
+            "llm_port": llm_port,
+            "prompt_manager": prompt_manager,
+            "task_parser": task_parser,
+            "extraction_repo": extraction_repo,
+            "task_repo": task_repo,
+            "judge_service": judge_service,
+            "vector_store": vector_store,
+        }
+
+    @pytest.mark.asyncio
+    async def test_extract_without_vector_store(self, setup) -> None:
+        """VectorStorePort=None — existing behavior preserved, no RAG call."""
+        deps = setup
+        deps["prompt_manager"].render_system_prompt.return_value = "System"
+        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
+
+        mock_story = MagicMock()
+        mock_story.id = uuid4()
+        mock_story.raw_text = "Story"
+
+        result_tasks, raw = await deps["service"].extract(mock_story, LLMConfig(model="test"))
+        assert len(result_tasks) == 1
+        # Vector store should not be referenced at all
+        assert not hasattr(deps["service"], "_vector_store") or deps["service"]._vector_store is None
+
+    @pytest.mark.asyncio
+    async def test_extract_with_rag_examples(self, setup_with_rag) -> None:
+        """VectorStorePort returns examples, prompt includes them."""
+        deps = setup_with_rag
+        mock_examples = [
+            ExtractionExample(
+                user_story_text="Previous story",
+                tasks_summary="1. Task A\n2. Task B",
+                model_used="test",
+                confidence_score=0.9,
+                similarity_score=0.95,
+            )
+        ]
+        deps["vector_store"].search_similar.return_value = mock_examples
+        deps["prompt_manager"].render_system_prompt.return_value = "System"
+        deps["prompt_manager"].render.return_value = "Instruction with examples"
+        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
+
+        mock_story = MagicMock()
+        mock_story.id = uuid4()
+        mock_story.raw_text = "Story"
+
+        await deps["service"].extract(mock_story, LLMConfig(model="test"))
+
+        # Verify search_similar was called
+        deps["vector_store"].search_similar.assert_called_once()
+
+        # Verify prompt was rendered with examples kwarg
+        call_kwargs = deps["prompt_manager"].render.call_args[1]
+        assert "examples" in call_kwargs
+        assert "Previous story" in call_kwargs["examples"]
+
+    @pytest.mark.asyncio
+    async def test_extract_rag_search_fails(self, setup_with_rag) -> None:
+        """VectorStorePort raises, extraction proceeds without examples."""
+        deps = setup_with_rag
+        deps["vector_store"].search_similar.side_effect = RuntimeError("RAG down")
+        deps["prompt_manager"].render_system_prompt.return_value = "System"
+        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
+
+        mock_story = MagicMock()
+        mock_story.id = uuid4()
+        mock_story.raw_text = "Story"
+
+        result_tasks, raw = await deps["service"].extract(mock_story, LLMConfig(model="test"))
+        assert len(result_tasks) == 1
+        # Should render WITHOUT examples kwarg
+        call_kwargs = deps["prompt_manager"].render.call_args[1]
+        assert "examples" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_extract_and_persist_stores_in_vector_store(self, setup_with_rag) -> None:
+        """store_extraction called after successful persist."""
+        deps = setup_with_rag
+        story_id = uuid4()
+        mock_story = MagicMock()
+        mock_story.id = story_id
+        mock_story.raw_text = "As a user, I want X"
+
+        deps["vector_store"].search_similar.return_value = []
+        deps["prompt_manager"].render_system_prompt.return_value = "System"
+        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["llm_port"].generate.return_value = "1. summary: Task one\ndescription: Desc"
+        deps["task_parser"].parse.return_value = [
+            ParsedTask(summary="Task one", description="Desc"),
+        ]
+        deps["extraction_repo"].save.side_effect = lambda e: e
+        deps["task_repo"].save.side_effect = lambda t: t
+        deps["judge_service"].validate.return_value = MagicMock(
+            approved=True, total_score=45, criteria={}
+        )
+
+        result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
+        assert result.status == "completed"
+
+        # Verify store_extraction was called
+        deps["vector_store"].store_extraction.assert_called_once()
+        call_args = deps["vector_store"].store_extraction.call_args[1]
+        assert call_args["extraction_id"] == str(result.id)
+        assert call_args["model_used"] == "test"
+
+    @pytest.mark.asyncio
+    async def test_extract_and_persist_vector_store_fails(self, setup_with_rag) -> None:
+        """store_extraction raises, extraction still succeeds."""
+        deps = setup_with_rag
+        story_id = uuid4()
+        mock_story = MagicMock()
+        mock_story.id = story_id
+        mock_story.raw_text = "Story"
+
+        deps["vector_store"].search_similar.return_value = []
+        deps["vector_store"].store_extraction.side_effect = RuntimeError("Store failed")
+        deps["prompt_manager"].render_system_prompt.return_value = "System"
+        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
+        deps["extraction_repo"].save.side_effect = lambda e: e
+        deps["task_repo"].save.side_effect = lambda t: t
+
+        result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
+        assert result.status == "completed"
+        # Extraction and tasks should still be persisted
+        assert deps["extraction_repo"].save.called
+        assert deps["task_repo"].save.called

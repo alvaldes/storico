@@ -1,5 +1,6 @@
 """FastAPI dependency injection utilities for Storico API."""
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Annotated
 from uuid import UUID
@@ -9,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.application.extraction import ExtractFromStoryUseCase
 from storico.domain.entities import User
-from storico.domain.ports import LLMPort, UserRepository
+from storico.domain.ports import LLMPort, UserRepository, VectorStorePort
 from storico.domain.services.extraction_judge_service import LLMJudgeService
-from storico.domain.services.extraction_service import ExtractionService
+from storico.domain.services.extraction_service import ExtractionService, RAGConfig
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyTaskRepository,
@@ -20,6 +21,9 @@ from storico.infrastructure.database.repositories import (
 )
 from storico.infrastructure.database.session import get_session
 from storico.infrastructure.llm import OllamaAdapter, PromptManager, TaskParser
+from storico.infrastructure.vector import EmbeddingService, QdrantAdapter
+
+logger = logging.getLogger(__name__)
 
 
 def get_repository[RepoType](repo_class: type[RepoType]) -> Callable[..., Awaitable[RepoType]]:
@@ -114,16 +118,58 @@ def get_task_parser() -> TaskParser:
     return TaskParser()
 
 
+def get_embedding_service() -> EmbeddingService:
+    """Factory for the embedding service (Ollama-based)."""
+    from storico.config.settings import Settings  # late import to avoid circular
+
+    settings = Settings.load()
+    return EmbeddingService(
+        base_url=settings.ollama_host,
+        model=settings.embedding_model,
+    )
+
+
+def get_vector_store(
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
+) -> VectorStorePort | None:
+    """Factory for the Qdrant vector store.
+
+    Returns None if Qdrant is not configured (graceful degradation).
+    """
+    from storico.config.settings import Settings  # late import to avoid circular
+
+    try:
+        settings = Settings.load()
+        return QdrantAdapter(
+            embedding_service=embedding_service,
+            qdrant_url=settings.qdrant_url,
+            collection_name=settings.qdrant_collection,
+            vector_size=settings.embedding_dimensions,
+        )
+    except Exception:
+        logger.warning("Failed to create QdrantAdapter, RAG disabled")
+        return None
+
+
 def get_extract_use_case(
     llm_port: LLMPort = Depends(get_llm_port),
     prompt_manager: PromptManager = Depends(get_prompt_manager),
     task_parser: TaskParser = Depends(get_task_parser),
     session: AsyncSession = Depends(get_session),
+    vector_store: VectorStorePort | None = Depends(get_vector_store),
 ) -> ExtractFromStoryUseCase:
     """Factory for ``ExtractFromStoryUseCase`` with all dependencies wired."""
+    from storico.config.settings import Settings  # late import to avoid circular
+
     extraction_repo = SQLAlchemyExtractionRepository(session)
     task_repo = SQLAlchemyTaskRepository(session)
     story_repo = SQLAlchemyUserStoryRepository(session)
+
+    settings = Settings.load()
+    rag_config = RAGConfig(
+        max_examples=settings.rag_max_examples,
+        similarity_threshold=settings.rag_similarity_threshold,
+    )
 
     judge_service = LLMJudgeService(
         llm_port=llm_port,
@@ -136,6 +182,8 @@ def get_extract_use_case(
         extraction_repo=extraction_repo,
         task_repo=task_repo,
         judge_service=judge_service,
+        vector_store=vector_store,
+        rag_config=rag_config,
     )
     return ExtractFromStoryUseCase(
         extraction_service=extraction_service,
