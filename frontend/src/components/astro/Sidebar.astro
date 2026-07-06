@@ -1,0 +1,95 @@
+---
+import {
+  LayoutDashboard,
+  FileText,
+  KanbanSquare,
+  Upload,
+  Settings,
+  ChevronLeft,
+} from 'lucide-react';
+---
+
+<aside
+  id="sidebar"
+  class="fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-(--color-border) bg-(--color-surface) transition-transform duration-200 -translate-x-full lg:translate-x-0 sidebar-open:translate-x-0"
+>
+  <!-- Logo -->
+  <div class="flex h-14 items-center justify-between border-b border-(--color-border) px-4">
+    <span class="text-lg font-bold text-(--color-text)">Storico</span>
+    <button
+      id="sidebar-close"
+      class="rounded-md p-1 text-(--color-text-secondary) hover:bg-(--color-surface-secondary) transition-colors lg:hidden"
+      aria-label="Close sidebar"
+    >
+      <ChevronLeft class="h-4 w-4" />
+    </button>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+    <a
+      href="/dashboard"
+      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-surface-secondary) hover:text-(--color-text) transition-colors"
+    >
+      <LayoutDashboard class="h-4 w-4" />
+      Dashboard
+    </a>
+    <a
+      href="/stories"
+      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-surface-secondary) hover:text-(--color-text) transition-colors"
+    >
+      <FileText class="h-4 w-4" />
+      User Stories
+    </a>
+    <a
+      href="/kanban"
+      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-surface-secondary) hover:text-(--color-text) transition-colors"
+    >
+      <KanbanSquare class="h-4 w-4" />
+      Kanban
+    </a>
+    <a
+      href="/export"
+      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-surface-secondary) hover:text-(--color-text) transition-colors"
+    >
+      <Upload class="h-4 w-4" />
+      Export
+    </a>
+    <a
+      href="/settings"
+      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-surface-secondary) hover:text-(--color-text) transition-colors"
+    >
+      <Settings class="h-4 w-4" />
+      Settings
+    </a>
+  </nav>
+
+  <!-- Footer -->
+  <div class="border-t border-(--color-border) p-3">
+    <p class="text-xs text-(--color-text-secondary) text-center">
+      Storico v0.1.0
+    </p>
+  </div>
+</aside>
+
+<!-- Overlay for mobile -->
+<div
+  id="sidebar-overlay"
+  class="fixed inset-0 z-30 bg-black/50 opacity-0 pointer-events-none transition-opacity duration-200 lg:hidden sidebar-open:opacity-100 sidebar-open:pointer-events-auto"
+></div>
+
+<script>
+  const closeBtn = document.getElementById('sidebar-close');
+  const overlay = document.getElementById('sidebar-overlay');
+
+  function closeSidebar() {
+    document.documentElement.classList.remove('sidebar-open');
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeSidebar);
+  }
+  if (overlay) {
+    overlay.addEventListener('click', closeSidebar);
+  }
+</script>

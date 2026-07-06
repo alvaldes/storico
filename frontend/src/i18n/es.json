@@ -1,0 +1,47 @@
+{
+  "app": {
+    "name": "Storico",
+    "tagline": "De historias de usuario a tareas Kanban — automáticamente."
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "stories": "Historias de Usuario",
+    "kanban": "Tablero Kanban",
+    "export": "Exportar",
+    "settings": "Configuración",
+    "login": "Iniciar Sesión",
+    "logout": "Cerrar Sesión"
+  },
+  "theme": {
+    "light": "Claro",
+    "dark": "Oscuro",
+    "system": "Sistema",
+    "toggle": "Cambiar tema"
+  },
+  "common": {
+    "loading": "Cargando...",
+    "error": "Algo salió mal",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "search": "Buscar"
+  },
+  "landing": {
+    "hero_title": "Storico",
+    "hero_subtitle": "Automatiza la descomposición de historias de usuario en tareas Kanban estructuradas usando IA.",
+    "cta_start": "Comenzar",
+    "cta_learn": "Más Información"
+  },
+  "login": {
+    "title": "Inicia sesión en Storico",
+    "google": "Iniciar sesión con Google",
+    "github": "Iniciar sesión con GitHub",
+    "description": "Accede a tus proyectos, historias y tableros Kanban."
+  },
+  "sidebar": {
+    "collapse": "Colapsar barra lateral",
+    "expand": "Expandir barra lateral"
+  }
+}

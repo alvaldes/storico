@@ -1,0 +1,38 @@
+---
+import { ThemeToggle } from '../react/ThemeToggle';
+import { UserMenu } from '../react/UserMenu';
+import { Menu } from 'lucide-react';
+
+const { userJson } = Astro.props;
+---
+
+<header
+  class="flex h-14 items-center justify-between border-b border-(--color-border) bg-(--color-surface) px-4 lg:px-6"
+>
+  <div class="flex items-center gap-3">
+    <button
+      id="sidebar-toggle"
+      class="rounded-md p-1.5 text-(--color-text-secondary) hover:bg-(--color-surface-secondary) transition-colors lg:hidden"
+      aria-label="Toggle sidebar"
+    >
+      <Menu class="h-5 w-5" />
+    </button>
+    <span class="text-sm font-medium text-(--color-text-secondary) hidden sm:inline">
+      Storico
+    </span>
+  </div>
+
+  <div class="flex items-center gap-2">
+    <UserMenu userJson={userJson} client:load />
+    <ThemeToggle client:load />
+  </div>
+</header>
+
+<script>
+  const toggle = document.getElementById('sidebar-toggle');
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      document.documentElement.classList.toggle('sidebar-open');
+    });
+  }
+</script>

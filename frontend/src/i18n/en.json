@@ -1,0 +1,47 @@
+{
+  "app": {
+    "name": "Storico",
+    "tagline": "From user stories to Kanban tasks — automatically."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "stories": "User Stories",
+    "kanban": "Kanban Board",
+    "export": "Export",
+    "settings": "Settings",
+    "login": "Sign In",
+    "logout": "Sign Out"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "toggle": "Toggle theme"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search"
+  },
+  "landing": {
+    "hero_title": "Storico",
+    "hero_subtitle": "Automate the decomposition of user stories into structured Kanban tasks using AI.",
+    "cta_start": "Get Started",
+    "cta_learn": "Learn More"
+  },
+  "login": {
+    "title": "Sign in to Storico",
+    "google": "Sign in with Google",
+    "github": "Sign in with GitHub",
+    "description": "Access your projects, stories, and Kanban boards."
+  },
+  "sidebar": {
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar"
+  }
+}

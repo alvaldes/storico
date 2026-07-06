@@ -1,0 +1,35 @@
+---
+import { ViewTransitions } from 'astro:transitions';
+import '@/styles/globals.css';
+import Header from '@/components/astro/Header.astro';
+import Sidebar from '@/components/astro/Sidebar.astro';
+import { getSession } from 'auth-astro/server';
+
+const session = await getSession(Astro.request);
+const userJson = JSON.stringify(session?.user ?? null);
+---
+
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="description" content="Storico — From user stories to Kanban tasks, automatically." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <ViewTransitions />
+    <slot name="head" />
+    <title>Storico</title>
+  </head>
+  <body class="min-h-dvh bg-(--color-surface)">
+    <Sidebar />
+
+    <div class="lg:pl-60">
+      <Header userJson={userJson} />
+
+      <main class="p-4 lg:p-6">
+        <slot />
+      </main>
+    </div>
+  </body>
+</html>

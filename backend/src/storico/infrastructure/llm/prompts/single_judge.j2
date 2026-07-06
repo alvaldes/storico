@@ -1,0 +1,57 @@
+You are an expert QA engineer validating whether a list of tasks derived from a user story is correct and complete.
+
+USER STORY:
+{{user_story}}
+
+GENERATED TASKS:
+{{tasks}}
+
+VALIDATION INSTRUCTIONS:
+
+Evaluate the generated tasks according to these criteria:
+
+1. **COHERENCE (0-10):** Are all tasks directly related to the user story? Are there irrelevant or out-of-scope tasks?
+
+2. **COMPLETENESS (0-10):** Do the tasks cover all necessary aspects to complete the story? Is anything critical missing?
+
+3. **FEASIBILITY (0-10):** Are the tasks technically achievable? Are there impossible or illogical steps?
+
+4. **FORMAT (0-10):** Does each task have a clear title and description? Is it well-structured?
+
+5. **GRANULARITY (0-10):** Is the level of detail appropriate? Are tasks too broad or too atomic?
+
+CRITICAL RULES:
+- If the total score is < {{approval_threshold}}/50, mark approved=false
+- If any critical format element is missing, mark approved=false
+- If there are completely irrelevant tasks, mark approved=false
+- Be strict but fair: do not reject for minor details
+
+RESPOND ONLY WITH VALID JSON (no markdown, no explanations):
+
+{
+  "coherence": {
+    "score": 0-10,
+    "justification": "text"
+  },
+  "completeness": {
+    "score": 0-10,
+    "justification": "text",
+    "missing_tasks": []
+  },
+  "feasibility": {
+    "score": 0-10,
+    "justification": "text"
+  },
+  "format": {
+    "score": 0-10,
+    "justification": "text"
+  },
+  "granularity": {
+    "score": 0-10,
+    "justification": "text"
+  },
+  "total_score": 0-50,
+  "approved": true/false,
+  "critical_issues": [],
+  "recommendations": []
+}
