@@ -32,7 +32,29 @@
     "hero_title": "Storico",
     "hero_subtitle": "Automatiza la descomposición de historias de usuario en tareas Kanban estructuradas usando IA.",
     "cta_start": "Comenzar",
-    "cta_learn": "Más Información"
+    "cta_learn": "Más Información",
+    "hero": {
+      "badge": "\u2728 GENERADOR DE BACKLOG CON IA",
+      "title": "De user stories a tareas t\u00e9cnicas en segundos",
+      "subtitle": "Peg\u00e1 una user story en lenguaje natural y obten\u00e9 tareas estructuradas en un tablero Kanban listas para exportar a Trello, JSON o Markdown.",
+      "cta_primary": "Comenz\u00e1 gratis",
+      "cta_secondary": "Ver demo"
+    },
+    "features": {
+      "title": "Todo lo que necesit\u00e1s para gestionar tu backlog",
+      "subtitle": "Desde la extracci\u00f3n autom\u00e1tica hasta la exportaci\u00f3n a tu herramienta favorita.",
+      "card_1_title": "Extracci\u00f3n Autom\u00e1tica",
+      "card_1_desc": "Peg\u00e1 una user story y obten\u00e9 tareas t\u00e9cnicas estructuradas al instante con IA.",
+      "card_2_title": "Kanban Visual",
+      "card_2_desc": "Visualiz\u00e1 y organiz\u00e1 tus tareas en un tablero Kanban con drag & drop.",
+      "card_3_title": "Exportaci\u00f3n a Trello",
+      "card_3_desc": "Export\u00e1 tus tareas a Trello, JSON o Markdown con un clic. Compatible con tu flujo de trabajo existente."
+    },
+    "cta": {
+      "title": "Empezá a transformar tus user stories en tareas hoy",
+      "subtitle": "Gratis mientras est\u00e1 en desarrollo. Sin registro complicado, sin tarjeta de cr\u00e9dito.",
+      "button": "Comenz\u00e1 gratis ahora"
+    }
   },
   "login": {
     "title": "Inicia sesión en Storico",

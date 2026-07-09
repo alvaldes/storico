@@ -32,7 +32,29 @@
     "hero_title": "Storico",
     "hero_subtitle": "Automate the decomposition of user stories into structured Kanban tasks using AI.",
     "cta_start": "Get Started",
-    "cta_learn": "Learn More"
+    "cta_learn": "Learn More",
+    "hero": {
+      "badge": "\u2728 AI-POWERED BACKLOG GENERATOR",
+      "title": "From user stories to technical tasks in seconds",
+      "subtitle": "Paste a natural language user story and get structured tasks on a Kanban board, ready to export to Trello, JSON, or Markdown.",
+      "cta_primary": "Get Started Free",
+      "cta_secondary": "View Demo"
+    },
+    "features": {
+      "title": "Everything you need to manage your backlog",
+      "subtitle": "From automatic extraction to exporting to your favorite tool.",
+      "card_1_title": "Automatic Extraction",
+      "card_1_desc": "Paste a user story and instantly get structured technical tasks powered by AI.",
+      "card_2_title": "Visual Kanban",
+      "card_2_desc": "Visualize and organize your tasks on a Kanban board with drag & drop.",
+      "card_3_title": "Trello Export",
+      "card_3_desc": "Export your tasks to Trello, JSON, or Markdown with one click. Compatible with your existing workflow."
+    },
+    "cta": {
+      "title": "Start transforming your user stories into tasks today",
+      "subtitle": "Free while in development. No complicated sign-up, no credit card.",
+      "button": "Get Started Free Now"
+    }
   },
   "login": {
     "title": "Sign in to Storico",
