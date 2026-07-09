@@ -5,24 +5,42 @@
   --color-primary-50: oklch(0.93 0.03 250);
   --color-primary-100: oklch(0.87 0.06 250);
   --color-primary-200: oklch(0.79 0.09 250);
-  --color-primary-300: oklch(0.70 0.12 250);
+  --color-primary-300: oklch(0.7 0.12 250);
   --color-primary-400: oklch(0.62 0.14 250);
   --color-primary-500: oklch(0.55 0.15 250);
   --color-primary-600: oklch(0.47 0.14 250);
   --color-primary-700: oklch(0.39 0.12 250);
-  --color-primary-800: oklch(0.31 0.10 250);
+  --color-primary-800: oklch(0.31 0.1 250);
   --color-primary-900: oklch(0.24 0.07 250);
   --color-primary-950: oklch(0.17 0.04 250);
 
   --color-secondary-50: oklch(0.95 0.02 180);
-  --color-secondary-500: oklch(0.60 0.10 180);
+  --color-secondary-500: oklch(0.6 0.1 180);
   --color-secondary-700: oklch(0.42 0.08 180);
 
-  --color-surface: oklch(0.99 0.00 0);
+  --color-surface: oklch(0.99 0 0);
   --color-surface-secondary: oklch(0.96 0.01 260);
   --color-border: oklch(0.88 0.01 260);
   --color-text: oklch(0.15 0.01 260);
   --color-text-secondary: oklch(0.45 0.01 260);
+  --color-text-tertiary: #64748b;
+
+  /* Landing page extras */
+  --color-body: #f8fafc;
+  --color-inverse: #0f172a;
+  --color-inverse-text: #ffffff;
+  --color-inverse-muted: #94a3b8;
+  --color-inverse-border: #1e293b;
+
+  /* Phone mockup (dark device in light theme) */
+  --color-mockup-bg: #0f172a;
+  --color-mockup-header: #1e293b;
+  --color-mockup-border: #1e293b;
+  --color-mockup-task-bg: #1e293b;
+  --color-mockup-task-border: #334155;
+  --color-mockup-text: #e2e8f0;
+  --color-mockup-muted: #64748b;
+  --color-mockup-label: #94a3b8;
 
   --font-family-sans: "Inter", "SF Pro", system-ui, -apple-system, sans-serif;
   --font-family-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
@@ -45,6 +63,23 @@
   --color-border: oklch(0.25 0.01 260);
   --color-text: oklch(0.93 0.01 260);
   --color-text-secondary: oklch(0.63 0.01 260);
+  --color-text-tertiary: #475569;
+
+  --color-body: #0b0f17;
+  --color-inverse: #1a1f2e;
+  --color-inverse-text: #f1f5f9;
+  --color-inverse-muted: #64748b;
+  --color-inverse-border: #334155;
+
+  /* Invert mockup: light device UI on dark bg */
+  --color-mockup-bg: #e8e8e8;
+  --color-mockup-header: #e0e0e0;
+  --color-mockup-border: #e2e8f0;
+  --color-mockup-task-bg: #f8fafc;
+  --color-mockup-task-border: #e2e8f0;
+  --color-mockup-text: #0f172a;
+  --color-mockup-muted: #94a3b8;
+  --color-mockup-label: #64748b;
 }
 
 /* ── Base Styles ──────────────────────────────────────────────── */
@@ -52,7 +87,9 @@ html {
   font-family: var(--font-family-sans);
   background-color: var(--color-surface);
   color: var(--color-text);
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 body {

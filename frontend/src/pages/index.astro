@@ -10,8 +10,22 @@ const localePath = lang === 'es' ? '/es' : '';
 ---
 
 <!DOCTYPE html>
-<html lang={lang} data-theme="light">
+<html lang={lang}>
   <head>
+    <!-- Anti-flash: apply theme before first paint -->
+    <script is:inline>
+      (function () {
+        var stored = localStorage.getItem('theme');
+        var theme = stored || 'system';
+        if (theme === 'system') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
+
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#2563eb" />
@@ -26,61 +40,98 @@ const localePath = lang === 'es' ? '/es' : '';
       rel="stylesheet"
     />
   </head>
-  <body class="overflow-x-hidden bg-[#F8FAFC] text-[#0F172A] antialiased">
+  <body class="overflow-x-hidden bg-(--color-body) text-(--color-text) antialiased transition-colors duration-200">
     <!-- ════════════════════════════════════════════ -->
     <!-- NAVBAR                                      -->
     <!-- ════════════════════════════════════════════ -->
-    <header class="border-b border-[#E2E8F0]">
+    <header class="border-b border-(--color-border)">
       <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-8 lg:px-20 lg:py-5">
-      <a href={localePath || '/'} class="text-xl font-extrabold text-[#2563EB] no-underline md:text-[22px]">
-        {t.app.name}
-      </a>
-
-      <!-- Mobile hamburger -->
-      <button id="nav-toggle" class="flex items-center p-2 text-[#475569] lg:hidden" aria-label="Toggle menu">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="3" y1="18" x2="21" y2="18" />
-        </svg>
-      </button>
-
-      <!-- CTA mobile (visible siempre) + Desktop nav -->
-      <div id="nav-menu" class="hidden lg:flex lg:items-center lg:gap-8">
-        <nav class="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-8">
-          <a
-            href={`${localePath}/login`}
-            class="text-[15px] font-medium text-[#475569] no-underline transition-colors hover:text-[#0F172A]"
-          >
-            {t.nav.dashboard}
-          </a>
-          <a
-            href={`${localePath}/login`}
-            class="text-[15px] font-medium text-[#475569] no-underline transition-colors hover:text-[#0F172A]"
-          >
-            {t.nav.stories}
-          </a>
-          <a
-            href={`${localePath}/login`}
-            class="text-[15px] font-medium text-[#475569] no-underline transition-colors hover:text-[#0F172A]"
-          >
-            {t.nav.kanban}
-          </a>
-          <a
-            href={`${localePath}/login`}
-            class="text-[15px] font-medium text-[#475569] no-underline transition-colors hover:text-[#0F172A]"
-          >
-            {t.nav.export}
-          </a>
-        </nav>
-
-        <a
-          href={`${localePath}/login`}
-          class="inline-flex items-center rounded-lg bg-[#2563EB] px-5 py-2.5 text-sm font-semibold text-white no-underline transition-all hover:bg-[#1D4ED8]"
-        >
-          {t.landing.hero.cta_primary}
+        <a href={localePath || '/'} class="text-xl font-extrabold text-(--color-primary-600) no-underline md:text-[22px]">
+          {t.app.name}
         </a>
-      </div>
+
+        <div class="flex items-center gap-1 lg:hidden">
+          <!-- Mobile theme toggle -->
+          <button id="theme-toggle-mobile" class="flex items-center p-2 text-(--color-text-secondary)" aria-label="Toggle theme">
+            <svg id="sun-icon-mobile" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5" />
+              <line x1="12" y1="1" x2="12" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="23" />
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+              <line x1="1" y1="12" x2="3" y2="12" />
+              <line x1="21" y1="12" x2="23" y2="12" />
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+            </svg>
+            <svg id="moon-icon-mobile" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          </button>
+          <!-- Mobile hamburger -->
+          <button id="nav-toggle" class="flex items-center p-2 text-(--color-text-secondary)" aria-label="Toggle menu">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Desktop nav -->
+        <div id="nav-menu" class="hidden lg:flex lg:items-center lg:gap-6">
+          <nav class="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-8">
+            <a
+              href={`${localePath}/login`}
+              class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+            >
+              {t.nav.dashboard}
+            </a>
+            <a
+              href={`${localePath}/login`}
+              class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+            >
+              {t.nav.stories}
+            </a>
+            <a
+              href={`${localePath}/login`}
+              class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+            >
+              {t.nav.kanban}
+            </a>
+            <a
+              href={`${localePath}/login`}
+              class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+            >
+              {t.nav.export}
+            </a>
+          </nav>
+
+          <!-- Desktop theme toggle -->
+          <button id="theme-toggle-desktop" class="flex items-center p-2 text-(--color-text-secondary) transition-colors hover:text-(--color-text)" aria-label="Toggle theme">
+            <svg id="sun-icon-desktop" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5" />
+              <line x1="12" y1="1" x2="12" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="23" />
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+              <line x1="1" y1="12" x2="3" y2="12" />
+              <line x1="21" y1="12" x2="23" y2="12" />
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+            </svg>
+            <svg id="moon-icon-desktop" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          </button>
+
+          <a
+            href={`${localePath}/login`}
+            class="inline-flex items-center rounded-lg bg-(--color-primary-600) px-5 py-2.5 text-sm font-semibold text-(--color-inverse-text) no-underline transition-all hover:bg-(--color-primary-700)"
+          >
+            {t.landing.hero.cta_primary}
+          </a>
+        </div>
       </div>
     </header>
 
@@ -88,11 +139,11 @@ const localePath = lang === 'es' ? '/es' : '';
     <div id="nav-overlay" class="fixed inset-0 z-40 hidden bg-black/50" />
     <div
       id="nav-drawer"
-      class="fixed inset-y-0 right-0 z-50 flex w-64 translate-x-full flex-col gap-6 border-l border-[#E2E8F0] bg-white p-6 shadow-xl transition-transform duration-200"
+      class="fixed inset-y-0 right-0 z-50 flex w-64 translate-x-full flex-col gap-6 border-l border-(--color-border) bg-(--color-surface) p-6 shadow-xl transition-transform duration-200"
     >
       <div class="flex items-center justify-between">
-        <span class="text-lg font-bold text-[#0F172A]">{t.app.name}</span>
-        <button id="nav-close" class="p-1 text-[#475569]" aria-label="Close menu">
+        <span class="text-lg font-bold text-(--color-text)">{t.app.name}</span>
+        <button id="nav-close" class="p-1 text-(--color-text-secondary)" aria-label="Close menu">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
@@ -102,33 +153,33 @@ const localePath = lang === 'es' ? '/es' : '';
       <nav class="flex flex-col gap-2">
         <a
           href={`${localePath}/login`}
-          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-[#475569] no-underline transition-colors hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
         >
           {t.nav.dashboard}
         </a>
         <a
           href={`${localePath}/login`}
-          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-[#475569] no-underline transition-colors hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
         >
           {t.nav.stories}
         </a>
         <a
           href={`${localePath}/login`}
-          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-[#475569] no-underline transition-colors hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
         >
           {t.nav.kanban}
         </a>
         <a
           href={`${localePath}/login`}
-          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-[#475569] no-underline transition-colors hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
         >
           {t.nav.export}
         </a>
       </nav>
-      <div class="mt-2 border-t border-[#E2E8F0] pt-4">
+      <div class="mt-2 border-t border-(--color-border) pt-4">
         <a
           href={`${localePath}/login`}
-          class="flex items-center justify-center rounded-lg bg-[#2563EB] px-5 py-3 text-sm font-semibold text-white no-underline transition-all hover:bg-[#1D4ED8]"
+          class="flex items-center justify-center rounded-lg bg-(--color-primary-600) px-5 py-3 text-sm font-semibold text-(--color-inverse-text) no-underline transition-all hover:bg-(--color-primary-700)"
         >
           {t.landing.hero.cta_primary}
         </a>
@@ -144,32 +195,32 @@ const localePath = lang === 'es' ? '/es' : '';
       <div class="flex w-full max-w-[565px] flex-col gap-6">
         <!-- Badge -->
         <span
-          class="inline-flex w-fit items-center rounded-full border border-[#DBEAFE] bg-[#EFF6FF] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#2563EB]"
+          class="inline-flex w-fit items-center rounded-full border border-(--color-primary-200) bg-(--color-primary-50) px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-(--color-primary-600)"
         >
           {t.landing.hero.badge}
         </span>
 
         <h1
-          class="text-[2rem] font-[800] leading-[1.15] tracking-[-1px] text-[#0F172A] md:text-[3rem] lg:text-[52px] lg:tracking-[-1.5px]"
+          class="text-[2rem] font-[800] leading-[1.15] tracking-[-1px] text-(--color-text) md:text-[3rem] lg:text-[52px] lg:tracking-[-1.5px]"
           style="font-family: 'Space Grotesk', sans-serif;"
         >
           {t.landing.hero.title}
         </h1>
 
-        <p class="text-base leading-[1.6] text-[#475569] md:text-lg">
+        <p class="text-base leading-[1.6] text-(--color-text-secondary) md:text-lg">
           {t.landing.hero.subtitle}
         </p>
 
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <a
             href={`${localePath}/login`}
-            class="inline-flex items-center justify-center rounded-lg bg-[#2563EB] px-7 py-3.5 text-base font-semibold text-white no-underline shadow-[0_4px_12px_rgba(37,99,235,0.2)] transition-all hover:bg-[#1D4ED8]"
+            class="inline-flex items-center justify-center rounded-lg bg-(--color-primary-600) px-7 py-3.5 text-base font-semibold text-(--color-inverse-text) no-underline shadow-[0_4px_12px_rgba(37,99,235,0.2)] transition-all hover:bg-(--color-primary-700)"
           >
             {t.landing.hero.cta_primary}
           </a>
           <a
             href={`${localePath}/login`}
-            class="inline-flex items-center justify-center rounded-lg border border-[#E2E8F0] bg-white px-7 py-3.5 text-base font-semibold text-[#0F172A] no-underline transition-all hover:bg-[#F8FAFC]"
+            class="inline-flex items-center justify-center rounded-lg border border-(--color-border) bg-(--color-surface) px-7 py-3.5 text-base font-semibold text-(--color-text) no-underline transition-all hover:bg-(--color-surface-secondary)"
           >
             {t.landing.hero.cta_secondary}
           </a>
@@ -178,27 +229,28 @@ const localePath = lang === 'es' ? '/es' : '';
 
       <!-- Right: Phone Mockup -->
       <div
-        class="flex h-[480px] w-[260px] shrink-0 flex-col overflow-hidden rounded-[28px] border-[3px] border-[#1E293B] bg-[#0F172A] shadow-2xl sm:h-[540px] sm:w-[290px] sm:rounded-[32px] sm:border-[4px] lg:h-[590px] lg:w-[310px] lg:rounded-[36px]"
+        class="flex h-[480px] w-[260px] shrink-0 flex-col overflow-hidden rounded-[28px] border-[3px] border-(--color-mockup-border) bg-(--color-mockup-bg) shadow-2xl sm:h-[540px] sm:w-[290px] sm:rounded-[32px] sm:border-[4px] lg:h-[590px] lg:w-[310px] lg:rounded-[36px]"
         style="box-shadow: 0 24px 48px -8px rgba(15, 23, 42, 0.15);"
       >
         <!-- Status bar -->
         <div class="flex h-10 items-center justify-between px-5 sm:h-11 sm:px-6">
-          <span class="text-[12px] font-semibold text-white sm:text-[13px]">9:41</span>
+          <span class="text-[12px] font-semibold text-(--color-mockup-text) sm:text-[13px]">9:41</span>
         </div>
 
         <!-- App header -->
-        <div class="flex h-11 items-center justify-between bg-[#1E293B] px-4 sm:h-13 sm:px-5">
-          <span class="text-sm font-bold text-white sm:text-base">{t.app.name}</span>
+        <div class="flex h-11 items-center justify-between bg-(--color-mockup-bg) px-4 sm:h-13 sm:px-5">
+          <span class="text-sm font-bold text-(--color-mockup-text) sm:text-base">{t.app.name}</span>
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="18"
             height="18"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="white"
+            stroke="currentColor"
             stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
+            class="text-(--color-mockup-text)"
           >
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
@@ -207,35 +259,35 @@ const localePath = lang === 'es' ? '/es' : '';
 
         <!-- App content -->
         <div class="flex flex-col gap-3 px-4 py-3 sm:gap-4 sm:px-5 sm:py-4">
-          <span class="text-[11px] font-semibold uppercase tracking-wider text-[#94A3B8] sm:text-[12px]">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-(--color-mockup-label) sm:text-[12px]">
             User Story
           </span>
 
-          <div class="flex h-12 items-center rounded-xl bg-[#1E293B] px-3 sm:h-14 sm:px-4">
-            <span class="text-[12px] text-[#64748B] sm:text-[13px]">As a user, I want to...</span>
+          <div class="flex h-12 items-center rounded-xl bg-(--color-mockup-header) px-3 sm:h-14 sm:px-4">
+            <span class="text-[12px] text-(--color-mockup-muted) sm:text-[13px]">As a user, I want to...</span>
           </div>
 
           <button
-            class="flex h-10 w-full items-center justify-center rounded-lg bg-[#2563EB] text-xs font-semibold text-white transition-colors hover:bg-[#1D4ED8] sm:h-11 sm:text-sm"
+            class="flex h-10 w-full items-center justify-center rounded-lg bg-(--color-primary-600) text-xs font-semibold text-(--color-inverse-text) transition-colors hover:bg-(--color-primary-700) sm:h-11 sm:text-sm"
           >
             Extraer tareas
           </button>
 
-          <span class="text-[11px] font-semibold uppercase tracking-wider text-[#94A3B8] sm:text-[12px]">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-(--color-mockup-label) sm:text-[12px]">
             Tareas generadas
           </span>
 
           <!-- Task 1 -->
-          <div class="flex flex-col gap-2 rounded-lg border border-[#334155] bg-[#1E293B] p-2.5 sm:p-3">
-            <span class="text-[12px] font-medium text-[#E2E8F0] sm:text-[13px]">1. Set up auth endpoint</span>
+          <div class="flex flex-col gap-2 rounded-lg border border-(--color-mockup-task-border) bg-(--color-mockup-task-bg) p-2.5 sm:p-3">
+            <span class="text-[12px] font-medium text-(--color-mockup-text) sm:text-[13px]">1. Set up auth endpoint</span>
             <div class="flex gap-1.5">
               <span
-                class="inline-flex items-center rounded-full bg-[#FEF3C7] px-2 py-0.5 text-[10px] font-medium text-[#92400E] sm:px-2.5 sm:py-1 sm:text-[11px]"
+                class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 sm:px-2.5 sm:py-1 sm:text-[11px]"
               >
                 backend
               </span>
               <span
-                class="inline-flex items-center rounded-full bg-[#DBEAFE] px-2 py-0.5 text-[10px] font-medium text-[#1E40AF] sm:px-2.5 sm:py-1 sm:text-[11px]"
+                class="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800 sm:px-2.5 sm:py-1 sm:text-[11px]"
               >
                 api
               </span>
@@ -243,16 +295,16 @@ const localePath = lang === 'es' ? '/es' : '';
           </div>
 
           <!-- Task 2 -->
-          <div class="flex flex-col gap-2 rounded-lg border border-[#334155] bg-[#1E293B] p-2.5 sm:p-3">
-            <span class="text-[12px] font-medium text-[#E2E8F0] sm:text-[13px]">2. Create login form UI</span>
+          <div class="flex flex-col gap-2 rounded-lg border border-(--color-mockup-task-border) bg-(--color-mockup-task-bg) p-2.5 sm:p-3">
+            <span class="text-[12px] font-medium text-(--color-mockup-text) sm:text-[13px]">2. Create login form UI</span>
             <div class="flex gap-1.5">
               <span
-                class="inline-flex items-center rounded-full bg-[#DBEAFE] px-2 py-0.5 text-[10px] font-medium text-[#1E40AF] sm:px-2.5 sm:py-1 sm:text-[11px]"
+                class="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800 sm:px-2.5 sm:py-1 sm:text-[11px]"
               >
                 frontend
               </span>
               <span
-                class="inline-flex items-center rounded-full bg-[#E0F2FE] px-2 py-0.5 text-[10px] font-medium text-[#075985] sm:px-2.5 sm:py-1 sm:text-[11px]"
+                class="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800 sm:px-2.5 sm:py-1 sm:text-[11px]"
               >
                 ui/ux
               </span>
@@ -270,12 +322,12 @@ const localePath = lang === 'es' ? '/es' : '';
     <section class="flex flex-col items-center gap-10 py-12 md:gap-14 md:py-[50px]">
       <div class="flex max-w-2xl flex-col items-center gap-4">
         <h2
-          class="text-center text-2xl font-extrabold tracking-[-0.5px] text-[#0F172A] md:text-4xl md:tracking-[-1px]"
+          class="text-center text-2xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl md:tracking-[-1px]"
           style="font-family: 'Space Grotesk', sans-serif;"
         >
           {t.landing.features.title}
         </h2>
-        <p class="text-center text-sm text-[#475569] md:text-base">
+        <p class="text-center text-sm text-(--color-text-secondary) md:text-base">
           {t.landing.features.subtitle}
         </p>
       </div>
@@ -283,74 +335,77 @@ const localePath = lang === 'es' ? '/es' : '';
       <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 lg:gap-8">
         <!-- Card 1 -->
         <div
-          class="flex flex-col gap-5 rounded-2xl border border-[#E2E8F0] bg-white p-7 shadow-sm"
+          class="flex flex-col gap-5 rounded-2xl border border-(--color-border) bg-(--color-surface) p-7 shadow-sm"
           style="box-shadow: 0 8px 30px -4px rgba(15, 23, 42, 0.04);"
         >
-          <div class="flex h-13 w-13 items-center justify-center rounded-xl bg-[#EFF6FF]">
+          <div class="flex h-13 w-13 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
               height="24"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="#2563EB"
+              stroke="currentColor"
               stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"
+              class="text-blue-600 dark:text-blue-400"
             >
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
             </svg>
           </div>
-          <h3 class="text-xl font-bold text-[#0F172A]">{t.landing.features.card_1_title}</h3>
-          <p class="text-sm leading-[1.6] text-[#475569]">
+          <h3 class="text-xl font-bold text-(--color-text)">{t.landing.features.card_1_title}</h3>
+          <p class="text-sm leading-[1.6] text-(--color-text-secondary)">
             {t.landing.features.card_1_desc}
           </p>
         </div>
 
         <!-- Card 2 -->
         <div
-          class="flex flex-col gap-5 rounded-2xl border border-[#E2E8F0] bg-white p-7 shadow-sm"
+          class="flex flex-col gap-5 rounded-2xl border border-(--color-border) bg-(--color-surface) p-7 shadow-sm"
           style="box-shadow: 0 8px 30px -4px rgba(15, 23, 42, 0.04);"
         >
-          <div class="flex h-13 w-13 items-center justify-center rounded-xl bg-[#F0FDF4]">
+          <div class="flex h-13 w-13 items-center justify-center rounded-xl bg-green-50 dark:bg-green-950">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
               height="24"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="#16A34A"
+              stroke="currentColor"
               stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"
+              class="text-green-600 dark:text-green-400"
             >
               <rect width="18" height="18" x="3" y="3" rx="2" />
               <path d="M3 9h18" />
               <path d="M9 21V9" />
             </svg>
           </div>
-          <h3 class="text-xl font-bold text-[#0F172A]">{t.landing.features.card_2_title}</h3>
-          <p class="text-sm leading-[1.6] text-[#475569]">
+          <h3 class="text-xl font-bold text-(--color-text)">{t.landing.features.card_2_title}</h3>
+          <p class="text-sm leading-[1.6] text-(--color-text-secondary)">
             {t.landing.features.card_2_desc}
           </p>
         </div>
 
         <!-- Card 3 -->
         <div
-          class="flex flex-col gap-5 rounded-2xl border border-[#E2E8F0] bg-white p-7 shadow-sm"
+          class="flex flex-col gap-5 rounded-2xl border border-(--color-border) bg-(--color-surface) p-7 shadow-sm"
           style="box-shadow: 0 8px 30px -4px rgba(15, 23, 42, 0.04);"
         >
-          <div class="flex h-13 w-13 items-center justify-center rounded-xl bg-[#FFF7ED]">
+          <div class="flex h-13 w-13 items-center justify-center rounded-xl bg-orange-50 dark:bg-orange-950">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
               height="24"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="#EA580C"
+              stroke="currentColor"
               stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"
+              class="text-orange-600 dark:text-orange-400"
             >
               <circle cx="18" cy="5" r="3" />
               <circle cx="6" cy="12" r="3" />
@@ -359,8 +414,8 @@ const localePath = lang === 'es' ? '/es' : '';
               <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
             </svg>
           </div>
-          <h3 class="text-xl font-bold text-[#0F172A]">{t.landing.features.card_3_title}</h3>
-          <p class="text-sm leading-[1.6] text-[#475569]">
+          <h3 class="text-xl font-bold text-(--color-text)">{t.landing.features.card_3_title}</h3>
+          <p class="text-sm leading-[1.6] text-(--color-text-secondary)">
             {t.landing.features.card_3_desc}
           </p>
         </div>
@@ -371,20 +426,20 @@ const localePath = lang === 'es' ? '/es' : '';
     <!-- ════════════════════════════════════════════ -->
     <!-- CTA                                        -->
     <!-- ════════════════════════════════════════════ -->
-    <section class="bg-[#0F172A]">
+    <section class="bg-(--color-inverse)">
       <div class="mx-auto flex max-w-7xl flex-col items-center justify-center gap-6 px-4 py-16 md:px-8 md:py-20 lg:px-20 lg:py-[100px]">
         <h2
-          class="max-w-2xl text-center text-2xl font-extrabold leading-tight tracking-[-0.5px] text-white md:text-3xl lg:text-[38px] lg:tracking-[-1px]"
+          class="max-w-2xl text-center text-2xl font-extrabold leading-tight tracking-[-0.5px] text-(--color-inverse-text) md:text-3xl lg:text-[38px] lg:tracking-[-1px]"
           style="font-family: 'Space Grotesk', sans-serif;"
         >
           {t.landing.cta.title}
         </h2>
-        <p class="max-w-xl text-center text-sm leading-[1.6] text-[#94A3B8] md:text-base lg:text-lg">
+        <p class="max-w-xl text-center text-sm leading-[1.6] text-(--color-inverse-muted) md:text-base lg:text-lg">
           {t.landing.cta.subtitle}
         </p>
         <a
           href={`${localePath}/login`}
-          class="inline-flex items-center rounded-lg bg-[#2563EB] px-8 py-3.5 text-sm font-semibold text-white no-underline shadow-lg transition-all hover:bg-[#1D4ED8] md:text-base"
+          class="inline-flex items-center rounded-lg bg-(--color-primary-600) px-8 py-3.5 text-sm font-semibold text-(--color-inverse-text) no-underline shadow-lg transition-all hover:bg-(--color-primary-700) md:text-base"
           style="box-shadow: 0 4px 20px rgba(37, 99, 235, 0.25);"
         >
           {t.landing.cta.button}
@@ -395,77 +450,145 @@ const localePath = lang === 'es' ? '/es' : '';
     <!-- ════════════════════════════════════════════ -->
     <!-- FOOTER                                      -->
     <!-- ════════════════════════════════════════════ -->
-    <footer class="bg-[#0F172A]">
+    <footer class="bg-(--color-inverse)">
       <div class="mx-auto flex max-w-7xl flex-col items-center gap-10 px-4 pb-8 pt-12 md:gap-12 md:px-8 md:pb-10 md:pt-16 lg:px-20 lg:pt-20">
       <div class="flex w-full flex-col gap-10 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-12 lg:flex-nowrap lg:gap-20">
         <!-- Brand -->
         <div class="flex w-full max-w-[313px] flex-col gap-3 md:w-auto">
-          <span class="text-lg font-bold text-white">{t.app.name}</span>
-          <p class="text-sm leading-[1.6] text-[#94A3B8]">
+          <span class="text-lg font-bold text-(--color-inverse-text)">{t.app.name}</span>
+          <p class="text-sm leading-[1.6] text-(--color-inverse-muted)">
             {t.app.tagline}
           </p>
         </div>
 
         <!-- Product -->
         <div class="flex flex-col gap-3">
-          <span class="text-sm font-semibold text-white">Product</span>
-          <a href={`${localePath}/login`} class="text-sm text-[#94A3B8] no-underline transition-colors hover:text-white">
+          <span class="text-sm font-semibold text-(--color-inverse-text)">Product</span>
+          <a href={`${localePath}/login`} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
             {t.nav.dashboard}
           </a>
-          <a href={`${localePath}/login`} class="text-sm text-[#94A3B8] no-underline transition-colors hover:text-white">
+          <a href={`${localePath}/login`} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
             {t.nav.stories}
           </a>
-          <a href={`${localePath}/login`} class="text-sm text-[#94A3B8] no-underline transition-colors hover:text-white">
+          <a href={`${localePath}/login`} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
             {t.nav.kanban}
           </a>
         </div>
 
         <!-- Resources -->
         <div class="flex flex-col gap-3">
-          <span class="text-sm font-semibold text-white">Resources</span>
-          <a href="#" class="text-sm text-[#94A3B8] no-underline transition-colors hover:text-white">
+          <span class="text-sm font-semibold text-(--color-inverse-text)">Resources</span>
+          <a href="#" class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
             Documentation
           </a>
-          <a href="#" class="text-sm text-[#94A3B8] no-underline transition-colors hover:text-white">
+          <a href="#" class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
             API Reference
           </a>
-          <a href="#" class="text-sm text-[#94A3B8] no-underline transition-colors hover:text-white">
+          <a href="#" class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
             Status
           </a>
         </div>
 
         <!-- Company / Legal -->
         <div class="flex flex-col gap-3">
-          <span class="text-sm font-semibold text-white">Company</span>
-          <a href="#" class="text-sm text-[#94A3B8] no-underline transition-colors hover:text-white">
+          <span class="text-sm font-semibold text-(--color-inverse-text)">Company</span>
+          <a href="#" class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
             About
           </a>
-          <a href="#" class="text-sm text-[#94A3B8] no-underline transition-colors hover:text-white">
+          <a href="#" class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
             Privacy
           </a>
-          <a href="#" class="text-sm text-[#94A3B8] no-underline transition-colors hover:text-white">
+          <a href="#" class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
             Terms
           </a>
         </div>
       </div>
 
       <!-- Separator -->
-      <div class="h-px w-full bg-[#1E293B]" />
+      <div class="h-px w-full bg-(--color-inverse-border)" />
 
       <!-- Bottom -->
       <div class="flex w-full flex-col items-center gap-3 md:flex-row md:justify-between">
-        <p class="text-sm text-[#64748B]">
+        <p class="text-sm text-(--color-text-tertiary)">
           &copy; {new Date().getFullYear()} {t.app.name}. All rights reserved.
         </p>
         <a
           href={`${localePath === '/es' ? '/' : '/es'}`}
-          class="text-sm text-[#94A3B8] no-underline transition-colors hover:text-white"
+          class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)"
         >
           {localePath === '/es' ? 'English' : 'Español'}
         </a>
       </div>
       </div>
     </footer>
+
+  <!-- Theme toggle script -->
+  <script>
+    const KEY = 'theme';
+
+    function getStoredTheme() {
+      return localStorage.getItem(KEY);
+    }
+
+    function getSystemTheme() {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    function getEffectiveTheme() {
+      const stored = getStoredTheme();
+      return stored === 'light' || stored === 'dark' ? stored : getSystemTheme();
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+
+    function setTheme(theme) {
+      localStorage.setItem(KEY, theme);
+      applyTheme(theme === 'system' ? getSystemTheme() : theme);
+    }
+
+    function toggleTheme() {
+      const current = getEffectiveTheme();
+      const next = current === 'light' ? 'dark' : 'light';
+      localStorage.setItem(KEY, next);
+      applyTheme(next);
+    }
+
+    // Sync icon visibility on both toggles
+    function syncIcons() {
+      const isDark = getEffectiveTheme() === 'dark';
+      document.querySelectorAll('[id^="sun-icon-"]').forEach(function (el) {
+        el.classList.toggle('hidden', isDark);
+      });
+      document.querySelectorAll('[id^="moon-icon-"]').forEach(function (el) {
+        el.classList.toggle('hidden', !isDark);
+      });
+    }
+
+    // Listen for system preference changes
+    const darkModeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+    darkModeMedia.addEventListener('change', function () {
+      const stored = getStoredTheme();
+      if (!stored || stored === 'system') {
+        applyTheme(getSystemTheme());
+      }
+      syncIcons();
+    });
+
+    // Wire up toggles
+    document.querySelectorAll('[id^="theme-toggle-"]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        toggleTheme();
+        syncIcons();
+      });
+    });
+
+    // Sync icons on page load
+    syncIcons();
+  </script>
+
+  <!-- Nav drawer script -->
   <script>
     const toggle = document.getElementById('nav-toggle');
     const close = document.getElementById('nav-close');
