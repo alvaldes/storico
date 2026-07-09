@@ -44,13 +44,54 @@ const L = (path: string) => localizedPath(path, locale);
     <!-- NAVBAR                                      -->
     <!-- ════════════════════════════════════════════ -->
     <header class="border-b border-(--color-border)">
-      <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-8 lg:px-20 lg:py-5">
-        <a href={L('/')} class="text-xl font-extrabold text-(--color-primary-600) no-underline md:text-[22px]">
-          {t.app.name}
-        </a>
+      <div class="mx-auto flex max-w-7xl items-center px-4 py-4 md:px-8 lg:px-20 lg:py-5">
+        <!-- Left: Logo -->
+        <div class="flex-1">
+          <a href={L('/')} class="text-xl font-extrabold text-(--color-primary-600) no-underline md:text-[22px]">
+            {t.app.name}
+          </a>
+        </div>
 
-        <div class="flex items-center gap-1 lg:hidden">
-          <!-- Mobile lang toggle -->
+        <!-- Center: Desktop nav links -->
+        <nav class="hidden lg:flex items-center gap-8">
+          <a
+            href={L('/login')}
+            class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+          >
+            {t.nav.dashboard}
+          </a>
+          <a
+            href={L('/login')}
+            class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+          >
+            {t.nav.stories}
+          </a>
+          <a
+            href={L('/login')}
+            class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+          >
+            {t.nav.kanban}
+          </a>
+          <a
+            href={L('/login')}
+            class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+          >
+            {t.nav.export}
+          </a>
+        </nav>
+
+        <!-- Right: Controls -->
+        <div class="flex flex-1 items-center justify-end gap-1">
+          <!-- Mobile hamburger -->
+          <button id="nav-toggle" class="flex items-center p-2 text-(--color-text-secondary) lg:hidden" aria-label="Toggle menu">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+
+          <!-- Lang toggle -->
           <a
             href={locale === 'en' ? '/es/' : '/en/'}
             class="flex items-center p-2 text-xs font-bold uppercase tracking-wider text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
@@ -58,63 +99,8 @@ const L = (path: string) => localizedPath(path, locale);
           >
             {locale === 'en' ? 'ES' : 'EN'}
           </a>
-          <!-- Mobile theme toggle -->
-          <button id="theme-toggle-mobile" class="flex items-center p-2 text-(--color-text-secondary)" aria-label="Toggle theme">
-            <svg id="sun-icon-mobile" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="5" />
-              <line x1="12" y1="1" x2="12" y2="3" />
-              <line x1="12" y1="21" x2="12" y2="23" />
-              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-              <line x1="1" y1="12" x2="3" y2="12" />
-              <line x1="21" y1="12" x2="23" y2="12" />
-              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-            </svg>
-            <svg id="moon-icon-mobile" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-            </svg>
-          </button>
-          <!-- Mobile hamburger -->
-          <button id="nav-toggle" class="flex items-center p-2 text-(--color-text-secondary)" aria-label="Toggle menu">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
-        </div>
 
-        <!-- Desktop nav -->
-        <div id="nav-menu" class="hidden lg:flex lg:items-center lg:gap-6">
-          <nav class="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-8">
-            <a
-              href={L('/login')}
-              class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
-            >
-              {t.nav.dashboard}
-            </a>
-            <a
-              href={L('/login')}
-              class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
-            >
-              {t.nav.stories}
-            </a>
-            <a
-              href={L('/login')}
-              class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
-            >
-              {t.nav.kanban}
-            </a>
-            <a
-              href={L('/login')}
-              class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
-            >
-              {t.nav.export}
-            </a>
-          </nav>
-
-          <!-- Desktop theme toggle -->
+          <!-- Theme toggle (single, works on both mobile/desktop) -->
           <button id="theme-toggle-desktop" class="flex items-center p-2 text-(--color-text-secondary) transition-colors hover:text-(--color-text)" aria-label="Toggle theme">
             <svg id="sun-icon-desktop" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="5" />
@@ -132,18 +118,10 @@ const L = (path: string) => localizedPath(path, locale);
             </svg>
           </button>
 
-          <!-- Desktop lang toggle -->
-          <a
-            href={locale === 'en' ? '/es/' : '/en/'}
-            class="flex items-center p-2 text-xs font-bold uppercase tracking-wider text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
-            aria-label="Switch language"
-          >
-            {locale === 'en' ? 'ES' : 'EN'}
-          </a>
-
+          <!-- Desktop CTA -->
           <a
             href={L('/login')}
-            class="inline-flex items-center rounded-lg bg-(--color-primary-600) px-5 py-2.5 text-sm font-semibold text-(--color-inverse-text) no-underline transition-all hover:bg-(--color-primary-700)"
+            class="hidden lg:inline-flex items-center rounded-lg bg-(--color-primary-600) px-5 py-2.5 text-sm font-semibold text-(--color-inverse-text) no-underline transition-all hover:bg-(--color-primary-700)"
           >
             {t.landing.hero.cta_primary}
           </a>
