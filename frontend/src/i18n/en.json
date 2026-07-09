@@ -37,7 +37,7 @@
       "badge": "\u2728 AI-POWERED BACKLOG GENERATOR",
       "title": "From user stories to technical tasks in seconds",
       "subtitle": "Paste a natural language user story and get structured tasks on a Kanban board, ready to export to Trello, JSON, or Markdown.",
-      "cta_primary": "Get Started Free",
+      "cta_primary": "Get Started",
       "cta_secondary": "View Demo"
     },
     "features": {
@@ -53,7 +53,7 @@
     "cta": {
       "title": "Start transforming your user stories into tasks today",
       "subtitle": "Free and open source. No complicated sign-up, no credit card.",
-      "button": "Get Started Free Now"
+      "button": "Try Storico Now"
     }
   },
   "login": {
