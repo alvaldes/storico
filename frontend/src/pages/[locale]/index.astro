@@ -602,6 +602,20 @@ const L = (path: string) => localizedPath(path, locale);
         }
       });
 
+      /* ── Scroll position: preserve across lang toggles ── */
+      document.addEventListener('astro:before-swap', function () {
+        sessionStorage.setItem('scroll:' + location.pathname, window.scrollY);
+      });
+
+      document.addEventListener('astro:after-swap', function () {
+        var saved = sessionStorage.getItem('scroll:' + location.pathname);
+        if (saved) {
+          requestAnimationFrame(function () {
+            window.scrollTo(0, parseInt(saved, 10));
+          });
+        }
+      });
+
       /* ── Initialise current page ───────────────── */
       applyTheme(resolveTheme());
       syncIcons();
