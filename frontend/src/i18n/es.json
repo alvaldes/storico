@@ -65,5 +65,8 @@
   "sidebar": {
     "collapse": "Colapsar barra lateral",
     "expand": "Expandir barra lateral"
+  },
+  "footer": {
+    "license": "Publicado bajo licencia MIT."
   }
 }
