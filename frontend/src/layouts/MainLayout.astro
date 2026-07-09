@@ -5,12 +5,13 @@ import Header from '@/components/astro/Header.astro';
 import Sidebar from '@/components/astro/Sidebar.astro';
 import { getSession } from 'auth-astro/server';
 
+const { locale = 'en' } = Astro.props;
 const session = await getSession(Astro.request);
 const userJson = JSON.stringify(session?.user ?? null);
 ---
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang={locale}>
   <head>
     <!-- Anti-flash: apply theme before first paint -->
     <script is:inline>
@@ -36,10 +37,25 @@ const userJson = JSON.stringify(session?.user ?? null);
     <title>Storico</title>
   </head>
   <body class="min-h-dvh bg-(--color-surface)">
-    <Sidebar />
+    <!-- View Transitions: preserve theme across navigations -->
+    <script>
+      (function () {
+        'use strict';
+        var KEY = 'theme';
+        function resolve() {
+          var s = localStorage.getItem(KEY);
+          if (s === 'dark' || s === 'light') return s;
+          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.addEventListener('astro:before-swap', function (e) {
+          e.newDocument.documentElement.dataset.theme = resolve();
+        });
+      })();
+    </script>
+    <Sidebar locale={locale} />
 
     <div class="lg:pl-60">
-      <Header userJson={userJson} />
+      <Header locale={locale} userJson={userJson} />
 
       <main class="p-4 lg:p-6">
         <slot />

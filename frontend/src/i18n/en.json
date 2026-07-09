@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "Storico",
-    "tagline": "From user stories to Kanban tasks — automatically."
+    "tagline": "From user stories to Kanban tasks in seconds."
   },
   "nav": {
     "dashboard": "Dashboard",

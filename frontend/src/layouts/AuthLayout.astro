@@ -1,10 +1,12 @@
 ---
 import { ViewTransitions } from 'astro:transitions';
 import '@/styles/globals.css';
+
+const { locale = 'en' } = Astro.props;
 ---
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang={locale}>
   <head>
     <!-- Anti-flash: apply theme before first paint -->
     <script is:inline>
@@ -30,6 +32,21 @@ import '@/styles/globals.css';
     <title>Storico</title>
   </head>
   <body class="flex min-h-dvh items-center justify-center bg-(--color-surface-secondary) p-4">
+    <!-- View Transitions: preserve theme across navigations -->
+    <script>
+      (function () {
+        'use strict';
+        var KEY = 'theme';
+        function resolve() {
+          var s = localStorage.getItem(KEY);
+          if (s === 'dark' || s === 'light') return s;
+          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.addEventListener('astro:before-swap', function (e) {
+          e.newDocument.documentElement.dataset.theme = resolve();
+        });
+      })();
+    </script>
     <main class="w-full max-w-md">
       <div class="rounded-xl border border-(--color-border) bg-(--color-surface) p-8 shadow-sm">
         <slot />
