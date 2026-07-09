@@ -50,6 +50,22 @@
       "card_3_title": "Trello Export",
       "card_3_desc": "Export your tasks to Trello, JSON, or Markdown with one click. Compatible with your existing workflow."
     },
+    "faq": {
+      "title": "Frequently asked questions",
+      "subtitle": "Everything you need to know about Storico.",
+      "q1": "What is Storico?",
+      "a1": "Storico is an open-source tool that uses AI to automatically break down user stories into structured Kanban tasks. Just paste a user story and get technical tasks with descriptions, labels, and dependencies ready to export.",
+      "q2": "Do I need a credit card or API key to use it?",
+      "a2": "Not at all. Storico is free and open source. You can run it locally using Ollama with no API keys, no subscriptions, and no hidden costs.",
+      "q3": "What kind of user stories does it work with?",
+      "a3": "Storico works best with standard \"As a... I want... so that...\" format user stories in English. The more specific your story, the better the task breakdown.",
+      "q4": "Can I edit the generated tasks before exporting?",
+      "a4": "Absolutely. You can review, edit, or delete any task before exporting. You also have full control over the resulting Kanban board.",
+      "q5": "What formats can I export to?",
+      "a5": "You can export to Trello (directly to your boards), JSON, or Markdown. CSV and XML support are on the roadmap.",
+      "q6": "Can I use local AI models instead of cloud APIs?",
+      "a6": "Yes. Storico supports Ollama out of the box, so you can run entirely offline with local models like LLaMA 3.2 or Mistral. Cloud models (OpenAI, Anthropic) are also supported."
+    },
     "cta": {
       "title": "Start transforming your user stories into tasks today",
       "subtitle": "Free and open source. No complicated sign-up, no credit card.",
