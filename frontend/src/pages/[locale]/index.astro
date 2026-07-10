@@ -5,6 +5,7 @@ import ThemeScript from '@/components/astro/ThemeScript.astro';
 import { useTranslations, localizedPath } from '@/i18n/utils';
 import { FaqAccordion } from '@/components/react/FaqAccordion';
 import { FeatureCards } from '@/components/react/FeatureCards';
+import { MobileNav } from '@/components/react/MobileNav';
 
 const locale = (Astro.params.locale as string) || 'en';
 const t = useTranslations(locale);
@@ -14,6 +15,14 @@ const L = (path: string) => localizedPath(path, locale);
 const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
 const otherLocale: 'en' | 'es' = locale === 'en' ? 'es' : 'en';
 const langToggleHref = localizedPath(cleanPath, otherLocale);
+
+const navLinks = [
+  { href: L('/dashboard'), label: t.nav.dashboard },
+  { href: L('/stories'), label: t.nav.stories },
+  { href: L('/kanban'), label: t.nav.kanban },
+  { href: L('/export'), label: t.nav['export'] },
+];
+const ctaLink = { href: L('/login'), label: t.landing.hero.cta_primary };
 
 const featureCards = [
   { title: t.landing.features.card_1_title, description: t.landing.features.card_1_desc, icon: 'zap', color: 'blue' as const },
@@ -125,14 +134,8 @@ const faqItems = [
 
         <!-- Right: Controls -->
         <div class="flex flex-1 items-center justify-end gap-1">
-          <!-- Mobile hamburger -->
-          <button id="nav-toggle" class="flex items-center p-2 text-(--color-text-secondary) lg:hidden" aria-label="Toggle menu">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
+          <!-- Mobile nav (Sheet island, hydrated on idle) -->
+          <MobileNav client:idle links={navLinks} brandName={t.app.name} locale={locale} langToggleHref={langToggleHref} cta={ctaLink} />
 
           <!-- Lang toggle -->
           <a
@@ -171,57 +174,6 @@ const faqItems = [
         </div>
       </div>
     </header>
-
-    <!-- Mobile nav overlay -->
-    <div id="nav-overlay" class="fixed inset-0 z-40 hidden bg-black/50" />
-    <div
-      id="nav-drawer"
-      class="fixed inset-y-0 right-0 z-50 flex w-64 translate-x-full flex-col gap-6 border-l border-(--color-border) bg-(--color-surface) p-6 shadow-xl transition-transform duration-200"
-    >
-      <div class="flex items-center justify-between">
-        <span class="text-lg font-bold text-(--color-text)">{t.app.name}</span>
-        <button id="nav-close" class="p-1 text-(--color-text-secondary)" aria-label="Close menu">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-      <nav class="flex flex-col gap-2">
-        <a
-          href={L('/dashboard')}
-          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
-        >
-          {t.nav.dashboard}
-        </a>
-        <a
-          href={L('/stories')}
-          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
-        >
-          {t.nav.stories}
-        </a>
-        <a
-          href={L('/kanban')}
-          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
-        >
-          {t.nav.kanban}
-        </a>
-        <a
-          href={L('/export')}
-          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
-        >
-          {t.nav.export}
-        </a>
-      </nav>
-      <div class="mt-2 border-t border-(--color-border) pt-4">
-        <a
-          href={L('/login')}
-          class="flex items-center justify-center rounded-lg bg-(--color-primary-600) px-5 py-3 text-sm font-semibold text-(--color-inverse-text) no-underline transition-all hover:bg-(--color-primary-700)"
-        >
-          {t.landing.hero.cta_primary}
-        </a>
-      </div>
-    </div>
 
     <div class="mx-auto max-w-7xl px-4 md:px-8 lg:px-20">
     <!-- ════════════════════════════════════════════ -->
@@ -506,45 +458,10 @@ const faqItems = [
     </footer>
     </div><!-- /CTA + FOOTER WRAPPER -->
 
-  <!-- Combined page scripts (theme toggle + nav drawer) -->
   <script>
-    (function () {
-      "use strict";
-
-      /* ── Nav drawer ──────────────────────────── */
-      function openNav() {
-        var drawer = document.getElementById('nav-drawer');
-        var overlay = document.getElementById('nav-overlay');
-        if (drawer) drawer.classList.remove('translate-x-full');
-        if (overlay) overlay.classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
-      }
-
-      function closeNav() {
-        var drawer = document.getElementById('nav-drawer');
-        var overlay = document.getElementById('nav-overlay');
-        if (drawer) drawer.classList.add('translate-x-full');
-        if (overlay) overlay.classList.add('hidden');
-        document.body.style.overflow = '';
-      }
-
-      document.addEventListener('click', function (e) {
-        var toggle = e.target.closest('#nav-toggle');
-        var close = e.target.closest('#nav-close');
-        var overlay = e.target.closest('#nav-overlay');
-
-        if (toggle) { openNav(); }
-        else if (close) { closeNav(); }
-        else if (overlay && e.target === overlay) { closeNav(); }
-      });
-
-      /* ── Scroll to top on every navigation ────── */
-      document.addEventListener('astro:after-swap', function () {
-        window.scrollTo(0, 0);
-      });
-
-
-    })();
+    document.addEventListener('astro:after-swap', function () {
+      window.scrollTo(0, 0);
+    });
   </script>
   </body>
 </html>
