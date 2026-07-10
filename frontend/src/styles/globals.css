@@ -60,6 +60,26 @@
   --color-text-secondary: oklch(0.45 0.01 260);
   --color-text-tertiary: #64748b;
 
+  /* Semantic: status / success indicators */
+  --color-success: oklch(0.55 0.15 145);
+  --color-success-bg: oklch(0.96 0.03 145);
+  --color-success-border: oklch(0.87 0.05 145);
+  --color-success-text: oklch(0.4 0.1 145);
+
+  /* Semantic: API method badges */
+  --color-method-post-bg: oklch(0.96 0.03 145);
+  --color-method-post-text: oklch(0.4 0.1 145);
+  --color-method-get-bg: oklch(0.95 0.03 250);
+  --color-method-get-text: oklch(0.35 0.15 250);
+
+  /* Feature card accent colors */
+  --color-accent-blue-bg: oklch(0.95 0.03 250);
+  --color-accent-blue-icon: oklch(0.45 0.18 250);
+  --color-accent-green-bg: oklch(0.96 0.04 145);
+  --color-accent-green-icon: oklch(0.5 0.18 145);
+  --color-accent-orange-bg: oklch(0.95 0.04 70);
+  --color-accent-orange-icon: oklch(0.6 0.18 70);
+
   /* Landing page extras */
   --color-body: #f8fafc;
   --color-inverse: #0f172a;
@@ -109,6 +129,25 @@
   --color-inverse-text: #f1f5f9;
   --color-inverse-muted: #64748b;
   --color-inverse-border: #334155;
+
+  /* Semantic: success - dark */
+  --color-success-bg: oklch(0.15 0.04 145 / 0.5);
+  --color-success-border: oklch(0.3 0.07 145);
+  --color-success-text: oklch(0.8 0.1 145);
+
+  /* API method badges - dark */
+  --color-method-post-bg: oklch(0.2 0.06 145);
+  --color-method-post-text: oklch(0.75 0.1 145);
+  --color-method-get-bg: oklch(0.2 0.05 250);
+  --color-method-get-text: oklch(0.75 0.12 250);
+
+  /* Feature card accents - dark */
+  --color-accent-blue-bg: oklch(0.18 0.04 250);
+  --color-accent-blue-icon: oklch(0.55 0.18 250);
+  --color-accent-green-bg: oklch(0.18 0.04 145);
+  --color-accent-green-icon: oklch(0.55 0.15 145);
+  --color-accent-orange-bg: oklch(0.18 0.04 70);
+  --color-accent-orange-icon: oklch(0.65 0.18 70);
 
   /* Invert mockup: light device UI on dark bg */
   --color-mockup-bg: #e8e8e8;

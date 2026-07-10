@@ -57,16 +57,6 @@ export function toggleTheme(): 'light' | 'dark' {
   return next;
 }
 
-export function syncIcons(isDark?: boolean) {
-  const dark = isDark ?? resolveTheme() === 'dark';
-  document.querySelectorAll('[id^="sun-icon-"]').forEach((el) => {
-    el.classList.toggle('hidden', dark);
-  });
-  document.querySelectorAll('[id^="moon-icon-"]').forEach((el) => {
-    el.classList.toggle('hidden', !dark);
-  });
-}
-
 // ── View Transition helpers ─────────────────────────────────────
 
 export function onBeforeSwap(e: Event) {
@@ -76,22 +66,6 @@ export function onBeforeSwap(e: Event) {
 
 export function onAfterSwap() {
   applyTheme(resolveTheme());
-}
-
-// ── Cycle: light → dark → system → light ──────────────────────
-export function onClickToggle() {
-  toggleTheme();
-  syncIcons();
-}
-
-/**
- * Call on theme toggle click events.
- * Matches buttons with id^="theme-toggle-".
- */
-export function handleToggleClick(e: MouseEvent) {
-  const btn = (e.target as HTMLElement).closest('[id^="theme-toggle-"]');
-  if (!btn) return;
-  onClickToggle();
 }
 
 /**

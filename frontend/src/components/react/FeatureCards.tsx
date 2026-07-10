@@ -17,9 +17,9 @@ export interface FeatureCardData {
 }
 
 const colorClasses: Record<FeatureCardData["color"], { bg: string; icon: string }> = {
-  blue: { bg: "bg-blue-50 dark:bg-blue-950", icon: "text-blue-600 dark:text-blue-400" },
-  green: { bg: "bg-green-50 dark:bg-green-950", icon: "text-green-600 dark:text-green-400" },
-  orange: { bg: "bg-orange-50 dark:bg-orange-950", icon: "text-orange-600 dark:text-orange-400" },
+  blue: { bg: "bg-(--color-accent-blue-bg)", icon: "text-(--color-accent-blue-icon)" },
+  green: { bg: "bg-(--color-accent-green-bg)", icon: "text-(--color-accent-green-icon)" },
+  orange: { bg: "bg-(--color-accent-orange-bg)", icon: "text-(--color-accent-orange-icon)" },
 }
 
 interface FeatureCardsProps {
