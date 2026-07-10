@@ -1,6 +1,7 @@
 ---
 import { ViewTransitions } from 'astro:transitions';
 import '@/styles/globals.css';
+import ThemeScript from '@/components/astro/ThemeScript.astro';
 import Header from '@/components/astro/Header.astro';
 import Sidebar from '@/components/astro/Sidebar.astro';
 import { getSession } from 'auth-astro/server';
@@ -13,19 +14,7 @@ const userJson = JSON.stringify(session?.user ?? null);
 <!DOCTYPE html>
 <html lang={locale}>
   <head>
-    <!-- Anti-flash: apply theme before first paint -->
-    <script is:inline>
-      (function () {
-        var stored = localStorage.getItem('theme');
-        var theme = stored || 'system';
-        if (theme === 'system') {
-          theme = window.matchMedia('(prefers-color-scheme: dark)').matches
-            ? 'dark'
-            : 'light';
-        }
-        document.documentElement.setAttribute('data-theme', theme);
-      })();
-    </script>
+    <ThemeScript />
 
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -37,21 +26,6 @@ const userJson = JSON.stringify(session?.user ?? null);
     <title>Storico</title>
   </head>
   <body class="min-h-dvh bg-(--color-surface)">
-    <!-- View Transitions: preserve theme across navigations -->
-    <script>
-      (function () {
-        'use strict';
-        var KEY = 'theme';
-        function resolve() {
-          var s = localStorage.getItem(KEY);
-          if (s === 'dark' || s === 'light') return s;
-          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        }
-        document.addEventListener('astro:before-swap', function (e) {
-          e.newDocument.documentElement.dataset.theme = resolve();
-        });
-      })();
-    </script>
     <Sidebar locale={locale} />
 
     <div class="lg:pl-60">

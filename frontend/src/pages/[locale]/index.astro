@@ -1,6 +1,7 @@
 ---
 import { ViewTransitions } from 'astro:transitions';
 import '@/styles/globals.css';
+import ThemeScript from '@/components/astro/ThemeScript.astro';
 import { useTranslations, localizedPath } from '@/i18n/utils';
 
 const locale = (Astro.params.locale as string) || 'en';
@@ -16,19 +17,7 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
 <!DOCTYPE html>
 <html lang={locale}>
   <head>
-    <!-- Anti-flash: apply theme before first paint -->
-    <script is:inline>
-      (function () {
-        var stored = localStorage.getItem('theme');
-        var theme = stored || 'system';
-        if (theme === 'system') {
-          theme = window.matchMedia('(prefers-color-scheme: dark)').matches
-            ? 'dark'
-            : 'light';
-        }
-        document.documentElement.setAttribute('data-theme', theme);
-      })();
-    </script>
+    <ThemeScript />
 
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -661,28 +650,8 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
   <script>
     (function () {
       "use strict";
-      var KEY = 'theme';
 
-      /* ── Helpers ──────────────────────────────── */
-      function resolveTheme() {
-        var stored = localStorage.getItem(KEY);
-        if (stored === 'dark') return 'dark';
-        if (stored === 'light') return 'light';
-        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      }
-
-      function applyTheme(t) { document.documentElement.setAttribute('data-theme', t); }
-
-      function syncIcons(t) {
-        var dark = (t || resolveTheme()) === 'dark';
-        document.querySelectorAll('[id^="sun-icon-"]').forEach(function (el) {
-          el.classList.toggle('hidden', dark);
-        });
-        document.querySelectorAll('[id^="moon-icon-"]').forEach(function (el) {
-          el.classList.toggle('hidden', !dark);
-        });
-      }
-
+      /* ── Nav drawer ──────────────────────────── */
       function openNav() {
         var drawer = document.getElementById('nav-drawer');
         var overlay = document.getElementById('nav-overlay');
@@ -699,30 +668,6 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
         document.body.style.overflow = '';
       }
 
-      /* ── View Transitions: inject theme before swap ── */
-      document.addEventListener('astro:before-swap', function (e) {
-        e.newDocument.documentElement.dataset.theme = resolveTheme();
-      });
-
-      /* ── View Transitions: sync icons after swap ── */
-      document.addEventListener('astro:after-swap', function () {
-        var t = resolveTheme();
-        applyTheme(t);
-        syncIcons(t);
-      });
-
-      /* ── Event delegation: theme toggles ───────── */
-      document.addEventListener('click', function (e) {
-        var btn = e.target.closest('[id^="theme-toggle-"]');
-        if (!btn) return;
-        var cur = resolveTheme();
-        var next = cur === 'light' ? 'dark' : 'light';
-        localStorage.setItem(KEY, next);
-        applyTheme(next);
-        syncIcons(next);
-      });
-
-      /* ── Event delegation: nav drawer ──────────── */
       document.addEventListener('click', function (e) {
         var toggle = e.target.closest('#nav-toggle');
         var close = e.target.closest('#nav-close');
@@ -731,16 +676,6 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
         if (toggle) { openNav(); }
         else if (close) { closeNav(); }
         else if (overlay && e.target === overlay) { closeNav(); }
-      });
-
-      /* ── System preference changes ─────────────── */
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
-        var stored = localStorage.getItem(KEY);
-        if (!stored || stored === 'system') {
-          var t = resolveTheme();
-          applyTheme(t);
-          syncIcons(t);
-        }
       });
 
       /* ── Scroll to top on every navigation ────── */
@@ -758,10 +693,6 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
           }
         });
       });
-
-      /* ── Initialise current page ───────────────── */
-      applyTheme(resolveTheme());
-      syncIcons();
     })();
   </script>
   </body>

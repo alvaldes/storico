@@ -1,6 +1,11 @@
 import { create } from 'zustand';
-
-type Theme = 'light' | 'dark' | 'system';
+import {
+  type Theme,
+  getStoredTheme,
+  getSystemPreference,
+  resolveTheme,
+  applyTheme,
+} from '@/lib/theme';
 
 interface UIState {
   theme: Theme;
@@ -11,33 +16,13 @@ interface UIState {
   toggleSidebar: () => void;
 }
 
-function getSystemPreference(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'light';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light';
-}
-
-function getStoredTheme(): Theme {
-  if (typeof window === 'undefined') return 'system';
-  const stored = localStorage.getItem('theme');
-  if (stored === 'light' || stored === 'dark' || stored === 'system') {
-    return stored;
-  }
-  return 'system';
-}
-
-function applyTheme(theme: Theme) {
-  if (typeof document === 'undefined') return;
-  const resolved = theme === 'system' ? getSystemPreference() : theme;
-  document.documentElement.setAttribute('data-theme', resolved);
-}
-
 export const useUIStore = create<UIState>((set) => {
   const initialTheme = getStoredTheme();
   // Apply on init — runs once in browser
   if (typeof window !== 'undefined') {
-    applyTheme(initialTheme);
+    applyTheme(
+      initialTheme === 'system' ? getSystemPreference() : initialTheme,
+    );
   }
 
   return {
@@ -45,21 +30,17 @@ export const useUIStore = create<UIState>((set) => {
     sidebarOpen: true,
     setTheme: (theme) => {
       localStorage.setItem('theme', theme);
-      applyTheme(theme);
+      applyTheme(theme === 'system' ? getSystemPreference() : theme);
       set({ theme });
     },
     toggleTheme: () => {
-      set((state) => {
-        const next: Theme =
-          state.theme === 'light'
-            ? 'dark'
-            : state.theme === 'dark'
-              ? 'system'
-              : 'light';
-        localStorage.setItem('theme', next);
-        applyTheme(next);
-        return { theme: next };
-      });
+      // Resolve current (ignoring 'system'), toggle to opposite
+      const resolved = resolveTheme();
+      const next: 'light' | 'dark' =
+        resolved === 'light' ? 'dark' : 'light';
+      localStorage.setItem('theme', next);
+      applyTheme(next);
+      set({ theme: next });
     },
     setSidebarOpen: (open) => set({ sidebarOpen: open }),
     toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),

@@ -1,6 +1,7 @@
 ---
 import { ViewTransitions } from 'astro:transitions';
 import '@/styles/globals.css';
+import ThemeScript from '@/components/astro/ThemeScript.astro';
 import { useTranslations, localizedPath } from '@/i18n/utils';
 
 export interface Props {
@@ -22,19 +23,7 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
 <!DOCTYPE html>
 <html lang={locale}>
   <head>
-    <!-- Anti-flash: apply theme before first paint -->
-    <script is:inline>
-      (function () {
-        var stored = localStorage.getItem('theme');
-        var theme = stored || 'system';
-        if (theme === 'system') {
-          theme = window.matchMedia('(prefers-color-scheme: dark)').matches
-            ? 'dark'
-            : 'light';
-        }
-        document.documentElement.setAttribute('data-theme', theme);
-      })();
-    </script>
+    <ThemeScript />
 
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -139,7 +128,7 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
             {locale === 'en' ? 'ES' : 'EN'}
           </a>
 
-          <!-- Theme toggle -->
+          <!-- Theme toggle (handled by ThemeScript click delegation) -->
           <button id="theme-toggle-desktop" class="flex items-center p-2 text-(--color-text-secondary) transition-colors hover:text-(--color-text)" aria-label="Toggle theme">
             <svg id="sun-icon-desktop" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="5" />
@@ -327,29 +316,10 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
       </footer>
     </div>
 
+  <!-- Nav drawer + scroll management (theme is handled by ThemeScript) -->
   <script>
   (function () {
     "use strict";
-    var KEY = 'theme';
-
-    function resolveTheme() {
-      var stored = localStorage.getItem(KEY);
-      if (stored === 'dark') return 'dark';
-      if (stored === 'light') return 'light';
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-
-    function applyTheme(t) { document.documentElement.setAttribute('data-theme', t); }
-
-    function syncIcons(t) {
-      var dark = (t || resolveTheme()) === 'dark';
-      document.querySelectorAll('[id^="sun-icon-"]').forEach(function (el) {
-        el.classList.toggle('hidden', dark);
-      });
-      document.querySelectorAll('[id^="moon-icon-"]').forEach(function (el) {
-        el.classList.toggle('hidden', !dark);
-      });
-    }
 
     function openNav() {
       var drawer = document.getElementById('nav-drawer');
@@ -367,27 +337,6 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
       document.body.style.overflow = '';
     }
 
-    document.addEventListener('astro:before-swap', function (e) {
-      e.newDocument.documentElement.dataset.theme = resolveTheme();
-    });
-
-    document.addEventListener('astro:after-swap', function () {
-      var t = resolveTheme();
-      applyTheme(t);
-      syncIcons(t);
-      window.scrollTo(0, 0);
-    });
-
-    document.addEventListener('click', function (e) {
-      var btn = e.target.closest('[id^="theme-toggle-"]');
-      if (!btn) return;
-      var cur = resolveTheme();
-      var next = cur === 'light' ? 'dark' : 'light';
-      localStorage.setItem(KEY, next);
-      applyTheme(next);
-      syncIcons(next);
-    });
-
     document.addEventListener('click', function (e) {
       var toggleBtn = e.target.closest('#nav-toggle');
       var closeBtn = e.target.closest('#nav-close');
@@ -398,17 +347,10 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
       else if (overlay && e.target === overlay) { closeNav(); }
     });
 
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
-      var stored = localStorage.getItem(KEY);
-      if (!stored || stored === 'system') {
-        var t = resolveTheme();
-        applyTheme(t);
-        syncIcons(t);
-      }
+    /* ── Scroll to top on every navigation ────── */
+    document.addEventListener('astro:after-swap', function () {
+      window.scrollTo(0, 0);
     });
-
-    applyTheme(resolveTheme());
-    syncIcons();
   })();
   </script>
   </body>

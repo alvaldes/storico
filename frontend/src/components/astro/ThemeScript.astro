@@ -1,0 +1,61 @@
+---
+/**
+ * ThemeScript — single source of truth for theme management across ALL layouts.
+ *
+ * Provides:
+ *  1. Anti-flash inline script (runs before first paint in <head>)
+ *  2. View Transitions theme persistence
+ *  3. Click delegation for any [id^="theme-toggle-"] button
+ *  4. System preference change detection
+ *
+ * Every layout (MainLayout, PublicLayout, AuthLayout) and standalone page
+ * (index.astro) MUST include this component in their <head>.
+ *
+ * The React ThemeToggle component on dashboard pages works via Zustand (uiStore),
+ * which writes to the same localStorage key — both systems stay in sync
+ * automatically.
+ */
+---
+
+<!-- Anti-flash: runs before first paint to prevent FOUC -->
+<script is:inline>
+  (function () {
+    var stored = localStorage.getItem('theme');
+    var theme = stored || 'system';
+    if (theme === 'system') {
+      theme = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+
+<!-- Bundled theme manager: View Transitions + click delegation -->
+<script>
+  import {
+    resolveTheme,
+    applyTheme,
+    syncIcons,
+    onBeforeSwap,
+    onAfterSwap,
+    handleToggleClick,
+    onSystemPreferenceChange,
+  } from '@/lib/theme';
+
+  /* ── View Transitions ─────────────────────────── */
+  document.addEventListener('astro:before-swap', onBeforeSwap);
+  document.addEventListener('astro:after-swap', onAfterSwap);
+
+  /* ── Click delegation for theme toggles ────────── */
+  document.addEventListener('click', handleToggleClick);
+
+  /* ── System preference changes ─────────────────── */
+  window
+    .matchMedia('(prefers-color-scheme: dark)')
+    .addEventListener('change', onSystemPreferenceChange);
+
+  /* ── Initialize current page ───────────────────── */
+  applyTheme(resolveTheme());
+  syncIcons();
+</script>
