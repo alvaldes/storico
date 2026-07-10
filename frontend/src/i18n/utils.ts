@@ -19,8 +19,7 @@ export function useTranslations(locale: string): typeof en {
  * English paths have no prefix; Spanish paths get /es/ prefix.
  */
 export function localizedPath(path: string, locale: Locale): string {
-  if (locale === 'en') return path;
-  return `/es${path}`;
+  return `/${locale}${path}`;
 }
 
 /**

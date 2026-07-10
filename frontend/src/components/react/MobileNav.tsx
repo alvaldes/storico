@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Sheet,
   SheetTrigger,
@@ -32,9 +32,22 @@ export function MobileNav({
   locale,
   langToggleHref,
   cta,
-  activePath,
+  activePath: _activePath,
 }: MobileNavProps) {
   const [open, setOpen] = useState(false);
+
+  // Compute active path from window.location (handles View Transitions client-side nav)
+  const [currentPath, setCurrentPath] = useState(() =>
+    typeof window !== "undefined" ? window.location.pathname : _activePath ?? "",
+  );
+
+  useEffect(() => {
+    function onSwap() {
+      setCurrentPath(window.location.pathname);
+    }
+    document.addEventListener("astro:after-swap", onSwap);
+    return () => document.removeEventListener("astro:after-swap", onSwap);
+  }, []);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -53,8 +66,6 @@ export function MobileNav({
       <SheetContent side="right" showCloseButton={false}>
         <SheetHeader className="flex flex-row items-center justify-between">
           <SheetTitle>{brandName}</SheetTitle>
-          {/* Close via base-ui's internal Close won't work with render prop polymorphism here;
-              we add a simple close button in the header. The Sheet also closes on overlay click. */}
           <button
             type="button"
             onClick={() => setOpen(false)}
@@ -67,7 +78,7 @@ export function MobileNav({
 
         <nav className="flex flex-col gap-1 px-4">
           {links.map((link) => {
-            const isActive = activePath === link.href;
+            const isActive = currentPath === link.href;
             return (
               <a
                 key={link.href}

@@ -7,6 +7,7 @@ import Sidebar from '@/components/astro/Sidebar.astro';
 import { getSession } from 'auth-astro/server';
 
 const { locale = 'en' } = Astro.props;
+const currentPath = Astro.url.pathname;
 const session = await getSession(Astro.request);
 const userJson = JSON.stringify(session?.user ?? null);
 ---
@@ -26,7 +27,7 @@ const userJson = JSON.stringify(session?.user ?? null);
     <title>Storico</title>
   </head>
   <body class="min-h-dvh bg-(--color-surface)">
-    <Sidebar locale={locale} />
+    <Sidebar locale={locale} currentPath={currentPath} />
 
     <div class="lg:pl-60">
       <Header locale={locale} userJson={userJson} />

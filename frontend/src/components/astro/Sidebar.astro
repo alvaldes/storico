@@ -9,13 +9,26 @@ import {
 } from 'lucide-react';
 import { localizedPath, type Locale } from '@/i18n/utils';
 
-const { locale = 'en' as Locale } = Astro.props;
+const { locale = 'en' as Locale, currentPath = '' } = Astro.props;
 const L = (path: string) => localizedPath(path, locale);
+
+const navLinks = [
+  { href: L('/dashboard'), icon: LayoutDashboard, label: 'Dashboard' },
+  { href: L('/stories'), icon: FileText, label: 'User Stories' },
+  { href: L('/kanban'), icon: KanbanSquare, label: 'Kanban' },
+  { href: L('/export'), icon: Upload, label: 'Export' },
+  { href: L('/settings'), icon: Settings, label: 'Settings' },
+];
+
+function isActive(href: string): boolean {
+  return currentPath === href || currentPath.replace(/\/$/, '') === href.replace(/\/$/, '');
+}
 ---
 
 <aside
   id="sidebar"
   class="fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-(--color-border) bg-(--color-surface) transition-transform duration-200 -translate-x-full lg:translate-x-0 sidebar-open:translate-x-0"
+  data-nav="sidebar"
 >
   <!-- Logo -->
   <div class="flex h-14 items-center justify-between border-b border-(--color-border) px-4">
@@ -28,47 +41,28 @@ const L = (path: string) => localizedPath(path, locale);
       class="rounded-md p-1 text-(--color-text-secondary) hover:bg-(--color-surface-secondary) transition-colors lg:hidden"
       aria-label="Close sidebar"
     >
-      <ChevronLeft class="h-4 w-4" />
+      <ChevronLeft className="h-4 w-4" />
     </button>
   </div>
 
   <!-- Navigation -->
   <nav class="flex-1 overflow-y-auto p-3 space-y-1">
-    <a
-      href={L('/dashboard')}
-      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-surface-secondary) hover:text-(--color-text) transition-colors"
-    >
-      <LayoutDashboard class="h-4 w-4" />
-      Dashboard
-    </a>
-    <a
-      href={L('/stories')}
-      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-surface-secondary) hover:text-(--color-text) transition-colors"
-    >
-      <FileText class="h-4 w-4" />
-      User Stories
-    </a>
-    <a
-      href={L('/kanban')}
-      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-surface-secondary) hover:text-(--color-text) transition-colors"
-    >
-      <KanbanSquare class="h-4 w-4" />
-      Kanban
-    </a>
-    <a
-      href={L('/export')}
-      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-surface-secondary) hover:text-(--color-text) transition-colors"
-    >
-      <Upload class="h-4 w-4" />
-      Export
-    </a>
-    <a
-      href={L('/settings')}
-      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-surface-secondary) hover:text-(--color-text) transition-colors"
-    >
-      <Settings class="h-4 w-4" />
-      Settings
-    </a>
+    {
+      navLinks.map(({ href, icon: Icon, label }) => (
+        <a
+          href={href}
+          data-nav-link
+          class={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+            isActive(href)
+              ? 'bg-(--color-surface-secondary) text-(--color-text) font-semibold'
+              : 'text-(--color-text-secondary) hover:bg-(--color-surface-secondary) hover:text-(--color-text)'
+          }`}
+        >
+          <Icon className="h-4 w-4" />
+          {label}
+        </a>
+      ))
+    }
   </nav>
 
   <!-- Footer -->
@@ -99,4 +93,19 @@ const L = (path: string) => localizedPath(path, locale);
   if (overlay) {
     overlay.addEventListener('click', closeSidebar);
   }
+
+  // ── Active nav link on View Transitions (client-side nav) ──
+  function updateActiveNav() {
+    const path = window.location.pathname.replace(/\/$/, '');
+    document.querySelectorAll('[data-nav="sidebar"] [data-nav-link]').forEach((a) => {
+      const href = a.getAttribute('href')?.replace(/\/$/, '');
+      const match = href === path;
+      a.classList.toggle('text-(--color-text)', match);
+      a.classList.toggle('font-semibold', match);
+      a.classList.toggle('bg-(--color-surface-secondary)', match);
+      a.classList.toggle('text-(--color-text-secondary)', !match);
+    });
+  }
+
+  document.addEventListener('astro:after-swap', updateActiveNav);
 </script>

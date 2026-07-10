@@ -114,27 +114,31 @@ const faqItems = [
         </div>
 
         <!-- Center: Desktop nav links -->
-        <nav class="hidden lg:flex items-center gap-8">
+        <nav class="hidden lg:flex items-center gap-8" data-nav="public">
           <a
             href={L('/docs')}
+            data-nav-link
             class={`text-[15px] font-medium no-underline transition-colors ${currentPath === L('/docs') ? 'text-(--color-text) font-semibold' : 'text-(--color-text-secondary) hover:text-(--color-text)'}`}
           >
             {t.footer.documentation}
           </a>
           <a
             href={L('/api')}
+            data-nav-link
             class={`text-[15px] font-medium no-underline transition-colors ${currentPath === L('/api') ? 'text-(--color-text) font-semibold' : 'text-(--color-text-secondary) hover:text-(--color-text)'}`}
           >
             {t.footer.api_reference}
           </a>
           <a
             href={L('/status')}
+            data-nav-link
             class={`text-[15px] font-medium no-underline transition-colors ${currentPath === L('/status') ? 'text-(--color-text) font-semibold' : 'text-(--color-text-secondary) hover:text-(--color-text)'}`}
           >
             {t.footer.status_page}
           </a>
           <a
             href={L('/about')}
+            data-nav-link
             class={`text-[15px] font-medium no-underline transition-colors ${currentPath === L('/about') ? 'text-(--color-text) font-semibold' : 'text-(--color-text-secondary) hover:text-(--color-text)'}`}
           >
             {t.footer.about}
@@ -472,6 +476,21 @@ const faqItems = [
     document.addEventListener('astro:after-swap', function () {
       window.scrollTo(0, 0);
     });
+
+    // Update active nav link after client-side View Transitions
+    function updatePublicNav() {
+      var path = window.location.pathname.replace(/\/$/, '');
+      document.querySelectorAll('[data-nav="public"] [data-nav-link]').forEach(function (a) {
+        var href = a.getAttribute('href')?.replace(/\/$/, '');
+        var match = href === path;
+        a.classList.toggle('text-(--color-text)', match);
+        a.classList.toggle('font-semibold', match);
+        a.classList.toggle('text-(--color-text-secondary)', !match);
+      });
+    }
+
+    document.addEventListener('astro:after-swap', updatePublicNav);
+    document.addEventListener('DOMContentLoaded', updatePublicNav);
   </script>
   </body>
 </html>
