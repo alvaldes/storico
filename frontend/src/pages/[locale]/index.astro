@@ -3,6 +3,7 @@ import { ViewTransitions } from 'astro:transitions';
 import '@/styles/globals.css';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
 import { useTranslations, localizedPath } from '@/i18n/utils';
+import { FaqAccordion } from '@/components/react/FaqAccordion';
 
 const locale = (Astro.params.locale as string) || 'en';
 const t = useTranslations(locale);
@@ -12,6 +13,15 @@ const L = (path: string) => localizedPath(path, locale);
 const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
 const otherLocale: 'en' | 'es' = locale === 'en' ? 'es' : 'en';
 const langToggleHref = localizedPath(cleanPath, otherLocale);
+
+const faqItems = [
+  { question: t.landing.faq.q1, answer: t.landing.faq.a1 },
+  { question: t.landing.faq.q2, answer: t.landing.faq.a2 },
+  { question: t.landing.faq.q3, answer: t.landing.faq.a3 },
+  { question: t.landing.faq.q4, answer: t.landing.faq.a4 },
+  { question: t.landing.faq.q5, answer: t.landing.faq.a5 },
+  { question: t.landing.faq.q6, answer: t.landing.faq.a6 },
+];
 ---
 
 <!DOCTYPE html>
@@ -459,80 +469,7 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
         </p>
       </div>
 
-      <div class="flex w-full max-w-3xl flex-col divide-y divide-(--color-border) rounded-2xl border border-(--color-border) bg-(--color-surface) shadow-card">
-        <!-- Q1 -->
-        <details class="faq-item group open:rounded-t-2xl">
-          <summary class="faq-summary flex cursor-pointer items-center justify-between gap-4 px-6 py-5 text-[15px] font-semibold text-(--color-text) transition-colors hover:text-(--color-primary-600) md:px-8 md:py-6 md:text-base [&::-webkit-details-marker]:hidden">
-            {t.landing.faq.q1}
-            <svg class="faq-chevron h-5 w-5 shrink-0 text-(--color-text-secondary) transition-transform duration-200 group-open:rotate-180" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </summary>
-          <div class="px-6 pb-5 text-sm leading-[1.7] text-(--color-text-secondary) md:px-8 md:pb-6 md:text-base">
-            {t.landing.faq.a1}
-          </div>
-        </details>
-        <!-- Q2 -->
-        <details class="faq-item group">
-          <summary class="faq-summary flex cursor-pointer items-center justify-between gap-4 px-6 py-5 text-[15px] font-semibold text-(--color-text) transition-colors hover:text-(--color-primary-600) md:px-8 md:py-6 md:text-base [&::-webkit-details-marker]:hidden">
-            {t.landing.faq.q2}
-            <svg class="faq-chevron h-5 w-5 shrink-0 text-(--color-text-secondary) transition-transform duration-200 group-open:rotate-180" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </summary>
-          <div class="px-6 pb-5 text-sm leading-[1.7] text-(--color-text-secondary) md:px-8 md:pb-6 md:text-base">
-            {t.landing.faq.a2}
-          </div>
-        </details>
-        <!-- Q3 -->
-        <details class="faq-item group">
-          <summary class="faq-summary flex cursor-pointer items-center justify-between gap-4 px-6 py-5 text-[15px] font-semibold text-(--color-text) transition-colors hover:text-(--color-primary-600) md:px-8 md:py-6 md:text-base [&::-webkit-details-marker]:hidden">
-            {t.landing.faq.q3}
-            <svg class="faq-chevron h-5 w-5 shrink-0 text-(--color-text-secondary) transition-transform duration-200 group-open:rotate-180" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </summary>
-          <div class="px-6 pb-5 text-sm leading-[1.7] text-(--color-text-secondary) md:px-8 md:pb-6 md:text-base">
-            {t.landing.faq.a3}
-          </div>
-        </details>
-        <!-- Q4 -->
-        <details class="faq-item group">
-          <summary class="faq-summary flex cursor-pointer items-center justify-between gap-4 px-6 py-5 text-[15px] font-semibold text-(--color-text) transition-colors hover:text-(--color-primary-600) md:px-8 md:py-6 md:text-base [&::-webkit-details-marker]:hidden">
-            {t.landing.faq.q4}
-            <svg class="faq-chevron h-5 w-5 shrink-0 text-(--color-text-secondary) transition-transform duration-200 group-open:rotate-180" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </summary>
-          <div class="px-6 pb-5 text-sm leading-[1.7] text-(--color-text-secondary) md:px-8 md:pb-6 md:text-base">
-            {t.landing.faq.a4}
-          </div>
-        </details>
-        <!-- Q5 -->
-        <details class="faq-item group">
-          <summary class="faq-summary flex cursor-pointer items-center justify-between gap-4 px-6 py-5 text-[15px] font-semibold text-(--color-text) transition-colors hover:text-(--color-primary-600) md:px-8 md:py-6 md:text-base [&::-webkit-details-marker]:hidden">
-            {t.landing.faq.q5}
-            <svg class="faq-chevron h-5 w-5 shrink-0 text-(--color-text-secondary) transition-transform duration-200 group-open:rotate-180" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </summary>
-          <div class="px-6 pb-5 text-sm leading-[1.7] text-(--color-text-secondary) md:px-8 md:pb-6 md:text-base">
-            {t.landing.faq.a5}
-          </div>
-        </details>
-        <!-- Q6 -->
-        <details class="faq-item group open:rounded-b-2xl">
-          <summary class="faq-summary flex cursor-pointer items-center justify-between gap-4 px-6 py-5 text-[15px] font-semibold text-(--color-text) transition-colors hover:text-(--color-primary-600) md:px-8 md:py-6 md:text-base [&::-webkit-details-marker]:hidden">
-            {t.landing.faq.q6}
-            <svg class="faq-chevron h-5 w-5 shrink-0 text-(--color-text-secondary) transition-transform duration-200 group-open:rotate-180" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </summary>
-          <div class="px-6 pb-5 text-sm leading-[1.7] text-(--color-text-secondary) md:px-8 md:pb-6 md:text-base">
-            {t.landing.faq.a6}
-          </div>
-        </details>
-      </div>
+      <FaqAccordion client:idle items={faqItems} />
     </section>
     </div>
 
@@ -683,16 +620,7 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
         window.scrollTo(0, 0);
       });
 
-      /* ── FAQ accordion: single open at a time ──── */
-      document.querySelectorAll('.faq-item').forEach(function (item) {
-        item.addEventListener('toggle', function () {
-          if (item.open) {
-            document.querySelectorAll('.faq-item').forEach(function (other) {
-              if (other !== item) other.open = false;
-            });
-          }
-        });
-      });
+
     })();
   </script>
   </body>
