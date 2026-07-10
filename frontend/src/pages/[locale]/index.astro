@@ -78,8 +78,9 @@ const L = (path: string) => localizedPath(path, locale);
       <div class="mx-auto flex max-w-7xl items-center px-4 py-4 md:px-8 lg:px-20 lg:py-5">
         <!-- Left: Logo -->
         <div class="flex-1">
-          <a href={L('/')} class="text-xl font-extrabold text-(--color-primary-600) no-underline md:text-[22px]">
-            {t.app.name}
+          <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline">
+            <img src="/favicon.svg" alt="" class="h-7 w-auto md:h-8" />
+            <span class="text-xl font-extrabold text-(--color-primary-600) md:text-[22px]">{t.app.name}</span>
           </a>
         </div>
 
@@ -225,6 +226,7 @@ const L = (path: string) => localizedPath(path, locale);
           {t.landing.hero.badge}
         </span>
 
+        <img src="/favicon.svg" alt="" class="h-14 w-auto md:h-16 lg:h-20" />
         <h1
           class="text-[2rem] font-[800] leading-[1.15] tracking-[-1px] text-(--color-text) md:text-[3rem] lg:text-[52px] lg:tracking-[-1.5px]"
           style="font-family: 'Space Grotesk', sans-serif;"
@@ -239,7 +241,7 @@ const L = (path: string) => localizedPath(path, locale);
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <a
             href={L('/login')}
-            class="inline-flex items-center justify-center rounded-lg bg-(--color-primary-600) px-7 py-3.5 text-base font-semibold text-(--color-inverse-text) no-underline shadow-[0_4px_12px_rgba(37,99,235,0.2)] transition-all hover:bg-(--color-primary-700)"
+            class="inline-flex items-center justify-center rounded-lg bg-(--color-primary-600) px-7 py-3.5 text-base font-semibold text-(--color-inverse-text) no-underline shadow-primary-sm transition-all hover:bg-(--color-primary-700)"
           >
             {t.landing.hero.cta_primary}
           </a>
@@ -254,8 +256,7 @@ const L = (path: string) => localizedPath(path, locale);
 
       <!-- Right: Phone Mockup -->
       <div
-        class="flex h-[480px] w-[260px] shrink-0 flex-col overflow-hidden rounded-[28px] border-[3px] border-(--color-mockup-border) bg-(--color-mockup-bg) shadow-2xl sm:h-[540px] sm:w-[290px] sm:rounded-[32px] sm:border-[4px] lg:h-[590px] lg:w-[310px] lg:rounded-[36px]"
-        style="box-shadow: 0 24px 48px -8px rgba(15, 23, 42, 0.15);"
+        class="flex h-[480px] w-[260px] shrink-0 flex-col overflow-hidden rounded-[28px] border-[3px] border-(--color-mockup-border) bg-(--color-mockup-bg) shadow-phone sm:h-[540px] sm:w-[290px] sm:rounded-[32px] sm:border-[4px] lg:h-[590px] lg:w-[310px] lg:rounded-[36px]"
       >
         <!-- Status bar -->
         <div class="flex h-10 items-center justify-between px-5 sm:h-11 sm:px-6">
@@ -360,8 +361,7 @@ const L = (path: string) => localizedPath(path, locale);
       <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 lg:gap-8">
         <!-- Card 1 -->
         <div
-          class="flex flex-col gap-5 rounded-2xl border border-(--color-border) bg-(--color-surface) p-7 shadow-sm"
-          style="box-shadow: 0 8px 30px -4px rgba(15, 23, 42, 0.04);"
+          class="flex flex-col gap-5 rounded-2xl border border-(--color-border) bg-(--color-surface) p-7 shadow-card"
         >
           <div class="flex h-13 w-13 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950">
             <svg
@@ -387,8 +387,7 @@ const L = (path: string) => localizedPath(path, locale);
 
         <!-- Card 2 -->
         <div
-          class="flex flex-col gap-5 rounded-2xl border border-(--color-border) bg-(--color-surface) p-7 shadow-sm"
-          style="box-shadow: 0 8px 30px -4px rgba(15, 23, 42, 0.04);"
+          class="flex flex-col gap-5 rounded-2xl border border-(--color-border) bg-(--color-surface) p-7 shadow-card"
         >
           <div class="flex h-13 w-13 items-center justify-center rounded-xl bg-green-50 dark:bg-green-950">
             <svg
@@ -416,8 +415,7 @@ const L = (path: string) => localizedPath(path, locale);
 
         <!-- Card 3 -->
         <div
-          class="flex flex-col gap-5 rounded-2xl border border-(--color-border) bg-(--color-surface) p-7 shadow-sm"
-          style="box-shadow: 0 8px 30px -4px rgba(15, 23, 42, 0.04);"
+          class="flex flex-col gap-5 rounded-2xl border border-(--color-border) bg-(--color-surface) p-7 shadow-card"
         >
           <div class="flex h-13 w-13 items-center justify-center rounded-xl bg-orange-50 dark:bg-orange-950">
             <svg
@@ -465,8 +463,7 @@ const L = (path: string) => localizedPath(path, locale);
         </p>
       </div>
 
-      <div class="flex w-full max-w-3xl flex-col divide-y divide-(--color-border) rounded-2xl border border-(--color-border) bg-(--color-surface) shadow-sm"
-        style="box-shadow: 0 8px 30px -4px rgba(15, 23, 42, 0.04);">
+      <div class="flex w-full max-w-3xl flex-col divide-y divide-(--color-border) rounded-2xl border border-(--color-border) bg-(--color-surface) shadow-card">
         <!-- Q1 -->
         <details class="faq-item group open:rounded-t-2xl">
           <summary class="faq-summary flex cursor-pointer items-center justify-between gap-4 px-6 py-5 text-[15px] font-semibold text-(--color-text) transition-colors hover:text-(--color-primary-600) md:px-8 md:py-6 md:text-base [&::-webkit-details-marker]:hidden">
@@ -565,8 +562,7 @@ const L = (path: string) => localizedPath(path, locale);
         </p>
         <a
           href={L('/login')}
-          class="inline-flex items-center rounded-lg bg-(--color-primary-600) px-8 py-3.5 text-sm font-semibold text-(--color-inverse-text) no-underline shadow-lg transition-all hover:bg-(--color-primary-700) md:text-base"
-          style="box-shadow: 0 4px 20px rgba(37, 99, 235, 0.25);"
+          class="inline-flex items-center rounded-lg bg-(--color-primary-600) px-8 py-3.5 text-sm font-semibold text-(--color-inverse-text) no-underline shadow-primary-lg transition-all hover:bg-(--color-primary-700) md:text-base"
         >
           {t.landing.cta.button}
         </a>
@@ -581,7 +577,10 @@ const L = (path: string) => localizedPath(path, locale);
       <div class="flex w-full flex-col gap-10 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-12 lg:flex-nowrap lg:gap-20">
         <!-- Brand -->
         <div class="flex w-full max-w-[313px] flex-col gap-3 md:w-auto">
-          <span class="text-lg font-bold text-(--color-inverse-text)">{t.app.name}</span>
+          <span class="inline-flex items-center gap-2.5">
+            <img src="/favicon.svg" alt="" class="h-6 w-auto" />
+            <span class="text-lg font-bold text-(--color-inverse-text)">{t.app.name}</span>
+          </span>
           <p class="text-sm leading-[1.6] text-(--color-inverse-muted)">
             {t.app.tagline}
           </p>

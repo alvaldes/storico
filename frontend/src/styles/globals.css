@@ -42,6 +42,12 @@
   --color-mockup-muted: #64748b;
   --color-mockup-label: #94a3b8;
 
+  /* Shadows — using theme colors instead of hardcoded rgba */
+  --shadow-phone: 0 24px 48px -8px color-mix(in oklch, var(--color-inverse) 15%, transparent);
+  --shadow-card: 0 8px 30px -4px color-mix(in oklch, var(--color-inverse) 4%, transparent);
+  --shadow-primary-sm: 0 4px 12px color-mix(in oklch, var(--color-primary-600) 20%, transparent);
+  --shadow-primary-lg: 0 4px 20px color-mix(in oklch, var(--color-primary-600) 25%, transparent);
+
   --font-family-sans: "Inter", "SF Pro", system-ui, -apple-system, sans-serif;
   --font-family-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
 
