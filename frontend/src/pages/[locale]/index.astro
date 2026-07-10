@@ -218,7 +218,10 @@ const L = (path: string) => localizedPath(path, locale);
     <!-- ════════════════════════════════════════════ -->
     <section class="flex flex-col justify-around items-center gap-16 py-16 lg:flex-row lg:py-[100px]">
       <!-- Left -->
-      <div class="flex w-full max-w-[565px] flex-col gap-6">
+      <div class="relative flex w-full max-w-[565px] flex-col gap-6">
+        <!-- Background watermark -->
+        <img src="/favicon.svg" alt="" class="pointer-events-none absolute left-1/2 top-1/2 h-full w-auto -translate-x-1/2 -translate-y-1/2 opacity-[0.08] blur-[40px]" />
+
         <!-- Badge -->
         <span
           class="inline-flex w-fit items-center rounded-full border border-(--color-primary-200) dark:border-(--color-primary-400) bg-(--color-primary-50) dark:bg-(--color-primary-950) px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-(--color-primary-600) dark:text-(--color-primary-400)"
@@ -226,7 +229,6 @@ const L = (path: string) => localizedPath(path, locale);
           {t.landing.hero.badge}
         </span>
 
-        <img src="/favicon.svg" alt="" class="h-14 w-auto md:h-16 lg:h-20" />
         <h1
           class="text-[2rem] font-[800] leading-[1.15] tracking-[-1px] text-(--color-text) md:text-[3rem] lg:text-[52px] lg:tracking-[-1.5px]"
           style="font-family: 'Space Grotesk', sans-serif;"
