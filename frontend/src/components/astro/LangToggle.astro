@@ -1,0 +1,23 @@
+---
+/**
+ * LangToggle — shared language switcher component.
+ *
+ * Renders a link that toggles between en/es using the provided locale and href.
+ * Used by PublicLayout and landing page (index.astro).
+ */
+
+export interface Props {
+  href: string;
+  locale: string;
+}
+
+const { href, locale } = Astro.props;
+---
+
+<a
+  href={href}
+  class="flex items-center p-2 text-xs font-bold uppercase tracking-wider text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+  aria-label="Switch language"
+>
+  {locale === 'en' ? 'ES' : 'EN'}
+</a>
