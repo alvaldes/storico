@@ -64,7 +64,7 @@
 @custom-variant sidebar-open (&:where(.sidebar-open, .sidebar-open *));
 
 @variant dark {
-  --color-surface: oklch(0.13 0.01 260);
+  --color-surface: #0f141d;
   --color-surface-secondary: oklch(0.18 0.01 260);
   --color-border: oklch(0.25 0.01 260);
   --color-text: oklch(0.93 0.01 260);
