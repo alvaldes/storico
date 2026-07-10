@@ -4,6 +4,7 @@ import '@/styles/globals.css';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
 import { useTranslations, localizedPath } from '@/i18n/utils';
 import { FaqAccordion } from '@/components/react/FaqAccordion';
+import { FeatureCards } from '@/components/react/FeatureCards';
 
 const locale = (Astro.params.locale as string) || 'en';
 const t = useTranslations(locale);
@@ -13,6 +14,12 @@ const L = (path: string) => localizedPath(path, locale);
 const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
 const otherLocale: 'en' | 'es' = locale === 'en' ? 'es' : 'en';
 const langToggleHref = localizedPath(cleanPath, otherLocale);
+
+const featureCards = [
+  { title: t.landing.features.card_1_title, description: t.landing.features.card_1_desc, icon: 'zap', color: 'blue' as const },
+  { title: t.landing.features.card_2_title, description: t.landing.features.card_2_desc, icon: 'table', color: 'green' as const },
+  { title: t.landing.features.card_3_title, description: t.landing.features.card_3_desc, icon: 'share2', color: 'orange' as const },
+];
 
 const faqItems = [
   { question: t.landing.faq.q1, answer: t.landing.faq.a1 },
@@ -364,91 +371,7 @@ const faqItems = [
         </p>
       </div>
 
-      <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 lg:gap-8">
-        <!-- Card 1 -->
-        <div
-          class="flex flex-col gap-5 rounded-2xl border border-(--color-border) bg-(--color-surface) p-7 shadow-card"
-        >
-          <div class="flex h-13 w-13 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="text-blue-600 dark:text-blue-400"
-            >
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-            </svg>
-          </div>
-          <h3 class="text-xl font-bold text-(--color-text)">{t.landing.features.card_1_title}</h3>
-          <p class="text-sm leading-[1.6] text-(--color-text-secondary)">
-            {t.landing.features.card_1_desc}
-          </p>
-        </div>
-
-        <!-- Card 2 -->
-        <div
-          class="flex flex-col gap-5 rounded-2xl border border-(--color-border) bg-(--color-surface) p-7 shadow-card"
-        >
-          <div class="flex h-13 w-13 items-center justify-center rounded-xl bg-green-50 dark:bg-green-950">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="text-green-600 dark:text-green-400"
-            >
-              <rect width="18" height="18" x="3" y="3" rx="2" />
-              <path d="M3 9h18" />
-              <path d="M9 21V9" />
-            </svg>
-          </div>
-          <h3 class="text-xl font-bold text-(--color-text)">{t.landing.features.card_2_title}</h3>
-          <p class="text-sm leading-[1.6] text-(--color-text-secondary)">
-            {t.landing.features.card_2_desc}
-          </p>
-        </div>
-
-        <!-- Card 3 -->
-        <div
-          class="flex flex-col gap-5 rounded-2xl border border-(--color-border) bg-(--color-surface) p-7 shadow-card"
-        >
-          <div class="flex h-13 w-13 items-center justify-center rounded-xl bg-orange-50 dark:bg-orange-950">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="text-orange-600 dark:text-orange-400"
-            >
-              <circle cx="18" cy="5" r="3" />
-              <circle cx="6" cy="12" r="3" />
-              <circle cx="18" cy="19" r="3" />
-              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-            </svg>
-          </div>
-          <h3 class="text-xl font-bold text-(--color-text)">{t.landing.features.card_3_title}</h3>
-          <p class="text-sm leading-[1.6] text-(--color-text-secondary)">
-            {t.landing.features.card_3_desc}
-          </p>
-        </div>
-      </div>
+      <FeatureCards client:idle cards={featureCards} />
     </section>
     </div>
 
