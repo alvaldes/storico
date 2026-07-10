@@ -1,9 +1,9 @@
 ---
-import { ViewTransitions } from 'astro:transitions';
+import { ClientRouter } from 'astro:transitions';
 import '@/styles/globals.css';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
 import LangToggle from '@/components/astro/LangToggle.astro';
-import { useTranslations, localizedPath } from '@/i18n/utils';
+import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
 import { FaqAccordion } from '@/components/react/FaqAccordion';
 import { ThemeToggle } from '@/components/react/ThemeToggle';
 import { FeatureCards } from '@/components/react/FeatureCards';
@@ -12,7 +12,7 @@ import { MobileNav } from '@/components/react/MobileNav';
 import { getSession } from 'auth-astro/server';
 import GitHubIcon from '@/components/astro/GitHubIcon.astro';
 
-const locale = (Astro.params.locale as string) || 'en';
+const locale = (Astro.params.locale as Locale) || 'en';
 const t = useTranslations(locale);
 const L = (path: string) => localizedPath(path, locale);
 
@@ -59,7 +59,7 @@ const faqItems = [
     <meta name="theme-color" content="#2563eb" />
     <meta name="description" content={t.app.tagline} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <ViewTransitions />
+    <ClientRouter />
     <title>{t.app.name} — {t.app.tagline}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

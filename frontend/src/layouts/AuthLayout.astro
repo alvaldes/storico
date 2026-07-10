@@ -1,5 +1,5 @@
 ---
-import { ViewTransitions } from 'astro:transitions';
+import { ClientRouter } from 'astro:transitions';
 import '@/styles/globals.css';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
 
@@ -16,7 +16,7 @@ const { locale = 'en' } = Astro.props;
     <meta name="theme-color" content="#2563eb" />
     <meta name="description" content="Storico — From user stories to Kanban tasks, automatically." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <ViewTransitions />
+    <ClientRouter />
     <slot name="head" />
     <title>Storico</title>
   </head>

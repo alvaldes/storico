@@ -7,9 +7,9 @@ import {
   Settings,
   ChevronLeft,
 } from 'lucide-react';
-import { localizedPath } from '@/i18n/utils';
+import { localizedPath, type Locale } from '@/i18n/utils';
 
-const { locale = 'en' } = Astro.props;
+const { locale = 'en' as Locale } = Astro.props;
 const L = (path: string) => localizedPath(path, locale);
 ---
 
