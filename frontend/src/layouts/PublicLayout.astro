@@ -6,7 +6,9 @@ import LangToggle from '@/components/astro/LangToggle.astro';
 import { useTranslations, localizedPath } from '@/i18n/utils';
 import { MobileNav } from '@/components/react/MobileNav';
 import { ThemeToggle } from '@/components/react/ThemeToggle';
+
 import { getSession } from 'auth-astro/server';
+import GitHubIcon from '@/components/astro/GitHubIcon.astro';
 
 export interface Props {
   locale: string;
@@ -23,14 +25,15 @@ const isLoggedIn = !!session?.user;
 
 // Preserve current page on language switch
 const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
+const currentPath = Astro.url.pathname;
 const otherLocale: 'en' | 'es' = locale === 'en' ? 'es' : 'en';
 const langToggleHref = localizedPath(cleanPath, otherLocale);
 
 const navLinks = [
-  { href: L('/dashboard'), label: t.nav.dashboard },
-  { href: L('/stories'), label: t.nav.stories },
-  { href: L('/kanban'), label: t.nav.kanban },
-  { href: L('/export'), label: t.nav['export'] },
+  { href: L('/docs'), label: t.footer.documentation },
+  { href: L('/api'), label: t.footer.api_reference },
+  { href: L('/status'), label: t.footer.status_page },
+  { href: L('/about'), label: t.footer.about },
 ];
 const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLoggedIn ? t.nav.dashboard : t.landing.hero.cta_primary };
 ---
@@ -98,41 +101,52 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
         <!-- Center: Desktop nav links -->
         <nav class="hidden lg:flex items-center gap-8">
           <a
-            href={L('/dashboard')}
-            class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+            href={L('/docs')}
+            class={`text-[15px] font-medium no-underline transition-colors ${currentPath === L('/docs') ? 'text-(--color-text) font-semibold' : 'text-(--color-text-secondary) hover:text-(--color-text)'}`}
           >
-            {t.nav.dashboard}
+            {t.footer.documentation}
           </a>
           <a
-            href={L('/stories')}
-            class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+            href={L('/api')}
+            class={`text-[15px] font-medium no-underline transition-colors ${currentPath === L('/api') ? 'text-(--color-text) font-semibold' : 'text-(--color-text-secondary) hover:text-(--color-text)'}`}
           >
-            {t.nav.stories}
+            {t.footer.api_reference}
           </a>
           <a
-            href={L('/kanban')}
-            class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+            href={L('/status')}
+            class={`text-[15px] font-medium no-underline transition-colors ${currentPath === L('/status') ? 'text-(--color-text) font-semibold' : 'text-(--color-text-secondary) hover:text-(--color-text)'}`}
           >
-            {t.nav.kanban}
+            {t.footer.status_page}
           </a>
           <a
-            href={L('/export')}
-            class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+            href={L('/about')}
+            class={`text-[15px] font-medium no-underline transition-colors ${currentPath === L('/about') ? 'text-(--color-text) font-semibold' : 'text-(--color-text-secondary) hover:text-(--color-text)'}`}
           >
-            {t.nav.export}
+            {t.footer.about}
           </a>
         </nav>
 
         <!-- Right: Controls -->
         <div class="flex flex-1 items-center justify-end gap-1">
           <!-- Mobile nav (Sheet island, hydrated on idle) -->
-          <MobileNav client:idle links={navLinks} brandName={t.app.name} locale={locale} langToggleHref={langToggleHref} cta={ctaLink} />
+          <MobileNav client:idle links={navLinks} brandName={t.app.name} locale={locale} langToggleHref={langToggleHref} cta={ctaLink} activePath={currentPath} />
 
           <!-- Lang toggle -->
           <LangToggle href={langToggleHref} locale={locale} />
 
           <!-- Theme toggle -->
           <ThemeToggle client:idle />
+
+          <!-- GitHub -->
+          <a
+            href="https://github.com/alvaldes/storico"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="rounded-md p-1.5 text-(--color-text-secondary) hover:text-(--color-text) hover:bg-(--color-surface-secondary) transition-colors"
+            aria-label="GitHub repository"
+          >
+            <GitHubIcon class="h-5 w-5" />
+          </a>
 
           <!-- Desktop CTA -->
           <a
@@ -184,10 +198,10 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
           <div class="flex w-full flex-col gap-10 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-12 lg:flex-nowrap lg:gap-20">
             <!-- Brand -->
             <div class="flex w-full max-w-[313px] flex-col gap-3 md:w-auto">
-              <span class="inline-flex items-center gap-2.5">
+              <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline">
                 <img src="/favicon.svg" alt="" class="h-6 w-auto" />
                 <span class="text-lg font-bold text-(--color-inverse-text)">{t.app.name}</span>
-              </span>
+              </a>
               <p class="text-sm leading-[1.6] text-(--color-inverse-muted)">
                 {t.app.tagline}
               </p>
@@ -242,12 +256,23 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
             <p class="text-sm text-(--color-text-tertiary)">
               &copy; {new Date().getFullYear()} {t.app.name}. {t.footer.license}
             </p>
-            <a
-              href={langToggleHref}
-              class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)"
-            >
-              {locale === 'en' ? 'Español' : 'English'}
-            </a>
+            <div class="flex items-center gap-3">
+              <a
+                href="https://github.com/alvaldes/storico"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-(--color-inverse-muted) hover:text-(--color-inverse-text) transition-colors"
+                aria-label="GitHub repository"
+              >
+                <GitHubIcon class="h-5 w-5" />
+              </a>
+              <a
+                href={langToggleHref}
+                class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)"
+              >
+                {locale === 'en' ? 'Español' : 'English'}
+              </a>
+            </div>
           </div>
         </div>
       </footer>

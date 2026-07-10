@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import { useState } from "react"
+import { useState } from "react";
 import {
   Sheet,
   SheetTrigger,
@@ -8,31 +8,44 @@ import {
   SheetHeader,
   SheetTitle,
   SheetFooter,
-} from "@/components/ui/sheet"
-import { Button } from "@/components/ui/button"
-import { Menu, X } from "lucide-react"
+} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Menu, X } from "lucide-react";
 
 export interface MobileNavLink {
-  href: string
-  label: string
+  href: string;
+  label: string;
 }
 
 interface MobileNavProps {
-  links: MobileNavLink[]
-  brandName: string
-  locale: string
-  langToggleHref: string
-  cta: { href: string; label: string }
+  links: MobileNavLink[];
+  brandName: string;
+  locale: string;
+  langToggleHref: string;
+  cta: { href: string; label: string };
+  activePath?: string;
 }
 
-export function MobileNav({ links, brandName, locale, langToggleHref, cta }: MobileNavProps) {
-  const [open, setOpen] = useState(false)
+export function MobileNav({
+  links,
+  brandName,
+  locale,
+  langToggleHref,
+  cta,
+  activePath,
+}: MobileNavProps) {
+  const [open, setOpen] = useState(false);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
         render={
-          <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Toggle menu">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden"
+            aria-label="Toggle menu"
+          >
             <Menu className="h-5 w-5" />
           </Button>
         }
@@ -53,27 +66,20 @@ export function MobileNav({ links, brandName, locale, langToggleHref, cta }: Mob
         </SheetHeader>
 
         <nav className="flex flex-col gap-1 px-4">
-          {links.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              onClick={() => setOpen(false)}
-              className="rounded-lg px-3 py-2.5 text-[15px] font-medium text-muted-foreground no-underline transition-colors hover:bg-muted hover:text-foreground"
-            >
-              {link.label}
-            </a>
-          ))}
+          {links.map((link) => {
+            const isActive = activePath === link.href;
+            return (
+              <a
+                key={link.href}
+                href={link.href}
+                onClick={() => setOpen(false)}
+                className={`rounded-lg px-3 py-2.5 text-[15px] font-medium no-underline transition-colors ${isActive ? "bg-muted text-foreground font-semibold" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+              >
+                {link.label}
+              </a>
+            );
+          })}
         </nav>
-
-        <div className="px-4 mt-2">
-          <a
-            href={langToggleHref}
-            onClick={() => setOpen(false)}
-            className="inline-flex items-center rounded-lg px-3 py-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground no-underline transition-colors hover:text-foreground"
-          >
-            {locale === "en" ? "ES" : "EN"}
-          </a>
-        </div>
 
         <SheetFooter>
           <a
@@ -86,5 +92,5 @@ export function MobileNav({ links, brandName, locale, langToggleHref, cta }: Mob
         </SheetFooter>
       </SheetContent>
     </Sheet>
-  )
+  );
 }

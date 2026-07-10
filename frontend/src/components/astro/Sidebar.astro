@@ -19,7 +19,10 @@ const L = (path: string) => localizedPath(path, locale);
 >
   <!-- Logo -->
   <div class="flex h-14 items-center justify-between border-b border-(--color-border) px-4">
-    <a href={L('/')} class="text-lg font-bold text-(--color-text) no-underline">Storico</a>
+    <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline">
+      <img src="/favicon.svg" alt="" class="h-6 w-auto" />
+      <span class="text-lg font-bold text-(--color-text)">Storico</span>
+    </a>
     <button
       id="sidebar-close"
       class="rounded-md p-1 text-(--color-text-secondary) hover:bg-(--color-surface-secondary) transition-colors lg:hidden"

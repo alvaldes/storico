@@ -2,6 +2,7 @@
 import { ThemeToggle } from '../react/ThemeToggle';
 import { UserMenu } from '../react/UserMenu';
 import { Menu } from 'lucide-react';
+import GitHubIcon from './GitHubIcon.astro';
 
 const { locale = 'en', userJson } = Astro.props;
 ---
@@ -17,14 +18,24 @@ const { locale = 'en', userJson } = Astro.props;
     >
       <Menu class="h-5 w-5" />
     </button>
-    <span class="text-sm font-medium text-(--color-text-secondary) hidden sm:inline">
-      Storico
-    </span>
+    <a href="/" class="hidden sm:inline-flex items-center gap-2 no-underline">
+      <img src="/favicon.svg" alt="" class="h-5 w-auto" />
+      <span class="text-sm font-medium text-(--color-text-secondary)">Storico</span>
+    </a>
   </div>
 
   <div class="flex items-center gap-2">
     <UserMenu userJson={userJson} client:load />
     <ThemeToggle client:load />
+    <a
+      href="https://github.com/alvaldes/storico"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="rounded-md p-1.5 text-(--color-text-secondary) hover:text-(--color-text) hover:bg-(--color-surface-secondary) transition-colors"
+      aria-label="GitHub repository"
+    >
+      <GitHubIcon class="h-5 w-5" />
+    </a>
   </div>
 </header>
 
