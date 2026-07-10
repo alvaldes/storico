@@ -11,31 +11,28 @@ export function ThemeToggle() {
     setMounted(true);
   }, []);
 
-  if (!mounted) {
-    // Prevent hydration mismatch: render a placeholder with the same size
-    return (
-      <button
-        className="rounded-md p-2 text-(--color-text-secondary) hover:bg-(--color-surface-secondary) transition-colors"
-        aria-label="Loading theme toggle"
-        disabled
-      >
-        <Sun className="h-5 w-5" />
-      </button>
-    );
-  }
-
-  const Icon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor;
+  const Icon = mounted
+    ? theme === 'light'
+      ? Sun
+      : theme === 'dark'
+        ? Moon
+        : Monitor
+    : Sun;
 
   return (
     <button
-      onClick={toggleTheme}
+      onClick={mounted ? toggleTheme : undefined}
+      disabled={!mounted}
       className={cn(
         'rounded-md p-2 transition-colors',
         'text-(--color-text-secondary) hover:bg-(--color-surface-secondary)',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary-500)',
+        mounted &&
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary-500)',
       )}
-      aria-label="Toggle theme"
-      title={`Current: ${theme}. Click to switch.`}
+      aria-label={mounted ? 'Toggle theme' : 'Loading theme toggle'}
+      {...(mounted
+        ? { title: `Current: ${theme}. Click to switch.` }
+        : {})}
     >
       <Icon className="h-5 w-5" />
     </button>
