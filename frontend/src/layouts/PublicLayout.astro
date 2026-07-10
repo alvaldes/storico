@@ -6,6 +6,7 @@ import LangToggle from '@/components/astro/LangToggle.astro';
 import { useTranslations, localizedPath } from '@/i18n/utils';
 import { MobileNav } from '@/components/react/MobileNav';
 import { ThemeToggle } from '@/components/react/ThemeToggle';
+import { getSession } from 'auth-astro/server';
 
 export interface Props {
   locale: string;
@@ -16,6 +17,9 @@ export interface Props {
 const { locale = 'en', title = 'Storico', description } = Astro.props;
 const t = useTranslations(locale);
 const L = (path: string) => localizedPath(path, locale);
+
+const session = await getSession(Astro.request);
+const isLoggedIn = !!session?.user;
 
 // Preserve current page on language switch
 const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
@@ -28,7 +32,7 @@ const navLinks = [
   { href: L('/kanban'), label: t.nav.kanban },
   { href: L('/export'), label: t.nav['export'] },
 ];
-const ctaLink = { href: L('/login'), label: t.landing.hero.cta_primary };
+const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLoggedIn ? t.nav.dashboard : t.landing.hero.cta_primary };
 ---
 
 <!DOCTYPE html>
@@ -132,10 +136,10 @@ const ctaLink = { href: L('/login'), label: t.landing.hero.cta_primary };
 
           <!-- Desktop CTA -->
           <a
-            href={L('/login')}
+            href={L(isLoggedIn ? '/dashboard' : '/login')}
             class="hidden lg:inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground no-underline shadow transition-all hover:bg-primary/80"
           >
-            {t.landing.hero.cta_primary}
+            {isLoggedIn ? t.nav.dashboard : t.landing.hero.cta_primary}
           </a>
         </div>
       </div>
@@ -166,10 +170,10 @@ const ctaLink = { href: L('/login'), label: t.landing.hero.cta_primary };
             {t.landing.cta.subtitle}
           </p>
           <a
-            href={L('/login')}
+            href={L(isLoggedIn ? '/dashboard' : '/login')}
             class="inline-flex items-center rounded-lg bg-(--color-primary-600) px-8 py-3.5 text-sm font-semibold text-(--color-inverse-text) no-underline shadow-primary-lg transition-all hover:bg-(--color-primary-700) md:text-base"
           >
-            {t.landing.cta.button}
+            {isLoggedIn ? t.nav.dashboard : t.landing.cta.button}
           </a>
         </div>
       </section>

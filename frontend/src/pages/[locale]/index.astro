@@ -8,10 +8,14 @@ import { FaqAccordion } from '@/components/react/FaqAccordion';
 import { ThemeToggle } from '@/components/react/ThemeToggle';
 import { FeatureCards } from '@/components/react/FeatureCards';
 import { MobileNav } from '@/components/react/MobileNav';
+import { getSession } from 'auth-astro/server';
 
 const locale = (Astro.params.locale as string) || 'en';
 const t = useTranslations(locale);
 const L = (path: string) => localizedPath(path, locale);
+
+const session = await getSession(Astro.request);
+const isLoggedIn = !!session?.user;
 
 // Preserve current page on language switch
 const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
@@ -24,7 +28,7 @@ const navLinks = [
   { href: L('/kanban'), label: t.nav.kanban },
   { href: L('/export'), label: t.nav['export'] },
 ];
-const ctaLink = { href: L('/login'), label: t.landing.hero.cta_primary };
+const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLoggedIn ? t.nav.dashboard : t.landing.hero.cta_primary };
 
 const featureCards = [
   { title: t.landing.features.card_1_title, description: t.landing.features.card_1_desc, icon: 'zap', color: 'blue' as const },
@@ -147,10 +151,10 @@ const faqItems = [
 
           <!-- Desktop CTA -->
           <a
-            href={L('/login')}
+            href={L(isLoggedIn ? '/dashboard' : '/login')}
             class="hidden lg:inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground no-underline shadow transition-all hover:bg-primary/80"
           >
-            {t.landing.hero.cta_primary}
+            {isLoggedIn ? t.nav.dashboard : t.landing.hero.cta_primary}
           </a>
         </div>
       </div>
@@ -186,10 +190,10 @@ const faqItems = [
 
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <a
-            href={L('/login')}
+            href={L(isLoggedIn ? '/dashboard' : '/login')}
             class="inline-flex items-center justify-center rounded-lg bg-(--color-primary-600) px-7 py-3.5 text-base font-semibold text-(--color-inverse-text) no-underline shadow-primary-sm transition-all hover:bg-(--color-primary-700)"
           >
-            {t.landing.hero.cta_primary}
+            {isLoggedIn ? t.nav.dashboard : t.landing.hero.cta_primary}
           </a>
           <a
             href={L('/login')}
@@ -351,12 +355,12 @@ const faqItems = [
         <p class="max-w-xl text-center text-sm leading-[1.6] text-(--color-inverse-muted) md:text-base lg:text-lg">
           {t.landing.cta.subtitle}
         </p>
-        <a
-          href={L('/login')}
-          class="inline-flex items-center rounded-lg bg-(--color-primary-600) px-8 py-3.5 text-sm font-semibold text-(--color-inverse-text) no-underline shadow-primary-lg transition-all hover:bg-(--color-primary-700) md:text-base"
-        >
-          {t.landing.cta.button}
-        </a>
+          <a
+            href={L(isLoggedIn ? '/dashboard' : '/login')}
+            class="inline-flex items-center rounded-lg bg-(--color-primary-600) px-8 py-3.5 text-sm font-semibold text-(--color-inverse-text) no-underline shadow-primary-lg transition-all hover:bg-(--color-primary-700) md:text-base"
+          >
+            {isLoggedIn ? t.nav.dashboard : t.landing.cta.button}
+          </a>
       </div>
     </section>
 
