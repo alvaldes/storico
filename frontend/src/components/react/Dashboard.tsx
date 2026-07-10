@@ -1,5 +1,7 @@
 import { FolderKanban, Plus } from 'lucide-react';
 import { useProjectStore } from '@/stores/projectStore';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 export function Dashboard() {
   const { projects, loading } = useProjectStore();
@@ -7,7 +9,7 @@ export function Dashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-(--color-border) border-t-(--color-primary-500)" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-primary-500" />
       </div>
     );
   }
@@ -16,23 +18,23 @@ export function Dashboard() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-(--color-text)">
+        <h1 className="text-2xl font-semibold text-foreground">
           Dashboard
         </h1>
-        <button className="inline-flex items-center gap-2 rounded-lg bg-(--color-primary-500) px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-600)">
+        <Button>
           <Plus className="h-4 w-4" />
           New Project
-        </button>
+        </Button>
       </div>
 
       {/* Project grid */}
       {projects.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-(--color-border) py-20">
-          <FolderKanban className="mb-4 h-12 w-12 text-(--color-text-secondary)" />
-          <p className="text-lg font-medium text-(--color-text)">
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
+          <FolderKanban className="mb-4 h-12 w-12 text-muted-foreground" />
+          <p className="text-lg font-medium text-foreground">
             No projects yet
           </p>
-          <p className="mt-1 text-sm text-(--color-text-secondary)">
+          <p className="mt-1 text-sm text-muted-foreground">
             Create your first project to start extracting tasks from user
             stories.
           </p>
@@ -40,17 +42,18 @@ export function Dashboard() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <div
-              key={project.id}
-              className="rounded-xl border border-(--color-border) bg-(--color-surface) p-4 transition-shadow hover:shadow-md"
-            >
-              <h3 className="font-medium text-(--color-text)">{project.name}</h3>
+            <Card key={project.id}>
+              <CardHeader>
+                <CardTitle>{project.name}</CardTitle>
+              </CardHeader>
               {project.description && (
-                <p className="mt-1 text-sm text-(--color-text-secondary)">
-                  {project.description}
-                </p>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    {project.description}
+                  </p>
+                </CardContent>
               )}
-            </div>
+            </Card>
           ))}
         </div>
       )}
