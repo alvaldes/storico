@@ -2,21 +2,21 @@
 import { ClientRouter } from 'astro:transitions';
 import '@/styles/globals.css';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
-import LangToggle from '@/components/astro/LangToggle.astro';
+import PublicNavbar from '@/components/astro/PublicNavbar.astro';
+import PublicFooter from '@/components/astro/PublicFooter.astro';
 import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
-import { MobileNav } from '@/components/react/MobileNav';
-import { ThemeToggle } from '@/components/react/ThemeToggle';
 
 import { getSession } from 'auth-astro/server';
-import GitHubIcon from '@/components/astro/GitHubIcon.astro';
 
 export interface Props {
   locale: Locale;
   title: string;
   description?: string;
+  /** Whether to show the CTA section between content and footer. Default: true */
+  showCta?: boolean;
 }
 
-const { locale = 'en', title = 'Storico', description } = Astro.props;
+const { locale = 'en', title = 'Storico', description, showCta = true } = Astro.props;
 const t = useTranslations(locale);
 const L = (path: string) => localizedPath(path, locale);
 
@@ -85,83 +85,14 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
       <div class="absolute -bottom-32 -left-32 h-[400px] w-[400px] rounded-full bg-(--color-secondary-500) opacity-[0.04] blur-[100px] dark:opacity-[0.03]" />
     </div>
 
-    <!-- ════════════════════════════════════════════ -->
-    <!-- NAVBAR                                      -->
-    <!-- ════════════════════════════════════════════ -->
-    <header class="border-b border-(--color-border)">
-      <div class="mx-auto flex max-w-7xl items-center px-4 py-4 md:px-8 lg:px-20 lg:py-5">
-        <!-- Left: Logo -->
-        <div class="flex-1">
-          <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline">
-            <img src="/favicon.svg" alt="" class="h-7 w-auto md:h-8" />
-            <span class="text-xl font-extrabold text-(--color-primary-600) md:text-[22px]">{t.app.name}</span>
-          </a>
-        </div>
-
-        <!-- Center: Desktop nav links -->
-        <nav class="hidden lg:flex items-center gap-8" data-nav="public">
-          <a
-            href={L('/docs')}
-            data-nav-link
-            class={`text-[15px] font-medium no-underline transition-colors ${currentPath === L('/docs') ? 'text-(--color-text) font-semibold' : 'text-(--color-text-secondary) hover:text-(--color-text)'}`}
-          >
-            {t.footer.documentation}
-          </a>
-          <a
-            href={L('/api')}
-            data-nav-link
-            class={`text-[15px] font-medium no-underline transition-colors ${currentPath === L('/api') ? 'text-(--color-text) font-semibold' : 'text-(--color-text-secondary) hover:text-(--color-text)'}`}
-          >
-            {t.footer.api_reference}
-          </a>
-          <a
-            href={L('/status')}
-            data-nav-link
-            class={`text-[15px] font-medium no-underline transition-colors ${currentPath === L('/status') ? 'text-(--color-text) font-semibold' : 'text-(--color-text-secondary) hover:text-(--color-text)'}`}
-          >
-            {t.footer.status_page}
-          </a>
-          <a
-            href={L('/about')}
-            data-nav-link
-            class={`text-[15px] font-medium no-underline transition-colors ${currentPath === L('/about') ? 'text-(--color-text) font-semibold' : 'text-(--color-text-secondary) hover:text-(--color-text)'}`}
-          >
-            {t.footer.about}
-          </a>
-        </nav>
-
-        <!-- Right: Controls -->
-        <div class="flex flex-1 items-center justify-end gap-1">
-          <!-- Mobile nav (Sheet island, hydrated on idle) -->
-          <MobileNav client:idle links={navLinks} brandName={t.app.name} locale={locale} langToggleHref={langToggleHref} cta={ctaLink} activePath={currentPath} />
-
-          <!-- Lang toggle -->
-          <LangToggle href={langToggleHref} locale={locale} />
-
-          <!-- Theme toggle -->
-          <ThemeToggle client:idle />
-
-          <!-- GitHub -->
-          <a
-            href="https://github.com/alvaldes/storico"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="rounded-md p-1.5 text-(--color-text-secondary) hover:text-(--color-text) hover:bg-(--color-surface-secondary) transition-colors"
-            aria-label="GitHub repository"
-          >
-            <GitHubIcon class="h-5 w-5" />
-          </a>
-
-          <!-- Desktop CTA -->
-          <a
-            href={L(isLoggedIn ? '/dashboard' : '/login')}
-            class="hidden lg:inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground no-underline shadow transition-all hover:bg-primary/80"
-          >
-            {isLoggedIn ? t.nav.dashboard : t.landing.hero.cta_primary}
-          </a>
-        </div>
-      </div>
-    </header>
+    <PublicNavbar
+      locale={locale}
+      currentPath={currentPath}
+      langToggleHref={langToggleHref}
+      navLinks={navLinks}
+      ctaLink={ctaLink}
+      isLoggedIn={isLoggedIn}
+    />
 
     <!-- ════════════════════════════════════════════ -->
     <!-- PAGE CONTENT                                -->
@@ -175,111 +106,31 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
       <div class="absolute inset-0 bg-cta-grid pointer-events-none" />
       <img src="/favicon.svg" alt="" class="pointer-events-none absolute left-1/2 top-0 h-full w-auto -translate-x-1/2 opacity-[0.18] blur-[20px]" />
 
-      <!-- CTA -->
-      <section>
-        <div class="relative mx-auto flex max-w-7xl flex-col items-center justify-center gap-6 px-4 py-16 md:px-8 md:py-20 lg:px-20 lg:py-[100px]">
-          <h2
-            class="max-w-2xl text-center text-2xl font-extrabold leading-tight tracking-[-0.5px] text-(--color-inverse-text) md:text-3xl lg:text-[38px] lg:tracking-[-1px]"
-            style="font-family: 'Space Grotesk', sans-serif;"
-          >
-            {t.landing.cta.title}
-          </h2>
-          <p class="max-w-xl text-center text-sm leading-[1.6] text-(--color-inverse-muted) md:text-base lg:text-lg">
-            {t.landing.cta.subtitle}
-          </p>
-          <a
-            href={L(isLoggedIn ? '/dashboard' : '/login')}
-            class="inline-flex items-center rounded-lg bg-(--color-primary-600) px-8 py-3.5 text-sm font-semibold text-(--color-inverse-text) no-underline shadow-primary-lg transition-all hover:bg-(--color-primary-700) md:text-base"
-          >
-            {isLoggedIn ? t.nav.dashboard : t.landing.cta.button}
-          </a>
-        </div>
-      </section>
-
-      <!-- FOOTER -->
-      <footer>
-        <div class="mx-auto flex max-w-7xl flex-col items-center gap-10 px-4 pb-8 pt-12 md:gap-12 md:px-8 md:pb-10 md:pt-16 lg:px-20 lg:pt-20">
-          <div class="flex w-full flex-col gap-10 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-12 lg:flex-nowrap lg:gap-20">
-            <!-- Brand -->
-            <div class="flex w-full max-w-[313px] flex-col gap-3 md:w-auto">
-              <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline">
-                <img src="/favicon.svg" alt="" class="h-6 w-auto" />
-                <span class="text-lg font-bold text-(--color-inverse-text)">{t.app.name}</span>
-              </a>
-              <p class="text-sm leading-[1.6] text-(--color-inverse-muted)">
-                {t.app.tagline}
+      {
+        showCta && (
+          <section>
+            <div class="relative mx-auto flex max-w-7xl flex-col items-center justify-center gap-6 px-4 py-16 md:px-8 md:py-20 lg:px-20 lg:py-[100px]">
+              <h2
+                class="max-w-2xl text-center text-2xl font-extrabold leading-tight tracking-[-0.5px] text-(--color-inverse-text) md:text-3xl lg:text-[38px] lg:tracking-[-1px]"
+                style="font-family: 'Space Grotesk', sans-serif;"
+              >
+                {t.landing.cta.title}
+              </h2>
+              <p class="max-w-xl text-center text-sm leading-[1.6] text-(--color-inverse-muted) md:text-base lg:text-lg">
+                {t.landing.cta.subtitle}
               </p>
-            </div>
-
-            <!-- Product -->
-            <div class="flex flex-col gap-3">
-              <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.product}</span>
-              <a href={L('/dashboard')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-                {t.nav.dashboard}
-              </a>
-              <a href={L('/stories')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-                {t.nav.stories}
-              </a>
-              <a href={L('/kanban')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-                {t.nav.kanban}
-              </a>
-            </div>
-
-            <!-- Resources -->
-            <div class="flex flex-col gap-3">
-              <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.resources}</span>
-              <a href={L('/docs')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-                {t.footer.documentation}
-              </a>
-              <a href={L('/api')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-                {t.footer.api_reference}
-              </a>
-              <a href={L('/status')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-                {t.footer.status_page}
-              </a>
-            </div>
-
-            <!-- Company / Legal -->
-            <div class="flex flex-col gap-3">
-              <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.company}</span>
-              <a href={L('/about')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-                {t.footer.about}
-              </a>
-              <a href={L('/privacy')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-                {t.footer.privacy}
-              </a>
-              <a href={L('/terms')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-                {t.footer.terms}
-              </a>
-            </div>
-          </div>
-
-          <div class="h-px w-full bg-(--color-inverse-border)" />
-
-          <div class="flex w-full flex-col items-center gap-3 md:flex-row md:justify-between">
-            <p class="text-sm text-(--color-text-tertiary)">
-              &copy; {new Date().getFullYear()} {t.app.name}. {t.footer.license}
-            </p>
-            <div class="flex items-center gap-3">
               <a
-                href="https://github.com/alvaldes/storico"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-(--color-inverse-muted) hover:text-(--color-inverse-text) transition-colors"
-                aria-label="GitHub repository"
+                href={L(isLoggedIn ? '/dashboard' : '/login')}
+                class="inline-flex items-center rounded-lg bg-(--color-primary-600) px-8 py-3.5 text-sm font-semibold text-(--color-inverse-text) no-underline shadow-primary-lg transition-all hover:bg-(--color-primary-700) md:text-base"
               >
-                <GitHubIcon class="h-5 w-5" />
-              </a>
-              <a
-                href={langToggleHref}
-                class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)"
-              >
-                {locale === 'en' ? 'Español' : 'English'}
+                {isLoggedIn ? t.nav.dashboard : t.landing.cta.button}
               </a>
             </div>
-          </div>
-        </div>
-      </footer>
+          </section>
+        )
+      }
+
+      <PublicFooter locale={locale} langToggleHref={langToggleHref} />
     </div>
 
   <script>

@@ -63,7 +63,12 @@ export function MobileNav({
           </Button>
         }
       />
-      <SheetContent side="right" showCloseButton={false}>
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        className="rounded-bl-xl rounded-br-xl"
+        style={{ bottom: "auto", height: "auto" }}
+      >
         <SheetHeader className="flex flex-row items-center justify-between">
           <SheetTitle>{brandName}</SheetTitle>
           <button

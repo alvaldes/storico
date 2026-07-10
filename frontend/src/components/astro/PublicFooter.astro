@@ -1,0 +1,99 @@
+---
+import GitHubIcon from './GitHubIcon.astro';
+import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
+
+export interface Props {
+  locale: Locale;
+  langToggleHref: string;
+}
+
+const { locale, langToggleHref } = Astro.props;
+const t = useTranslations(locale);
+const L = (path: string) => localizedPath(path, locale);
+---
+
+<footer>
+  <div class="mx-auto flex max-w-7xl flex-col items-center gap-10 px-4 pb-8 pt-12 md:gap-12 md:px-8 md:pb-10 md:pt-16 lg:px-20 lg:pt-20">
+    <div class="flex w-full flex-col gap-10 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-12 lg:flex-nowrap lg:gap-20">
+      <!-- Brand -->
+      <div class="flex w-full max-w-[313px] flex-col gap-3 md:w-auto">
+        <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline">
+          <img src="/favicon.svg" alt="" class="h-6 w-auto" />
+          <span class="text-lg font-bold text-(--color-inverse-text)">{t.app.name}</span>
+        </a>
+        <p class="text-sm leading-[1.6] text-(--color-inverse-muted)">
+          {t.app.tagline}
+        </p>
+      </div>
+
+      <!-- Product -->
+      <div class="flex flex-col gap-3">
+        <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.product}</span>
+        <a href={L('/dashboard')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+          {t.nav.dashboard}
+        </a>
+        <a href={L('/stories')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+          {t.nav.stories}
+        </a>
+        <a href={L('/kanban')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+          {t.nav.kanban}
+        </a>
+      </div>
+
+      <!-- Resources -->
+      <div class="flex flex-col gap-3">
+        <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.resources}</span>
+        <a href={L('/docs')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+          {t.footer.documentation}
+        </a>
+        <a href={L('/api')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+          {t.footer.api_reference}
+        </a>
+        <a href={L('/status')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+          {t.footer.status_page}
+        </a>
+      </div>
+
+      <!-- Company / Legal -->
+      <div class="flex flex-col gap-3">
+        <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.company}</span>
+        <a href={L('/about')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+          {t.footer.about}
+        </a>
+        <a href={L('/privacy')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+          {t.footer.privacy}
+        </a>
+        <a href={L('/terms')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+          {t.footer.terms}
+        </a>
+      </div>
+    </div>
+
+    <!-- Separator -->
+    <div class="h-px w-full bg-(--color-inverse-border)" />
+
+    <!-- Bottom -->
+    <div class="flex w-full flex-col items-center gap-3 md:flex-row md:justify-between">
+      <p class="text-sm text-(--color-text-tertiary)">
+        &copy; {new Date().getFullYear()} {t.app.name}. {t.footer.license}
+      </p>
+      <div class="flex items-center gap-3">
+        <a
+          href="https://github.com/alvaldes/storico"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-(--color-inverse-muted) hover:text-(--color-inverse-text) transition-colors"
+          aria-label="GitHub repository"
+        >
+          <GitHubIcon class="h-5 w-5" />
+        </a>
+        <a
+          href={langToggleHref}
+          class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)"
+        >
+          {locale === 'en' ? 'Español' : 'English'}
+        </a>
+      </div>
+    </div>
+  </div>
+</footer>

@@ -27,11 +27,11 @@ function isActive(href: string): boolean {
 
 <aside
   id="sidebar"
-  class="fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-(--color-border) bg-(--color-surface) transition-transform duration-200 -translate-x-full lg:translate-x-0 sidebar-open:translate-x-0"
+  class="fixed left-0 z-40 flex w-60 flex-col bg-(--color-surface) transition-transform duration-200 -translate-x-full top-14 rounded-b-xl shadow-lg lg:inset-y-0 lg:top-0 lg:shadow-none lg:rounded-none lg:border-r lg:border-(--color-border) lg:translate-x-0 sidebar-open:translate-x-0"
   data-nav="sidebar"
 >
-  <!-- Logo -->
-  <div class="flex h-14 items-center justify-between border-b border-(--color-border) px-4">
+  <!-- Logo — hidden on mobile (header has it), always visible on desktop -->
+  <div class="hidden lg:flex h-14 items-center justify-between border-b border-(--color-border) px-4">
     <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline">
       <img src="/favicon.svg" alt="" class="h-6 w-auto" />
       <span class="text-lg font-bold text-(--color-text)">Storico</span>
@@ -82,6 +82,7 @@ function isActive(href: string): boolean {
 <script>
   const closeBtn = document.getElementById('sidebar-close');
   const overlay = document.getElementById('sidebar-overlay');
+  const sidebar = document.getElementById('sidebar');
 
   function closeSidebar() {
     document.documentElement.classList.remove('sidebar-open');
@@ -92,6 +93,14 @@ function isActive(href: string): boolean {
   }
   if (overlay) {
     overlay.addEventListener('click', closeSidebar);
+  }
+
+  // ── Close sidebar on nav link click (mobile) ──
+  if (sidebar) {
+    sidebar.addEventListener('click', (e) => {
+      const link = e.target.closest('[data-nav-link]');
+      if (link) closeSidebar();
+    });
   }
 
   // ── Active nav link on View Transitions (client-side nav) ──
