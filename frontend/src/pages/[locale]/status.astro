@@ -1,0 +1,74 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import { useTranslations } from '@/i18n/utils';
+
+const locale = (Astro.params.locale as string) || 'en';
+const t = useTranslations(locale);
+---
+
+<PublicLayout
+  locale={locale}
+  title={`${t.app.name} — ${t.pages.status.title}`}
+  description={t.pages.status.description}
+>
+  <div class="mx-auto max-w-3xl px-4 py-16 md:px-8 lg:px-20 lg:py-24">
+    <h1
+      class="mb-8 text-3xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl"
+      style="font-family: 'Space Grotesk', sans-serif;"
+    >
+      {t.pages.status.title}
+    </h1>
+
+    <div class="space-y-5 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
+      <!-- Status indicator -->
+      <div class="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-950/50">
+        <span class="flex h-3 w-3 rounded-full bg-green-500">
+          <span class="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-green-400 opacity-75" />
+        </span>
+        <div>
+          <p class="font-semibold text-green-800 dark:text-green-300">All systems operational</p>
+          <p class="text-sm text-green-700 dark:text-green-400">Storico services are running normally.</p>
+        </div>
+      </div>
+
+      <h2 class="text-xl font-bold text-(--color-text)">Services</h2>
+
+      <div class="rounded-lg border border-(--color-border) divide-y divide-(--color-border)">
+        <div class="flex items-center justify-between p-4">
+          <div>
+            <p class="font-medium text-(--color-text)">API Server</p>
+            <p class="text-sm text-(--color-text-secondary)">FastAPI backend</p>
+          </div>
+          <span class="inline-flex items-center gap-1.5 text-sm font-medium text-green-600">
+            <span class="h-2 w-2 rounded-full bg-green-500" />
+            Operational
+          </span>
+        </div>
+        <div class="flex items-center justify-between p-4">
+          <div>
+            <p class="font-medium text-(--color-text)">LLM Runner</p>
+            <p class="text-sm text-(--color-text-secondary)">Ollama / OpenAI / Anthropic</p>
+          </div>
+          <span class="inline-flex items-center gap-1.5 text-sm font-medium text-green-600">
+            <span class="h-2 w-2 rounded-full bg-green-500" />
+            Operational
+          </span>
+        </div>
+        <div class="flex items-center justify-between p-4">
+          <div>
+            <p class="font-medium text-(--color-text)">Database</p>
+            <p class="text-sm text-(--color-text-secondary)">PostgreSQL</p>
+          </div>
+          <span class="inline-flex items-center gap-1.5 text-sm font-medium text-green-600">
+            <span class="h-2 w-2 rounded-full bg-green-500" />
+            Operational
+          </span>
+        </div>
+      </div>
+
+      <p class="text-sm text-(--color-text-tertiary">
+        Last updated: {new Date().toISOString().split('T')[0]}
+      </p>
+    </div>
+  </div>
+</PublicLayout>

@@ -36,40 +36,40 @@
     "hero": {
       "badge": "\u2728 GENERADOR DE BACKLOG CON IA",
       "title": "De historias de usuario a tareas t\u00e9cnicas en segundos",
-      "subtitle": "Peg\u00e1 una historia de usuario en lenguaje natural y obt\u00e9n tareas estructuradas en un tablero Kanban listas para exportar a Trello, JSON o Markdown.",
-      "cta_primary": "Comienz\u00e1",
+      "subtitle": "Pega una historia de usuario en lenguaje natural y obt\u00e9n tareas estructuradas en un tablero Kanban listas para exportar a Trello, JSON o Markdown.",
+      "cta_primary": "Comienza",
       "cta_secondary": "Ver demo"
     },
     "features": {
-      "title": "Todo lo que necesit\u00e1s para gestionar tu backlog",
+      "title": "Todo lo que necesitas para gestionar tu backlog",
       "subtitle": "Desde la extracci\u00f3n autom\u00e1tica hasta la exportaci\u00f3n a tu herramienta favorita.",
       "card_1_title": "Extracci\u00f3n Autom\u00e1tica",
-      "card_1_desc": "Peg\u00e1 una historia de usuario y obt\u00e9n tareas t\u00e9cnicas estructuradas al instante con IA.",
+      "card_1_desc": "Pega una historia de usuario y obt\u00e9n tareas t\u00e9cnicas estructuradas al instante con IA.",
       "card_2_title": "Kanban Visual",
       "card_2_desc": "Visualiz\u00e1 y organiz\u00e1 tus tareas en un tablero Kanban con drag & drop.",
       "card_3_title": "Exportaci\u00f3n a Trello",
-      "card_3_desc": "Export\u00e1 tus tareas a Trello, JSON o Markdown con un clic. Compatible con tu flujo de trabajo existente."
+      "card_3_desc": "Exporta tus tareas a Trello, JSON o Markdown con un clic. Compatible con tu flujo de trabajo existente."
     },
     "faq": {
       "title": "Preguntas frecuentes",
-      "subtitle": "Todo lo que necesit\u00e1s saber sobre Storico.",
+      "subtitle": "Todo lo que necesitas saber sobre Storico.",
       "q1": "\u00bfQu\u00e9 es Storico?",
-      "a1": "Storico es una herramienta open-source que usa IA para descomponer autom\u00e1ticamente historias de usuario en tareas Kanban estructuradas. Peg\u00e1 una historia de usuario y obten\u00e9 tareas t\u00e9cnicas con descripciones, etiquetas y dependencias listas para exportar.",
+      "a1": "Storico es una herramienta open-source que usa IA para descomponer autom\u00e1ticamente historias de usuario en tareas Kanban estructuradas. Pega una historia de usuario y obt\u00e9n tareas t\u00e9cnicas con descripciones, etiquetas y dependencias listas para exportar.",
       "q2": "\u00bfNecesito una tarjeta de cr\u00e9dito o API key para usarlo?",
-      "a2": "Para nada. Storico es gratuito y de c\u00f3digo abierto. Pod\u00e9s ejecutarlo localmente con Ollama sin API keys, sin suscripciones y sin costos ocultos.",
+      "a2": "Para nada. Storico es gratuito y de c\u00f3digo abierto. Puedes ejecutarlo localmente con Ollama sin API keys, sin suscripciones y sin costos ocultos.",
       "q3": "\u00bfCon qu\u00e9 tipo de historias de usuario funciona?",
       "a3": "Storico funciona mejor con historias en formato est\u00e1ndar \"As a... I want... so that...\" en ingl\u00e9s. Cuanto m\u00e1s espec\u00edfica sea tu historia, mejor ser\u00e1 el desglose de tareas.",
       "q4": "\u00bfPuedo editar las tareas generadas antes de exportar?",
-      "a4": "Por supuesto. Pod\u00e9s revisar, editar o eliminar cualquier tarea antes de exportar. Tambi\u00e9n ten\u00e9s control total sobre el tablero Kanban resultante.",
+      "a4": "Por supuesto. Puedes revisar, editar o eliminar cualquier tarea antes de exportar. Tambi\u00e9n tienes control total sobre el tablero Kanban resultante.",
       "q5": "\u00bfA qu\u00e9 formatos puedo exportar?",
-      "a5": "Pod\u00e9s exportar a Trello (directamente a tus tableros), JSON o Markdown. El soporte para CSV y XML est\u00e1 en el roadmap.",
+      "a5": "Puedes exportar a Trello (directamente a tus tableros), JSON o Markdown. El soporte para CSV y XML est\u00e1 en el roadmap.",
       "q6": "\u00bfPuedo usar modelos de IA locales en lugar de APIs en la nube?",
-      "a6": "S\u00ed. Storico soporta Ollama de f\u00e1brica, as\u00ed que pod\u00e9s ejecutarlo completamente offline con modelos locales como LLaMA 3.2 o Mistral. Tambi\u00e9n soporta modelos en la nube (OpenAI, Anthropic)."
+      "a6": "S\u00ed. Storico soporta Ollama de f\u00e1brica, as\u00ed que puedes ejecutarlo completamente offline con modelos locales como LLaMA 3.2 o Mistral. Tambi\u00e9n soporta modelos en la nube (OpenAI, Anthropic)."
     },
     "cta": {
-      "title": "Empiezá a transformar tus historias de usuario en tareas hoy",
+      "title": "Empieza a transformar tus historias de usuario en tareas hoy",
       "subtitle": "Gratis y de c\u00f3digo abierto. Sin registro complicado, sin tarjeta de cr\u00e9dito.",
-      "button": "Prueb\u00e1 Storico Ahora"
+      "button": "Prueba Storico Ahora"
     }
   },
   "login": {
@@ -83,6 +83,41 @@
     "expand": "Expandir barra lateral"
   },
   "footer": {
-    "license": "Publicado bajo licencia MIT."
+    "license": "Publicado bajo licencia MIT.",
+    "product": "Producto",
+    "resources": "Recursos",
+    "company": "Compañía",
+    "documentation": "Documentación",
+    "api_reference": "Referencia API",
+    "status_page": "Estado",
+    "about": "Acerca de",
+    "privacy": "Privacidad",
+    "terms": "Términos"
+  },
+  "pages": {
+    "about": {
+      "title": "Acerca de Storico",
+      "description": "Conocé Storico, su misión y el equipo detrás."
+    },
+    "privacy": {
+      "title": "Política de Privacidad",
+      "description": "Cómo maneja Storico tus datos y protege tu privacidad."
+    },
+    "terms": {
+      "title": "Términos de Servicio",
+      "description": "Términos y condiciones para usar Storico."
+    },
+    "docs": {
+      "title": "Documentación",
+      "description": "Aprendé a usar Storico con guías, tutoriales y referencias."
+    },
+    "api": {
+      "title": "Referencia de API",
+      "description": "Referencia completa de la API para integrar con Storico."
+    },
+    "status": {
+      "title": "Estado del Sistema",
+      "description": "Verificá el estado actual de los servicios de Storico."
+    }
   }
 }

@@ -12,8 +12,9 @@ const t = useTranslations(locale);
   </div>
 
   <div class="flex flex-col items-center text-center">
-    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-(--color-primary-500)">
-      <span class="text-xl font-bold text-white">S</span>
+    <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl">
+      <!-- <span class="text-xl font-bold text-white">S</span> -->
+      <img src="/favicon.svg" alt="" class="h-7 w-auto md:h-8" />
     </div>
 
     <h1 class="text-xl font-bold text-(--color-text)">
@@ -61,19 +62,35 @@ const t = useTranslations(locale);
 <script>
   import { signIn } from 'auth-astro/client';
 
+  /**
+   * Returns the redirect target from the URL search params.
+   * Falls back to dashboard if no redirect is specified.
+   */
+  function getRedirect(locale: string): string {
+    const params = new URLSearchParams(window.location.search);
+    const redirect = params.get('redirect');
+    if (redirect) {
+      // If redirect already has locale prefix, use as-is
+      if (redirect.startsWith(`/${locale}/`)) return redirect;
+      // Otherwise prepend locale (middleware sends clean paths)
+      return `/${locale}${redirect}`;
+    }
+    return `/${locale}/dashboard`;
+  }
+
   // Event delegation survives View Transitions body swaps
   document.addEventListener('click', (e) => {
     const googleBtn = (e.target as HTMLElement).closest('#btn-google');
     if (googleBtn) {
       const locale = googleBtn.dataset.locale || 'en';
-      signIn('google', { callbackUrl: `/${locale}/dashboard` });
+      signIn('google', { callbackUrl: getRedirect(locale) });
       return;
     }
 
     const githubBtn = (e.target as HTMLElement).closest('#btn-github');
     if (githubBtn) {
       const locale = githubBtn.dataset.locale || 'en';
-      signIn('github', { callbackUrl: `/${locale}/dashboard` });
+      signIn('github', { callbackUrl: getRedirect(locale) });
     }
   });
 </script>

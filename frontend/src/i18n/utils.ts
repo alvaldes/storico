@@ -36,18 +36,42 @@ export function detectLocale(acceptLanguage: string | null): Locale {
 /**
  * Returns true if the given path is a public page path (needs locale redirect).
  */
+const PUBLIC_PATHS = [
+  '/',
+  '/login',
+  '/about',
+  '/privacy',
+  '/terms',
+  '/docs',
+  '/api',
+  '/status',
+];
+
+const PROTECTED_PATHS = [
+  '/dashboard',
+  '/stories',
+  '/kanban',
+  '/export',
+  '/settings',
+];
+
+/**
+ * Returns true if the given path is a public page path (needs locale redirect).
+ */
 export function isPublicPagePath(pathname: string): boolean {
-  const publicPaths = [
-    '/',
-    '/login',
-    '/dashboard',
-    '/stories',
-    '/kanban',
-    '/export',
-    '/settings',
-  ];
-  return publicPaths.some(
+  return [...PUBLIC_PATHS, ...PROTECTED_PATHS].some(
     (p) => pathname === p || pathname === p + '/',
+  );
+}
+
+/**
+ * Returns true if the given path requires authentication.
+ * Accepts both prefixed (e.g. "/en/dashboard") and non-prefixed paths.
+ */
+export function isProtectedPagePath(pathname: string): boolean {
+  const path = pathname.replace(/^\/(en|es)/, '');
+  return PROTECTED_PATHS.some(
+    (p) => path === p || path === p + '/',
   );
 }
 

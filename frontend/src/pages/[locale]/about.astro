@@ -1,0 +1,57 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import { useTranslations } from '@/i18n/utils';
+
+const locale = (Astro.params.locale as string) || 'en';
+const t = useTranslations(locale);
+---
+
+<PublicLayout
+  locale={locale}
+  title={`${t.app.name} — ${t.pages.about.title}`}
+  description={t.pages.about.description}
+>
+  <div class="mx-auto max-w-3xl px-4 py-16 md:px-8 lg:px-20 lg:py-24">
+    <h1
+      class="mb-8 text-3xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl"
+      style="font-family: 'Space Grotesk', sans-serif;"
+    >
+      {t.pages.about.title}
+    </h1>
+
+    <div class="space-y-5 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
+      <p>
+        Storico is an open-source tool that leverages Large Language Models to automatically
+        decompose user stories into structured, actionable Kanban tasks. It was developed as
+        part of a Master's thesis in Software Engineering at the
+        <strong class="text-(--color-text)">Universidad Tecnológica de la Mixteca (UTM)</strong>
+        in Oaxaca, Mexico.
+      </p>
+
+      <h2 class="text-xl font-bold text-(--color-text)">Mission</h2>
+      <p>
+        Our mission is to bridge the gap between requirements expressed in natural language
+        and actionable development tasks. We believe that AI should augment — not replace —
+        the planning skills of agile teams, reducing cognitive load and eliminating
+        misinterpretations.
+      </p>
+
+      <h2 class="text-xl font-bold text-(--color-text)">The problem we solve</h2>
+      <p>
+        66% of software projects partially or fully fail (CHAOS Report 2020), and 58% of
+        agile teams use user stories as their primary requirements source. Manually breaking
+        down stories into tasks is inconsistent, tedious, and error-prone. Storico automates
+        this process, providing consistent, high-quality task decomposition every time.
+      </p>
+
+      <h2 class="text-xl font-bold text-(--color-text)">The team</h2>
+      <p>
+        Storico was created by <strong class="text-(--color-text)">Angel Luis Valdés Sánchez</strong>
+        as part of his Master's research, advised by
+        <strong class="text-(--color-text)">Dr. Carlos Alberto Fernández y Fernández</strong>
+        and co-advised by
+        <strong class="text-(--color-text)">Dra. Verónica Rodríguez López</strong>.
+      </p>
+    </div>
+  </div>
+</PublicLayout>

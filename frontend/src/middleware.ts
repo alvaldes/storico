@@ -1,6 +1,11 @@
 import { defineMiddleware } from 'astro:middleware';
 import { getSession } from 'auth-astro/server';
-import { detectLocale, isPublicPagePath, getLocaleFromPath } from '@/i18n/utils';
+import {
+  detectLocale,
+  isPublicPagePath,
+  isProtectedPagePath,
+  getLocaleFromPath,
+} from '@/i18n/utils';
 
 const SKIP_PREFIX = ['/api/', '/_astro/', '/favicon'];
 
@@ -16,8 +21,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return next();
   }
 
-  // If path already has a locale prefix, let it through
+  // If path already has a locale prefix
   if (getLocaleFromPath(pathname)) {
+    // Auth guard: redirect to login if page requires authentication
+    if (!context.locals.session && isProtectedPagePath(pathname)) {
+      const locale = getLocaleFromPath(pathname) as string;
+      const cleanPath = pathname.replace(/^\/(en|es)/, '') || '/dashboard';
+      const redirectTarget = `/${locale}/login?redirect=${encodeURIComponent(cleanPath)}`;
+      return context.redirect(redirectTarget, 302);
+    }
     return next();
   }
 

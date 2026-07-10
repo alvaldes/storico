@@ -1,0 +1,415 @@
+---
+import { ViewTransitions } from 'astro:transitions';
+import '@/styles/globals.css';
+import { useTranslations, localizedPath } from '@/i18n/utils';
+
+export interface Props {
+  locale: string;
+  title: string;
+  description?: string;
+}
+
+const { locale = 'en', title = 'Storico', description } = Astro.props;
+const t = useTranslations(locale);
+const L = (path: string) => localizedPath(path, locale);
+
+// Preserve current page on language switch
+const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
+const otherLocale: 'en' | 'es' = locale === 'en' ? 'es' : 'en';
+const langToggleHref = localizedPath(cleanPath, otherLocale);
+---
+
+<!DOCTYPE html>
+<html lang={locale}>
+  <head>
+    <!-- Anti-flash: apply theme before first paint -->
+    <script is:inline>
+      (function () {
+        var stored = localStorage.getItem('theme');
+        var theme = stored || 'system';
+        if (theme === 'system') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta
+      name="description"
+      content={description || t.app.tagline}
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <ViewTransitions />
+    <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      .bg-landing-grid {
+        background-image:
+          linear-gradient(to right, color-mix(in oklch, var(--color-primary-400) 8%, transparent) 1px, transparent 1px),
+          linear-gradient(to bottom, color-mix(in oklch, var(--color-primary-400) 8%, transparent) 1px, transparent 1px);
+        background-size: 14px 24px;
+      }
+
+      .bg-cta-grid {
+        background-image:
+          linear-gradient(to right, color-mix(in oklch, var(--color-inverse-text) 8%, transparent) 1px, transparent 1px),
+          linear-gradient(to bottom, color-mix(in oklch, var(--color-inverse-text) 8%, transparent) 1px, transparent 1px);
+        background-size: 14px 24px;
+        mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, #000 70%, transparent 100%);
+        -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, #000 70%, transparent 100%);
+      }
+    </style>
+  </head>
+  <body class="relative z-0 overflow-x-hidden bg-(--color-body) text-(--color-text) antialiased transition-colors duration-200">
+    <!-- Background texture -->
+    <div class="fixed inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden="true">
+      <div class="absolute inset-0 bg-landing-grid opacity-[0.4] dark:opacity-[0.1]" />
+      <div class="absolute -top-48 -right-48 h-[600px] w-[600px] rounded-full bg-(--color-primary-400) opacity-[0.06] blur-[120px] dark:opacity-[0.04]" />
+      <div class="absolute -bottom-32 -left-32 h-[400px] w-[400px] rounded-full bg-(--color-secondary-500) opacity-[0.04] blur-[100px] dark:opacity-[0.03]" />
+    </div>
+
+    <!-- ════════════════════════════════════════════ -->
+    <!-- NAVBAR                                      -->
+    <!-- ════════════════════════════════════════════ -->
+    <header class="border-b border-(--color-border)">
+      <div class="mx-auto flex max-w-7xl items-center px-4 py-4 md:px-8 lg:px-20 lg:py-5">
+        <!-- Left: Logo -->
+        <div class="flex-1">
+          <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline">
+            <img src="/favicon.svg" alt="" class="h-7 w-auto md:h-8" />
+            <span class="text-xl font-extrabold text-(--color-primary-600) md:text-[22px]">{t.app.name}</span>
+          </a>
+        </div>
+
+        <!-- Center: Desktop nav links -->
+        <nav class="hidden lg:flex items-center gap-8">
+          <a
+            href={L('/dashboard')}
+            class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+          >
+            {t.nav.dashboard}
+          </a>
+          <a
+            href={L('/stories')}
+            class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+          >
+            {t.nav.stories}
+          </a>
+          <a
+            href={L('/kanban')}
+            class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+          >
+            {t.nav.kanban}
+          </a>
+          <a
+            href={L('/export')}
+            class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+          >
+            {t.nav.export}
+          </a>
+        </nav>
+
+        <!-- Right: Controls -->
+        <div class="flex flex-1 items-center justify-end gap-1">
+          <!-- Mobile hamburger -->
+          <button id="nav-toggle" class="flex items-center p-2 text-(--color-text-secondary) lg:hidden" aria-label="Toggle menu">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+
+          <!-- Lang toggle -->
+          <a
+            href={langToggleHref}
+            class="flex items-center p-2 text-xs font-bold uppercase tracking-wider text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
+            aria-label="Switch language"
+          >
+            {locale === 'en' ? 'ES' : 'EN'}
+          </a>
+
+          <!-- Theme toggle -->
+          <button id="theme-toggle-desktop" class="flex items-center p-2 text-(--color-text-secondary) transition-colors hover:text-(--color-text)" aria-label="Toggle theme">
+            <svg id="sun-icon-desktop" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5" />
+              <line x1="12" y1="1" x2="12" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="23" />
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+              <line x1="1" y1="12" x2="3" y2="12" />
+              <line x1="21" y1="12" x2="23" y2="12" />
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+            </svg>
+            <svg id="moon-icon-desktop" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          </button>
+
+          <!-- Desktop CTA -->
+          <a
+            href={L('/login')}
+            class="hidden lg:inline-flex items-center rounded-lg bg-(--color-primary-600) px-5 py-2.5 text-sm font-semibold text-(--color-inverse-text) no-underline transition-all hover:bg-(--color-primary-700)"
+          >
+            {t.landing.hero.cta_primary}
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Mobile nav overlay -->
+    <div id="nav-overlay" class="fixed inset-0 z-40 hidden bg-black/50" />
+    <div
+      id="nav-drawer"
+      class="fixed inset-y-0 right-0 z-50 flex w-64 translate-x-full flex-col gap-6 border-l border-(--color-border) bg-(--color-surface) p-6 shadow-xl transition-transform duration-200"
+    >
+      <div class="flex items-center justify-between">
+        <span class="text-lg font-bold text-(--color-text)">{t.app.name}</span>
+        <button id="nav-close" class="p-1 text-(--color-text-secondary)" aria-label="Close menu">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <nav class="flex flex-col gap-2">
+        <a
+          href={L('/dashboard')}
+          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
+        >
+          {t.nav.dashboard}
+        </a>
+        <a
+          href={L('/stories')}
+          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
+        >
+          {t.nav.stories}
+        </a>
+        <a
+          href={L('/kanban')}
+          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
+        >
+          {t.nav.kanban}
+        </a>
+        <a
+          href={L('/export')}
+          class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
+        >
+          {t.nav.export}
+        </a>
+      </nav>
+      <div class="mt-2 border-t border-(--color-border) pt-4">
+        <a
+          href={L('/login')}
+          class="flex items-center justify-center rounded-lg bg-(--color-primary-600) px-5 py-3 text-sm font-semibold text-(--color-inverse-text) no-underline transition-all hover:bg-(--color-primary-700)"
+        >
+          {t.landing.hero.cta_primary}
+        </a>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════ -->
+    <!-- PAGE CONTENT                                -->
+    <!-- ════════════════════════════════════════════ -->
+    <slot />
+
+    <!-- ════════════════════════════════════════════ -->
+    <!-- CTA + FOOTER WRAPPER                        -->
+    <!-- ════════════════════════════════════════════ -->
+    <div class="relative overflow-hidden bg-(--color-inverse) dark:bg-transparent">
+      <div class="absolute inset-0 bg-cta-grid pointer-events-none" />
+      <img src="/favicon.svg" alt="" class="pointer-events-none absolute left-1/2 top-0 h-full w-auto -translate-x-1/2 opacity-[0.18] blur-[20px]" />
+
+      <!-- CTA -->
+      <section>
+        <div class="relative mx-auto flex max-w-7xl flex-col items-center justify-center gap-6 px-4 py-16 md:px-8 md:py-20 lg:px-20 lg:py-[100px]">
+          <h2
+            class="max-w-2xl text-center text-2xl font-extrabold leading-tight tracking-[-0.5px] text-(--color-inverse-text) md:text-3xl lg:text-[38px] lg:tracking-[-1px]"
+            style="font-family: 'Space Grotesk', sans-serif;"
+          >
+            {t.landing.cta.title}
+          </h2>
+          <p class="max-w-xl text-center text-sm leading-[1.6] text-(--color-inverse-muted) md:text-base lg:text-lg">
+            {t.landing.cta.subtitle}
+          </p>
+          <a
+            href={L('/login')}
+            class="inline-flex items-center rounded-lg bg-(--color-primary-600) px-8 py-3.5 text-sm font-semibold text-(--color-inverse-text) no-underline shadow-primary-lg transition-all hover:bg-(--color-primary-700) md:text-base"
+          >
+            {t.landing.cta.button}
+          </a>
+        </div>
+      </section>
+
+      <!-- FOOTER -->
+      <footer>
+        <div class="mx-auto flex max-w-7xl flex-col items-center gap-10 px-4 pb-8 pt-12 md:gap-12 md:px-8 md:pb-10 md:pt-16 lg:px-20 lg:pt-20">
+          <div class="flex w-full flex-col gap-10 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-12 lg:flex-nowrap lg:gap-20">
+            <!-- Brand -->
+            <div class="flex w-full max-w-[313px] flex-col gap-3 md:w-auto">
+              <span class="inline-flex items-center gap-2.5">
+                <img src="/favicon.svg" alt="" class="h-6 w-auto" />
+                <span class="text-lg font-bold text-(--color-inverse-text)">{t.app.name}</span>
+              </span>
+              <p class="text-sm leading-[1.6] text-(--color-inverse-muted)">
+                {t.app.tagline}
+              </p>
+            </div>
+
+            <!-- Product -->
+            <div class="flex flex-col gap-3">
+              <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.product}</span>
+              <a href={L('/dashboard')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+                {t.nav.dashboard}
+              </a>
+              <a href={L('/stories')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+                {t.nav.stories}
+              </a>
+              <a href={L('/kanban')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+                {t.nav.kanban}
+              </a>
+            </div>
+
+            <!-- Resources -->
+            <div class="flex flex-col gap-3">
+              <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.resources}</span>
+              <a href={L('/docs')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+                {t.footer.documentation}
+              </a>
+              <a href={L('/api')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+                {t.footer.api_reference}
+              </a>
+              <a href={L('/status')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+                {t.footer.status_page}
+              </a>
+            </div>
+
+            <!-- Company / Legal -->
+            <div class="flex flex-col gap-3">
+              <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.company}</span>
+              <a href={L('/about')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+                {t.footer.about}
+              </a>
+              <a href={L('/privacy')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+                {t.footer.privacy}
+              </a>
+              <a href={L('/terms')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+                {t.footer.terms}
+              </a>
+            </div>
+          </div>
+
+          <div class="h-px w-full bg-(--color-inverse-border)" />
+
+          <div class="flex w-full flex-col items-center gap-3 md:flex-row md:justify-between">
+            <p class="text-sm text-(--color-text-tertiary)">
+              &copy; {new Date().getFullYear()} {t.app.name}. {t.footer.license}
+            </p>
+            <a
+              href={langToggleHref}
+              class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)"
+            >
+              {locale === 'en' ? 'Español' : 'English'}
+            </a>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+  <script>
+  (function () {
+    "use strict";
+    var KEY = 'theme';
+
+    function resolveTheme() {
+      var stored = localStorage.getItem(KEY);
+      if (stored === 'dark') return 'dark';
+      if (stored === 'light') return 'light';
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    function applyTheme(t) { document.documentElement.setAttribute('data-theme', t); }
+
+    function syncIcons(t) {
+      var dark = (t || resolveTheme()) === 'dark';
+      document.querySelectorAll('[id^="sun-icon-"]').forEach(function (el) {
+        el.classList.toggle('hidden', dark);
+      });
+      document.querySelectorAll('[id^="moon-icon-"]').forEach(function (el) {
+        el.classList.toggle('hidden', !dark);
+      });
+    }
+
+    function openNav() {
+      var drawer = document.getElementById('nav-drawer');
+      var overlay = document.getElementById('nav-overlay');
+      if (drawer) drawer.classList.remove('translate-x-full');
+      if (overlay) overlay.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeNav() {
+      var drawer = document.getElementById('nav-drawer');
+      var overlay = document.getElementById('nav-overlay');
+      if (drawer) drawer.classList.add('translate-x-full');
+      if (overlay) overlay.classList.add('hidden');
+      document.body.style.overflow = '';
+    }
+
+    document.addEventListener('astro:before-swap', function (e) {
+      e.newDocument.documentElement.dataset.theme = resolveTheme();
+    });
+
+    document.addEventListener('astro:after-swap', function () {
+      var t = resolveTheme();
+      applyTheme(t);
+      syncIcons(t);
+      window.scrollTo(0, 0);
+    });
+
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest('[id^="theme-toggle-"]');
+      if (!btn) return;
+      var cur = resolveTheme();
+      var next = cur === 'light' ? 'dark' : 'light';
+      localStorage.setItem(KEY, next);
+      applyTheme(next);
+      syncIcons(next);
+    });
+
+    document.addEventListener('click', function (e) {
+      var toggleBtn = e.target.closest('#nav-toggle');
+      var closeBtn = e.target.closest('#nav-close');
+      var overlay = e.target.closest('#nav-overlay');
+
+      if (toggleBtn) { openNav(); }
+      else if (closeBtn) { closeNav(); }
+      else if (overlay && e.target === overlay) { closeNav(); }
+    });
+
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+      var stored = localStorage.getItem(KEY);
+      if (!stored || stored === 'system') {
+        var t = resolveTheme();
+        applyTheme(t);
+        syncIcons(t);
+      }
+    });
+
+    applyTheme(resolveTheme());
+    syncIcons();
+  })();
+  </script>
+  </body>
+</html>

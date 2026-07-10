@@ -6,6 +6,11 @@ import { useTranslations, localizedPath } from '@/i18n/utils';
 const locale = (Astro.params.locale as string) || 'en';
 const t = useTranslations(locale);
 const L = (path: string) => localizedPath(path, locale);
+
+// Preserve current page on language switch
+const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
+const otherLocale: 'en' | 'es' = locale === 'en' ? 'es' : 'en';
+const langToggleHref = localizedPath(cleanPath, otherLocale);
 ---
 
 <!DOCTYPE html>
@@ -87,25 +92,25 @@ const L = (path: string) => localizedPath(path, locale);
         <!-- Center: Desktop nav links -->
         <nav class="hidden lg:flex items-center gap-8">
           <a
-            href={L('/login')}
+            href={L('/dashboard')}
             class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
           >
             {t.nav.dashboard}
           </a>
           <a
-            href={L('/login')}
+            href={L('/stories')}
             class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
           >
             {t.nav.stories}
           </a>
           <a
-            href={L('/login')}
+            href={L('/kanban')}
             class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
           >
             {t.nav.kanban}
           </a>
           <a
-            href={L('/login')}
+            href={L('/export')}
             class="text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
           >
             {t.nav.export}
@@ -125,7 +130,7 @@ const L = (path: string) => localizedPath(path, locale);
 
           <!-- Lang toggle -->
           <a
-            href={locale === 'en' ? '/es/' : '/en/'}
+            href={langToggleHref}
             class="flex items-center p-2 text-xs font-bold uppercase tracking-wider text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
             aria-label="Switch language"
           >
@@ -178,25 +183,25 @@ const L = (path: string) => localizedPath(path, locale);
       </div>
       <nav class="flex flex-col gap-2">
         <a
-          href={L('/login')}
+          href={L('/dashboard')}
           class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
         >
           {t.nav.dashboard}
         </a>
         <a
-          href={L('/login')}
+          href={L('/stories')}
           class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
         >
           {t.nav.stories}
         </a>
         <a
-          href={L('/login')}
+          href={L('/kanban')}
           class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
         >
           {t.nav.kanban}
         </a>
         <a
-          href={L('/login')}
+          href={L('/export')}
           class="rounded-lg px-3 py-2.5 text-[15px] font-medium text-(--color-text-secondary) no-underline transition-colors hover:bg-(--color-surface-secondary) hover:text-(--color-text)"
         >
           {t.nav.export}
@@ -546,7 +551,7 @@ const L = (path: string) => localizedPath(path, locale);
     <!-- CTA + FOOTER WRAPPER (single bg)           -->
     <!-- ════════════════════════════════════════════ -->
     <div class="relative overflow-hidden bg-(--color-inverse) dark:bg-transparent">
-      <div class="absolute inset-0 bg-cta-grid" />
+      <div class="absolute inset-0 bg-cta-grid pointer-events-none" />
       <!-- Subtle brand watermark -->
       <img src="/favicon.svg" alt="" class="pointer-events-none absolute left-1/2 top-0 h-full w-auto -translate-x-1/2 opacity-[0.18] blur-[20px]" />
 
@@ -592,43 +597,43 @@ const L = (path: string) => localizedPath(path, locale);
 
         <!-- Product -->
         <div class="flex flex-col gap-3">
-          <span class="text-sm font-semibold text-(--color-inverse-text)">Product</span>
-          <a href={L('/login')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+          <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.product}</span>
+          <a href={L('/dashboard')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
             {t.nav.dashboard}
           </a>
-          <a href={L('/login')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+          <a href={L('/stories')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
             {t.nav.stories}
           </a>
-          <a href={L('/login')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+          <a href={L('/kanban')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
             {t.nav.kanban}
           </a>
         </div>
 
         <!-- Resources -->
         <div class="flex flex-col gap-3">
-          <span class="text-sm font-semibold text-(--color-inverse-text)">Resources</span>
-          <a href="#" class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-            Documentation
+          <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.resources}</span>
+          <a href={L('/docs')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+            {t.footer.documentation}
           </a>
-          <a href="#" class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-            API Reference
+          <a href={L('/api')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+            {t.footer.api_reference}
           </a>
-          <a href="#" class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-            Status
+          <a href={L('/status')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+            {t.footer.status_page}
           </a>
         </div>
 
         <!-- Company / Legal -->
         <div class="flex flex-col gap-3">
-          <span class="text-sm font-semibold text-(--color-inverse-text)">Company</span>
-          <a href="#" class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-            About
+          <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.company}</span>
+          <a href={L('/about')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+            {t.footer.about}
           </a>
-          <a href="#" class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-            Privacy
+          <a href={L('/privacy')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+            {t.footer.privacy}
           </a>
-          <a href="#" class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-            Terms
+          <a href={L('/terms')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+            {t.footer.terms}
           </a>
         </div>
       </div>
@@ -642,7 +647,7 @@ const L = (path: string) => localizedPath(path, locale);
           &copy; {new Date().getFullYear()} {t.app.name}. {t.footer.license}
         </p>
         <a
-          href={locale === 'en' ? '/es/' : '/en/'}
+          href={langToggleHref}
           class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)"
         >
           {locale === 'en' ? 'Español' : 'English'}
@@ -738,18 +743,9 @@ const L = (path: string) => localizedPath(path, locale);
         }
       });
 
-      /* ── Scroll position: preserve across lang toggles ── */
-      document.addEventListener('astro:before-swap', function () {
-        sessionStorage.setItem('scroll:' + location.pathname, window.scrollY);
-      });
-
+      /* ── Scroll to top on every navigation ────── */
       document.addEventListener('astro:after-swap', function () {
-        var saved = sessionStorage.getItem('scroll:' + location.pathname);
-        if (saved) {
-          requestAnimationFrame(function () {
-            window.scrollTo(0, parseInt(saved, 10));
-          });
-        }
+        window.scrollTo(0, 0);
       });
 
       /* ── FAQ accordion: single open at a time ──── */

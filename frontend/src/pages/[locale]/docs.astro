@@ -1,0 +1,79 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import { useTranslations } from '@/i18n/utils';
+
+const locale = (Astro.params.locale as string) || 'en';
+const t = useTranslations(locale);
+---
+
+<PublicLayout
+  locale={locale}
+  title={`${t.app.name} — ${t.pages.docs.title}`}
+  description={t.pages.docs.description}
+>
+  <div class="mx-auto max-w-3xl px-4 py-16 md:px-8 lg:px-20 lg:py-24">
+    <h1
+      class="mb-8 text-3xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl"
+      style="font-family: 'Space Grotesk', sans-serif;"
+    >
+      {t.pages.docs.title}
+    </h1>
+
+    <div class="space-y-5 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
+      <p class="text-lg font-medium text-(--color-text)">
+        Welcome to Storico's documentation. This section will be expanded with detailed
+        guides, tutorials, and reference materials.
+      </p>
+
+      <h2 class="text-xl font-bold text-(--color-text)">Getting started</h2>
+      <ol class="list-decimal pl-6 space-y-2">
+        <li>
+          <strong class="text-(--color-text)">Run Storico locally</strong> — clone the
+          repository and follow the setup guide in the README.
+        </li>
+        <li>
+          <strong class="text-(--color-text)">Configure your LLM</strong> — choose between
+          Ollama (local), OpenAI, or Anthropic. Ollama works out of the box with no API key.
+        </li>
+        <li>
+          <strong class="text-(--color-text)">Create a project</strong> — organize your
+          user stories into projects.
+        </li>
+        <li>
+          <strong class="text-(--color-text)">Paste a user story</strong> — use the
+          standard "As a... I want... so that..." format.
+        </li>
+        <li>
+          <strong class="text-(--color-text)">Extract tasks</strong> — let AI break down
+          your story into structured tasks.
+        </li>
+        <li>
+          <strong class="text-(--color-text)">Review and export</strong> — edit tasks as
+          needed and export to Trello, JSON, or Markdown.
+        </li>
+      </ol>
+
+      <h2 class="text-xl font-bold text-(--color-text)">User story format</h2>
+      <p>
+        Storico works best with stories in standard format:
+      </p>
+      <div class="rounded-lg border border-(--color-border) bg-(--color-surface-secondary) p-4 font-mono text-sm">
+        As a(n) [role], I want [feature], so that [benefit]
+      </div>
+      <p>
+        Example: <em>"As a user, I want to reset my password so that I can regain access to my account."</em>
+      </p>
+
+      <h2 class="text-xl font-bold text-(--color-text)">Supported LLM backends</h2>
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong class="text-(--color-text)">Ollama</strong> — LLaMA 3.2, Mistral, and other local models</li>
+        <li><strong class="text-(--color-text)">OpenAI</strong> — GPT-3.5, GPT-4 (requires API key)</li>
+        <li><strong class="text-(--color-text)">Anthropic</strong> — Claude (requires API key)</li>
+      </ul>
+
+      <p class="pt-4 text-(--color-text-secondary)">
+        More detailed documentation, including API guides and architecture overview, coming soon.
+      </p>
+    </div>
+  </div>
+</PublicLayout>

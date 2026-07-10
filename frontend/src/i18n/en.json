@@ -83,6 +83,41 @@
     "expand": "Expand sidebar"
   },
   "footer": {
-    "license": "Released under the MIT License."
+    "license": "Released under the MIT License.",
+    "product": "Product",
+    "resources": "Resources",
+    "company": "Company",
+    "documentation": "Documentation",
+    "api_reference": "API Reference",
+    "status_page": "Status",
+    "about": "About",
+    "privacy": "Privacy",
+    "terms": "Terms"
+  },
+  "pages": {
+    "about": {
+      "title": "About Storico",
+      "description": "Learn about Storico, its mission, and the team behind it."
+    },
+    "privacy": {
+      "title": "Privacy Policy",
+      "description": "How Storico handles your data and protects your privacy."
+    },
+    "terms": {
+      "title": "Terms of Service",
+      "description": "Terms and conditions for using Storico."
+    },
+    "docs": {
+      "title": "Documentation",
+      "description": "Learn how to use Storico with guides, tutorials, and references."
+    },
+    "api": {
+      "title": "API Reference",
+      "description": "Complete API reference for integrating with Storico."
+    },
+    "status": {
+      "title": "System Status",
+      "description": "Check the current status of Storico services."
+    }
   }
 }
