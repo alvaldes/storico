@@ -76,7 +76,6 @@ export function onBeforeSwap(e: Event) {
 
 export function onAfterSwap() {
   applyTheme(resolveTheme());
-  syncIcons();
 }
 
 // ── Cycle: light → dark → system → light ──────────────────────
@@ -102,7 +101,6 @@ export function onSystemPreferenceChange() {
   const stored = localStorage.getItem('theme');
   if (!stored || stored === 'system') {
     applyTheme(resolveTheme());
-    syncIcons();
   }
 }
 

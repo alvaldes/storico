@@ -1,18 +1,18 @@
 ---
 /**
- * ThemeScript — single source of truth for theme management across ALL layouts.
+ * ThemeScript — theme lifecycle manager for ALL layouts and pages.
  *
  * Provides:
  *  1. Anti-flash inline script (runs before first paint in <head>)
  *  2. View Transitions theme persistence
- *  3. Click delegation for any [id^="theme-toggle-"] button
- *  4. System preference change detection
+ *  3. System preference change detection
  *
  * Every layout (MainLayout, PublicLayout, AuthLayout) and standalone page
  * (index.astro) MUST include this component in their <head>.
  *
- * The React ThemeToggle component on dashboard pages works via Zustand (uiStore),
- * which writes to the same localStorage key — both systems stay in sync
+ * Theme interaction (toggling) is handled by the React <ThemeToggle />
+ * component via Zustand, which writes to the same localStorage key.
+ * This script reads from localStorage — both systems stay in sync
  * automatically.
  */
 ---
@@ -31,24 +31,19 @@
   })();
 </script>
 
-<!-- Bundled theme manager: View Transitions + click delegation -->
+<!-- Theme persistence across View Transitions + system preference changes -->
 <script>
   import {
     resolveTheme,
     applyTheme,
-    syncIcons,
     onBeforeSwap,
     onAfterSwap,
-    handleToggleClick,
     onSystemPreferenceChange,
   } from '@/lib/theme';
 
   /* ── View Transitions ─────────────────────────── */
   document.addEventListener('astro:before-swap', onBeforeSwap);
   document.addEventListener('astro:after-swap', onAfterSwap);
-
-  /* ── Click delegation for theme toggles ────────── */
-  document.addEventListener('click', handleToggleClick);
 
   /* ── System preference changes ─────────────────── */
   window
@@ -57,5 +52,4 @@
 
   /* ── Initialize current page ───────────────────── */
   applyTheme(resolveTheme());
-  syncIcons();
 </script>
