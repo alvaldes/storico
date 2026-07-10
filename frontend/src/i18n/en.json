@@ -97,27 +97,105 @@
   "pages": {
     "about": {
       "title": "About Storico",
-      "description": "Learn about Storico, its mission, and the team behind it."
+      "description": "Learn about Storico, its mission, and the team behind it.",
+      "intro_p1": "Storico is an open-source tool that leverages Large Language Models to automatically decompose user stories into structured, actionable Kanban tasks. It was developed as part of a Master's thesis in Software Engineering at the",
+      "intro_utm": "Universidad Tecnológica de la Mixteca (UTM)",
+      "intro_p2": "in Oaxaca, Mexico.",
+      "mission_title": "Mission",
+      "mission": "Our mission is to bridge the gap between requirements expressed in natural language and actionable development tasks. We believe that AI should augment \u2014 not replace \u2014 the planning skills of agile teams, reducing cognitive load and eliminating misinterpretations.",
+      "problem_title": "The problem we solve",
+      "problem": "66% of software projects partially or fully fail (CHAOS Report 2020), and 58% of agile teams use user stories as their primary requirements source. Manually breaking down stories into tasks is inconsistent, tedious, and error-prone. Storico automates this process, providing consistent, high-quality task decomposition every time.",
+      "team_title": "The team",
+      "team_p1": "Storico was created by",
+      "team_author": "Angel Luis Vald\u00e9s S\u00e1nchez",
+      "team_p2": "as part of his Master's research, advised by",
+      "team_advisor": "Dr. Carlos Alberto Fern\u00e1ndez y Fern\u00e1ndez",
+      "team_p3": "and co-advised by",
+      "team_coadvisor": "Dra. Ver\u00f3nica Rodr\u00edguez L\u00f3pez"
     },
     "privacy": {
       "title": "Privacy Policy",
-      "description": "How Storico handles your data and protects your privacy."
+      "description": "How Storico handles your data and protects your privacy.",
+      "intro": "Your privacy matters. This policy outlines how Storico handles your data when you use the application.",
+      "collection_title": "Data we collect",
+      "collection_oauth": "When you sign in via Google or GitHub OAuth, we receive your email address and display name. We do",
+      "collection_oauth_strong": "not",
+      "collection_oauth_end": "store passwords \u2014 authentication is handled entirely by your OAuth provider.",
+      "collection_llm": "The user stories you submit are sent to the configured LLM (local or cloud) for task extraction. If you use a local model via Ollama, your data never leaves your machine. If you use a cloud provider (OpenAI, Anthropic), your data is processed according to their respective policies.",
+      "usage_title": "How we use your data",
+      "usage_1": "To provide the task extraction service",
+      "usage_2": "To improve extraction quality via anonymized usage patterns",
+      "usage_3": "To send service-related communications (if applicable)",
+      "retention_title": "Data retention",
+      "retention": "You retain full ownership of your data. Projects, stories, and tasks can be deleted at any time from within the application. We do not sell or share your personal information with third parties.",
+      "contact_title": "Contact",
+      "contact": "For privacy-related inquiries, please open an issue on our GitHub repository."
     },
     "terms": {
       "title": "Terms of Service",
-      "description": "Terms and conditions for using Storico."
+      "description": "Terms and conditions for using Storico.",
+      "intro": "By using Storico, you agree to these terms. If you do not agree, do not use the service.",
+      "service_title": "Use of service",
+      "service": "Storico is provided \u201cas is\u201d without any warranty. You are responsible for reviewing and validating the generated tasks before using them in any production or mission-critical environment.",
+      "opensource_title": "Open source",
+      "opensource_p1": "Storico is released under the",
+      "opensource_license": "MIT License",
+      "opensource_p2": "You are free to use, modify, and distribute the software in accordance with the terms of that license.",
+      "liability_title": "Limitation of liability",
+      "liability": "Storico and its contributors shall not be liable for any damages arising from the use or inability to use the software. This includes, but is not limited to, incorrect task decomposition, data loss, or project delays.",
+      "changes_title": "Changes to terms",
+      "changes": "We reserve the right to update these terms at any time. Continued use of Storico after changes constitutes acceptance of the new terms."
     },
     "docs": {
       "title": "Documentation",
-      "description": "Learn how to use Storico with guides, tutorials, and references."
+      "description": "Learn how to use Storico with guides, tutorials, and references.",
+      "welcome": "Welcome to Storico's documentation. This section will be expanded with detailed guides, tutorials, and reference materials.",
+      "getting_started_title": "Getting started",
+      "step_1": "Run Storico locally \u2014 clone the repository and follow the setup guide in the README.",
+      "step_2": "Configure your LLM \u2014 choose between Ollama (local), OpenAI, or Anthropic. Ollama works out of the box with no API key.",
+      "step_3": "Create a project \u2014 organize your user stories into projects.",
+      "step_4": "Paste a user story \u2014 use the standard \u201cAs a\u2026 I want\u2026 so that\u2026\u201d format.",
+      "step_5": "Extract tasks \u2014 let AI break down your story into structured tasks.",
+      "step_6": "Review and export \u2014 edit tasks as needed and export to Trello, JSON, or Markdown.",
+      "story_format_title": "User story format",
+      "story_format_intro": "Storico works best with stories in standard format:",
+      "story_format_example": "As a(n) [role], I want [feature], so that [benefit]",
+      "story_format_example_desc": "Example:",
+      "story_format_example_text": "\u201cAs a user, I want to reset my password so that I can regain access to my account.\u201d",
+      "llm_backends_title": "Supported LLM backends",
+      "llm_backend_ollama": "Ollama \u2014 LLaMA 3.2, Mistral, and other local models",
+      "llm_backend_openai": "OpenAI \u2014 GPT-3.5, GPT-4 (requires API key)",
+      "llm_backend_anthropic": "Anthropic \u2014 Claude (requires API key)",
+      "more_coming": "More detailed documentation, including API guides and architecture overview, coming soon."
     },
     "api": {
       "title": "API Reference",
-      "description": "Complete API reference for integrating with Storico."
+      "description": "Complete API reference for integrating with Storico.",
+      "intro": "Storico provides a REST API powered by FastAPI. Below is a summary of the main endpoints. Full OpenAPI documentation is available at",
+      "intro_end": "when the backend is running.",
+      "auth_title": "Authentication",
+      "auth": "All API requests require authentication via OAuth session. The frontend proxy automatically attaches the session token to requests.",
+      "endpoints_title": "Endpoints",
+      "endpoint_extract_desc": "Extract tasks from a single user story.",
+      "endpoint_batch_desc": "Process multiple user stories asynchronously.",
+      "endpoint_status_desc": "Check the status of an async batch extraction.",
+      "footer": "For detailed request/response schemas, start the backend and visit",
+      "footer_end": "for interactive Swagger documentation."
     },
     "status": {
       "title": "System Status",
-      "description": "Check the current status of Storico services."
+      "description": "Check the current status of Storico services.",
+      "all_operational": "All systems operational",
+      "running_normally": "Storico services are running normally.",
+      "services_title": "Services",
+      "api_server": "API Server",
+      "api_server_desc": "FastAPI backend",
+      "llm_runner": "LLM Runner",
+      "llm_runner_desc": "Ollama / OpenAI / Anthropic",
+      "database": "Database",
+      "database_desc": "PostgreSQL",
+      "operational": "Operational",
+      "last_updated": "Last updated"
     }
   }
 }

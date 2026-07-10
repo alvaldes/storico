@@ -21,58 +21,38 @@ const t = useTranslations(locale);
 
     <div class="space-y-5 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
       <p class="text-lg font-medium text-(--color-text)">
-        Welcome to Storico's documentation. This section will be expanded with detailed
-        guides, tutorials, and reference materials.
+        {t.pages.docs.welcome}
       </p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">Getting started</h2>
+      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.docs.getting_started_title}</h2>
       <ol class="list-decimal pl-6 space-y-2">
-        <li>
-          <strong class="text-(--color-text)">Run Storico locally</strong> — clone the
-          repository and follow the setup guide in the README.
-        </li>
-        <li>
-          <strong class="text-(--color-text)">Configure your LLM</strong> — choose between
-          Ollama (local), OpenAI, or Anthropic. Ollama works out of the box with no API key.
-        </li>
-        <li>
-          <strong class="text-(--color-text)">Create a project</strong> — organize your
-          user stories into projects.
-        </li>
-        <li>
-          <strong class="text-(--color-text)">Paste a user story</strong> — use the
-          standard "As a... I want... so that..." format.
-        </li>
-        <li>
-          <strong class="text-(--color-text)">Extract tasks</strong> — let AI break down
-          your story into structured tasks.
-        </li>
-        <li>
-          <strong class="text-(--color-text)">Review and export</strong> — edit tasks as
-          needed and export to Trello, JSON, or Markdown.
-        </li>
+        <li><strong class="text-(--color-text)">{t.pages.docs.step_1}</strong></li>
+        <li><strong class="text-(--color-text)">{t.pages.docs.step_2}</strong></li>
+        <li><strong class="text-(--color-text)">{t.pages.docs.step_3}</strong></li>
+        <li><strong class="text-(--color-text)">{t.pages.docs.step_4}</strong></li>
+        <li><strong class="text-(--color-text)">{t.pages.docs.step_5}</strong></li>
+        <li><strong class="text-(--color-text)">{t.pages.docs.step_6}</strong></li>
       </ol>
 
-      <h2 class="text-xl font-bold text-(--color-text)">User story format</h2>
-      <p>
-        Storico works best with stories in standard format:
-      </p>
+      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.docs.story_format_title}</h2>
+      <p>{t.pages.docs.story_format_intro}</p>
       <div class="rounded-lg border border-(--color-border) bg-(--color-surface-secondary) p-4 font-mono text-sm">
-        As a(n) [role], I want [feature], so that [benefit]
+        {t.pages.docs.story_format_example}
       </div>
       <p>
-        Example: <em>"As a user, I want to reset my password so that I can regain access to my account."</em>
+        {t.pages.docs.story_format_example_desc}
+        <em>{t.pages.docs.story_format_example_text}</em>
       </p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">Supported LLM backends</h2>
+      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.docs.llm_backends_title}</h2>
       <ul class="list-disc pl-6 space-y-1">
-        <li><strong class="text-(--color-text)">Ollama</strong> — LLaMA 3.2, Mistral, and other local models</li>
-        <li><strong class="text-(--color-text)">OpenAI</strong> — GPT-3.5, GPT-4 (requires API key)</li>
-        <li><strong class="text-(--color-text)">Anthropic</strong> — Claude (requires API key)</li>
+        <li><strong class="text-(--color-text)">{t.pages.docs.llm_backend_ollama}</strong></li>
+        <li><strong class="text-(--color-text)">{t.pages.docs.llm_backend_openai}</strong></li>
+        <li><strong class="text-(--color-text)">{t.pages.docs.llm_backend_anthropic}</strong></li>
       </ul>
 
       <p class="pt-4 text-(--color-text-secondary)">
-        More detailed documentation, including API guides and architecture overview, coming soon.
+        {t.pages.docs.more_coming}
       </p>
     </div>
   </div>

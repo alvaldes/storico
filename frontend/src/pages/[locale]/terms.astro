@@ -20,37 +20,23 @@ const t = useTranslations(locale);
     </h1>
 
     <div class="space-y-5 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
+      <p>{t.pages.terms.intro}</p>
+
+      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.terms.service_title}</h2>
+      <p>{t.pages.terms.service}</p>
+
+      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.terms.opensource_title}</h2>
       <p>
-        By using Storico, you agree to these terms. If you do not agree, do not use the
-        service.
+        {t.pages.terms.opensource_p1}
+        <strong class="text-(--color-text)">{t.pages.terms.opensource_license}</strong>.
+        {t.pages.terms.opensource_p2}
       </p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">Use of service</h2>
-      <p>
-        Storico is provided "as is" without any warranty. You are responsible for reviewing
-        and validating the generated tasks before using them in any production or
-        mission-critical environment.
-      </p>
+      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.terms.liability_title}</h2>
+      <p>{t.pages.terms.liability}</p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">Open source</h2>
-      <p>
-        Storico is released under the <strong class="text-(--color-text)">MIT License</strong>.
-        You are free to use, modify, and distribute the software in accordance with the
-        terms of that license.
-      </p>
-
-      <h2 class="text-xl font-bold text-(--color-text)">Limitation of liability</h2>
-      <p>
-        Storico and its contributors shall not be liable for any damages arising from the
-        use or inability to use the software. This includes, but is not limited to,
-        incorrect task decomposition, data loss, or project delays.
-      </p>
-
-      <h2 class="text-xl font-bold text-(--color-text)">Changes to terms</h2>
-      <p>
-        We reserve the right to update these terms at any time. Continued use of Storico
-        after changes constitutes acceptance of the new terms.
-      </p>
+      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.terms.changes_title}</h2>
+      <p>{t.pages.terms.changes}</p>
     </div>
   </div>
 </PublicLayout>

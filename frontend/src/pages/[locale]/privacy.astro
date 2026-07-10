@@ -20,42 +20,28 @@ const t = useTranslations(locale);
     </h1>
 
     <div class="space-y-5 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
-      <p>
-        Your privacy matters. This policy outlines how Storico handles your data when you
-        use the application.
-      </p>
+      <p>{t.pages.privacy.intro}</p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">Data we collect</h2>
+      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.privacy.collection_title}</h2>
       <p>
-        When you sign in via Google or GitHub OAuth, we receive your email address and
-        display name. We do <strong>not</strong> store passwords — authentication is
-        handled entirely by your OAuth provider.
+        {t.pages.privacy.collection_oauth}
+        <strong>{t.pages.privacy.collection_oauth_strong}</strong>
+        {t.pages.privacy.collection_oauth_end}
       </p>
-      <p>
-        The user stories you submit are sent to the configured LLM (local or cloud) for
-        task extraction. If you use a local model via Ollama, your data never leaves your
-        machine. If you use a cloud provider (OpenAI, Anthropic), your data is processed
-        according to their respective policies.
-      </p>
+      <p>{t.pages.privacy.collection_llm}</p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">How we use your data</h2>
+      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.privacy.usage_title}</h2>
       <ul class="list-disc pl-6 space-y-2">
-        <li>To provide the task extraction service</li>
-        <li>To improve extraction quality via anonymized usage patterns</li>
-        <li>To send service-related communications (if applicable)</li>
+        <li>{t.pages.privacy.usage_1}</li>
+        <li>{t.pages.privacy.usage_2}</li>
+        <li>{t.pages.privacy.usage_3}</li>
       </ul>
 
-      <h2 class="text-xl font-bold text-(--color-text)">Data retention</h2>
-      <p>
-        You retain full ownership of your data. Projects, stories, and tasks can be deleted
-        at any time from within the application. We do not sell or share your personal
-        information with third parties.
-      </p>
+      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.privacy.retention_title}</h2>
+      <p>{t.pages.privacy.retention}</p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">Contact</h2>
-      <p>
-        For privacy-related inquiries, please open an issue on our GitHub repository.
-      </p>
+      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.privacy.contact_title}</h2>
+      <p>{t.pages.privacy.contact}</p>
     </div>
   </div>
 </PublicLayout>

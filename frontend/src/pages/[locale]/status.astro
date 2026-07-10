@@ -26,48 +26,48 @@ const t = useTranslations(locale);
           <span class="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-(--color-success) opacity-75" />
         </span>
         <div>
-          <p class="font-semibold text-(--color-success-text)">All systems operational</p>
-          <p class="text-sm text-(--color-success-text)">Storico services are running normally.</p>
+          <p class="font-semibold text-(--color-success-text)">{t.pages.status.all_operational}</p>
+          <p class="text-sm text-(--color-success-text)">{t.pages.status.running_normally}</p>
         </div>
       </div>
 
-      <h2 class="text-xl font-bold text-(--color-text)">Services</h2>
+      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.status.services_title}</h2>
 
       <div class="rounded-lg border border-(--color-border) divide-y divide-(--color-border)">
         <div class="flex items-center justify-between p-4">
           <div>
-            <p class="font-medium text-(--color-text)">API Server</p>
-            <p class="text-sm text-(--color-text-secondary)">FastAPI backend</p>
+            <p class="font-medium text-(--color-text)">{t.pages.status.api_server}</p>
+            <p class="text-sm text-(--color-text-secondary)">{t.pages.status.api_server_desc}</p>
           </div>
           <span class="inline-flex items-center gap-1.5 text-sm font-medium text-(--color-success-text)">
             <span class="h-2 w-2 rounded-full bg-(--color-success)" />
-            Operational
+            {t.pages.status.operational}
           </span>
         </div>
         <div class="flex items-center justify-between p-4">
           <div>
-            <p class="font-medium text-(--color-text)">LLM Runner</p>
-            <p class="text-sm text-(--color-text-secondary)">Ollama / OpenAI / Anthropic</p>
+            <p class="font-medium text-(--color-text)">{t.pages.status.llm_runner}</p>
+            <p class="text-sm text-(--color-text-secondary)">{t.pages.status.llm_runner_desc}</p>
           </div>
           <span class="inline-flex items-center gap-1.5 text-sm font-medium text-(--color-success-text)">
             <span class="h-2 w-2 rounded-full bg-(--color-success)" />
-            Operational
+            {t.pages.status.operational}
           </span>
         </div>
         <div class="flex items-center justify-between p-4">
           <div>
-            <p class="font-medium text-(--color-text)">Database</p>
-            <p class="text-sm text-(--color-text-secondary)">PostgreSQL</p>
+            <p class="font-medium text-(--color-text)">{t.pages.status.database}</p>
+            <p class="text-sm text-(--color-text-secondary)">{t.pages.status.database_desc}</p>
           </div>
           <span class="inline-flex items-center gap-1.5 text-sm font-medium text-(--color-success-text)">
             <span class="h-2 w-2 rounded-full bg-(--color-success)" />
-            Operational
+            {t.pages.status.operational}
           </span>
         </div>
       </div>
 
-      <p class="text-sm text-(--color-text-tertiary">
-        Last updated: {new Date().toISOString().split('T')[0]}
+      <p class="text-sm text-(--color-text-tertiary)">
+        {t.pages.status.last_updated}: {new Date().toISOString().split('T')[0]}
       </p>
     </div>
   </div>
