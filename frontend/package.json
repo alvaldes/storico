@@ -5,7 +5,8 @@
   "private": true,
   "description": "Storico — LLM-powered user story to Kanban task extraction tool",
   "scripts": {
-    "dev": "astro dev",
+    "dev": "NODE_OPTIONS=\"--dns-result-order=ipv4first\" astro dev",
+    "dev:debug": "NODE_OPTIONS=\"--dns-result-order=ipv4first\" astro dev --host --verbose",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"

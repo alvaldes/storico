@@ -22,6 +22,11 @@ export default defineConfig({
     // env vars read from frontend/.env (default Astro behavior)
     optimizeDeps: {
       include: ['zustand'],
+      // auth-astro ships raw .ts files that import types from
+      // next-auth (a devDependency not installed in production).
+      // Excluding from pre-bundling lets Vite transform each .ts
+      // on-the-fly, stripping type-only imports without resolution.
+      exclude: ['auth-astro', 'auth:config'],
     },
   },
 });
