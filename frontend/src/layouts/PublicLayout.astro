@@ -4,6 +4,7 @@ import '@/styles/globals.css';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
 import PublicNavbar from '@/components/astro/PublicNavbar.astro';
 import PublicFooter from '@/components/astro/PublicFooter.astro';
+import { ArrowLeft } from 'lucide-react';
 import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
 
 import { getSession } from 'auth-astro/server';
@@ -103,17 +104,9 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
         <div class="mx-auto max-w-3xl px-4 pt-16 md:px-8 lg:px-20 lg:pt-24">
           <a
             href={L('/')}
-            class="group inline-flex items-center gap-1.5 text-sm font-medium text-(--color-text-secondary) no-underline transition-all hover:text-(--color-primary-600)"
+            class="group inline-flex items-center gap-1.5 text-sm font-medium uppercase tracking-wider text-(--color-text-secondary) no-underline transition-all hover:text-(--color-primary-600)"
           >
-            <svg
-              class="h-4 w-4 transition-transform group-hover:-translate-x-0.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
+            <ArrowLeft class="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
             {t.nav.back_to_home}
           </a>
         </div>
