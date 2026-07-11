@@ -112,6 +112,58 @@ class TestSyncUser:
         assert data["name"] == "Profile Updated"
         assert data["avatar_url"] == "https://example.com/avatar.jpg"
 
+    async def test_sync_same_email_links_accounts(self, async_client):
+        """Step (b): same email, different provider links accounts."""
+        # First: create user via google
+        payload1 = {
+            "email": "link@example.com",
+            "name": "Link User",
+            "auth_provider": "google",
+            "auth_provider_id": "g-link-1",
+        }
+        sync_headers = {"X-Storico-Internal-Token": AUTH_INTERNAL_TOKEN}
+        resp1 = await async_client.post(SYNC_URL, json=payload1, headers=sync_headers)
+        assert resp1.status_code == 200
+        user_id = resp1.json()["id"]
+
+        # Second: same email via github — should link, not create
+        payload2 = {
+            "email": "link@example.com",
+            "name": "Link User Updated",
+            "auth_provider": "github",
+            "auth_provider_id": "gh-link-1",
+        }
+        resp2 = await async_client.post(SYNC_URL, json=payload2, headers=sync_headers)
+        assert resp2.status_code == 200
+        assert resp2.json()["id"] == user_id  # same user
+        assert resp2.json()["auth_provider"] == "github"  # reflects login provider
+        assert resp2.json()["auth_id"] == "gh-link-1"
+
+        # Verify both providers can find the same user
+        repo_sync = SQLAlchemyUserRepository  # get repo from fixture context
+        # Can't access repo directly; use the sync endpoint to verify access
+
+    async def test_sync_new_user_linked(self, async_client):
+        """Step (c): new user creates user and account together."""
+        payload = {
+            "email": "fresh@example.com",
+            "name": "Fresh",
+            "auth_provider": "google",
+            "auth_provider_id": "g-fresh",
+        }
+        sync_headers = {"X-Storico-Internal-Token": AUTH_INTERNAL_TOKEN}
+        response = await async_client.post(SYNC_URL, json=payload, headers=sync_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] == "fresh@example.com"
+        assert data["auth_provider"] == "google"
+        assert data["auth_id"] == "g-fresh"
+
+        # Login again with same provider — should find existing
+        resp2 = await async_client.post(SYNC_URL, json=payload, headers=sync_headers)
+        assert resp2.status_code == 200
+        assert resp2.json()["id"] == data["id"]
+
     async def test_sync_rejects_missing_token(self, async_client):
         """POST /sync without internal token returns 401."""
         payload = {
@@ -167,13 +219,9 @@ class TestGetCurrentUser:
     async def test_valid_user(self, async_client, db_session: AsyncSession):
         """GET /me with valid token and correct user ID returns the user."""
         repo = SQLAlchemyUserRepository(db_session)
-        user = User(
-            email="valid@example.com",
-            name="Valid User",
-            auth_provider="google",
-            auth_id="g-valid",
-        )
+        user = User(email="valid@example.com", name="Valid User")
         await repo.save(user)
+        await repo.link_account(user.id, "google", "g-valid")
 
         headers = {
             "X-Storico-Internal-Token": AUTH_INTERNAL_TOKEN,

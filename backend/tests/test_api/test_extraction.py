@@ -39,10 +39,10 @@ async def _create_user(db_session: AsyncSession, email: str = "test@example.com"
     user = User(
         email=email,
         name="Test User",
-        auth_provider="google",
-        auth_id=f"g-{email}",
     )
-    return await repo.save(user)
+    saved = await repo.save(user)
+    await repo.link_account(saved.id, "google", f"g-{email}")
+    return saved
 
 
 async def _create_story(db_session: AsyncSession):
