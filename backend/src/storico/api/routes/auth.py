@@ -35,10 +35,13 @@ async def sync_user(
     repo: UserRepoDep,
     _: None = Depends(verify_sync_token),
 ) -> UserResponse:
-    """Sync a user from OAuth login — creates or updates by auth_provider + auth_id.
+    """Sync a user from OAuth login — 3-step linking flow.
 
-    Returns 200 for existing users and 201 for newly created ones.
+    Step (a): find by (provider, provider_id) → update profile.
+    Step (b): fallback to find_by_email → link accounts.
+    Step (c): neither → create user + link account.
     """
+    # Step (a) — returning user, same provider
     existing = await repo.find_by_auth(
         payload.auth_provider, payload.auth_provider_id
     )
@@ -48,26 +51,57 @@ async def sync_user(
             email=payload.email,
             name=payload.name,
             avatar_url=payload.avatar_url or existing.avatar_url,
-            auth_provider=payload.auth_provider,
-            auth_id=payload.auth_provider_id,
             created_at=existing.created_at,
         )
-    else:
-        user = User(
-            email=payload.email,
-            name=payload.name,
-            avatar_url=payload.avatar_url or "",
+        await repo.save(user)
+        return UserResponse(
+            id=user.id,
+            email=user.email,
+            name=user.name,
             auth_provider=payload.auth_provider,
             auth_id=payload.auth_provider_id,
+            avatar_url=payload.avatar_url or user.avatar_url or None,
+            created_at=user.created_at,
         )
 
+    # Step (b) — same email, different provider → link
+    email_user = await repo.find_by_email(payload.email)
+    if email_user:
+        await repo.link_account(
+            email_user.id, payload.auth_provider, payload.auth_provider_id
+        )
+        user = User(
+            id=email_user.id,
+            email=payload.email,
+            name=payload.name,
+            avatar_url=payload.avatar_url or email_user.avatar_url,
+            created_at=email_user.created_at,
+        )
+        await repo.save(user)
+        return UserResponse(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            auth_provider=payload.auth_provider,
+            auth_id=payload.auth_provider_id,
+            avatar_url=payload.avatar_url or user.avatar_url or None,
+            created_at=user.created_at,
+        )
+
+    # Step (c) — new user
+    user = User(
+        email=payload.email,
+        name=payload.name,
+        avatar_url=payload.avatar_url or "",
+    )
     saved = await repo.save(user)
+    await repo.link_account(saved.id, payload.auth_provider, payload.auth_provider_id)
     return UserResponse(
         id=saved.id,
         email=saved.email,
         name=saved.name,
-        auth_provider=saved.auth_provider,
-        auth_id=saved.auth_id,
-        avatar_url=saved.avatar_url or None,
+        auth_provider=payload.auth_provider,
+        auth_id=payload.auth_provider_id,
+        avatar_url=payload.avatar_url or saved.avatar_url or None,
         created_at=saved.created_at,
     )

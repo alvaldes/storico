@@ -25,10 +25,9 @@ class TestGetUserMe:
         user = User(
             email="alice@example.com",
             name="Alice",
-            auth_provider="google",
-            auth_id="google-123",
         )
         await repo.save(user)
+        await repo.link_account(user.id, "google", "google-123")
 
         async_client.headers["X-Storico-Internal-Token"] = "wrong-token"
         async_client.headers["X-Storico-User-Id"] = str(user.id)
@@ -53,10 +52,9 @@ class TestGetUserMe:
         user = User(
             email="alice@example.com",
             name="Alice",
-            auth_provider="google",
-            auth_id="google-123",
         )
         await repo.save(user)
+        await repo.link_account(user.id, "google", "google-123")
 
         async_client.headers["X-Storico-Internal-Token"] = AUTH_INTERNAL_TOKEN
         async_client.headers["X-Storico-User-Id"] = str(user.id)

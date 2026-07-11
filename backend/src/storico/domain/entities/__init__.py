@@ -13,6 +13,7 @@ from storico.domain.entities.extraction import Extraction
 from storico.domain.entities.project import Project
 from storico.domain.entities.task import Task
 from storico.domain.entities.user import User
+from storico.domain.entities.user_account import UserAccount
 from storico.domain.entities.user_story import UserStory
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "ParseError",
     "PromptTemplateNotFound",
     "User",
+    "UserAccount",
     "Project",
     "UserStory",
     "Task",

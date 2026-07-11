@@ -7,10 +7,12 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from storico.domain.entities import DuplicateEntity, EntityNotFound, RepositoryError, User
+from storico.domain.entities.user_account import UserAccount
 from storico.domain.ports import UserRepository
-from storico.infrastructure.database.models import UserModel
+from storico.infrastructure.database.models import UserAccountModel, UserModel
 
 
 class SQLAlchemyUserRepository(UserRepository):
@@ -33,7 +35,7 @@ class SQLAlchemyUserRepository(UserRepository):
             await self._session.rollback()
             if "email" in str(e.orig):
                 raise DuplicateEntity("User", "email", user.email) from e
-            raise DuplicateEntity("User", "auth_provider", user.auth_provider) from e
+            raise DuplicateEntity("User", str(e)) from e
         except SQLAlchemyError as e:
             await self._session.rollback()
             raise RepositoryError("Database error saving user") from e
@@ -43,9 +45,13 @@ class SQLAlchemyUserRepository(UserRepository):
         return self._to_domain(result) if result else None
 
     async def find_by_auth(self, provider: str, provider_id: str) -> User | None:
-        stmt = select(UserModel).where(
-            UserModel.auth_provider == provider,
-            UserModel.auth_id == provider_id,
+        stmt = (
+            select(UserModel)
+            .join(UserAccountModel, UserAccountModel.user_id == UserModel.id)
+            .where(
+                UserAccountModel.provider == provider,
+                UserAccountModel.provider_id == provider_id,
+            )
         )
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()
@@ -68,12 +74,47 @@ class SQLAlchemyUserRepository(UserRepository):
         if result.rowcount == 0:
             raise EntityNotFound("User", str(user_id))
 
+    async def link_account(
+        self, user_id: UUID, provider: str, provider_id: str
+    ) -> UserAccount:
+        try:
+            account = UserAccount(user_id=user_id, provider=provider, provider_id=provider_id)
+            self._session.add(
+                UserAccountModel(
+                    id=account.id,
+                    user_id=account.user_id,
+                    provider=account.provider,
+                    provider_id=account.provider_id,
+                    created_at=account.created_at,
+                )
+            )
+            await self._session.commit()
+            return account
+        except IntegrityError as e:
+            await self._session.rollback()
+            raise DuplicateEntity("UserAccount", "provider:provider_id", f"{provider}:{provider_id}") from e
+        except SQLAlchemyError as e:
+            await self._session.rollback()
+            raise RepositoryError("Database error linking account") from e
+
+    async def find_accounts(self, user_id: UUID) -> list[UserAccount]:
+        stmt = select(UserAccountModel).where(UserAccountModel.user_id == user_id)
+        result = await self._session.execute(stmt)
+        return [
+            UserAccount(
+                id=row.id,
+                user_id=row.user_id,
+                provider=row.provider,
+                provider_id=row.provider_id,
+                created_at=row.created_at,
+            )
+            for row in result.scalars()
+        ]
+
     def _to_domain(self, model: UserModel) -> User:
         return User(
             email=model.email,
             name=model.name,
-            auth_provider=model.auth_provider,
-            auth_id=model.auth_id,
             id=model.id,
             avatar_url=model.avatar_url or "",
             created_at=model.created_at,
@@ -85,8 +126,6 @@ class SQLAlchemyUserRepository(UserRepository):
             "id": user.id,
             "email": user.email,
             "name": user.name,
-            "auth_provider": user.auth_provider,
-            "auth_id": user.auth_id,
             "avatar_url": user.avatar_url or None,
             "created_at": user.created_at,
         }
