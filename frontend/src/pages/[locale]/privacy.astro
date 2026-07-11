@@ -4,6 +4,7 @@ import { useTranslations } from '@/i18n/utils';
 
 const locale = (Astro.params.locale as string) || 'en';
 const t = useTranslations(locale);
+const p = t.pages.privacy;
 ---
 
 <PublicLayout
@@ -19,34 +20,111 @@ const t = useTranslations(locale);
       {t.pages.privacy.title}
     </h1>
 
-    <div class="space-y-5 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
-      <p>{t.pages.privacy.intro}</p>
+    <div class="space-y-6 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
+      <!-- Last updated & intro -->
+      <p class="text-sm text-(--color-text-tertiary)">{p.last_updated}</p>
+      <p>{p.intro}</p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.privacy.collection_title}</h2>
+      <!-- 01. Open source engine collects nothing -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.self_hosted_title}</h2>
+      <p>{p.self_hosted_body}</p>
+
+      <!-- 02. Data we collect -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.collection_title}</h2>
       <p>
-        {t.pages.privacy.collection_oauth}
-        <strong>{t.pages.privacy.collection_oauth_strong}</strong>
-        {t.pages.privacy.collection_oauth_end}
+        {p.collection_oauth}
+        <strong>{p.collection_oauth_strong}</strong>
+        {p.collection_oauth_end}
       </p>
-      <p>{t.pages.privacy.collection_llm}</p>
+      <p>{p.collection_llm}</p>
+      <p>{p.collection_communications}</p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.privacy.usage_title}</h2>
+      <!-- 03. Service providers -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.providers_title}</h2>
+      <p>{p.providers_intro}</p>
+      <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-sm md:text-base">
+          <thead>
+            <tr class="border-b border-(--color-border)">
+              <th class="py-2 pr-4 text-left font-semibold text-(--color-text)">{p.providers_col_provider}</th>
+              <th class="py-2 pr-4 text-left font-semibold text-(--color-text)">{p.providers_col_purpose}</th>
+              <th class="py-2 text-left font-semibold text-(--color-text)">{p.providers_col_data}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-(--color-border)">
+              <td class="py-2 pr-4 font-medium text-(--color-text)">Google</td>
+              <td class="py-2 pr-4">{p.providers_google_purpose}</td>
+              <td class="py-2">{p.providers_google_data}</td>
+            </tr>
+            <tr class="border-b border-(--color-border)">
+              <td class="py-2 pr-4 font-medium text-(--color-text)">GitHub</td>
+              <td class="py-2 pr-4">{p.providers_github_purpose}</td>
+              <td class="py-2">{p.providers_github_data}</td>
+            </tr>
+            <tr class="border-b border-(--color-border)">
+              <td class="py-2 pr-4 font-medium text-(--color-text)">OpenAI {p.providers_optional}</td>
+              <td class="py-2 pr-4">{p.providers_openai_purpose}</td>
+              <td class="py-2">{p.providers_openai_data}</td>
+            </tr>
+            <tr>
+              <td class="py-2 pr-4 font-medium text-(--color-text)">Anthropic {p.providers_optional}</td>
+              <td class="py-2 pr-4">{p.providers_anthropic_purpose}</td>
+              <td class="py-2">{p.providers_anthropic_data}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>{p.providers_note}</p>
+
+      <!-- 04. How we use your data -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.usage_title}</h2>
       <ul class="list-disc pl-6 space-y-2">
-        <li>{t.pages.privacy.usage_1}</li>
-        <li>{t.pages.privacy.usage_2}</li>
-        <li>{t.pages.privacy.usage_3}</li>
+        <li>{p.usage_1}</li>
+        <li>{p.usage_2}</li>
+        <li>{p.usage_3}</li>
+        <li>{p.usage_4}</li>
       </ul>
 
-      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.privacy.retention_title}</h2>
-      <p>{t.pages.privacy.retention}</p>
+      <!-- 05. Legal bases -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.legal_title}</h2>
+      <p>{p.legal_body}</p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.privacy.contact_title}</h2>
+      <!-- 06. Security -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.security_title}</h2>
+      <p>{p.security_body}</p>
+
+      <!-- 07. Data retention -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.retention_title}</h2>
+      <p>{p.retention}</p>
+
+      <!-- 08. International transfers -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.transfers_title}</h2>
+      <p>{p.transfers_body}</p>
+
+      <!-- 09. Your rights -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.rights_title}</h2>
+      <p>{p.rights_body}</p>
+
+      <!-- 10. Cookies -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.cookies_title}</h2>
+      <p>{p.cookies_body}</p>
+
+      <!-- 11. Children -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.children_title}</h2>
+      <p>{p.children_body}</p>
+
+      <!-- 12. Changes to this policy -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.changes_title}</h2>
+      <p>{p.changes_body}</p>
+
+      <!-- 13. Contact -->
+      <h2 class="text-xl font-bold text-(--color-text)">{p.contact_title}</h2>
       <p>
-        {t.pages.privacy.contact_before}
-        <a href="https://github.com/alvaldes/storico" target="_blank" rel="noopener noreferrer"
-           class="text-(--color-primary-600) hover:underline"
-           aria-label="Storico on GitHub (opens in new tab)">GitHub</a>
-        {t.pages.privacy.contact_after}
+        {p.contact_before}
+        <a href="mailto:alvaldes.dev@gmail.com"
+           class="text-(--color-primary-600) hover:underline">alvaldes.dev@gmail.com</a>
+        {p.contact_after}
       </p>
     </div>
   </div>
