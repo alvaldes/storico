@@ -1,5 +1,6 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
+import { Separator } from '@/components/ui/separator';
 import { useTranslations } from '@/i18n/utils';
 
 const locale = (Astro.params.locale as string) || 'en';
@@ -11,16 +12,17 @@ const t = useTranslations(locale);
   title={`${t.app.name} — ${t.pages.terms.title}`}
   description={t.pages.terms.description}
 >
-  <div class="mx-auto max-w-3xl px-4 py-16 md:px-8 lg:px-20 lg:py-24">
+  <div class="mx-auto max-w-3xl px-4 py-4 md:px-8 lg:px-0 lg:py-8">
     <h1
-      class="mb-8 text-3xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl"
+      class="mb-8 text-3xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl lg:text-5xl"
       style="font-family: 'Space Grotesk', sans-serif;"
     >
       {t.pages.terms.title}
     </h1>
 
-    <div class="space-y-5 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
+    <div class="space-y-6 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
       <p>{t.pages.terms.intro}</p>
+      <Separator/>
 
       <h2 class="text-xl font-bold text-(--color-text)">{t.pages.terms.service_title}</h2>
       <p>{t.pages.terms.service}</p>

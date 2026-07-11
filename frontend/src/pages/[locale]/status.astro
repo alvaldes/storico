@@ -81,15 +81,15 @@ const statusTextClass = (state: string) => {
   title={`${t.app.name} — ${t.pages.status.title}`}
   description={t.pages.status.description}
 >
-  <div class="mx-auto max-w-3xl px-4 py-16 md:px-8 lg:px-20 lg:py-24">
+  <div class="mx-auto max-w-3xl px-4 py-4 md:px-8 lg:px-0 lg:py-8">
     <h1
-      class="mb-8 text-3xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl"
+      class="mb-8 text-3xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl lg:text-5xl"
       style="font-family: 'Space Grotesk', sans-serif;"
     >
       {t.pages.status.title}
     </h1>
 
-    <div class="space-y-5 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
+    <div class="space-y-6 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
       <!-- Status indicator banner -->
       <div
         class={`flex items-center gap-3 rounded-lg border p-4 ${statusBgClass(bannerState)}`}>

@@ -1,5 +1,6 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
+import { Separator } from '@/components/ui/separator';
 import { useTranslations } from '@/i18n/utils';
 import { config } from '@/lib/config';
 
@@ -12,15 +13,15 @@ const t = useTranslations(locale);
   title={`${t.app.name} — ${t.pages.api.title}`}
   description={t.pages.api.description}
 >
-  <div class="mx-auto max-w-3xl px-4 py-16 md:px-8 lg:px-20 lg:py-24">
+  <div class="mx-auto max-w-3xl px-4 py-4 md:px-8 lg:px-0 lg:py-8">
     <h1
-      class="mb-8 text-3xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl"
+      class="mb-8 text-3xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl lg:text-5xl"
       style="font-family: 'Space Grotesk', sans-serif;"
     >
       {t.pages.api.title}
     </h1>
 
-    <div class="space-y-5 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
+    <div class="space-y-6 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
       <p class="text-lg font-medium text-(--color-text)">
         {t.pages.api.intro}
         <a href={`${config.apiUrl}/docs`} target="_blank" rel="noopener noreferrer"
@@ -30,6 +31,7 @@ const t = useTranslations(locale);
         </a>
         {t.pages.api.intro_end}
       </p>
+      <Separator/>
 
       <h2 class="text-xl font-bold text-(--color-text)">{t.pages.api.auth_title}</h2>
       <p>{t.pages.api.auth}</p>
