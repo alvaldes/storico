@@ -77,7 +77,19 @@
     "title": "Sign in to Storico",
     "google": "Sign in with Google",
     "github": "Sign in with GitHub",
-    "description": "Access your projects, stories, and Kanban boards."
+    "description": "Access your projects, stories, and Kanban boards.",
+    "terms_notice_prefix": "By signing in, you agree to the ",
+    "terms_notice_link": "Terms of Service",
+    "terms_notice_suffix": "."
+  },
+  "language": {
+    "en": "English",
+    "es": "Español",
+    "short_en": "EN",
+    "short_es": "ES"
+  },
+  "dashboard": {
+    "new_project": "New Project"
   },
   "sidebar": {
     "collapse": "Collapse sidebar",

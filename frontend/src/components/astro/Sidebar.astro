@@ -7,17 +7,19 @@ import {
   Settings,
   ChevronLeft,
 } from 'lucide-react';
-import { localizedPath, type Locale } from '@/i18n/utils';
+import { localizedPath, useTranslations, type Locale } from '@/i18n/utils';
 
 const { locale = 'en' as Locale, currentPath = '' } = Astro.props;
+const t = useTranslations(locale);
 const L = (path: string) => localizedPath(path, locale);
 
+const nav = t.nav;
 const navLinks = [
-  { href: L('/dashboard'), icon: LayoutDashboard, label: 'Dashboard' },
-  { href: L('/stories'), icon: FileText, label: 'User Stories' },
-  { href: L('/kanban'), icon: KanbanSquare, label: 'Kanban' },
-  { href: L('/export'), icon: Upload, label: 'Export' },
-  { href: L('/settings'), icon: Settings, label: 'Settings' },
+  { href: L('/dashboard'), icon: LayoutDashboard, label: nav['dashboard'] },
+  { href: L('/stories'), icon: FileText, label: nav['stories'] },
+  { href: L('/kanban'), icon: KanbanSquare, label: nav['kanban'] },
+  { href: L('/export'), icon: Upload, label: nav['export'] },
+  { href: L('/settings'), icon: Settings, label: nav['settings'] },
 ];
 
 function isActive(href: string): boolean {
@@ -34,12 +36,12 @@ function isActive(href: string): boolean {
   <div class="hidden lg:flex h-14 items-center justify-between border-b border-(--color-border) px-4">
     <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline">
       <img src="/favicon.svg" alt="" class="h-6 w-auto" />
-      <span class="text-lg font-bold text-(--color-text)">Storico</span>
+      <span class="text-lg font-bold text-(--color-text)">{t.app.name}</span>
     </a>
     <button
       id="sidebar-close"
       class="rounded-md p-1 text-(--color-text-secondary) hover:bg-(--color-surface-secondary) transition-colors lg:hidden"
-      aria-label="Close sidebar"
+      aria-label={t.sidebar.collapse}
     >
       <ChevronLeft className="h-4 w-4" />
     </button>

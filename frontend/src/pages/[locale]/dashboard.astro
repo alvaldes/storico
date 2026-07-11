@@ -1,16 +1,18 @@
 ---
 import MainLayout from '@/layouts/MainLayout.astro';
 import { Dashboard } from '@/components/react/Dashboard';
+import { useTranslations } from '@/i18n/utils';
 
 const locale = (Astro.params.locale as string) || 'en';
+const t = useTranslations(locale);
 ---
 
 <MainLayout locale={locale}>
   <div slot="head">
-    <title>Storico — Dashboard</title>
+    <title>{t.app.name} — {t.nav.dashboard}</title>
   </div>
 
-  <Dashboard client:load />
+  <Dashboard client:load locale={locale} />
 </MainLayout>
 
 

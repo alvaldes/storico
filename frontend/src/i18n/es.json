@@ -77,7 +77,19 @@
     "title": "Inicia sesión en Storico",
     "google": "Iniciar sesión con Google",
     "github": "Iniciar sesión con GitHub",
-    "description": "Accede a tus proyectos, historias y tableros Kanban."
+    "description": "Accede a tus proyectos, historias y tableros Kanban.",
+    "terms_notice_prefix": "Al iniciar sesión, aceptas los ",
+    "terms_notice_link": "Términos de Servicio",
+    "terms_notice_suffix": "."
+  },
+  "language": {
+    "en": "English",
+    "es": "Español",
+    "short_en": "EN",
+    "short_es": "ES"
+  },
+  "dashboard": {
+    "new_project": "Nuevo Proyecto"
   },
   "sidebar": {
     "collapse": "Colapsar barra lateral",

@@ -2,8 +2,10 @@
 import { ClientRouter } from 'astro:transitions';
 import '@/styles/globals.css';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
+import { useTranslations } from '@/i18n/utils';
 
 const { locale = 'en' } = Astro.props;
+const t = useTranslations(locale);
 ---
 
 <!DOCTYPE html>
@@ -14,11 +16,11 @@ const { locale = 'en' } = Astro.props;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#2563eb" />
-    <meta name="description" content="Storico — From user stories to Kanban tasks, automatically." />
+    <meta name="description" content={`${t.app.name} — ${t.app.tagline}`} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <ClientRouter />
     <slot name="head" />
-    <title>Storico</title>
+    <title>{t.app.name}</title>
   </head>
   <body class="flex min-h-dvh items-center justify-center bg-(--color-surface-secondary) p-4">
     <main class="w-full max-w-md">

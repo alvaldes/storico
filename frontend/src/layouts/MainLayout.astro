@@ -5,8 +5,10 @@ import ThemeScript from '@/components/astro/ThemeScript.astro';
 import Header from '@/components/astro/Header.astro';
 import Sidebar from '@/components/astro/Sidebar.astro';
 import { getSession } from 'auth-astro/server';
+import { useTranslations } from '@/i18n/utils';
 
 const { locale = 'en' } = Astro.props;
+const t = useTranslations(locale);
 const currentPath = Astro.url.pathname;
 const session = await getSession(Astro.request);
 const userJson = JSON.stringify(session?.user ?? null);
@@ -20,11 +22,11 @@ const userJson = JSON.stringify(session?.user ?? null);
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#2563eb" />
-    <meta name="description" content="Storico — From user stories to Kanban tasks, automatically." />
+    <meta name="description" content={`${t.app.name} — ${t.app.tagline}`} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <ClientRouter />
     <slot name="head" />
-    <title>Storico</title>
+    <title>{t.app.name}</title>
   </head>
   <body class="min-h-dvh bg-(--color-surface)">
     <Sidebar locale={locale} currentPath={currentPath} />

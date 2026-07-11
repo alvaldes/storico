@@ -6,12 +6,15 @@
  * Used by PublicLayout and landing page (index.astro).
  */
 
+import { useTranslations } from '@/i18n/utils';
+
 export interface Props {
   href: string;
   locale: string;
 }
 
 const { href, locale } = Astro.props;
+const t = useTranslations(locale);
 ---
 
 <a
@@ -19,5 +22,5 @@ const { href, locale } = Astro.props;
   class="flex items-center p-2 text-xs font-bold uppercase tracking-wider text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
   aria-label="Switch language"
 >
-  {locale === 'en' ? 'ES' : 'EN'}
+  {locale === 'en' ? t.language.short_es : t.language.short_en}
 </a>

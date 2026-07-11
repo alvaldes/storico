@@ -2,8 +2,10 @@ import { FolderKanban, Plus } from 'lucide-react';
 import { useProjectStore } from '@/stores/projectStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { useTranslations, type Locale } from '@/i18n/utils';
 
-export function Dashboard() {
+export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
+  const t = useTranslations(locale);
   const { projects, loading } = useProjectStore();
 
   if (loading) {
@@ -19,11 +21,11 @@ export function Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-foreground">
-          Dashboard
+          {t.nav.dashboard}
         </h1>
         <Button>
           <Plus className="h-4 w-4" />
-          New Project
+          {t.dashboard.new_project}
         </Button>
       </div>
 
