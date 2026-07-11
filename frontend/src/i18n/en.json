@@ -207,6 +207,7 @@
     "docs": {
       "title": "Documentation",
       "description": "Learn how to use Storico with guides, tutorials, and references.",
+      "last_updated": "Last updated: July 11, 2026",
       "welcome": "Welcome to Storico's documentation. This section will be expanded with detailed guides, tutorials, and reference materials.",
       "getting_started_title": "Getting started",
       "step_1": "Run Storico locally \u2014 clone the repository and follow the setup guide in the README.",
@@ -229,6 +230,7 @@
     "api": {
       "title": "API Reference",
       "description": "Complete API reference for integrating with Storico.",
+      "last_updated": "Last updated: July 11, 2026",
       "intro": "Storico provides a REST API powered by FastAPI. Below is a summary of the main endpoints. Full OpenAPI documentation is available at",
       "intro_end": "when the backend is running.",
       "auth_title": "Authentication",

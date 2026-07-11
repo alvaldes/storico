@@ -207,6 +207,7 @@
     "docs": {
       "title": "Documentación",
       "description": "Aprende a usar Storico con guías, tutoriales y referencias.",
+      "last_updated": "Última actualización: 11 de julio de 2026",
       "welcome": "Bienvenido a la documentación de Storico. Esta sección se ampliará con guías detalladas, tutoriales y materiales de referencia.",
       "getting_started_title": "Primeros pasos",
       "step_1": "Ejecuta Storico localmente — clona el repositorio y sigue la guía de instalación en el README.",
@@ -229,6 +230,7 @@
     "api": {
       "title": "Referencia de API",
       "description": "Referencia completa de la API para integrar con Storico.",
+      "last_updated": "Última actualización: 11 de julio de 2026",
       "intro": "Storico provee una API REST impulsada por FastAPI. A continuación hay un resumen de los endpoints principales. La documentación completa de OpenAPI está disponible en",
       "intro_end": "cuando el backend esté en ejecución.",
       "auth_title": "Autenticación",

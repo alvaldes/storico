@@ -22,6 +22,9 @@ const t = useTranslations(locale);
     </h1>
 
     <div class="space-y-6 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
+      <p class="text-xs text-(--color-text-tertiary) uppercase">
+        {t.pages.api.last_updated}
+      </p>
       <p class="text-lg font-medium text-(--color-text)">
         {t.pages.api.intro}
         <a href={`${config.apiUrl}/docs`} target="_blank" rel="noopener noreferrer"
