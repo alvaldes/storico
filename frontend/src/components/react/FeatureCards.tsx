@@ -28,13 +28,13 @@ interface FeatureCardsProps {
 
 export function FeatureCards({ cards }: FeatureCardsProps) {
   return (
-    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 lg:gap-8">
+    <div className="flex flex-wrap justify-center gap-6 lg:gap-8">
       {cards.map((card, index) => {
         const Icon = iconMap[card.icon]
         const colors = colorClasses[card.color]
 
         return (
-          <Card key={index}>
+          <Card key={index} className="w-full md:w-[calc(50%-0.75rem)] lg:w-[calc(33.333%-1.35rem)]">
             <CardHeader>
               <div className={`flex h-13 w-13 items-center justify-center rounded-xl ${colors.bg}`}>
                 <Icon className={`h-6 w-6 ${colors.icon}`} />
