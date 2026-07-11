@@ -187,6 +187,10 @@
       "description": "Check the current status of Storico services.",
       "all_operational": "All systems operational",
       "running_normally": "Storico services are running normally.",
+      "degraded_title": "Some systems degraded",
+      "degraded_desc": "Some Storico services are experiencing issues.",
+      "down_title": "Services unavailable",
+      "down_desc": "Storico services are currently unreachable.",
       "services_title": "Services",
       "api_server": "API Server",
       "api_server_desc": "FastAPI backend",
@@ -195,6 +199,9 @@
       "database": "Database",
       "database_desc": "PostgreSQL",
       "operational": "Operational",
+      "error": "Error",
+      "checking": "Checking\u2026",
+      "unavailable": "Unavailable",
       "last_updated": "Last updated"
     }
   }

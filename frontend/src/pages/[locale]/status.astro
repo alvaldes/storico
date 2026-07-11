@@ -4,6 +4,77 @@ import { useTranslations } from '@/i18n/utils';
 
 const locale = (Astro.params.locale as string) || 'en';
 const t = useTranslations(locale);
+
+const API_BASE = import.meta.env.API_URL || 'http://127.0.0.1:8000';
+
+interface ServiceStatus {
+  status: 'ok' | 'error';
+  latency_ms: number | null;
+  error?: string;
+  model_count?: number;
+}
+
+interface HealthResponse {
+  status: 'ok' | 'degraded';
+  version: string;
+  timestamp: string;
+  services: Record<string, ServiceStatus>;
+}
+
+let health: HealthResponse | null = null;
+let fetchError: string | null = null;
+
+try {
+  const response = await fetch(`${API_BASE}/api/v1/health`, {
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (response.ok) {
+    health = await response.json();
+  } else {
+    fetchError = `HTTP ${response.status}`;
+  }
+} catch (e) {
+  fetchError = e instanceof Error ? e.message : 'Connection failed';
+}
+
+const allOk = health?.status === 'ok';
+
+let bannerTitle: string;
+let bannerDesc: string;
+let bannerState: 'ok' | 'degraded' | 'down';
+
+if (!health) {
+  bannerTitle = t.pages.status.down_title;
+  bannerDesc = fetchError ? `${t.pages.status.down_desc} (${fetchError})` : t.pages.status.down_desc;
+  bannerState = 'down';
+} else if (allOk) {
+  bannerTitle = t.pages.status.all_operational;
+  bannerDesc = t.pages.status.running_normally;
+  bannerState = 'ok';
+} else {
+  bannerTitle = t.pages.status.degraded_title;
+  bannerDesc = t.pages.status.degraded_desc;
+  bannerState = 'degraded';
+}
+
+const statusDotClass = (state: string) => {
+  if (state === 'ok') return 'bg-(--color-success)';
+  if (state === 'degraded') return 'bg-amber-500';
+  return 'bg-red-500';
+};
+
+const statusBgClass = (state: string) => {
+  if (state === 'ok') return 'bg-(--color-success-bg) border-(--color-success-border)';
+  if (state === 'degraded') return 'bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:border-amber-800';
+  return 'bg-red-50 border-red-200 dark:bg-red-950/40 dark:border-red-800';
+};
+
+const statusTextClass = (state: string) => {
+  if (state === 'ok') return 'text-(--color-success-text)';
+  if (state === 'degraded') return 'text-amber-800 dark:text-amber-300';
+  return 'text-red-800 dark:text-red-300';
+};
+
 ---
 
 <PublicLayout
@@ -20,54 +91,92 @@ const t = useTranslations(locale);
     </h1>
 
     <div class="space-y-5 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
-      <!-- Status indicator -->
-      <div class="flex items-center gap-3 rounded-lg border border-(--color-success-border) bg-(--color-success-bg) p-4">
-        <span class="relative block h-3 w-3 shrink-0 rounded-full bg-(--color-success)">
-          <span class="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-(--color-success) opacity-75" />
+      <!-- Status indicator banner -->
+      <div
+        class={`flex items-center gap-3 rounded-lg border p-4 ${statusBgClass(bannerState)}`}>
+        <span class="relative block h-3 w-3 shrink-0 rounded-full {statusDotClass(bannerState)}">
+          <span
+            class="absolute inline-flex h-3 w-3 animate-ping rounded-full {statusDotClass(bannerState)} opacity-75"
+          />
         </span>
         <div>
-          <p class="font-semibold text-(--color-success-text)">{t.pages.status.all_operational}</p>
-          <p class="text-sm text-(--color-success-text)">{t.pages.status.running_normally}</p>
+          <p class={`font-semibold ${statusTextClass(bannerState)}`}>
+            {bannerTitle}
+          </p>
+          <p class={`text-sm ${statusTextClass(bannerState)}`}>
+            {bannerDesc}
+          </p>
         </div>
       </div>
 
       <h2 class="text-xl font-bold text-(--color-text)">{t.pages.status.services_title}</h2>
 
       <div class="rounded-lg border border-(--color-border) divide-y divide-(--color-border)">
+        <!-- API Server -->
         <div class="flex items-center justify-between p-4">
           <div>
             <p class="font-medium text-(--color-text)">{t.pages.status.api_server}</p>
             <p class="text-sm text-(--color-text-secondary)">{t.pages.status.api_server_desc}</p>
           </div>
-          <span class="inline-flex items-center gap-1.5 text-sm font-medium text-(--color-success-text)">
+          <span class="inline-flex items-center gap-1.5 text-sm font-medium">
             <span class="h-2 w-2 rounded-full bg-(--color-success)" />
             {t.pages.status.operational}
           </span>
         </div>
+
+        <!-- LLM Runner (Ollama) -->
         <div class="flex items-center justify-between p-4">
           <div>
             <p class="font-medium text-(--color-text)">{t.pages.status.llm_runner}</p>
             <p class="text-sm text-(--color-text-secondary)">{t.pages.status.llm_runner_desc}</p>
           </div>
-          <span class="inline-flex items-center gap-1.5 text-sm font-medium text-(--color-success-text)">
-            <span class="h-2 w-2 rounded-full bg-(--color-success)" />
-            {t.pages.status.operational}
-          </span>
+          {
+            health ? (
+              <span
+                class={`inline-flex items-center gap-1.5 text-sm font-medium ${health.services.ollama.status === 'ok' ? 'text-(--color-success-text)' : 'text-red-600 dark:text-red-400'}`}
+              >
+                <span
+                  class={`h-2 w-2 rounded-full ${health.services.ollama.status === 'ok' ? 'bg-(--color-success)' : 'bg-red-500'}`}
+                />
+                {health.services.ollama.status === 'ok' ? t.pages.status.operational : t.pages.status.error}
+              </span>
+            ) : (
+              <span class="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
+                <span class="h-2 w-2 rounded-full bg-red-500" />
+                {t.pages.status.unavailable}
+              </span>
+            )
+          }
         </div>
+
+        <!-- Database (PostgreSQL) -->
         <div class="flex items-center justify-between p-4">
           <div>
             <p class="font-medium text-(--color-text)">{t.pages.status.database}</p>
             <p class="text-sm text-(--color-text-secondary)">{t.pages.status.database_desc}</p>
           </div>
-          <span class="inline-flex items-center gap-1.5 text-sm font-medium text-(--color-success-text)">
-            <span class="h-2 w-2 rounded-full bg-(--color-success)" />
-            {t.pages.status.operational}
-          </span>
+          {
+            health ? (
+              <span
+                class={`inline-flex items-center gap-1.5 text-sm font-medium ${health.services.database.status === 'ok' ? 'text-(--color-success-text)' : 'text-red-600 dark:text-red-400'}`}
+              >
+                <span
+                  class={`h-2 w-2 rounded-full ${health.services.database.status === 'ok' ? 'bg-(--color-success)' : 'bg-red-500'}`}
+                />
+                {health.services.database.status === 'ok' ? t.pages.status.operational : t.pages.status.error}
+              </span>
+            ) : (
+              <span class="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
+                <span class="h-2 w-2 rounded-full bg-red-500" />
+                {t.pages.status.unavailable}
+              </span>
+            )
+          }
         </div>
       </div>
 
       <p class="text-sm text-(--color-text-tertiary)">
-        {t.pages.status.last_updated}: {new Date().toISOString().split('T')[0]}
+        {t.pages.status.last_updated}: {health ? new Date(health.timestamp).toLocaleString(locale) : t.pages.status.checking}
       </p>
     </div>
   </div>
