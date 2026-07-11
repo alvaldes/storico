@@ -129,12 +129,13 @@
       "retention_title": "Retención de datos",
       "retention": "Retienes la propiedad total de tus datos. Los proyectos, historias y tareas se pueden eliminar en cualquier momento desde la aplicación. No vendemos ni compartimos tu información personal con terceros.",
       "contact_title": "Contacto",
-      "contact": "Para consultas relacionadas con la privacidad, abrí un issue en nuestro repositorio de GitHub."
+      "contact_before": "Para consultas relacionadas con la privacidad, abrí un issue en nuestro repositorio de",
+      "contact_after": "."
     },
     "terms": {
       "title": "Términos de Servicio",
       "description": "Términos y condiciones para usar Storico.",
-      "intro": "Al usar Storico, aceptas estos términos. Si no estás de acuerdo, no uses el servicio.",
+      "intro": "Al usar Storico, aceptas estos términos.",
       "service_title": "Uso del servicio",
       "service": "Storico se proporciona \"tal cual\" sin ninguna garantía. Eres responsable de revisar y validar las tareas generadas antes de usarlas en cualquier entorno productivo o crítico.",
       "opensource_title": "Código abierto",

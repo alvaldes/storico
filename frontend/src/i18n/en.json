@@ -129,12 +129,13 @@
       "retention_title": "Data retention",
       "retention": "You retain full ownership of your data. Projects, stories, and tasks can be deleted at any time from within the application. We do not sell or share your personal information with third parties.",
       "contact_title": "Contact",
-      "contact": "For privacy-related inquiries, please open an issue on our GitHub repository."
+      "contact_before": "For privacy-related inquiries, please open an issue on our",
+      "contact_after": "repository."
     },
     "terms": {
       "title": "Terms of Service",
       "description": "Terms and conditions for using Storico.",
-      "intro": "By using Storico, you agree to these terms. If you do not agree, do not use the service.",
+      "intro": "By using Storico, you agree to these terms.",
       "service_title": "Use of service",
       "service": "Storico is provided \u201cas is\u201d without any warranty. You are responsible for reviewing and validating the generated tasks before using them in any production or mission-critical environment.",
       "opensource_title": "Open source",

@@ -41,7 +41,13 @@ const t = useTranslations(locale);
       <p>{t.pages.privacy.retention}</p>
 
       <h2 class="text-xl font-bold text-(--color-text)">{t.pages.privacy.contact_title}</h2>
-      <p>{t.pages.privacy.contact}</p>
+      <p>
+        {t.pages.privacy.contact_before}
+        <a href="https://github.com/alvaldes/storico" target="_blank" rel="noopener noreferrer"
+           class="text-(--color-primary-600) hover:underline"
+           aria-label="Storico on GitHub (opens in new tab)">GitHub</a>
+        {t.pages.privacy.contact_after}
+      </p>
     </div>
   </div>
 </PublicLayout>
