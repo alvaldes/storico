@@ -5,40 +5,136 @@ import { useTranslations } from '@/i18n/utils';
 
 const locale = (Astro.params.locale as string) || 'en';
 const t = useTranslations(locale);
+const p = t.pages.terms;
 ---
 
 <PublicLayout
   locale={locale}
-  title={`${t.app.name} — ${t.pages.terms.title}`}
-  description={t.pages.terms.description}
+  title={`${t.app.name} — ${p.title}`}
+  description={p.description}
 >
   <div class="mx-auto max-w-3xl px-4 py-4 md:px-8 lg:px-0 lg:py-8">
     <h1
       class="mb-8 text-3xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl lg:text-5xl"
       style="font-family: 'Space Grotesk', sans-serif;"
     >
-      {t.pages.terms.title}
+      {p.title}
     </h1>
 
     <div class="space-y-6 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
-      <p>{t.pages.terms.intro}</p>
+      <!-- Last updated & intro -->
+      <p class="text-xs text-(--color-text-tertiary) uppercase">
+        {p.last_updated}
+      </p>
+      <p>{p.intro}</p>
       <Separator/>
 
-      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.terms.service_title}</h2>
-      <p>{t.pages.terms.service}</p>
+      <!-- 01. What these terms cover -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">01</span>
+        {p.scope_title}
+      </h2>
+      <p>{p.scope_body}</p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.terms.opensource_title}</h2>
+      <!-- 02. Open source license -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">02</span>
+        {p.opensource_title}
+      </h2>
       <p>
-        {t.pages.terms.opensource_p1}
-        <strong class="text-(--color-text)">{t.pages.terms.opensource_license}</strong>.
-        {t.pages.terms.opensource_p2}
+        {p.opensource_p1}
+        <strong class="text-(--color-text)">{p.opensource_license}</strong>.
+        {p.opensource_p2}
       </p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.terms.liability_title}</h2>
-      <p>{t.pages.terms.liability}</p>
+      <!-- 03. Acceptable use -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">03</span>
+        {p.acceptable_use_title}
+      </h2>
+      <p>{p.acceptable_use_body}</p>
 
-      <h2 class="text-xl font-bold text-(--color-text)">{t.pages.terms.changes_title}</h2>
-      <p>{t.pages.terms.changes}</p>
+      <!-- 04. Your data -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">04</span>
+        {p.your_data_title}
+      </h2>
+      <p>{p.your_data_body}</p>
+
+      <!-- 05. Intellectual property -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">05</span>
+        {p.ip_title}
+      </h2>
+      <p>{p.ip_body}</p>
+
+      <!-- 06. Third-party services -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">06</span>
+        {p.third_party_title}
+      </h2>
+      <p>{p.third_party_body}</p>
+
+      <!-- 07. Disclaimer of warranties -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">07</span>
+        {p.disclaimer_title}
+      </h2>
+      <p>{p.disclaimer_body}</p>
+
+      <!-- 08. Limitation of liability -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">08</span>
+        {p.liability_title}
+      </h2>
+      <p>{p.liability_body}</p>
+
+      <!-- 09. Indemnification -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">09</span>
+        {p.indemnification_title}
+      </h2>
+      <p>{p.indemnification_body}</p>
+
+      <!-- 10. Term and termination -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">10</span>
+        {p.termination_title}
+      </h2>
+      <p>{p.termination_body}</p>
+
+      <!-- 11. Changes to these terms -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">11</span>
+        {p.changes_title}
+      </h2>
+      <p>{p.changes_body}</p>
+
+      <!-- 12. Disputes -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">12</span>
+        {p.disputes_title}
+      </h2>
+      <p>{p.disputes_body}</p>
+
+      <!-- 13. General -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">13</span>
+        {p.general_title}
+      </h2>
+      <p>{p.general_body}</p>
+
+      <!-- 14. Contact -->
+      <h2 class="text-xl font-bold text-(--color-text)">
+        <span class="mr-3 text-sm font-['Geist_Mono'] text-(color-text-tertiary) font-normal">14</span>
+        {p.contact_title}
+      </h2>
+      <p>
+        {p.contact_before}
+        <a href="mailto:alvaldes.dev@gmail.com"
+           class="text-(--color-primary-600) hover:underline">alvaldes.dev@gmail.com</a>
+        {p.contact_after}
+      </p>
     </div>
   </div>
 </PublicLayout>
