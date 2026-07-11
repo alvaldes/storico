@@ -173,6 +173,31 @@ const statusTextClass = (state: string) => {
             )
           }
         </div>
+
+        <!-- Vector Store (Qdrant) -->
+        <div class="flex items-center justify-between p-4">
+          <div>
+            <p class="font-medium text-(--color-text)">{t.pages.status.vector_store}</p>
+            <p class="text-sm text-(--color-text-secondary)">{t.pages.status.vector_store_desc}</p>
+          </div>
+          {
+            health ? (
+              <span
+                class={`inline-flex items-center gap-1.5 text-sm font-medium ${health.services.qdrant.status === 'ok' ? 'text-(--color-success-text)' : 'text-red-600 dark:text-red-400'}`}
+              >
+                <span
+                  class={`h-2 w-2 rounded-full ${health.services.qdrant.status === 'ok' ? 'bg-(--color-success)' : 'bg-red-500'}`}
+                />
+                {health.services.qdrant.status === 'ok' ? t.pages.status.operational : t.pages.status.error}
+              </span>
+            ) : (
+              <span class="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
+                <span class="h-2 w-2 rounded-full bg-red-500" />
+                {t.pages.status.unavailable}
+              </span>
+            )
+          }
+        </div>
       </div>
 
       <p class="text-sm text-(--color-text-tertiary)">

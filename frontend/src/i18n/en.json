@@ -198,6 +198,8 @@
       "llm_runner_desc": "Ollama / OpenAI / Anthropic",
       "database": "Database",
       "database_desc": "PostgreSQL",
+      "vector_store": "Vector Store",
+      "vector_store_desc": "Qdrant",
       "operational": "Operational",
       "error": "Error",
       "checking": "Checking\u2026",
