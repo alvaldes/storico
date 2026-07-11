@@ -10,7 +10,8 @@
     "export": "Export",
     "settings": "Settings",
     "login": "Sign In",
-    "logout": "Sign Out"
+    "logout": "Sign Out",
+    "back_to_home": "Back to home"
   },
   "theme": {
     "light": "Light",

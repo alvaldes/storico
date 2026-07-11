@@ -10,7 +10,8 @@
     "export": "Exportar",
     "settings": "Configuración",
     "login": "Iniciar Sesión",
-    "logout": "Cerrar Sesión"
+    "logout": "Cerrar Sesión",
+    "back_to_home": "Volver al inicio"
   },
   "theme": {
     "light": "Claro",
