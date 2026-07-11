@@ -22,7 +22,6 @@ export function ThemeToggle() {
   return (
     <button
       onClick={mounted ? toggleTheme : undefined}
-      disabled={!mounted}
       className={cn(
         "rounded-md p-2 transition-colors",
         "text-(--color-text-secondary) hover:bg-(--color-surface-secondary)",
