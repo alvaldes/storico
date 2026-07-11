@@ -93,11 +93,17 @@ export function MobileNav({
               grouped[cat].push(link);
             }
             return Object.entries(grouped).map(([category, categoryLinks]) => (
-              <div key={category} className="flex flex-col gap-0.5 pb-3 last:pb-0">
+              <div
+                key={category}
+                className="flex flex-col gap-0.5 pb-3 last:pb-0"
+              >
                 {category && (
-                  <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {category}
-                  </p>
+                  <div>
+                    {/* <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"> */}
+                    {/*   {category} */}
+                    {/* </p> */}
+                    <hr className="border-t border-border my-1" />
+                  </div>
                 )}
                 {categoryLinks.map((link) => {
                   const isActive = currentPath === link.href;
@@ -106,7 +112,7 @@ export function MobileNav({
                       key={link.href}
                       href={link.href}
                       onClick={() => setOpen(false)}
-                      className={`rounded-lg px-3 py-2.5 text-[15px] font-medium no-underline transition-colors ${
+                      className={`rounded-lg px-3 py-2.5 text-xs font-normal no-underline transition-colors ${
                         isActive
                           ? "bg-muted text-foreground font-semibold"
                           : "text-muted-foreground hover:bg-muted hover:text-foreground"
