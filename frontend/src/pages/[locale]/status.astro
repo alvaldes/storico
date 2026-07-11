@@ -1,11 +1,10 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { useTranslations } from '@/i18n/utils';
+import { config } from '@/lib/config';
 
 const locale = (Astro.params.locale as string) || 'en';
 const t = useTranslations(locale);
-
-const API_BASE = import.meta.env.API_URL || 'http://127.0.0.1:8000';
 
 interface ServiceStatus {
   status: 'ok' | 'error';
@@ -25,7 +24,7 @@ let health: HealthResponse | null = null;
 let fetchError: string | null = null;
 
 try {
-  const response = await fetch(`${API_BASE}/api/v1/health`, {
+  const response = await fetch(`${config.apiUrl}/api/v1/health`, {
     signal: AbortSignal.timeout(10_000),
   });
   if (response.ok) {

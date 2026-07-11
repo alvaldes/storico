@@ -19,7 +19,7 @@ export default defineConfig({
   },
   vite: {
     plugins: [tailwindcss()],
-    envDir: '..',
+    // env vars read from frontend/.env (default Astro behavior)
     optimizeDeps: {
       include: ['zustand'],
     },

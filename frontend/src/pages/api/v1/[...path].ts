@@ -1,9 +1,6 @@
 import type { APIRoute } from 'astro'
 import { getSession } from 'auth-astro/server'
-
-const API_BASE = import.meta.env.API_URL || 'http://127.0.0.1:8000'
-const INTERNAL_TOKEN =
-  import.meta.env.STORICO_AUTH_INTERNAL_TOKEN || 'dev-insecure-token-change-in-production'
+import { config } from '@/lib/config'
 
 export const ALL: APIRoute = async ({ request, params }) => {
   const session = await getSession(request)
@@ -16,11 +13,11 @@ export const ALL: APIRoute = async ({ request, params }) => {
   }
 
   const path = params.path || ''
-  const url = `${API_BASE}/api/v1/${path}`
+  const url = `${config.apiUrl}/api/v1/${path}`
 
   const headers = new Headers(request.headers)
   headers.set('X-Storico-User-Id', session.user.id as string)
-  headers.set('X-Storico-Internal-Token', INTERNAL_TOKEN)
+  headers.set('X-Storico-Internal-Token', config.internalToken)
 
   // Remove host header to avoid conflicts
   headers.delete('host')

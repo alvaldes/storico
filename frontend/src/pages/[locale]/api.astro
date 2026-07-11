@@ -1,11 +1,10 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { useTranslations } from '@/i18n/utils';
+import { config } from '@/lib/config';
 
 const locale = (Astro.params.locale as string) || 'en';
 const t = useTranslations(locale);
-
-const API_BASE = import.meta.env.API_URL || 'http://127.0.0.1:8000';
 ---
 
 <PublicLayout
@@ -24,7 +23,7 @@ const API_BASE = import.meta.env.API_URL || 'http://127.0.0.1:8000';
     <div class="space-y-5 text-base leading-[1.7] text-(--color-text-secondary) md:text-lg">
       <p class="text-lg font-medium text-(--color-text)">
         {t.pages.api.intro}
-        <a href={`${API_BASE}/docs`} target="_blank" rel="noopener noreferrer"
+        <a href={`${config.apiUrl}/docs`} target="_blank" rel="noopener noreferrer"
            class="inline-link"
            aria-label="OpenAPI documentation (opens in new tab)">
           <code class="rounded bg-(--color-surface-secondary) px-1.5 py-0.5 text-sm font-mono text-(--color-text) underline decoration-dotted underline-offset-2 transition-colors hover:text-(--color-primary-600)">/docs</code>
@@ -63,7 +62,7 @@ const API_BASE = import.meta.env.API_URL || 'http://127.0.0.1:8000';
 
       <p class="pt-4">
         {t.pages.api.footer}
-        <a href={`${API_BASE}/docs`} target="_blank" rel="noopener noreferrer"
+        <a href={`${config.apiUrl}/docs`} target="_blank" rel="noopener noreferrer"
            class="inline-link"
            aria-label="Swagger documentation (opens in new tab)">
           <code class="rounded bg-(--color-surface-secondary) px-1.5 py-0.5 text-sm font-mono text-(--color-text) underline decoration-dotted underline-offset-2 transition-colors hover:text-(--color-primary-600)">/docs</code>
