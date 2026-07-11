@@ -38,7 +38,9 @@ export function MobileNav({
 
   // Compute active path from window.location (handles View Transitions client-side nav)
   const [currentPath, setCurrentPath] = useState(() =>
-    typeof window !== "undefined" ? window.location.pathname : _activePath ?? "",
+    typeof window !== "undefined"
+      ? window.location.pathname
+      : (_activePath ?? ""),
   );
 
   useEffect(() => {
@@ -66,8 +68,8 @@ export function MobileNav({
       <SheetContent
         side="right"
         showCloseButton={false}
-        className="rounded-bl-xl rounded-br-xl"
-        style={{ bottom: "auto", height: "auto" }}
+        className="rounded-bl-xl rounded-br-xl data-[side=right]:border-0"
+        style={{ top: "3.75rem", bottom: "auto", height: "auto" }}
       >
         <SheetHeader className="flex flex-row items-center justify-between">
           <SheetTitle>{brandName}</SheetTitle>
