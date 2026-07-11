@@ -37,6 +37,22 @@ const navLinks = [
   { href: L('/status'), label: t.footer.status_page },
   { href: L('/about'), label: t.footer.about },
 ];
+
+const mobileNavLinks = [
+  // ── Product ──
+  { href: L('/dashboard'), label: t.nav.dashboard, category: t.footer.product },
+  { href: L('/stories'), label: t.nav.stories, category: t.footer.product },
+  { href: L('/kanban'), label: t.nav.kanban, category: t.footer.product },
+  // ── Resources ──
+  { href: L('/docs'), label: t.footer.documentation, category: t.footer.resources },
+  { href: L('/api'), label: t.footer.api_reference, category: t.footer.resources },
+  { href: L('/status'), label: t.footer.status_page, category: t.footer.resources },
+  // ── Company ──
+  { href: L('/about'), label: t.footer.about, category: t.footer.company },
+  { href: L('/privacy'), label: t.footer.privacy, category: t.footer.company },
+  { href: L('/terms'), label: t.footer.terms, category: t.footer.company },
+];
+
 const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLoggedIn ? t.nav.dashboard : t.landing.hero.cta_primary };
 ---
 
@@ -92,6 +108,7 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
       currentPath={currentPath}
       langToggleHref={langToggleHref}
       navLinks={navLinks}
+      mobileNavLinks={mobileNavLinks}
       ctaLink={ctaLink}
       isLoggedIn={isLoggedIn}
     />

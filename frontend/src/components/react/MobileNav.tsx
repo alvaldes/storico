@@ -15,6 +15,7 @@ import { Menu, X } from "lucide-react";
 export interface MobileNavLink {
   href: string;
   label: string;
+  category?: string;
 }
 
 interface MobileNavProps {
@@ -83,20 +84,41 @@ export function MobileNav({
           </button>
         </SheetHeader>
 
-        <nav className="flex flex-col gap-1 px-4">
-          {links.map((link) => {
-            const isActive = currentPath === link.href;
-            return (
-              <a
-                key={link.href}
-                href={link.href}
-                onClick={() => setOpen(false)}
-                className={`rounded-lg px-3 py-2.5 text-[15px] font-medium no-underline transition-colors ${isActive ? "bg-muted text-foreground font-semibold" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-              >
-                {link.label}
-              </a>
-            );
-          })}
+        <nav className="flex flex-col px-4">
+          {(() => {
+            const grouped: Record<string, MobileNavLink[]> = {};
+            for (const link of links) {
+              const cat = link.category || "";
+              if (!grouped[cat]) grouped[cat] = [];
+              grouped[cat].push(link);
+            }
+            return Object.entries(grouped).map(([category, categoryLinks]) => (
+              <div key={category} className="flex flex-col gap-0.5 pb-3 last:pb-0">
+                {category && (
+                  <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {category}
+                  </p>
+                )}
+                {categoryLinks.map((link) => {
+                  const isActive = currentPath === link.href;
+                  return (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setOpen(false)}
+                      className={`rounded-lg px-3 py-2.5 text-[15px] font-medium no-underline transition-colors ${
+                        isActive
+                          ? "bg-muted text-foreground font-semibold"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      {link.label}
+                    </a>
+                  );
+                })}
+              </div>
+            ));
+          })()}
         </nav>
 
         <SheetFooter>

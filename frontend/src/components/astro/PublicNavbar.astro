@@ -5,16 +5,19 @@ import { MobileNav } from '../react/MobileNav';
 import GitHubIcon from './GitHubIcon.astro';
 import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
 
+import type { MobileNavLink } from '../react/MobileNav';
+
 export interface Props {
   locale: Locale;
   currentPath: string;
   langToggleHref: string;
   navLinks: Array<{ href: string; label: string }>;
+  mobileNavLinks?: MobileNavLink[];
   ctaLink: { href: string; label: string };
   isLoggedIn: boolean;
 }
 
-const { locale, currentPath, langToggleHref, navLinks, ctaLink, isLoggedIn } = Astro.props;
+const { locale, currentPath, langToggleHref, navLinks, mobileNavLinks, ctaLink, isLoggedIn } = Astro.props;
 const t = useTranslations(locale);
 const L = (path: string) => localizedPath(path, locale);
 ---
@@ -70,7 +73,7 @@ const L = (path: string) => localizedPath(path, locale);
       <!-- Mobile nav (Sheet island, hydrated on idle) -->
       <MobileNav
         client:idle
-        links={navLinks}
+        links={mobileNavLinks ?? navLinks}
         brandName={t.app.name}
         locale={locale}
         langToggleHref={langToggleHref}
