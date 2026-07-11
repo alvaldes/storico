@@ -1,8 +1,26 @@
-# Storico
+<p align="center">
+  <img src="frontend/public/favicon.svg" alt="Storico" width="80" />
+</p>
 
-> LLM-powered tool that automates decomposing natural language user stories into structured Kanban tasks.
+<h2 align="center">Storico</h2>
 
-Storico is a thesis project for the Master's in Software Engineering at **Universidad Tecnológica de la Mixteca (UTM)**, Oaxaca, México.
+<p align="center">
+  <strong>LLM-powered tool that automates decomposing natural language user stories into structured Kanban tasks.</strong><br>
+  Built with FastAPI (hexagonal), Astro + React islands, and Ollama. Thesis project at UTM, Oaxaca.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="License" />
+  <img src="https://img.shields.io/badge/python-3.12%2B-blue" alt="Python" />
+  <img src="https://img.shields.io/badge/Astro-5.x-blueviolet" alt="Astro" />
+  <img src="https://img.shields.io/badge/status-thesis-yellow" alt="Status" />
+</p>
+
+---
+
+## Project Status
+
+> **MVP stage — experimental evaluation pending.** Storico is a thesis research project in active development. The core extraction pipeline works (Ollama → prompts validated with LocalLLM-DataForge), but the formal evaluation — expert judgment with 6 Scrum Masters/POs and TCR/TAS/IFI metrics — is yet to be conducted. Expect rough edges, missing features, and breaking changes as the research progresses.
 
 ## Prerequisites
 
