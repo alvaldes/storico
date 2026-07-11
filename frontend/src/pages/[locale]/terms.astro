@@ -1,9 +1,9 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { Separator } from '@/components/ui/separator';
-import { useTranslations } from '@/i18n/utils';
+import { useTranslations, type Locale } from '@/i18n/utils';
 
-const locale = (Astro.params.locale as string) || 'en';
+const locale = (Astro.params.locale as Locale) || 'en';
 const t = useTranslations(locale);
 const p = t.pages.terms;
 ---
