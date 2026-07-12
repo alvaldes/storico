@@ -1,0 +1,4 @@
+# Vercel Python Serverless — dependencies
+# This file is used by Vercel to install Python dependencies.
+# Keep in sync with pyproject.toml.
+-e .

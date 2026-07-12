@@ -12,8 +12,8 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/node": "^9.5.5",
     "@astrojs/react": "^4.2.3",
+    "@astrojs/vercel": "^9.0.5",
     "@auth/core": "^0.37.4",
     "@base-ui/react": "^1.6.0",
     "@fontsource-variable/geist": "^5.2.9",
