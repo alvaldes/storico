@@ -22,18 +22,33 @@ const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
 const otherLocale = locale === 'en' ? 'es' : 'en';
 const langToggleHref = localizedPath(cleanPath, otherLocale);
 
-// Map path to nav translation key for breadcrumb current page
-const pageNavKey: Record<string, string> = {
-  '/dashboard': 'dashboard',
-  '/stories': 'stories',
-  '/kanban': 'kanban',
-  '/export': 'export',
-  '/settings': 'settings',
+// ── Auto breadcrumb ─────────────────────────────────────────────
+// Maps path segments to nav translation keys
+const segmentLabelKey: Record<string, string> = {
+  dashboard: 'dashboard',
+  stories: 'stories',
+  kanban: 'kanban',
+  export: 'export',
+  settings: 'settings',
 };
-const currentPageLabel = (() => {
-  const key = pageNavKey[cleanPath];
-  return key ? t.nav[key as keyof typeof t.nav] : t.app.name;
-})();
+
+// Split path into segments, ignoring empty strings
+const segments = cleanPath.split('/').filter(Boolean);
+
+// Build breadcrumb trail: [home, ...segments]
+// Each item has label, href, and whether it's the last (current page)
+type BreadcrumbItem = { label: string; href: string; isLast: boolean };
+const trail: BreadcrumbItem[] = [
+  { label: t.app.name, href: localizedPath('/', locale), isLast: segments.length === 0 },
+  ...segments.map((seg, i) => {
+    const key = segmentLabelKey[seg];
+    return {
+      label: key ? (t.nav as Record<string, string>)[key] : seg,
+      href: localizedPath('/' + segments.slice(0, i + 1).join('/'), locale),
+      isLast: i === segments.length - 1,
+    };
+  }),
+];
 ---
 
 <header
@@ -49,16 +64,21 @@ const currentPageLabel = (() => {
       <Menu className="h-5 w-5" />
     </button>
 
-    <!-- Breadcrumb -->
+    <!-- Auto breadcrumb -->
     <Breadcrumb class="hidden sm:flex">
       <BreadcrumbList>
-        <BreadcrumbItem>
-          <BreadcrumbLink href={localizedPath('/', locale)}>{t.app.name}</BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbPage>{currentPageLabel}</BreadcrumbPage>
-        </BreadcrumbItem>
+        {trail.map((item, i) => (
+          <>
+            {i > 0 && <BreadcrumbSeparator />}
+            <BreadcrumbItem>
+              {item.isLast ? (
+                <BreadcrumbPage>{item.label}</BreadcrumbPage>
+              ) : (
+                <BreadcrumbLink href={item.href}>{item.label}</BreadcrumbLink>
+              )}
+            </BreadcrumbItem>
+          </>
+        ))}
       </BreadcrumbList>
     </Breadcrumb>
   </div>
