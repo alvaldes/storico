@@ -22,9 +22,6 @@ function optional(name: string, fallback: string): string {
 }
 
 export const config = {
-  /** Auth.js base URL — controls OAuth callback URLs. Must be http://localhost:4321 for local dev. */
-  authUrl: optional('AUTH_URL', 'http://localhost:4321'),
-
   /** Backend URL used by Astro API proxy and Auth.js */
   apiUrl: required('API_URL'),
 
