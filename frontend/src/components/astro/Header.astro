@@ -4,15 +4,8 @@ import { UserMenu } from '../react/UserMenu';
 import { Menu } from 'lucide-react';
 import GitHubIcon from './GitHubIcon.astro';
 import LangToggle from './LangToggle.astro';
+import { AutoBreadcrumb } from '../react/AutoBreadcrumb';
 import { useTranslations, localizedPath } from '@/i18n/utils';
-import {
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb';
 
 const { locale = 'en', userJson } = Astro.props;
 const t = useTranslations(locale);
@@ -22,33 +15,8 @@ const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
 const otherLocale = locale === 'en' ? 'es' : 'en';
 const langToggleHref = localizedPath(cleanPath, otherLocale);
 
-// ── Auto breadcrumb ─────────────────────────────────────────────
-// Maps path segments to nav translation keys
-const segmentLabelKey: Record<string, string> = {
-  dashboard: 'dashboard',
-  stories: 'stories',
-  kanban: 'kanban',
-  export: 'export',
-  settings: 'settings',
-};
-
-// Split path into segments, ignoring empty strings
+// Breadcrumb segments from path
 const segments = cleanPath.split('/').filter(Boolean);
-
-// Build breadcrumb trail: [home, ...segments]
-// Each item has label, href, and whether it's the last (current page)
-type BreadcrumbItem = { label: string; href: string; isLast: boolean };
-const trail: BreadcrumbItem[] = [
-  { label: t.app.name, href: localizedPath('/', locale), isLast: segments.length === 0 },
-  ...segments.map((seg, i) => {
-    const key = segmentLabelKey[seg];
-    return {
-      label: key ? (t.nav as Record<string, string>)[key] : seg,
-      href: localizedPath('/' + segments.slice(0, i + 1).join('/'), locale),
-      isLast: i === segments.length - 1,
-    };
-  }),
-];
 ---
 
 <header
@@ -64,23 +32,8 @@ const trail: BreadcrumbItem[] = [
       <Menu className="h-5 w-5" />
     </button>
 
-    <!-- Auto breadcrumb -->
-    <Breadcrumb class="hidden sm:flex">
-      <BreadcrumbList>
-        {trail.map((item, i) => (
-          <>
-            {i > 0 && <BreadcrumbSeparator />}
-            <BreadcrumbItem>
-              {item.isLast ? (
-                <BreadcrumbPage>{item.label}</BreadcrumbPage>
-              ) : (
-                <BreadcrumbLink href={item.href}>{item.label}</BreadcrumbLink>
-              )}
-            </BreadcrumbItem>
-          </>
-        ))}
-      </BreadcrumbList>
-    </Breadcrumb>
+    <AutoBreadcrumb locale={locale} segments={segments} />
+
   </div>
 
   <div class="flex items-center gap-2">
