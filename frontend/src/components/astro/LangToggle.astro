@@ -15,12 +15,14 @@ export interface Props {
 
 const { href, locale } = Astro.props;
 const t = useTranslations(locale);
+const targetLang = locale === 'en' ? t.language.es : t.language.en;
 ---
 
 <a
   href={href}
   class="flex items-center p-2 text-xs font-bold uppercase tracking-wider text-(--color-text-secondary) no-underline transition-colors hover:text-(--color-text)"
   aria-label="Switch language"
+  title={targetLang}
 >
   {locale === 'en' ? t.language.short_es : t.language.short_en}
 </a>

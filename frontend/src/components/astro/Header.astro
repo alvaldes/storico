@@ -23,6 +23,7 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
       id="sidebar-toggle"
       class="rounded-md p-1.5 text-(--color-text-secondary) hover:bg-(--color-surface-secondary) transition-colors lg:hidden"
       aria-label={t.sidebar.expand}
+      title={t.sidebar.expand}
     >
       <Menu className="h-5 w-5" />
     </button>
@@ -42,6 +43,7 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
       rel="noopener noreferrer"
       class="rounded-md p-1.5 text-(--color-text-secondary) hover:text-(--color-text) hover:bg-(--color-surface-secondary) transition-colors"
       aria-label="GitHub repository"
+      title="GitHub repository"
     >
       <GitHubIcon class="h-5 w-5" />
     </a>
