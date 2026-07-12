@@ -19,6 +19,9 @@ export default defineConfig({
   },
   vite: {
     plugins: [tailwindcss()],
+    server: {
+      allowedHosts: ['.ngrok-free.app'],
+    },
     // env vars read from frontend/.env (default Astro behavior)
     optimizeDeps: {
       include: ['zustand'],
