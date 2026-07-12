@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   User,
   Bot,
@@ -12,7 +12,6 @@ import {
   X,
   LoaderCircle,
   ExternalLink,
-  Github,
   BookOpen,
   Activity,
   Code,
@@ -75,12 +74,18 @@ interface LLMFormProps {
   t: ReturnType<typeof useTranslations>;
   initial: LLMFormState;
   onSave: (state: LLMFormState) => void;
+  apiSaving: boolean;
+  lastSaveResult: "idle" | "success" | "error";
 }
 
-function LLMForm({ t, initial, onSave }: LLMFormProps) {
+function LLMForm({
+  t,
+  initial,
+  onSave,
+  apiSaving,
+  lastSaveResult,
+}: LLMFormProps) {
   const [form, setForm] = useState<LLMFormState>(initial);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<"idle" | "success" | "error">(
     "idle",
@@ -109,13 +114,7 @@ function LLMForm({ t, initial, onSave }: LLMFormProps) {
     }));
 
   const handleSave = () => {
-    setSaving(true);
-    onSave(form); // syncs local state + triggers API
-    setTimeout(() => {
-      setSaving(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    }, 800); // minimum feedback window
+    onSave(form);
   };
 
   const handleTest = async () => {
@@ -130,7 +129,9 @@ function LLMForm({ t, initial, onSave }: LLMFormProps) {
             : form.provider === "openai"
               ? form.openai.model
               : form.anthropic.model,
-        ...(form.provider === "ollama" ? { base_url: form.ollama.baseUrl } : {}),
+        ...(form.provider === "ollama"
+          ? { base_url: form.ollama.baseUrl }
+          : {}),
         ...(form.provider === "openai" && form.openai.apiKey
           ? { api_key: form.openai.apiKey }
           : {}),
@@ -356,13 +357,17 @@ function LLMForm({ t, initial, onSave }: LLMFormProps) {
 
       {/* Actions */}
       <div className="flex items-center gap-3">
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? (
+        <Button onClick={handleSave} disabled={apiSaving}>
+          {apiSaving ? (
             <LoaderCircle className="h-4 w-4 animate-spin" />
-          ) : saved ? (
+          ) : lastSaveResult === "success" ? (
             <Check className="h-4 w-4" />
+          ) : lastSaveResult === "error" ? (
+            <X className="h-4 w-4" />
           ) : null}
-          {saved ? t.settings.llm_saved : t.settings.llm_save}
+          {lastSaveResult === "success"
+            ? t.settings.llm_saved
+            : t.settings.llm_save}
         </Button>
 
         <Button variant="outline" onClick={handleTest} disabled={testing}>
@@ -409,6 +414,7 @@ export function SettingsPage({ locale }: SettingsPageProps) {
     loadFromApi,
     syncToApi,
     apiSaving,
+    lastSaveResult,
   } = useSettingsStore();
   const { user, loading: authLoading } = useAuthStore();
   const { theme, setTheme } = useUIStore();
@@ -419,24 +425,37 @@ export function SettingsPage({ locale }: SettingsPageProps) {
     loadFromApi();
   }, [loadFromApi]);
 
-  /* ── Build LLMForm initial state from store ── */
-  const llmInitial: LLMFormState = {
-    provider: settings.llm.provider,
-    ollama: {
-      baseUrl: settings.llm.ollama.baseUrl,
-      model: settings.llm.ollama.model,
-    },
-    openai: {
-      apiKey: settings.llm.openai.apiKey,
-      model: settings.llm.openai.model,
-    },
-    anthropic: {
-      apiKey: settings.llm.anthropic.apiKey,
-      model: settings.llm.anthropic.model,
-    },
-    temperature: settings.llm.ollama.temperature,
-    maxTokens: settings.llm.ollama.maxTokens,
-  };
+  /* ── Build LLMForm initial state from store (memoized) ── */
+  const llmInitial = useMemo<LLMFormState>(
+    () => ({
+      provider: settings.llm.provider,
+      ollama: {
+        baseUrl: settings.llm.ollama.baseUrl,
+        model: settings.llm.ollama.model,
+      },
+      openai: {
+        apiKey: settings.llm.openai.apiKey,
+        model: settings.llm.openai.model,
+      },
+      anthropic: {
+        apiKey: settings.llm.anthropic.apiKey,
+        model: settings.llm.anthropic.model,
+      },
+      temperature: settings.llm.ollama.temperature,
+      maxTokens: settings.llm.ollama.maxTokens,
+    }),
+    [
+      settings.llm.provider,
+      settings.llm.ollama.baseUrl,
+      settings.llm.ollama.model,
+      settings.llm.ollama.temperature,
+      settings.llm.ollama.maxTokens,
+      settings.llm.openai.apiKey,
+      settings.llm.openai.model,
+      settings.llm.anthropic.apiKey,
+      settings.llm.anthropic.model,
+    ],
+  );
 
   const handleLLMSave = (state: LLMFormState) => {
     setLLMProvider(state.provider);
@@ -458,7 +477,12 @@ export function SettingsPage({ locale }: SettingsPageProps) {
       temperature: state.temperature,
       maxTokens: state.maxTokens,
     });
-    syncToApi();
+    syncToApi({
+      loading: t.settings.llm_saving,
+      success: t.settings.llm_saved,
+      successDesc: t.settings.llm_saved_description,
+      error: t.settings.llm_save_error,
+    });
   };
 
   if (!mounted) {
@@ -540,7 +564,13 @@ export function SettingsPage({ locale }: SettingsPageProps) {
           <CardDescription>{t.settings.llm_description}</CardDescription>
         </CardHeader>
         <CardContent>
-          <LLMForm t={t} initial={llmInitial} onSave={handleLLMSave} />
+          <LLMForm
+            t={t}
+            initial={llmInitial}
+            onSave={handleLLMSave}
+            apiSaving={apiSaving}
+            lastSaveResult={lastSaveResult}
+          />
         </CardContent>
       </Card>
 

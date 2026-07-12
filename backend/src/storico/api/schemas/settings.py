@@ -5,10 +5,23 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import AliasGenerator, BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 
 
-class LLMProviderConfig(BaseModel):
+class CamelCaseModel(BaseModel):
+    """Base model that accepts camelCase from API and uses snake_case internally."""
+
+    model_config = ConfigDict(
+        alias_generator=AliasGenerator(
+            serialization_alias=to_camel,
+            validation_alias=to_camel,
+        ),
+        populate_by_name=True,
+    )
+
+
+class LLMProviderConfig(CamelCaseModel):
     """Configuration for a single LLM provider — shared shape for all providers."""
 
     model_config = ConfigDict(extra="forbid")
@@ -20,7 +33,7 @@ class LLMProviderConfig(BaseModel):
     api_key: str | None = None
 
 
-class LLMSettings(BaseModel):
+class LLMSettings(CamelCaseModel):
     """LLM provider selection and per-provider configs."""
 
     model_config = ConfigDict(extra="forbid")
@@ -40,7 +53,7 @@ class LLMSettings(BaseModel):
     )
 
 
-class ExportSettings(BaseModel):
+class ExportSettings(CamelCaseModel):
     """Default export format preferences."""
 
     model_config = ConfigDict(extra="forbid")
@@ -48,7 +61,7 @@ class ExportSettings(BaseModel):
     default_format: Literal["trello", "json", "markdown"] = "json"
 
 
-class AppSettings(BaseModel):
+class AppSettings(CamelCaseModel):
     """Top-level user application settings — mirrors frontend AppSettings."""
 
     model_config = ConfigDict(extra="forbid")
@@ -57,14 +70,14 @@ class AppSettings(BaseModel):
     export: ExportSettings = ExportSettings()
 
 
-class UserPreferencesResponse(BaseModel):
+class UserPreferencesResponse(CamelCaseModel):
     """Response returned by GET /users/me/settings."""
 
     preferences: AppSettings
     updated_at: datetime
 
 
-class UserPreferencesUpdate(BaseModel):
+class UserPreferencesUpdate(CamelCaseModel):
     """Request body for PUT /users/me/settings."""
 
     model_config = ConfigDict(extra="forbid")
@@ -72,7 +85,7 @@ class UserPreferencesUpdate(BaseModel):
     preferences: AppSettings
 
 
-class LLMTestRequest(BaseModel):
+class LLMTestRequest(CamelCaseModel):
     """Request body for POST /llm/test."""
 
     model_config = ConfigDict(extra="forbid")
@@ -83,7 +96,7 @@ class LLMTestRequest(BaseModel):
     model: str = "llama3.2"
 
 
-class LLMTestResponse(BaseModel):
+class LLMTestResponse(CamelCaseModel):
     """Response returned by POST /llm/test."""
 
     success: bool
@@ -92,7 +105,7 @@ class LLMTestResponse(BaseModel):
     latency_ms: int | None = None
 
 
-class DeleteAccountResponse(BaseModel):
+class DeleteAccountResponse(CamelCaseModel):
     """Response returned by DELETE /users/me."""
 
     message: str = "Account deleted successfully"

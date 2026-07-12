@@ -41,7 +41,11 @@ UserRepoDep = Annotated[
 ]
 
 
-@settings_router.get("/settings", response_model=UserPreferencesResponse)
+@settings_router.get(
+    "/settings",
+    response_model=UserPreferencesResponse,
+    response_model_by_alias=True,
+)
 async def get_settings(
     current_user: CurrentUserDep,
     repo: PrefRepoDep,
@@ -62,7 +66,11 @@ async def get_settings(
     )
 
 
-@settings_router.put("/settings", response_model=UserPreferencesResponse)
+@settings_router.put(
+    "/settings",
+    response_model=UserPreferencesResponse,
+    response_model_by_alias=True,
+)
 async def update_settings(
     body: UserPreferencesUpdate,
     current_user: CurrentUserDep,
