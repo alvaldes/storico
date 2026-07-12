@@ -45,8 +45,8 @@ function isActive(href: string): boolean {
     <button
       id="sidebar-collapse-toggle"
       class="rounded-md p-1.5 text-(--color-text-secondary) hover:bg-(--color-surface-secondary) transition-colors"
-      aria-label={t.sidebar.collapse}
-      title={t.sidebar.collapse}
+      data-label-collapse={t.sidebar.collapse}
+      data-label-expand={t.sidebar.expand}
     >
       <PanelLeftClose className="h-5 w-5 sidebar-collapsed:hidden" />
       <PanelLeftOpen className="h-5 w-5 hidden sidebar-collapsed:block" />
@@ -127,16 +127,24 @@ function isActive(href: string): boolean {
   // ── Desktop collapse toggle ──
   const collapseBtn = document.getElementById('sidebar-collapse-toggle');
   if (collapseBtn) {
-    // Restore persisted state on load
+    function updateCollapseLabel() {
+      const isCollapsed = document.documentElement.classList.contains('sidebar-collapsed');
+      collapseBtn.title = isCollapsed ? collapseBtn.dataset.labelExpand : collapseBtn.dataset.labelCollapse;
+      collapseBtn.setAttribute('aria-label', collapseBtn.title);
+    }
+
+    // Restore persisted state on load and sync label
     const saved = localStorage.getItem('sidebar-collapsed');
     if (saved === 'true') {
       document.documentElement.classList.add('sidebar-collapsed');
     }
+    updateCollapseLabel();
 
     collapseBtn.addEventListener('click', () => {
       document.documentElement.classList.toggle('sidebar-collapsed');
       const isCollapsed = document.documentElement.classList.contains('sidebar-collapsed');
       localStorage.setItem('sidebar-collapsed', String(isCollapsed));
+      updateCollapseLabel();
     });
   }
 </script>
