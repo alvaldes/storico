@@ -3,10 +3,16 @@ import { ThemeToggle } from '../react/ThemeToggle';
 import { UserMenu } from '../react/UserMenu';
 import { Menu } from 'lucide-react';
 import GitHubIcon from './GitHubIcon.astro';
-import { useTranslations } from '@/i18n/utils';
+import LangToggle from './LangToggle.astro';
+import { useTranslations, localizedPath } from '@/i18n/utils';
 
 const { locale = 'en', userJson } = Astro.props;
 const t = useTranslations(locale);
+
+// Preserve current page on language switch
+const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
+const otherLocale = locale === 'en' ? 'es' : 'en';
+const langToggleHref = localizedPath(cleanPath, otherLocale);
 ---
 
 <header
@@ -28,6 +34,7 @@ const t = useTranslations(locale);
 
   <div class="flex items-center gap-2">
     <UserMenu userJson={userJson} client:load />
+    <LangToggle href={langToggleHref} locale={locale} />
     <ThemeToggle client:load />
     <a
       href="https://github.com/alvaldes/storico"

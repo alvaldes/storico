@@ -34,11 +34,10 @@ export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
           <FolderKanban className="mb-4 h-12 w-12 text-muted-foreground" />
           <p className="text-lg font-medium text-foreground">
-            No projects yet
+            {t.dashboard.empty_title}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Create your first project to start extracting tasks from user
-            stories.
+            {t.dashboard.empty_description}
           </p>
         </div>
       ) : (

@@ -89,7 +89,9 @@
     "short_es": "ES"
   },
   "dashboard": {
-    "new_project": "Nuevo Proyecto"
+    "new_project": "Nuevo Proyecto",
+    "empty_title": "No hay proyectos todavía",
+    "empty_description": "Creá tu primer proyecto para empezar a extraer tareas de historias de usuario."
   },
   "sidebar": {
     "collapse": "Colapsar barra lateral",
