@@ -3,7 +3,15 @@ import Google from '@auth/core/providers/google'
 import { defineConfig } from 'auth-astro'
 import { config } from './src/lib/config'
 
+// For ngrok or other reverse proxies, set AUTH_URL to the public HTTPS URL.
+// Auth.js uses this as the base for all OAuth callback URLs.
+// Falls back to localhost for direct development.
+const AUTH_URL = process.env.AUTH_URL || 'http://localhost:4321'
+
 export default defineConfig({
+  // Explicit base URL — overrides auto-detection so ngrok HTTPS callbacks
+  // work correctly (otherwise Auth.js uses http:// from the local proxy).
+  base: AUTH_URL,
   providers: [
     GitHub({
       clientId: config.github.clientId || undefined,
