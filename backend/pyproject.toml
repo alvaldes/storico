@@ -65,5 +65,8 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.vercel]
+entrypoint = "api/index.py"
+
 [project.urls]
 Source = "https://github.com/alvaldes/storico"
