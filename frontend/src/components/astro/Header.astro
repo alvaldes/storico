@@ -5,6 +5,14 @@ import { Menu } from 'lucide-react';
 import GitHubIcon from './GitHubIcon.astro';
 import LangToggle from './LangToggle.astro';
 import { useTranslations, localizedPath } from '@/i18n/utils';
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb';
 
 const { locale = 'en', userJson } = Astro.props;
 const t = useTranslations(locale);
@@ -13,6 +21,19 @@ const t = useTranslations(locale);
 const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
 const otherLocale = locale === 'en' ? 'es' : 'en';
 const langToggleHref = localizedPath(cleanPath, otherLocale);
+
+// Map path to nav translation key for breadcrumb current page
+const pageNavKey: Record<string, string> = {
+  '/dashboard': 'dashboard',
+  '/stories': 'stories',
+  '/kanban': 'kanban',
+  '/export': 'export',
+  '/settings': 'settings',
+};
+const currentPageLabel = (() => {
+  const key = pageNavKey[cleanPath];
+  return key ? t.nav[key as keyof typeof t.nav] : t.app.name;
+})();
 ---
 
 <header
@@ -27,10 +48,19 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
     >
       <Menu className="h-5 w-5" />
     </button>
-    <a href="/" class="hidden sm:inline-flex items-center gap-2 no-underline">
-      <img src="/favicon.svg" alt="" class="h-5 w-auto" />
-      <span class="text-sm font-medium text-(--color-text-secondary)">{t.app.name}</span>
-    </a>
+
+    <!-- Breadcrumb -->
+    <Breadcrumb class="hidden sm:flex">
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <BreadcrumbLink href={localizedPath('/', locale)}>{t.app.name}</BreadcrumbLink>
+        </BreadcrumbItem>
+        <BreadcrumbSeparator />
+        <BreadcrumbItem>
+          <BreadcrumbPage>{currentPageLabel}</BreadcrumbPage>
+        </BreadcrumbItem>
+      </BreadcrumbList>
+    </Breadcrumb>
   </div>
 
   <div class="flex items-center gap-2">

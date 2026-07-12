@@ -2,19 +2,10 @@ import { FolderKanban, Plus } from 'lucide-react';
 import { useProjectStore } from '@/stores/projectStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { useTranslations, type Locale, localizedPath } from '@/i18n/utils';
-import {
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb';
+import { useTranslations, type Locale } from '@/i18n/utils';
 
 export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
   const t = useTranslations(locale);
-  const L = (path: string) => localizedPath(path, locale);
   const { projects, loading } = useProjectStore();
 
   if (loading) {
@@ -27,19 +18,6 @@ export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href={L('/')}>{t.app.name}</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{t.nav.dashboard}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-foreground">
