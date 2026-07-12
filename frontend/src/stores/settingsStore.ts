@@ -6,9 +6,15 @@ import {
   type ExportFormat,
   DEFAULT_SETTINGS,
 } from '@/types/settings';
+import { fetchSettings, saveSettings } from '@/lib/settings-api';
 
 interface SettingsState {
   settings: AppSettings;
+  apiLoaded: boolean;
+  apiSaving: boolean;
+  apiError: string | null;
+  loadFromApi: () => Promise<void>;
+  syncToApi: () => Promise<void>;
   setLLMProvider: (provider: LLMProvider) => void;
   setOllamaConfig: (config: Partial<AppSettings['llm']['ollama']>) => void;
   setOpenAIConfig: (config: Partial<AppSettings['llm']['openai']>) => void;
@@ -19,8 +25,37 @@ interface SettingsState {
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       settings: DEFAULT_SETTINGS,
+      apiLoaded: false,
+      apiSaving: false,
+      apiError: null,
+
+      loadFromApi: async () => {
+        try {
+          const response = await fetchSettings();
+          set({
+            settings: response.preferences,
+            apiLoaded: true,
+            apiError: null,
+          });
+        } catch {
+          // API unavailable — keep localStorage cache
+          set({ apiLoaded: true, apiError: null });
+        }
+      },
+
+      syncToApi: async () => {
+        const { settings } = get();
+        set({ apiSaving: true, apiError: null });
+        try {
+          await saveSettings(settings);
+          set({ apiSaving: false });
+        } catch (e) {
+          const message = e instanceof Error ? e.message : 'Failed to save settings';
+          set({ apiSaving: false, apiError: message });
+        }
+      },
 
       setLLMProvider: (provider) =>
         set((state) => ({
@@ -72,6 +107,8 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'storico-settings',
+      // Only persist the settings field, not API state
+      partialize: (state) => ({ settings: state.settings }),
     },
   ),
 );

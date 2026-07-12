@@ -26,6 +26,9 @@ from storico.api.routes import (
     tasks,
     users,
 )
+from storico.api.routes import (
+    settings as settings_routes,
+)
 from storico.config.settings import Settings
 from storico.domain.entities import (
     DuplicateEntity,
@@ -57,11 +60,7 @@ def create_app() -> FastAPI:
     )
 
     # CORS middleware
-    origins = [
-        o.strip()
-        for o in settings.auth_allowed_origins.split(",")
-        if o.strip()
-    ]
+    origins = [o.strip() for o in settings.auth_allowed_origins.split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
@@ -89,5 +88,7 @@ def create_app() -> FastAPI:
     app.include_router(extractions.router)
     app.include_router(users.router)
     app.include_router(extraction.router)
+    app.include_router(settings_routes.settings_router)
+    app.include_router(settings_routes.test_router)
 
     return app

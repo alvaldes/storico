@@ -9,6 +9,9 @@ from storico.infrastructure.database.repositories.project_repository import (
 from storico.infrastructure.database.repositories.task_repository import (
     SQLAlchemyTaskRepository,
 )
+from storico.infrastructure.database.repositories.user_preferences_repository import (
+    SQLAlchemyUserPreferencesRepository,
+)
 from storico.infrastructure.database.repositories.user_repository import (
     SQLAlchemyUserRepository,
 )
@@ -18,6 +21,7 @@ from storico.infrastructure.database.repositories.user_story_repository import (
 
 __all__ = [
     "SQLAlchemyUserRepository",
+    "SQLAlchemyUserPreferencesRepository",
     "SQLAlchemyProjectRepository",
     "SQLAlchemyUserStoryRepository",
     "SQLAlchemyTaskRepository",

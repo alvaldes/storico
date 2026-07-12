@@ -14,6 +14,7 @@ from storico.domain.entities.project import Project
 from storico.domain.entities.task import Task
 from storico.domain.entities.user import User
 from storico.domain.entities.user_account import UserAccount
+from storico.domain.entities.user_preferences import UserPreferences
 from storico.domain.entities.user_story import UserStory
 
 __all__ = [
@@ -28,6 +29,7 @@ __all__ = [
     "PromptTemplateNotFound",
     "User",
     "UserAccount",
+    "UserPreferences",
     "Project",
     "UserStory",
     "Task",

@@ -21,6 +21,7 @@ import { useTranslations, type Locale, localizedPath } from "@/i18n/utils";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useUIStore } from "@/stores/uiStore";
+import { testLLMConnection } from "@/lib/settings-api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -109,24 +110,42 @@ function LLMForm({ t, initial, onSave }: LLMFormProps) {
 
   const handleSave = () => {
     setSaving(true);
-    // Simulate async save — store is sync/localStorage
+    onSave(form); // syncs local state + triggers API
     setTimeout(() => {
-      onSave(form);
       setSaving(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    }, 300);
+    }, 800); // minimum feedback window
   };
 
   const handleTest = async () => {
     setTesting(true);
     setTestResult("idle");
-    // Simulate test — in real implementation, this would call the backend endpoint
-    setTimeout(() => {
+    try {
+      const params = {
+        provider: form.provider,
+        model:
+          form.provider === "ollama"
+            ? form.ollama.model
+            : form.provider === "openai"
+              ? form.openai.model
+              : form.anthropic.model,
+        ...(form.provider === "ollama" ? { base_url: form.ollama.baseUrl } : {}),
+        ...(form.provider === "openai" && form.openai.apiKey
+          ? { api_key: form.openai.apiKey }
+          : {}),
+        ...(form.provider === "anthropic" && form.anthropic.apiKey
+          ? { api_key: form.anthropic.apiKey }
+          : {}),
+      };
+      const result = await testLLMConnection(params);
+      setTestResult(result.success ? "success" : "error");
+    } catch {
+      setTestResult("error");
+    } finally {
       setTesting(false);
-      setTestResult("success");
-      setTimeout(() => setTestResult("idle"), 3000);
-    }, 1500);
+      setTimeout(() => setTestResult("idle"), 4000);
+    }
   };
 
   const providerOptions: { value: LLMProvider; label: string }[] = [
@@ -387,6 +406,9 @@ export function SettingsPage({ locale }: SettingsPageProps) {
     setOpenAIConfig,
     setAnthropicConfig,
     setExportFormat,
+    loadFromApi,
+    syncToApi,
+    apiSaving,
   } = useSettingsStore();
   const { user, loading: authLoading } = useAuthStore();
   const { theme, setTheme } = useUIStore();
@@ -394,7 +416,8 @@ export function SettingsPage({ locale }: SettingsPageProps) {
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    loadFromApi();
+  }, [loadFromApi]);
 
   /* ── Build LLMForm initial state from store ── */
   const llmInitial: LLMFormState = {
@@ -435,6 +458,7 @@ export function SettingsPage({ locale }: SettingsPageProps) {
       temperature: state.temperature,
       maxTokens: state.maxTokens,
     });
+    syncToApi();
   };
 
   if (!mounted) {
