@@ -5,6 +5,7 @@ export interface AuthUser {
   email: string
   name: string
   avatar_url?: string
+  authProvider?: string
 }
 
 interface AuthState {

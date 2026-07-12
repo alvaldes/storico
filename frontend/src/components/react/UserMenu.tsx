@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { signOut } from 'auth-astro/client'
 import { LogOut } from 'lucide-react'
 import { useAuthStore, type AuthUser } from '@/stores/authStore'
+import { fetchCurrentUser } from '@/lib/user-api'
 import {
   Tooltip,
   TooltipTrigger,
@@ -23,13 +24,21 @@ export function UserMenu({ userJson, locale = 'en' }: UserMenuProps) {
     if (userJson) {
       try {
         const parsed: Record<string, unknown> = JSON.parse(userJson)
-        // Auth.js uses "image" for avatar; our type uses "avatar_url"
-        setUser({
+        const baseUser: AuthUser = {
           id: (parsed.id as string) || '',
           email: (parsed.email as string) || '',
           name: (parsed.name as string) || '',
           avatar_url: (parsed.avatar_url as string) || (parsed.image as string) || undefined,
-        })
+        }
+        setUser(baseUser)
+        // Fetch full profile (includes authProvider) from backend
+        fetchCurrentUser()
+          .then((profile) => {
+            setUser({ ...baseUser, authProvider: profile.authProvider })
+          })
+          .catch(() => {
+            // Non-critical — authProvider defaults to email-based fallback
+          })
       } catch {
         setUser(null)
       }

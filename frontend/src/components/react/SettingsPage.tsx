@@ -543,7 +543,11 @@ export function SettingsPage({ locale }: SettingsPageProps) {
               </div>
               <Badge variant="outline" className="text-xs">
                 {t.settings.profile_signed_in_with}{" "}
-                {user.email?.includes("google") ? "Google" : "GitHub"}
+                {user.authProvider
+                  ? user.authProvider.charAt(0).toUpperCase() + user.authProvider.slice(1)
+                  : user.email?.includes("google")
+                    ? "Google"
+                    : "GitHub"}
               </Badge>
             </div>
           ) : (
