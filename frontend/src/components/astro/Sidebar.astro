@@ -9,6 +9,7 @@ import {
   PanelLeftOpen,
 } from 'lucide-react';
 import { localizedPath, useTranslations, type Locale } from '@/i18n/utils';
+import pkg from '../../../package.json';
 
 const { locale = 'en' as Locale, currentPath = '' } = Astro.props;
 const t = useTranslations(locale);
@@ -75,8 +76,9 @@ function isActive(href: string): boolean {
 
   <!-- Footer -->
   <div class="border-t border-(--color-border) p-3">
-    <p class="text-xs text-(--color-text-secondary) text-center">
-      Storico v0.1.0
+    <p class="text-xs text-(--color-text-secondary) text-center truncate">
+      <span class="sidebar-collapsed:hidden">{t.app.name} </span>
+      v{pkg.version}
     </p>
   </div>
 </aside>
