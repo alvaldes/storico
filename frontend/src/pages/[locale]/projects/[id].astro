@@ -1,6 +1,6 @@
 ---
 import MainLayout from '@/layouts/MainLayout.astro';
-import { Dashboard } from '@/components/react/Dashboard';
+import { ProjectDetail } from '@/components/react/ProjectDetail';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { getSession } from 'auth-astro/server';
 
@@ -8,14 +8,13 @@ const locale = (Astro.params.locale as Locale) || 'en';
 const t = useTranslations(locale);
 const session = await getSession(Astro.request);
 const userId = session?.user?.id ?? '';
+const { id } = Astro.params;
 ---
 
 <MainLayout locale={locale}>
   <div slot="head">
-    <title>{t.app.name} — {t.nav.dashboard}</title>
+    <title>{t.app.name} — {t.nav.stories}</title>
   </div>
 
-  <Dashboard client:load locale={locale} userId={userId} />
+  <ProjectDetail client:load locale={locale} projectId={id!} userId={userId} />
 </MainLayout>
-
-

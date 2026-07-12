@@ -1,9 +1,25 @@
-import type { Task } from './task';
-
 export interface UserStory {
   id: string;
   projectId: string;
-  input: string;
+  actor: string;
+  feature: string;
+  benefit: string;
+  rawText: string;
   status: 'pending' | 'processing' | 'completed' | 'error';
-  tasks?: Task[];
+  createdAt: string;
+}
+
+export interface CreateStoryParams {
+  projectId: string;
+  actor: string;
+  feature: string;
+  benefit: string;
+  rawText: string;
+}
+
+export interface UpdateStoryParams {
+  actor?: string;
+  feature?: string;
+  benefit?: string;
+  rawText?: string;
 }
