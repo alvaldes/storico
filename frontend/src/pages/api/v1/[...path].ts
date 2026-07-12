@@ -15,21 +15,30 @@ export const ALL: APIRoute = async ({ request, params }) => {
   const path = params.path || ''
   const url = `${config.apiUrl}/api/v1/${path}`
 
-  const headers = new Headers(request.headers)
+  // Build clean headers — do NOT copy from request (avoids ngrok headers,
+  // Host conflicts, and other proxy artifacts).
+  const headers = new Headers()
   headers.set('X-Storico-User-Id', session.user.id as string)
   headers.set('X-Storico-Internal-Token', config.internalToken)
 
-  // Remove host header to avoid conflicts
-  headers.delete('host')
+  if (request.body) {
+    headers.set('Content-Type', 'application/json')
+  }
 
   try {
-    const backendResponse = await fetch(url, {
+    const fetchInit: RequestInit & { duplex?: string } = {
       method: request.method,
       headers,
-      body: request.body,
-      // @ts-ignore — duplex is required for streaming body
-      duplex: 'half',
-    })
+    }
+
+    // Only pass body for non-GET/non-HEAD requests
+    if (request.body && request.method !== 'GET' && request.method !== 'HEAD') {
+      fetchInit.body = request.body
+      // duplex is required by Node.js fetch when body is a ReadableStream
+      fetchInit.duplex = 'half'
+    }
+
+    const backendResponse = await fetch(url, fetchInit)
 
     const responseBody = await backendResponse.text()
 
