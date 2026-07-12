@@ -3,7 +3,14 @@ import Google from '@auth/core/providers/google'
 import { defineConfig } from 'auth-astro'
 import { config } from './src/lib/config'
 
+// process.env works because auth.config.ts runs server-side (Node.js)
+const BASE_URL = process.env.AUTH_URL || 'http://localhost:4321'
+
 export default defineConfig({
+  // Force the canonical URL so OAuth callbacks always use localhost,
+  // even when the user accesses the app via a private IP (192.168.x.x).
+  // Google does not accept private IPs as redirect URIs.
+  base: BASE_URL,
   providers: [
     GitHub({
       clientId: config.github.clientId || undefined,
