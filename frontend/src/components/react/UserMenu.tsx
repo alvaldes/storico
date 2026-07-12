@@ -22,8 +22,14 @@ export function UserMenu({ userJson, locale = 'en' }: UserMenuProps) {
   useEffect(() => {
     if (userJson) {
       try {
-        const parsed: AuthUser = JSON.parse(userJson)
-        setUser(parsed)
+        const parsed: Record<string, unknown> = JSON.parse(userJson)
+        // Auth.js uses "image" for avatar; our type uses "avatar_url"
+        setUser({
+          id: (parsed.id as string) || '',
+          email: (parsed.email as string) || '',
+          name: (parsed.name as string) || '',
+          avatar_url: (parsed.avatar_url as string) || (parsed.image as string) || undefined,
+        })
       } catch {
         setUser(null)
       }
