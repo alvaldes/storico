@@ -116,6 +116,9 @@
 /* ── Sidebar open state (mobile toggle) ──────────────────────── */
 @custom-variant sidebar-open (&:where(.sidebar-open, .sidebar-open *));
 
+/* ── Sidebar collapsed state (desktop toggle) ───────────────── */
+@custom-variant sidebar-collapsed (&:where(.sidebar-collapsed, .sidebar-collapsed *));
+
 @variant dark {
   --color-surface: #0f141d;
   --color-surface-secondary: oklch(0.18 0.01 260);

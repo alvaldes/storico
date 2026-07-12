@@ -5,7 +5,8 @@ import {
   KanbanSquare,
   Upload,
   Settings,
-  ChevronLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { localizedPath, useTranslations, type Locale } from '@/i18n/utils';
 
@@ -29,22 +30,25 @@ function isActive(href: string): boolean {
 
 <aside
   id="sidebar"
-  class="fixed left-0 z-40 flex w-60 flex-col bg-(--color-surface) transition-transform duration-200 -translate-x-full top-14 rounded-b-xl shadow-lg lg:inset-y-0 lg:top-0 lg:shadow-none lg:rounded-none lg:border-r lg:border-(--color-border) lg:translate-x-0 sidebar-open:translate-x-0"
+  class="fixed left-0 z-40 flex w-60 sidebar-collapsed:w-16 flex-col bg-(--color-surface) transition-[width,transform] duration-200 -translate-x-full top-14 rounded-b-xl shadow-lg lg:inset-y-0 lg:top-0 lg:shadow-none lg:rounded-none lg:border-r lg:border-(--color-border) lg:translate-x-0 sidebar-open:translate-x-0"
   data-nav="sidebar"
 >
   <!-- Logo — hidden on mobile (header has it), always visible on desktop -->
-  <div class="hidden lg:flex h-14 items-center justify-between border-b border-(--color-border) px-4">
-    <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline">
-      <img src="/favicon.svg" alt="" class="h-6 w-auto" />
+  <div
+    class="hidden lg:flex h-14 items-center justify-between border-b border-(--color-border) px-4 sidebar-collapsed:justify-center sidebar-collapsed:px-0"
+  >
+    <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline sidebar-collapsed:hidden">
+      <img src="/favicon.svg" alt="" class="h-6 w-auto shrink-0" />
       <span class="text-lg font-bold text-(--color-text)">{t.app.name}</span>
     </a>
     <button
-      id="sidebar-close"
-      class="rounded-md p-1 text-(--color-text-secondary) hover:bg-(--color-surface-secondary) transition-colors lg:hidden"
+      id="sidebar-collapse-toggle"
+      class="rounded-md p-1.5 text-(--color-text-secondary) hover:bg-(--color-surface-secondary) transition-colors"
       aria-label={t.sidebar.collapse}
       title={t.sidebar.collapse}
     >
-      <ChevronLeft className="h-4 w-4" />
+      <PanelLeftClose className="h-5 w-5 sidebar-collapsed:hidden" />
+      <PanelLeftOpen className="h-5 w-5 hidden sidebar-collapsed:block" />
     </button>
   </div>
 
@@ -55,14 +59,15 @@ function isActive(href: string): boolean {
         <a
           href={href}
           data-nav-link
+          title={label}
           class={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
             isActive(href)
               ? 'bg-(--color-surface-secondary) text-(--color-text) font-semibold'
               : 'text-(--color-text-secondary) hover:bg-(--color-surface-secondary) hover:text-(--color-text)'
-          }`}
+          } sidebar-collapsed:justify-center sidebar-collapsed:px-0`}
         >
-          <Icon className="h-4 w-4" />
-          {label}
+          <Icon className="h-4 w-4 shrink-0" />
+          <span class="sidebar-collapsed:hidden">{label}</span>
         </a>
       ))
     }
@@ -83,7 +88,6 @@ function isActive(href: string): boolean {
 ></div>
 
 <script>
-  const closeBtn = document.getElementById('sidebar-close');
   const overlay = document.getElementById('sidebar-overlay');
   const sidebar = document.getElementById('sidebar');
 
@@ -91,9 +95,6 @@ function isActive(href: string): boolean {
     document.documentElement.classList.remove('sidebar-open');
   }
 
-  if (closeBtn) {
-    closeBtn.addEventListener('click', closeSidebar);
-  }
   if (overlay) {
     overlay.addEventListener('click', closeSidebar);
   }
@@ -120,4 +121,20 @@ function isActive(href: string): boolean {
   }
 
   document.addEventListener('astro:after-swap', updateActiveNav);
+
+  // ── Desktop collapse toggle ──
+  const collapseBtn = document.getElementById('sidebar-collapse-toggle');
+  if (collapseBtn) {
+    // Restore persisted state on load
+    const saved = localStorage.getItem('sidebar-collapsed');
+    if (saved === 'true') {
+      document.documentElement.classList.add('sidebar-collapsed');
+    }
+
+    collapseBtn.addEventListener('click', () => {
+      document.documentElement.classList.toggle('sidebar-collapsed');
+      const isCollapsed = document.documentElement.classList.contains('sidebar-collapsed');
+      localStorage.setItem('sidebar-collapsed', String(isCollapsed));
+    });
+  }
 </script>
