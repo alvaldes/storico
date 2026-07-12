@@ -34,7 +34,7 @@ const langToggleHref = localizedPath(cleanPath, otherLocale);
   </div>
 
   <div class="flex items-center gap-2">
-    <UserMenu userJson={userJson} client:load />
+    <UserMenu userJson={userJson} locale={locale} client:load />
     <LangToggle href={langToggleHref} locale={locale} />
     <ThemeToggle client:load />
     <a

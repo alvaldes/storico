@@ -8,12 +8,15 @@ import {
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip'
+import { useTranslations, type Locale } from '@/i18n/utils'
 
 interface UserMenuProps {
   userJson: string
+  locale?: Locale
 }
 
-export function UserMenu({ userJson }: UserMenuProps) {
+export function UserMenu({ userJson, locale = 'en' }: UserMenuProps) {
+  const t = useTranslations(locale)
   const { user, setUser } = useAuthStore()
 
   useEffect(() => {
@@ -41,11 +44,11 @@ export function UserMenu({ userJson }: UserMenuProps) {
           <TooltipTrigger
             onClick={() => signOut()}
             className="rounded-md p-1.5 text-(--color-text-secondary) hover:bg-(--color-surface-secondary) transition-colors"
-            aria-label="Sign out"
+            aria-label={t.nav.logout}
           >
             <LogOut className="h-4 w-4" />
           </TooltipTrigger>
-          <TooltipContent>Sign out</TooltipContent>
+          <TooltipContent>{t.nav.logout}</TooltipContent>
         </Tooltip>
       </div>
     </TooltipProvider>
