@@ -70,7 +70,7 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
           const labelKey = segmentLabelKey[seg]
           const label = labelKey
             ? t.nav[labelKey as keyof typeof t.nav]
-            : (resolvedLabels[seg] ?? seg)
+            : (resolvedLabels[seg] ?? (UUID_RE.test(seg) ? seg.slice(0, 8) : seg))
           const href = localizedPath(
             '/' + segments.slice(0, i + 1).join('/'),
             locale,
