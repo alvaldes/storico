@@ -47,7 +47,7 @@ export function Dashboard({ locale = 'en', userId }: { locale?: Locale; userId?:
     try {
       setLocalError(null);
       await createProject({ ...data, ownerId: userId });
-      toast.success(t.projects.created_toast);
+      toast.success(t.projects.create_toast);
     } catch {
       toast.error(t.projects.create_error);
     }
