@@ -7,6 +7,13 @@ import vercel from '@astrojs/vercel';
 export default defineConfig({
   output: 'server',
   adapter: vercel(),
+  // Disable Astro's built-in CSRF origin check — Auth.js (@auth/core) already
+  // provides double-submit cookie CSRF protection. Astro's check can fail in
+  // serverless environments (Vercel) due to how Origin headers are forwarded
+  // through the edge network, causing false 403 on signin POST.
+  security: {
+    checkOrigin: false,
+  },
   integrations: [react(), auth()],
   site: process.env.VERCEL_URL
     ? `https://${process.env.VERCEL_URL}`
