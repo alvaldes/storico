@@ -39,6 +39,12 @@ export const ALL: APIRoute = async ({ request, params }) => {
       ...(body ? { body } : {}),
     })
 
+    // 204 No Content has no body — return immediately to avoid errors
+    // when reading .text() on a body-less response in Node.js.
+    if (backendResponse.status === 204) {
+      return new Response(null, { status: 204 })
+    }
+
     const responseBody = await backendResponse.text()
 
     return new Response(responseBody, {
