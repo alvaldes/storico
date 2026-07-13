@@ -4,6 +4,7 @@ import '@/styles/globals.css';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
 import Header from '@/components/astro/Header.astro';
 import Sidebar from '@/components/astro/Sidebar.astro';
+import { AutoBreadcrumb } from '@/components/react/AutoBreadcrumb';
 import { Toaster } from '@/components/ui/sonner';
 import { getSession } from 'auth-astro/server';
 import { useTranslations } from '@/i18n/utils';
@@ -11,6 +12,8 @@ import { useTranslations } from '@/i18n/utils';
 const { locale = 'en' } = Astro.props;
 const t = useTranslations(locale);
 const currentPath = Astro.url.pathname;
+const cleanPath = currentPath.replace(/^\/(en|es)/, '') || '/';
+const segments = cleanPath.split('/').filter(Boolean);
 const session = await getSession(Astro.request);
 const userJson = JSON.stringify(session?.user ?? null);
 ---
@@ -34,6 +37,10 @@ const userJson = JSON.stringify(session?.user ?? null);
 
     <div class="lg:pl-60 sidebar-collapsed:lg:pl-16 transition-[padding] duration-200">
       <Header locale={locale} userJson={userJson} currentPath={currentPath} />
+
+      <div class="sm:hidden px-4 pt-3">
+        <AutoBreadcrumb locale={locale} segments={segments} />
+      </div>
 
       <main class="p-4 lg:p-6">
         <slot />

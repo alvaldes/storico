@@ -26,7 +26,7 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
   const t = useTranslations(locale)
 
   return (
-    <Breadcrumb className="hidden sm:flex">
+    <Breadcrumb>
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink href={localizedPath('/', locale)}>
