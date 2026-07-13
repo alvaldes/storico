@@ -115,6 +115,7 @@
     "create_description": "Enter a user story in standard format.",
     "create_toast": "User story created",
     "create_error": "Failed to create user story",
+    "edit_title": "Edit User Story",
     "mode_parts": "By parts",
     "mode_full": "Full text",
     "actor_label": "Actor / Role",

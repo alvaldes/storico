@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import {
   FileText,
   Plus,
-  ExternalLink,
+  Pencil,
   Trash2,
 } from 'lucide-react';
 import { useStoryStore } from '@/stores/storyStore';
 import { useProjectStore } from '@/stores/projectStore';
+import type { UserStory } from '@/types/story';
 import { StoryForm } from '@/components/react/StoryForm';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -45,9 +46,10 @@ interface StoriesListProps {
 export function StoriesList({ locale = 'en', projectId: initialProjectId }: StoriesListProps) {
   const t = useTranslations(locale);
   const { projects } = useProjectStore();
-  const { stories, loading, fetchStories, createStory, deleteStory } = useStoryStore();
+  const { stories, loading, fetchStories, createStory, updateStory, deleteStory } = useStoryStore();
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(initialProjectId);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingStory, setEditingStory] = useState<UserStory | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,6 +66,17 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
       toast.success(t.stories.create_toast);
     } catch {
       toast.error(t.stories.create_error);
+    }
+  };
+
+  const handleUpdate = async (data: { actor: string; feature: string; benefit: string; rawText: string }) => {
+    if (!editingStory) return;
+    try {
+      await updateStory(editingStory.id, data);
+      setEditingStory(null);
+      toast.success(t.stories.updated_toast);
+    } catch {
+      toast.error(t.stories.update_error);
     }
   };
 
@@ -133,7 +146,8 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
           {stories.map((story) => (
             <div
               key={story.id}
-              className="flex items-start justify-between rounded-lg border border-border bg-(--color-surface) p-4 transition-colors hover:bg-(--color-surface-secondary)"
+              onClick={() => window.location.href = `/${locale}/stories/${story.id}`}
+              className="flex items-start justify-between rounded-lg border border-border bg-(--color-surface) p-4 transition-colors hover:bg-(--color-surface-secondary) cursor-pointer"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
@@ -156,17 +170,19 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
               </div>
 
               <div className="flex items-center gap-1 ml-4 shrink-0">
-                <a
-                  href={`/${locale}/stories/${story.id}`}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-(--color-surface-tertiary) transition-colors"
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-(--color-surface-tertiary)"
+                  onClick={(e) => { e.stopPropagation(); setEditingStory(story); }}
                 >
-                  <ExternalLink className="h-4 w-4" />
-                </a>
+                  <Pencil className="h-4 w-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                  onClick={() => setDeletingId(story.id)}
+                  onClick={(e) => { e.stopPropagation(); setDeletingId(story.id); }}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -182,6 +198,21 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
         onOpenChange={setFormOpen}
         onSubmit={handleCreate}
         locale={locale}
+      />
+
+      {/* Edit dialog */}
+      <StoryForm
+        open={editingStory !== null}
+        onOpenChange={(open) => { if (!open) setEditingStory(null); }}
+        onSubmit={handleUpdate}
+        locale={locale}
+        initialData={{
+          actor: editingStory?.actor,
+          feature: editingStory?.feature,
+          benefit: editingStory?.benefit,
+          rawText: editingStory?.rawText,
+        }}
+        title={t.stories.edit_title}
       />
 
       {/* Delete confirmation */}

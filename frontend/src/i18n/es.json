@@ -115,6 +115,7 @@
     "create_description": "Ingresá una historia de usuario en formato estándar.",
     "create_toast": "Historia de usuario creada",
     "create_error": "No se pudo crear la historia de usuario",
+    "edit_title": "Editar Historia de Usuario",
     "mode_parts": "Por partes",
     "mode_full": "Texto completo",
     "actor_label": "Actor / Rol",
