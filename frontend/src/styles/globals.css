@@ -23,7 +23,7 @@
   --color-accent: var(--color-surface-secondary);
   --color-accent-foreground: var(--color-text);
   --color-destructive: oklch(0.577 0.245 27.325);
-  --color-destructive-foreground: oklch(0.577 0.245 27.325);
+  --color-destructive-foreground: oklch(0.99 0 0);
   --color-border: var(--color-border);
   --color-input: var(--color-border);
   --color-ring: var(--color-primary-500);

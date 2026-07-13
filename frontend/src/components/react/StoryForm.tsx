@@ -1,20 +1,18 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Check, X, Eye } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
-import { createStorySchema } from '@/schemas';
 
 const ACTOR_MAX = 100;
 const FEATURE_MAX = 300;
 const BENEFIT_MAX = 300;
 const RAW_TEXT_MAX = 2000;
 
-/** Schema for form validation — same as createStorySchema, minus projectId. */
-const storyFormSchema = createStorySchema.omit({ projectId: true });
+type StoryMode = 'parts' | 'full';
 
 interface StoryFormData {
   actor: string;
@@ -32,6 +30,29 @@ interface StoryFormProps {
   title?: string;
 }
 
+/** Simple regex-based validation: does the text look like a standard user story? */
+function validateKeywords(text: string) {
+  return {
+    asA: /\bas\s+a(?:\(n\))?\b/i.test(text),
+    iWant: /\bI\s+want\b/i.test(text),
+    soThat: /\bso\s+that\b/i.test(text),
+  };
+}
+
+/** Parse a full user story into actor, feature, benefit. Returns null if it can't parse. */
+function parseUserStory(text: string): { actor: string; feature: string; benefit: string } | null {
+  const regex = /As\s+a(?:\(n\))?\s+(.+?),\s+I\s+want\s+(.+?),\s+so\s+that\s+(.+)/i;
+  const match = text.match(regex);
+  if (match) {
+    return {
+      actor: match[1].trim(),
+      feature: match[2].trim(),
+      benefit: match[3].trim(),
+    };
+  }
+  return null;
+}
+
 export function StoryForm({
   open,
   onOpenChange,
@@ -41,43 +62,155 @@ export function StoryForm({
   title,
 }: StoryFormProps) {
   const t = useTranslations(locale);
+
+  // Mode state
+  const [mode, setMode] = useState<StoryMode>('parts');
+
+  // Parts mode fields
   const [actor, setActor] = useState(initialData?.actor ?? '');
   const [feature, setFeature] = useState(initialData?.feature ?? '');
   const [benefit, setBenefit] = useState(initialData?.benefit ?? '');
-  const [rawText, setRawText] = useState(initialData?.rawText ?? '');
+
+  // Full mode fields
+  const [fullText, setFullText] = useState(initialData?.rawText ?? '');
+
+  // Shared state
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Derived: live preview in parts mode
+  const livePreview = useMemo(() => {
+    const a = actor.trim();
+    const f = feature.trim();
+    const b = benefit.trim();
+    if (!a && !f && !b) return '';
+    const parts: string[] = [];
+    if (a) parts.push(`As a(n) ${a}`);
+    else parts.push('As a(n) […]');
+    if (f) parts.push(`I want ${f}`);
+    else parts.push('I want […]');
+    if (b) parts.push(`so that ${b}`);
+    else parts.push('so that […]');
+    return parts.join(', ');
+  }, [actor, feature, benefit]);
+
+  // Derived: keyword validation in full mode
+  const keywordCheck = useMemo(() => {
+    if (!fullText.trim()) return null;
+    return validateKeywords(fullText.trim());
+  }, [fullText]);
+
+  const allKeywordsValid = keywordCheck && keywordCheck.asA && keywordCheck.iWant && keywordCheck.soThat;
+
   const clearError = (field: string) => {
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: '' }));
+  };
+
+  /** Switch mode, preserving data when possible. */
+  const switchMode = (newMode: StoryMode) => {
+    if (newMode === mode) return;
+    if (newMode === 'full' && mode === 'parts') {
+      // Going parts → full: populate fullText from parts if empty
+      const a = actor.trim();
+      const f = feature.trim();
+      const b = benefit.trim();
+      if (a || f || b) {
+        const preview = [];
+        if (a) preview.push(`As a(n) ${a}`);
+        if (f) preview.push(`I want ${f}`);
+        if (b) preview.push(`so that ${b}`);
+        setFullText(preview.join(', ') || '');
+      }
+    }
+    if (newMode === 'parts' && mode === 'full') {
+      // Going full → parts: try to parse if parts are empty
+      if (!actor.trim() && !feature.trim() && !benefit.trim()) {
+        const parsed = parseUserStory(fullText.trim());
+        if (parsed) {
+          setActor(parsed.actor);
+          setFeature(parsed.feature);
+          setBenefit(parsed.benefit);
+        }
+      }
+    }
+    setMode(newMode);
+    setErrors({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
 
-    const result = storyFormSchema.safeParse({ actor, feature, benefit, rawText });
-    if (!result.success) {
-      const fieldErrors: Record<string, string> = {};
-      for (const issue of result.error.issues) {
-        if (issue.path.length > 0) {
-          fieldErrors[String(issue.path[0])] = issue.message;
-        }
+    let submitData: StoryFormData;
+
+    if (mode === 'parts') {
+      // Validate fields
+      const localErrors: Record<string, string> = {};
+      if (!actor.trim()) localErrors.actor = 'Required';
+      if (!feature.trim()) localErrors.feature = 'Required';
+      if (!benefit.trim()) localErrors.benefit = 'Required';
+      if (actor.length > ACTOR_MAX) localErrors.actor = `Max ${ACTOR_MAX} characters`;
+      if (feature.length > FEATURE_MAX) localErrors.feature = `Max ${FEATURE_MAX} characters`;
+      if (benefit.length > BENEFIT_MAX) localErrors.benefit = `Max ${BENEFIT_MAX} characters`;
+
+      if (Object.keys(localErrors).length > 0) {
+        setErrors(localErrors);
+        return;
       }
-      setErrors(fieldErrors);
-      return;
+
+      const generatedRaw = `As a(n) ${actor.trim()}, I want ${feature.trim()}, so that ${benefit.trim()}`;
+      submitData = {
+        actor: actor.trim(),
+        feature: feature.trim(),
+        benefit: benefit.trim(),
+        rawText: generatedRaw,
+      };
+    } else {
+      // Full text mode
+      const text = fullText.trim();
+      if (!text) {
+        setErrors({ fullText: 'Required' });
+        return;
+      }
+      if (text.length > RAW_TEXT_MAX) {
+        setErrors({ fullText: `Max ${RAW_TEXT_MAX} characters` });
+        return;
+      }
+
+      // Validate keywords
+      const keywords = validateKeywords(text);
+      if (!keywords.asA || !keywords.iWant || !keywords.soThat) {
+        setErrors({ fullText: t.stories.keyword_invalid });
+        return;
+      }
+
+      // Parse to extract parts
+      const parsed = parseUserStory(text);
+      if (parsed) {
+        // Ensure each parsed part respects max length
+        submitData = {
+          actor: parsed.actor.slice(0, ACTOR_MAX),
+          feature: parsed.feature.slice(0, FEATURE_MAX),
+          benefit: parsed.benefit.slice(0, BENEFIT_MAX),
+          rawText: text,
+        };
+      } else {
+        // Fallback — shouldn't happen if keywords pass, but guard anyway
+        setErrors({ fullText: 'Could not parse the user story. Try switching to parts mode.' });
+        return;
+      }
     }
 
     setSaving(true);
     try {
-      const { actor: a, feature: f, benefit: b, rawText: r } = result.data;
-      const generatedRaw = r.trim() || `As a(n) ${a.trim()}, I want ${f.trim()}, so that ${b.trim()}`;
-      await onSubmit({ actor: a.trim(), feature: f.trim(), benefit: b.trim(), rawText: generatedRaw });
+      await onSubmit(submitData);
       onOpenChange(false);
+      // Reset
       setActor('');
       setFeature('');
       setBenefit('');
-      setRawText('');
+      setFullText('');
+      setMode('parts');
       setErrors({});
     } finally {
       setSaving(false);
@@ -86,7 +219,7 @@ export function StoryForm({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>
             {title ?? t.stories.create_title}
@@ -96,91 +229,202 @@ export function StoryForm({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="actor">{t.stories.actor_label}</Label>
-            <Input
-              id="actor"
-              value={actor}
-              onChange={(e) => { setActor(e.target.value); clearError('actor'); }}
-              placeholder={t.stories.actor_placeholder}
-              maxLength={ACTOR_MAX}
-              required
-              autoFocus
-              aria-invalid={!!errors.actor}
-            />
-            <div className="flex justify-between text-xs">
-              {errors.actor ? (
-                <span className="text-destructive">{errors.actor}</span>
-              ) : (
-                <span />
-              )}
-              <span className="text-muted-foreground">{actor.length}/{ACTOR_MAX}</span>
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Mode toggle */}
+          <div className="flex rounded-lg border border-border p-0.5 bg-muted/50" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'parts'}
+              onClick={() => switchMode('parts')}
+              className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all ${
+                mode === 'parts'
+                  ? 'bg-background text-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t.stories.mode_parts}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'full'}
+              onClick={() => switchMode('full')}
+              className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all ${
+                mode === 'full'
+                  ? 'bg-background text-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t.stories.mode_full}
+            </button>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="feature">{t.stories.feature_label}</Label>
-            <Input
-              id="feature"
-              value={feature}
-              onChange={(e) => { setFeature(e.target.value); clearError('feature'); }}
-              placeholder={t.stories.feature_placeholder}
-              maxLength={FEATURE_MAX}
-              required
-              aria-invalid={!!errors.feature}
-            />
-            <div className="flex justify-between text-xs">
-              {errors.feature ? (
-                <span className="text-destructive">{errors.feature}</span>
-              ) : (
-                <span />
-              )}
-              <span className="text-muted-foreground">{feature.length}/{FEATURE_MAX}</span>
-            </div>
-          </div>
+          {/* ─── PARTS MODE ─── */}
+          {mode === 'parts' && (
+            <div className="min-h-[280px] space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="actor">{t.stories.actor_label}</Label>
+                <Input
+                  id="actor"
+                  value={actor}
+                  onChange={(e) => { setActor(e.target.value); clearError('actor'); }}
+                  placeholder={t.stories.actor_placeholder}
+                  maxLength={ACTOR_MAX}
+                  required
+                  autoFocus
+                  aria-invalid={!!errors.actor}
+                />
+                <div className="flex justify-between text-xs">
+                  {errors.actor ? (
+                    <span className="text-destructive">{errors.actor}</span>
+                  ) : (
+                    <span />
+                  )}
+                  <span className="text-muted-foreground">{actor.length}/{ACTOR_MAX}</span>
+                </div>
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="benefit">{t.stories.benefit_label}</Label>
-            <Input
-              id="benefit"
-              value={benefit}
-              onChange={(e) => { setBenefit(e.target.value); clearError('benefit'); }}
-              placeholder={t.stories.benefit_placeholder}
-              maxLength={BENEFIT_MAX}
-              required
-              aria-invalid={!!errors.benefit}
-            />
-            <div className="flex justify-between text-xs">
-              {errors.benefit ? (
-                <span className="text-destructive">{errors.benefit}</span>
-              ) : (
-                <span />
-              )}
-              <span className="text-muted-foreground">{benefit.length}/{BENEFIT_MAX}</span>
-            </div>
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="feature">{t.stories.feature_label}</Label>
+                <Input
+                  id="feature"
+                  value={feature}
+                  onChange={(e) => { setFeature(e.target.value); clearError('feature'); }}
+                  placeholder={t.stories.feature_placeholder}
+                  maxLength={FEATURE_MAX}
+                  required
+                  aria-invalid={!!errors.feature}
+                />
+                <div className="flex justify-between text-xs">
+                  {errors.feature ? (
+                    <span className="text-destructive">{errors.feature}</span>
+                  ) : (
+                    <span />
+                  )}
+                  <span className="text-muted-foreground">{feature.length}/{FEATURE_MAX}</span>
+                </div>
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="rawText">{t.stories.raw_text_label}</Label>
-            <Textarea
-              id="rawText"
-              value={rawText}
-              onChange={(e) => { setRawText(e.target.value); clearError('rawText'); }}
-              placeholder={t.stories.raw_text_placeholder}
-              maxLength={RAW_TEXT_MAX}
-              rows={2}
-              aria-invalid={!!errors.rawText}
-            />
-            <div className="flex justify-between text-xs">
-              {errors.rawText ? (
-                <span className="text-destructive">{errors.rawText}</span>
-              ) : (
-                <span className="text-muted-foreground">auto-generated if left empty</span>
-              )}
-              <span className="text-muted-foreground">{rawText.length}/{RAW_TEXT_MAX}</span>
+              <div className="space-y-2">
+                <Label htmlFor="benefit">{t.stories.benefit_label}</Label>
+                <Input
+                  id="benefit"
+                  value={benefit}
+                  onChange={(e) => { setBenefit(e.target.value); clearError('benefit'); }}
+                  placeholder={t.stories.benefit_placeholder}
+                  maxLength={BENEFIT_MAX}
+                  required
+                  aria-invalid={!!errors.benefit}
+                />
+                <div className="flex justify-between text-xs">
+                  {errors.benefit ? (
+                    <span className="text-destructive">{errors.benefit}</span>
+                  ) : (
+                    <span />
+                  )}
+                  <span className="text-muted-foreground">{benefit.length}/{BENEFIT_MAX}</span>
+                </div>
+              </div>
+
+              {/* Live preview — always visible */}
+              <div className="rounded-lg border border-border/50 bg-muted/30 p-4 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  <Eye className="h-3.5 w-3.5" />
+                  {t.stories.preview_label}
+                </div>
+                {livePreview ? (
+                  <p className="text-sm text-foreground leading-relaxed">
+                    {livePreview}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">
+                    {t.stories.preview_empty}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* ─── FULL TEXT MODE ─── */}
+          {mode === 'full' && (
+            <div className="min-h-[280px] space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="fullText">{t.stories.raw_text_label}</Label>
+                <Textarea
+                  id="fullText"
+                  value={fullText}
+                  onChange={(e) => { setFullText(e.target.value); clearError('fullText'); }}
+                  placeholder={t.stories.raw_text_placeholder}
+                  maxLength={RAW_TEXT_MAX}
+                  rows={4}
+                  autoFocus
+                  aria-invalid={!!errors.fullText}
+                  className="min-h-[100px] resize-y"
+                />
+                <div className="flex justify-between text-xs">
+                  {errors.fullText ? (
+                    <span className="text-destructive">{errors.fullText}</span>
+                  ) : (
+                    <span />
+                  )}
+                  <span className="text-muted-foreground">{fullText.length}/{RAW_TEXT_MAX}</span>
+                </div>
+              </div>
+
+              {/* Keyword validation — always visible */}
+              <div className="rounded-lg border border-border/50 bg-muted/30 p-4 space-y-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  {t.stories.keyword_validation}
+                </p>
+                {fullText.trim().length > 0 ? (
+                  <>
+                    <div className="space-y-2">
+                      <KeywordIndicator
+                        label={t.stories.keyword_as_a}
+                        valid={keywordCheck?.asA ?? false}
+                      />
+                      <KeywordIndicator
+                        label={t.stories.keyword_i_want}
+                        valid={keywordCheck?.iWant ?? false}
+                      />
+                      <KeywordIndicator
+                        label={t.stories.keyword_so_that}
+                        valid={keywordCheck?.soThat ?? false}
+                      />
+                    </div>
+                    {allKeywordsValid ? (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                        {t.stories.keyword_valid}
+                      </p>
+                    ) : (
+                      <div className="space-y-1">
+                        <p className="text-xs text-destructive font-medium">
+                          {t.stories.keyword_invalid}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => switchMode('parts')}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          {t.stories.switch_to_parts}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">
+                    {t.stories.keyword_empty}
+                  </p>
+                )}
+              </div>
+
+              <p
+                className="text-xs text-muted-foreground leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: t.stories.story_format_hint }}
+              />
+            </div>
+          )}
 
           <DialogFooter>
             <Button
@@ -193,11 +437,27 @@ export function StoryForm({
             </Button>
             <Button type="submit" disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t.common.create}
+              {initialData ? t.common.save : t.common.create}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Small inline indicator showing whether a keyword was found. */
+function KeywordIndicator({ label, valid }: { label: string; valid: boolean }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      {valid ? (
+        <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+      ) : (
+        <X className="h-4 w-4 text-destructive shrink-0" />
+      )}
+      <span className={valid ? 'text-foreground' : 'text-muted-foreground'}>
+        {label}
+      </span>
+    </div>
   );
 }
