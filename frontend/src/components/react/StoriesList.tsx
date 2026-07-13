@@ -69,6 +69,16 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
     }
   }, [fetchProjects, projects.length]);
 
+  // Get the project name for the dialog title
+  const selectedProjectName = useMemo(
+    () => projects.find((p) => p.id === selectedProjectId)?.name,
+    [projects, selectedProjectId],
+  );
+
+  const createDialogTitle = selectedProjectName
+    ? t.stories.create_title_with_project.replace('{projectName}', selectedProjectName)
+    : t.stories.create_title;
+
   // Sync selectedProjectId when the prop changes (e.g. Astro View Transitions)
   useEffect(() => {
     setSelectedProjectId(initialProjectId);
@@ -233,6 +243,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
         onOpenChange={setFormOpen}
         onSubmit={handleCreate}
         locale={locale}
+        title={createDialogTitle}
       />
 
       {/* Edit dialog */}

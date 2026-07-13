@@ -112,6 +112,7 @@
     "title": "Historias de Usuario",
     "description": "Gestioná las historias de usuario del proyecto.",
     "create_title": "Nueva Historia de Usuario",
+    "create_title_with_project": "Nueva Historia de Usuario en {projectName}",
     "create_description": "Ingresá una historia de usuario en formato estándar.",
     "create_toast": "Historia de usuario creada",
     "create_error": "No se pudo crear la historia de usuario",

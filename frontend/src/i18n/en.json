@@ -112,6 +112,7 @@
     "title": "User Stories",
     "description": "Manage user stories for this project.",
     "create_title": "New User Story",
+    "create_title_with_project": "New User Story from {projectName}",
     "create_description": "Enter a user story in standard format.",
     "create_toast": "User story created",
     "create_error": "Failed to create user story",
