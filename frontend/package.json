@@ -32,9 +32,10 @@
     "zustand": "^5.0.5"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.1.6",
+    "@tailwindcss/postcss": "^4.3.2",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
+    "postcss": "^8.5.18",
     "tailwindcss": "^4.1.6",
     "typescript": "^5.8.3"
   }

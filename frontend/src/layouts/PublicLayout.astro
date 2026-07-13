@@ -1,7 +1,7 @@
 ---
 import { ClientRouter } from 'astro:transitions';
-import '@/styles/globals.css';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
+import globalsCss from '@/styles/globals.css?url';
 import PublicNavbar from '@/components/astro/PublicNavbar.astro';
 import PublicFooter from '@/components/astro/PublicFooter.astro';
 import { ArrowLeft } from 'lucide-react';
@@ -68,6 +68,7 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
       content={description || t.app.tagline}
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href={globalsCss} />
     <ClientRouter />
     <title>{title}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />

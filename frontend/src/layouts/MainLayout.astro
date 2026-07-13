@@ -1,7 +1,7 @@
 ---
 import { ClientRouter } from 'astro:transitions';
-import '@/styles/globals.css';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
+import globalsCss from '@/styles/globals.css?url';
 import Header from '@/components/astro/Header.astro';
 import Sidebar from '@/components/astro/Sidebar.astro';
 import { AutoBreadcrumb } from '@/components/react/AutoBreadcrumb';
@@ -28,6 +28,7 @@ const userJson = JSON.stringify(session?.user ?? null);
     <meta name="theme-color" content="#2563eb" />
     <meta name="description" content={`${t.app.name} — ${t.app.tagline}`} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href={globalsCss} />
     <ClientRouter />
     <slot name="head" />
     <title>{t.app.name}</title>

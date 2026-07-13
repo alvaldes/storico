@@ -1,6 +1,5 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
-import tailwindcss from '@tailwindcss/vite';
 import auth from 'auth-astro';
 import vercel from '@astrojs/vercel';
 
@@ -39,7 +38,6 @@ export default defineConfig({
     },
   },
   vite: {
-    plugins: [tailwindcss()],
     optimizeDeps: {
       include: ['zustand'],
       exclude: ['auth-astro', 'auth:config'],
