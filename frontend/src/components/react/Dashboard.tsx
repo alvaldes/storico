@@ -134,36 +134,38 @@ export function Dashboard({ locale = 'en', userId }: { locale?: Locale; userId?:
             <Card className="group cursor-pointer">
               <CardHeader className="flex flex-row items-start justify-between space-y-0">
                 <CardTitle className="text-base">{project.name}</CardTitle>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() =>
-                        setEditingProject({
-                          id: project.id,
-                          name: project.name,
-                          description: project.description,
-                        })
+                <div onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
                       }
-                    >
-                      <Pencil className="mr-2 h-4 w-4" />
-                      {t.common.edit}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onClick={() => setDeletingId(project.id)}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      {t.common.delete}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    />
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() =>
+                          setEditingProject({
+                            id: project.id,
+                            name: project.name,
+                            description: project.description,
+                          })
+                        }
+                      >
+                        <Pencil className="mr-2 h-4 w-4" />
+                        {t.common.edit}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => setDeletingId(project.id)}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        {t.common.delete}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </CardHeader>
               {project.description && (
                 <CardContent>
