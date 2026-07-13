@@ -11,6 +11,8 @@ interface StoryState {
 
   /** Fetch stories, optionally filtered by project. */
   fetchStories: (projectId?: string) => Promise<void>;
+  /** Fetch a single story by ID. */
+  fetchStory: (id: string) => Promise<void>;
   /** Create a new user story. */
   createStory: (params: CreateStoryParams) => Promise<UserStory>;
   /** Update an existing user story. */
@@ -34,6 +36,25 @@ export const useStoryStore = create<StoryState>((set, get) => ({
       set({ stories: response.items, loading: false });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch stories';
+      set({ error: message, loading: false });
+    }
+  },
+
+  fetchStory: async (id) => {
+    set({ loading: true, error: null });
+    try {
+      const story = await api.getStory(id);
+      set((state) => {
+        const exists = state.stories.find((s) => s.id === id);
+        return {
+          stories: exists
+            ? state.stories.map((s) => (s.id === id ? story : s))
+            : [...state.stories, story],
+          loading: false,
+        };
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch story';
       set({ error: message, loading: false });
     }
   },

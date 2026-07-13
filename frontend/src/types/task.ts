@@ -1,9 +1,12 @@
 export interface Task {
   id: string;
   storyId: string;
-  summary: string;
+  title: string;
   description: string;
   labels: string[];
   dependencies: string[];
-  status: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
+  status: string;
+  priority: string;
+  createdAt: string;
+  updatedAt: string;
 }

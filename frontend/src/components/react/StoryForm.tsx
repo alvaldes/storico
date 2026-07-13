@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { InputGroup, InputGroupAddon, InputGroupText, InputGroupInput } from '@/components/ui/input-group';
 import { Loader2, Check, X, Eye } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
 
@@ -265,16 +266,21 @@ export function StoryForm({
             <div className="min-h-[280px] space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="actor">{t.stories.actor_label}</Label>
-                <Input
-                  id="actor"
-                  value={actor}
-                  onChange={(e) => { setActor(e.target.value); clearError('actor'); }}
-                  placeholder={t.stories.actor_placeholder}
-                  maxLength={ACTOR_MAX}
-                  required
-                  autoFocus
-                  aria-invalid={!!errors.actor}
-                />
+                <InputGroup>
+                  <InputGroupAddon>
+                    <InputGroupText>As a(n)</InputGroupText>
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    id="actor"
+                    value={actor}
+                    onChange={(e) => { setActor(e.target.value); clearError('actor'); }}
+                    placeholder={t.stories.actor_placeholder}
+                    maxLength={ACTOR_MAX}
+                    required
+                    autoFocus
+                    aria-invalid={!!errors.actor}
+                  />
+                </InputGroup>
                 <div className="flex justify-between text-xs">
                   {errors.actor ? (
                     <span className="text-destructive">{errors.actor}</span>
@@ -287,15 +293,20 @@ export function StoryForm({
 
               <div className="space-y-2">
                 <Label htmlFor="feature">{t.stories.feature_label}</Label>
-                <Input
-                  id="feature"
-                  value={feature}
-                  onChange={(e) => { setFeature(e.target.value); clearError('feature'); }}
-                  placeholder={t.stories.feature_placeholder}
-                  maxLength={FEATURE_MAX}
-                  required
-                  aria-invalid={!!errors.feature}
-                />
+                <InputGroup>
+                  <InputGroupAddon>
+                    <InputGroupText>I want</InputGroupText>
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    id="feature"
+                    value={feature}
+                    onChange={(e) => { setFeature(e.target.value); clearError('feature'); }}
+                    placeholder={t.stories.feature_placeholder}
+                    maxLength={FEATURE_MAX}
+                    required
+                    aria-invalid={!!errors.feature}
+                  />
+                </InputGroup>
                 <div className="flex justify-between text-xs">
                   {errors.feature ? (
                     <span className="text-destructive">{errors.feature}</span>
@@ -308,15 +319,20 @@ export function StoryForm({
 
               <div className="space-y-2">
                 <Label htmlFor="benefit">{t.stories.benefit_label}</Label>
-                <Input
-                  id="benefit"
-                  value={benefit}
-                  onChange={(e) => { setBenefit(e.target.value); clearError('benefit'); }}
-                  placeholder={t.stories.benefit_placeholder}
-                  maxLength={BENEFIT_MAX}
-                  required
-                  aria-invalid={!!errors.benefit}
-                />
+                <InputGroup>
+                  <InputGroupAddon>
+                    <InputGroupText>so that</InputGroupText>
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    id="benefit"
+                    value={benefit}
+                    onChange={(e) => { setBenefit(e.target.value); clearError('benefit'); }}
+                    placeholder={t.stories.benefit_placeholder}
+                    maxLength={BENEFIT_MAX}
+                    required
+                    aria-invalid={!!errors.benefit}
+                  />
+                </InputGroup>
                 <div className="flex justify-between text-xs">
                   {errors.benefit ? (
                     <span className="text-destructive">{errors.benefit}</span>

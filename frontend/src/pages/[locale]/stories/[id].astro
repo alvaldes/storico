@@ -1,0 +1,17 @@
+---
+import MainLayout from '@/layouts/MainLayout.astro';
+import { StoryDetail } from '@/components/react/StoryDetail';
+import { useTranslations, type Locale } from '@/i18n/utils';
+
+const locale = (Astro.params.locale as Locale) || 'en';
+const t = useTranslations(locale);
+const { id } = Astro.params;
+---
+
+<MainLayout locale={locale}>
+  <div slot="head">
+    <title>{t.app.name} — {t.stories.title}</title>
+  </div>
+
+  <StoryDetail client:load locale={locale} storyId={id!} />
+</MainLayout>

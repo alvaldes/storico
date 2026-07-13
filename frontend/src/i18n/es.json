@@ -147,7 +147,16 @@
     "status_pending": "Pendiente",
     "status_processing": "Procesando",
     "status_completed": "Completada",
-    "status_error": "Error"
+    "status_error": "Error",
+    "detail_not_found": "Historia de usuario no encontrada",
+    "detail_back_to_stories": "Volver a historias",
+    "detail_full_text": "Texto completo",
+    "detail_parts": "Partes",
+    "detail_tasks_title": "Tareas",
+    "detail_tasks_empty": "Todavía no hay tareas. Extraé tareas de esta historia de usuario.",
+    "detail_extract": "Extraer Tareas",
+    "detail_extract_started": "Extracción iniciada",
+    "detail_created": "Creada"
   },
   "dashboard": {
     "new_project": "Nuevo Proyecto",

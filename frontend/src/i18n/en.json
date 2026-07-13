@@ -147,7 +147,16 @@
     "status_pending": "Pending",
     "status_processing": "Processing",
     "status_completed": "Completed",
-    "status_error": "Error"
+    "status_error": "Error",
+    "detail_not_found": "User story not found",
+    "detail_back_to_stories": "Back to stories",
+    "detail_full_text": "Full text",
+    "detail_parts": "Parts",
+    "detail_tasks_title": "Tasks",
+    "detail_tasks_empty": "No tasks yet. Extract tasks from this user story.",
+    "detail_extract": "Extract Tasks",
+    "detail_extract_started": "Extraction started",
+    "detail_created": "Created"
   },
   "dashboard": {
     "new_project": "New Project",
