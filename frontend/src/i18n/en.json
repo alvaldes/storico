@@ -152,6 +152,7 @@
     "status_completed": "Completed",
     "status_error": "Error",
     "detail_not_found": "User story not found",
+    "detail_back_to_project": "Back to project",
     "detail_back_to_stories": "Back to stories",
     "detail_full_text": "Full text",
     "detail_parts": "Parts",

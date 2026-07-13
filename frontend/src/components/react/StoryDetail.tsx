@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Pencil, Trash2, Sparkles, Loader2, FileText, ListTree, Fingerprint } from 'lucide-react';
 import { shortUUID } from '@/lib/utils';
+import { useProjectStore } from '@/stores/projectStore';
 import { useStoryStore } from '@/stores/storyStore';
 import { useTaskStore } from '@/stores/taskStore';
+import { getProject } from '@/lib/projects-api';
 import { StoryForm } from '@/components/react/StoryForm';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +41,8 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const [initialLoad, setInitialLoad] = useState(true);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [parentProject, setParentProject] = useState<{ id: string; name: string } | null>(null);
+  const [resolvingProject, setResolvingProject] = useState(false);
 
   const story = stories.find((s) => s.id === storyId);
   const storyTasks = tasks[storyId] ?? [];
@@ -52,6 +56,27 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       fetchTasks(storyId);
     }
   }, [fetchTasks, storyId]);
+
+  // Resolve parent project for contextual back link
+  useEffect(() => {
+    if (!story?.projectId) {
+      setParentProject(null);
+      return;
+    }
+
+    const projectStore = useProjectStore.getState();
+    const cached = projectStore.getById(story.projectId);
+    if (cached) {
+      setParentProject({ id: cached.id, name: cached.name });
+      return;
+    }
+
+    setResolvingProject(true);
+    getProject(story.projectId)
+      .then((project) => setParentProject({ id: project.id, name: project.name }))
+      .catch(() => setParentProject(null))
+      .finally(() => setResolvingProject(false));
+  }, [story?.projectId]);
 
   const handleUpdate = async (data: { actor: string; feature: string; benefit: string; rawText: string }) => {
     try {
@@ -106,14 +131,31 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
 
   return (
     <div className="space-y-6">
-      {/* Back link */}
-      <a
-        href={`/${locale}/stories`}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        {t.stories.detail_back_to_stories}
-      </a>
+      {/* Contextual back link — synced with breadcrumb hierarchy */}
+      {parentProject ? (
+        <a
+          href={`/${locale}/projects/${parentProject.id}`}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t.stories.detail_back_to_project} «{parentProject.name}»
+        </a>
+      ) : (
+        <a
+          href={`/${locale}/stories`}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {resolvingProject ? (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t.stories.detail_back_to_stories}
+            </span>
+          ) : (
+            t.stories.detail_back_to_stories
+          )}
+        </a>
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">

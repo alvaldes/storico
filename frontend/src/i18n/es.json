@@ -152,6 +152,7 @@
     "status_completed": "Completada",
     "status_error": "Error",
     "detail_not_found": "Historia de usuario no encontrada",
+    "detail_back_to_project": "Volver al proyecto",
     "detail_back_to_stories": "Volver a historias",
     "detail_full_text": "Texto completo",
     "detail_parts": "Partes",
