@@ -2,6 +2,52 @@ import type { APIRoute } from 'astro'
 import { getSession } from 'auth-astro/server'
 import { config } from '@/lib/config'
 
+/** Headers que NO se reenvían del backend al cliente (hop-by-hop + seguridad). */
+const HOP_BY_HOP = new Set([
+  'transfer-encoding',
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'upgrade',
+  'set-cookie',        // auth lo maneja Auth.js, no el backend
+  'set-cookie2',       // obsoleto
+  'content-encoding',  // Node.fetch ya descomprime
+  'content-length',    // lo recalcula el Response constructor
+])
+
+/** Tiempo máximo de espera para el backend (en ms). */
+const BACKEND_TIMEOUT = 30_000
+
+/** Limpia un path de segmentos peligrosos (path traversal). */
+function sanitizePath(raw: string): string {
+  return raw
+    .split('/')
+    .filter((seg) => seg !== '..' && seg !== '.')
+    .join('/')
+}
+
+/** Arma la URL del backend normalizando el path. */
+function buildBackendUrl(apiUrl: string, rawPath: string): URL {
+  const clean = sanitizePath(rawPath)
+  // Evitar doble slash al unir
+  const joined = clean ? `/api/v1/${clean}` : '/api/v1/'
+  return new URL(joined, apiUrl)
+}
+
+/** Convierte Headers del backend a un Record plano (excluyendo hop-by-hop). */
+function forwardableHeaders(backendHeaders: Headers): Record<string, string> {
+  const result: Record<string, string> = {}
+  backendHeaders.forEach((value, key) => {
+    if (!HOP_BY_HOP.has(key.toLowerCase())) {
+      result[key] = value
+    }
+  })
+  return result
+}
+
 export const ALL: APIRoute = async ({ request, params }) => {
   const session = await getSession(request)
 
@@ -12,8 +58,12 @@ export const ALL: APIRoute = async ({ request, params }) => {
     )
   }
 
-  const path = params.path || ''
-  const url = `${config.apiUrl}/api/v1/${path}`
+  if (!config.apiUrl) {
+    return new Response(
+      JSON.stringify({ detail: 'Backend URL not configured', type: 'config_error' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
 
   // Build clean headers — do NOT copy from request (avoids ngrok headers,
   // Host conflicts, and other proxy artifacts).
@@ -21,40 +71,74 @@ export const ALL: APIRoute = async ({ request, params }) => {
   headers.set('X-Storico-User-Id', session.user.id as string)
   headers.set('X-Storico-Internal-Token', config.internalToken)
 
+  // AbortController para tener timeout controlado
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT)
+
   try {
-    // Read body as text FIRST (before any other processing) to avoid issues
-    // with ReadableStream + duplex options in Node.js fetch.
-    let body: string | undefined
+    // --- Leer body del request ---
+    // Leer ANTES de hacer fetch para evitar problemas con ReadableStream
+    // en Node.js fetch (evita duplex:'half').
+    let rawBody: string | undefined
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       const text = await request.text()
       if (text) {
-        body = text
+        rawBody = text
         headers.set('Content-Type', 'application/json')
       }
     }
 
-    const backendResponse = await fetch(url, {
+    // --- Resolver URL del backend ---
+    let backendUrl: URL
+    try {
+      backendUrl = buildBackendUrl(config.apiUrl, params.path ?? '')
+    } catch {
+      return new Response(
+        JSON.stringify({ detail: 'Invalid backend URL', type: 'config_error' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    // --- Enviar al backend ---
+    const backendResponse = await fetch(backendUrl, {
       method: request.method,
       headers,
-      ...(body ? { body } : {}),
+      body: rawBody,
+      signal: controller.signal,
     })
 
-    // 204 No Content has no body — return immediately to avoid errors
-    // when reading .text() on a body-less response in Node.js.
-    if (backendResponse.status === 204) {
-      return new Response(null, { status: 204 })
+    clearTimeout(timeoutId)
+
+    // Loggear errores del backend para debugging
+    if (!backendResponse.ok) {
+      console.warn(
+        `[api/v1] backend ${backendResponse.status} ${backendResponse.statusText} — ${request.method} ${backendUrl.pathname}`,
+      )
+    }
+
+    // --- Procesar respuesta ---
+    // 204/304 no tienen body — evitar errores al leer .text()
+    if (backendResponse.status === 204 || backendResponse.status === 304) {
+      return new Response(null, { status: backendResponse.status })
     }
 
     const responseBody = await backendResponse.text()
 
     return new Response(responseBody, {
       status: backendResponse.status,
-      headers: {
-        'Content-Type':
-          backendResponse.headers.get('Content-Type') || 'application/json',
-      },
+      headers: forwardableHeaders(backendResponse.headers),
     })
   } catch (error) {
+    clearTimeout(timeoutId)
+
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      console.error('[api/v1] backend timeout:', request.method, config.apiUrl)
+      return new Response(
+        JSON.stringify({ detail: 'Backend timeout', type: 'proxy_timeout' }),
+        { status: 504, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
     console.error('[api/v1] proxy error:', error)
     return new Response(
       JSON.stringify({ detail: 'Backend unavailable', type: 'proxy_error' }),
