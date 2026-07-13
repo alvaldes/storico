@@ -3,6 +3,14 @@
 @import "shadcn/tailwind.css";
 /* Geist font removed — using system fonts for now */
 
+/* ── Loading dots animation for breadcrumb ─────────────────────── */
+@keyframes loading-dots {
+  20% { background-position: 0% 0%, 50% 50%, 100% 50%; }
+  40% { background-position: 0% 100%, 50% 0%, 100% 50%; }
+  60% { background-position: 0% 50%, 50% 100%, 100% 0%; }
+  80% { background-position: 0% 50%, 50% 50%, 100% 100%; }
+}
+
 /* ── shadcn CSS variable aliases ───────────────────────────────── */
 /* Maps shadcn's variable names to our design tokens.
    @theme inline generates Tailwind utilities (bg-background, etc.)
