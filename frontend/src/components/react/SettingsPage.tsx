@@ -356,8 +356,8 @@ function LLMForm({
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-3">
-        <Button onClick={handleSave} disabled={apiSaving}>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={handleSave} disabled={apiSaving} className="w-full sm:w-auto">
           {apiSaving ? (
             <LoaderCircle className="h-4 w-4 animate-spin" />
           ) : lastSaveResult === "success" ? (
@@ -370,7 +370,7 @@ function LLMForm({
             : t.settings.llm_save}
         </Button>
 
-        <Button variant="outline" onClick={handleTest} disabled={testing}>
+        <Button variant="outline" onClick={handleTest} disabled={testing} className="w-full sm:w-auto">
           {testing ? (
             <LoaderCircle className="h-4 w-4 animate-spin" />
           ) : testResult === "success" ? (
@@ -521,19 +521,19 @@ export function SettingsPage({ locale }: SettingsPageProps) {
               {t.common.loading}
             </div>
           ) : user ? (
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
               {user.avatar_url ? (
                 <img
                   src={user.avatar_url}
                   alt={user.name}
-                  className="h-12 w-12 rounded-full object-cover ring-2 ring-(--color-border)"
+                  className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-(--color-border)"
                 />
               ) : (
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--color-primary-500)/10 text-lg font-semibold text-(--color-primary-600)">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-(--color-primary-500)/10 text-lg font-semibold text-(--color-primary-600)">
                   {user.name?.charAt(0)?.toUpperCase() || "?"}
                 </div>
               )}
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-(--color-text)">
                   {user.name}
                 </p>
@@ -541,7 +541,7 @@ export function SettingsPage({ locale }: SettingsPageProps) {
                   {user.email}
                 </p>
               </div>
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="w-full text-xs sm:w-auto">
                 {t.settings.profile_signed_in_with}{" "}
                 {user.authProvider
                   ? user.authProvider.charAt(0).toUpperCase() + user.authProvider.slice(1)
