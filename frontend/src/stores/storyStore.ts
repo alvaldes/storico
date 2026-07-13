@@ -30,7 +30,7 @@ export const useStoryStore = create<StoryState>((set, get) => ({
   error: null,
 
   fetchStories: async (projectId?: string) => {
-    set({ loading: true, error: null });
+    set({ loading: true, stories: [], error: null });
     try {
       const response = await api.listStories(projectId, 1, 100);
       set({ stories: response.items, loading: false });

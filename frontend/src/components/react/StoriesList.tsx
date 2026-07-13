@@ -52,6 +52,11 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
   const [editingStory, setEditingStory] = useState<UserStory | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Sync selectedProjectId when the prop changes (e.g. Astro rehydration edge cases)
+  useEffect(() => {
+    setSelectedProjectId(initialProjectId);
+  }, [initialProjectId]);
+
   useEffect(() => {
     fetchStories(selectedProjectId);
   }, [fetchStories, selectedProjectId]);
