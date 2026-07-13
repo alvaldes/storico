@@ -1,4 +1,4 @@
-import { useEffect, useState, Fragment } from 'react'
+import { useEffect, useState, Fragment, type ReactNode } from 'react'
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -24,14 +24,29 @@ const segmentLabelKey: Record<string, string> = {
   projects: 'projects',
 }
 
+interface BreadcrumbItem {
+  label: string | ReactNode
+  href: string | null
+}
+
 interface AutoBreadcrumbProps {
   locale: Locale
   segments: string[]
 }
 
+/** Subtle loading indicator for unresolved breadcrumb segments. */
+function LoadingDots() {
+  return (
+    <span className="inline-flex animate-pulse tracking-[0.15em]">
+      ...
+    </span>
+  )
+}
+
 export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
   const t = useTranslations(locale)
   const [resolvedLabels, setResolvedLabels] = useState<Record<string, string>>({})
+  const [resolving, setResolving] = useState<Record<string, boolean>>({})
 
   /**
    * When the last URL segment is a story UUID (not a project UUID),
@@ -61,6 +76,9 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
         return
       }
 
+      // Mark as resolving
+      setResolving((prev) => ({ ...prev, [id]: true }))
+
       // Try as project first
       getProject(id)
         .then((project) => {
@@ -79,31 +97,47 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
               .then((story) => resolveStoryProject(story.projectId))
               .catch(() => {
                 /* Not a story either — leave as-is */
-
               })
           }
+        })
+        .finally(() => {
+          setResolving((prev) => ({ ...prev, [id]: false }))
         })
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segments])
 
   function resolveStoryProject(projectId: string) {
+    setResolving((prev) => ({ ...prev, [projectId]: true }))
+
     const projectStore = useProjectStore.getState()
     const cached = projectStore.getById(projectId)
     if (cached) {
       setStoryProject({ projectId, projectName: cached.name })
+      setResolving((prev) => ({ ...prev, [projectId]: false }))
     } else {
       getProject(projectId)
         .then((p) => setStoryProject({ projectId, projectName: p.name }))
         .catch(() => {
           /* Project not found */
-
+        })
+        .finally(() => {
+          setResolving((prev) => ({ ...prev, [projectId]: false }))
         })
     }
   }
 
+  // Resolve a segment label: known key, resolved name, loading dots, or short UUID
+  function segmentLabel(seg: string): string | ReactNode {
+    const labelKey = segmentLabelKey[seg]
+    if (labelKey) return t.nav[labelKey as keyof typeof t.nav]
+    if (resolvedLabels[seg]) return resolvedLabels[seg]
+    if (resolving[seg]) return <LoadingDots />
+    return shortUUID(seg)
+  }
+
   // Build breadcrumb trail — use contextual path when story project is known
-  function buildItems(): Array<{ label: string; href: string | null }> {
+  function buildItems(): BreadcrumbItem[] {
     const lastSeg = segments[segments.length - 1]
 
     if (storyProject && lastSeg && UUID_RE.test(lastSeg) && !resolvedLabels[lastSeg]) {
@@ -123,15 +157,11 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
 
     // Default: URL-based breadcrumb
     return segments.map((seg, i) => {
-      const labelKey = segmentLabelKey[seg]
-      const label = labelKey
-        ? t.nav[labelKey as keyof typeof t.nav]
-        : (resolvedLabels[seg] ?? shortUUID(seg))
       const href = localizedPath(
         '/' + segments.slice(0, i + 1).join('/'),
         locale,
       )
-      return { label, href: i === segments.length - 1 ? null : href }
+      return { label: segmentLabel(seg), href: i === segments.length - 1 ? null : href }
     })
   }
 
