@@ -8,7 +8,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from storico.domain.entities import EntityNotFound, RepositoryError, UserStory
+from storico.domain.entities import EntityNotFound, RepositoryError, UserStory, UserStoryStatus
 from storico.domain.ports import UserStoryRepository
 from storico.infrastructure.database.models import UserStoryModel
 
@@ -62,6 +62,7 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
             raw_text=model.raw_text,
             id=model.id,
             created_at=model.created_at,
+            status=UserStoryStatus(model.status),
         )
 
     @staticmethod
@@ -74,4 +75,5 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
             "benefit": user_story.benefit,
             "raw_text": user_story.raw_text,
             "created_at": user_story.created_at,
+            "status": user_story.status.value,
         }

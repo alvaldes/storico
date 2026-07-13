@@ -46,6 +46,7 @@ async def create_story(
         benefit=result.benefit,
         raw_text=result.raw_text,
         created_at=result.created_at,
+        status=result.status,
     )
 
 
@@ -72,6 +73,7 @@ async def list_stories(
             benefit=s.benefit,
             raw_text=s.raw_text,
             created_at=s.created_at,
+            status=s.status,
         )
         for s in all_stories[start : start + params.size]
     ]
@@ -100,6 +102,7 @@ async def get_story(
         benefit=story.benefit,
         raw_text=story.raw_text,
         created_at=story.created_at,
+        status=story.status,
     )
 
 
@@ -134,6 +137,7 @@ async def update_story(
         benefit=result.benefit,
         raw_text=result.raw_text,
         created_at=result.created_at,
+        status=result.status,
     )
 
 

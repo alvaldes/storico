@@ -138,7 +138,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <Badge variant={STATUS_VARIANTS[story.status] ?? 'outline'}>
-                    {t.stories[`status_${story.status}` as keyof typeof t.stories] || story.status}
+                    {t.stories[`status_${story.status ?? 'pending'}` as keyof typeof t.stories]}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
                     {new Date(story.createdAt).toLocaleDateString(locale === 'es' ? 'es-MX' : 'en-US', {

@@ -118,7 +118,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <Badge variant={STATUS_VARIANTS[story.status] ?? 'outline'}>
-            {t.stories[`status_${story.status}` as keyof typeof t.stories] || story.status}
+            {t.stories[`status_${story.status ?? 'pending'}` as keyof typeof t.stories]}
           </Badge>
           <span className="text-xs text-muted-foreground">
             {t.stories.detail_created}{' '}

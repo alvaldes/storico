@@ -15,7 +15,7 @@ from storico.domain.entities.task import Task
 from storico.domain.entities.user import User
 from storico.domain.entities.user_account import UserAccount
 from storico.domain.entities.user_preferences import UserPreferences
-from storico.domain.entities.user_story import UserStory
+from storico.domain.entities.user_story import UserStory, UserStoryStatus
 
 __all__ = [
     "EntityNotFound",
@@ -32,6 +32,7 @@ __all__ = [
     "UserPreferences",
     "Project",
     "UserStory",
+    "UserStoryStatus",
     "Task",
     "Extraction",
 ]

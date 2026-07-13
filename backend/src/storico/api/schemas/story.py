@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from storico.domain.entities.user_story import UserStoryStatus
+
 
 class CreateUserStoryRequest(BaseModel):
     """Request body for creating a new user story."""
@@ -41,3 +43,4 @@ class UserStoryResponse(BaseModel):
     benefit: str
     raw_text: str
     created_at: datetime
+    status: UserStoryStatus = UserStoryStatus.PENDING
