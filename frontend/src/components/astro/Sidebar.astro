@@ -1,6 +1,7 @@
 ---
 import {
   LayoutDashboard,
+  FolderKanban,
   FileText,
   KanbanSquare,
   Upload,
@@ -18,6 +19,7 @@ const L = (path: string) => localizedPath(path, locale);
 const nav = t.nav;
 const navLinks = [
   { href: L('/dashboard'), icon: LayoutDashboard, label: nav['dashboard'] },
+  { href: L('/projects'), icon: FolderKanban, label: nav['projects'] },
   { href: L('/stories'), icon: FileText, label: nav['stories'] },
   { href: L('/kanban'), icon: KanbanSquare, label: nav['kanban'] },
   { href: L('/export'), icon: Upload, label: nav['export'] },

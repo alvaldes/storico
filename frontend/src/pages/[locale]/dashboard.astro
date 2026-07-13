@@ -2,12 +2,9 @@
 import MainLayout from '@/layouts/MainLayout.astro';
 import { Dashboard } from '@/components/react/Dashboard';
 import { useTranslations, type Locale } from '@/i18n/utils';
-import { getSession } from 'auth-astro/server';
 
 const locale = (Astro.params.locale as Locale) || 'en';
 const t = useTranslations(locale);
-const session = await getSession(Astro.request);
-const userId = session?.user?.id ?? '';
 ---
 
 <MainLayout locale={locale}>
@@ -15,7 +12,7 @@ const userId = session?.user?.id ?? '';
     <title>{t.app.name} — {t.nav.dashboard}</title>
   </div>
 
-  <Dashboard client:load locale={locale} userId={userId} />
+  <Dashboard client:load locale={locale} />
 </MainLayout>
 
 

@@ -1,84 +1,32 @@
 import { useEffect, useState } from 'react';
-import { FolderKanban, Plus, MoreHorizontal, Pencil, Trash2, CalendarDays, FileText } from 'lucide-react';
+import { FolderKanban, FileText, Sparkles, ChevronRight } from 'lucide-react';
 import { useProjectStore } from '@/stores/projectStore';
-import { ProjectForm } from '@/components/react/ProjectForm';
-import { Button } from '@/components/ui/button';
+import { useStoryStore } from '@/stores/storyStore';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { useTranslations, type Locale } from '@/i18n/utils';
 
-export function Dashboard({ locale = 'en', userId }: { locale?: Locale; userId?: string }) {
+export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
   const t = useTranslations(locale);
-  const { projects, loading, error, fetchProjects, createProject, updateProject, deleteProject } = useProjectStore();
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState<{ id: string; name: string; description: string } | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [localError, setLocalError] = useState<string | null>(null);
+  const { projects, fetchProjects } = useProjectStore();
+  const { stories, fetchStories } = useStoryStore();
   const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
-    fetchProjects().finally(() => setInitialLoading(false));
-  }, [fetchProjects]);
+    Promise.all([
+      fetchProjects(),
+      fetchStories(),
+    ]).finally(() => setInitialLoading(false));
+  }, [fetchProjects, fetchStories]);
 
-  useEffect(() => {
-    if (error) setLocalError(error);
-  }, [error]);
+  const totalProjects = projects.length;
+  const totalStories = stories.length;
+  const recentStories = [...stories]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5);
 
-  const handleCreate = async (data: { name: string; description: string }) => {
-    if (!userId) {
-      toast.error('You must be signed in to create a project');
-      return;
-    }
-    try {
-      setLocalError(null);
-      await createProject({ ...data, ownerId: userId });
-      toast.success(t.projects.create_toast);
-    } catch {
-      toast.error(t.projects.create_error);
-    }
-  };
-
-  const handleUpdate = async (data: { name: string; description: string }) => {
-    if (!editingProject) return;
-    try {
-      setLocalError(null);
-      await updateProject(editingProject.id, data);
-      setEditingProject(null);
-      toast.success(t.projects.updated_toast);
-    } catch {
-      toast.error(t.projects.update_error);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deletingId) return;
-    try {
-      setLocalError(null);
-      await deleteProject(deletingId);
-      setDeletingId(null);
-      toast.success(t.projects.deleted_toast);
-    } catch {
-      toast.error(t.projects.delete_error);
-    }
-  };
-
-  if (initialLoading || (loading && projects.length === 0)) {
+  if (initialLoading) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-primary-500" />
@@ -86,164 +34,106 @@ export function Dashboard({ locale = 'en', userId }: { locale?: Locale; userId?:
     );
   }
 
-  if (localError && projects.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <p className="text-destructive">{localError}</p>
-        <Button variant="outline" className="mt-4" onClick={fetchProjects}>
-          {t.common.retry ?? 'Retry'}
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">
-            {t.nav.dashboard}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t.dashboard.description ?? 'Manage your projects'}
-          </p>
-        </div>
-        <Button onClick={() => setFormOpen(true)}>
-          <Plus className="h-4 w-4" />
-          {t.dashboard.new_project}
-        </Button>
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground">
+          {t.nav.dashboard}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Welcome back — here's an overview of your workspace.
+        </p>
       </div>
 
-      {projects.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
-          <FolderKanban className="mb-4 h-12 w-12 text-muted-foreground" />
-          <p className="text-lg font-medium text-foreground">
-            {t.dashboard.empty_title}
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t.dashboard.empty_description}
-          </p>
-          <Button variant="outline" className="mt-4" onClick={() => setFormOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t.dashboard.new_project}
+      {/* Summary cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-2">
+            <FolderKanban className="h-5 w-5 text-primary" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              {t.nav.projects}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold text-foreground">{totalProjects}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-2">
+            <FileText className="h-5 w-5 text-primary" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              {t.stories.title}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold text-foreground">{totalStories}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Extractions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold text-foreground">—</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent stories */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">Recent stories</CardTitle>
+          <Button variant="ghost" size="sm" className="text-muted-foreground gap-1">
+            {t.nav.stories}
+            <ChevronRight className="h-4 w-4" />
           </Button>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {projects.map((project) => (
-            <div
-              key={project.id}
-              onClick={() => window.location.href = `/${locale}/projects/${project.id}`}
-              className="cursor-pointer flex"
-            >
-              <Card className="group flex flex-col w-full">
-                <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                  <CardTitle className="text-base">{project.name}</CardTitle>
-                  <div onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        }
-                      />
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() =>
-                            setEditingProject({
-                              id: project.id,
-                              name: project.name,
-                              description: project.description,
-                            })
-                          }
-                        >
-                          <Pencil className="mr-2 h-4 w-4" />
-                          {t.common.edit}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => setDeletingId(project.id)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {t.common.delete}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-3 pt-0 flex-1">
-                  {project.description ? (
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {project.description}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground/50 italic">
-                      {t.projects.no_description}
-                    </p>
-                  )}
-
-                  <div className="mt-auto flex items-center gap-4 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1">
-                      <CalendarDays className="h-3.5 w-3.5" />
-                      {new Date(project.createdAt).toLocaleDateString(
-                        locale === 'es' ? 'es-MX' : 'en-US',
-                        { year: 'numeric', month: 'short', day: 'numeric' }
-                      )}
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <FileText className="h-3.5 w-3.5" />
-                      {project.storyCount === 1
-                        ? t.projects.story_count.replace('{count}', String(project.storyCount))
-                        : t.projects.story_count_plural.replace('{count}', String(project.storyCount))}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+        </CardHeader>
+        <CardContent>
+          {recentStories.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <FileText className="mb-2 h-8 w-8 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">{t.stories.empty_title}</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">{t.stories.empty_description}</p>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Create dialog */}
-      <ProjectForm
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        onSubmit={handleCreate}
-        locale={locale}
-      />
-
-      {/* Edit dialog */}
-      <ProjectForm
-        key={editingProject?.id ?? 'edit'}
-        open={editingProject !== null}
-        onOpenChange={(open) => { if (!open) setEditingProject(null); }}
-        onSubmit={handleUpdate}
-        locale={locale}
-        initialData={editingProject ?? undefined}
-        title={t.common.edit}
-      />
-
-      {/* Delete confirmation */}
-      <AlertDialog open={deletingId !== null} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t.projects.delete_confirm_title}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t.projects.delete_confirm_description}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={handleDelete}
-            >
-              {t.common.delete}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          ) : (
+            <div className="space-y-3">
+              {recentStories.map((story) => {
+                const project = projects.find((p) => p.id === story.projectId);
+                return (
+                  <a
+                    key={story.id}
+                    href={`/${locale}/stories/${story.id}`}
+                    className="flex items-start justify-between gap-4 rounded-lg border border-border bg-(--color-surface) p-3 transition-colors hover:bg-(--color-surface-secondary)"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {story.rawText || `As a(n) ${story.actor}, I want ${story.feature}`}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        {project && (
+                          <span className="text-xs text-muted-foreground/60">{project.name}</span>
+                        )}
+                        <Badge variant="outline" className="text-[10px]">
+                          {new Date(story.createdAt).toLocaleDateString(
+                            locale === 'es' ? 'es-MX' : 'en-US',
+                            { month: 'short', day: 'numeric' }
+                          )}
+                        </Badge>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50 mt-0.5" />
+                  </a>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
