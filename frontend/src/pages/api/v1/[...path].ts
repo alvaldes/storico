@@ -21,24 +21,23 @@ export const ALL: APIRoute = async ({ request, params }) => {
   headers.set('X-Storico-User-Id', session.user.id as string)
   headers.set('X-Storico-Internal-Token', config.internalToken)
 
-  if (request.body) {
-    headers.set('Content-Type', 'application/json')
-  }
-
   try {
-    const fetchInit: RequestInit & { duplex?: string } = {
+    // Read body as text FIRST (before any other processing) to avoid issues
+    // with ReadableStream + duplex options in Node.js fetch.
+    let body: string | undefined
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      const text = await request.text()
+      if (text) {
+        body = text
+        headers.set('Content-Type', 'application/json')
+      }
+    }
+
+    const backendResponse = await fetch(url, {
       method: request.method,
       headers,
-    }
-
-    // Only pass body for non-GET/non-HEAD requests
-    if (request.body && request.method !== 'GET' && request.method !== 'HEAD') {
-      fetchInit.body = request.body
-      // duplex is required by Node.js fetch when body is a ReadableStream
-      fetchInit.duplex = 'half'
-    }
-
-    const backendResponse = await fetch(url, fetchInit)
+      ...(body ? { body } : {}),
+    })
 
     const responseBody = await backendResponse.text()
 
@@ -50,6 +49,7 @@ export const ALL: APIRoute = async ({ request, params }) => {
       },
     })
   } catch (error) {
+    console.error('[api/v1] proxy error:', error)
     return new Response(
       JSON.stringify({ detail: 'Backend unavailable', type: 'proxy_error' }),
       { status: 502, headers: { 'Content-Type': 'application/json' } },
