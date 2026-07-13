@@ -202,6 +202,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
 
       {/* Edit dialog */}
       <StoryForm
+        key={editingStory?.id ?? 'edit-none'}
         open={editingStory !== null}
         onOpenChange={(open) => { if (!open) setEditingStory(null); }}
         onSubmit={handleUpdate}
