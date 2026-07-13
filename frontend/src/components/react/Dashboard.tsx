@@ -130,52 +130,56 @@ export function Dashboard({ locale = 'en', userId }: { locale?: Locale; userId?:
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <a key={project.id} href={`/${locale}/projects/${project.id}`} className="block no-underline">
-            <Card className="group cursor-pointer">
-              <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                <CardTitle className="text-base">{project.name}</CardTitle>
-                <div onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      }
-                    />
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() =>
-                          setEditingProject({
-                            id: project.id,
-                            name: project.name,
-                            description: project.description,
-                          })
+            <div
+              key={project.id}
+              onClick={() => window.location.href = `/${locale}/projects/${project.id}`}
+              className="cursor-pointer"
+            >
+              <Card className="group">
+                <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                  <CardTitle className="text-base">{project.name}</CardTitle>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
                         }
-                      >
-                        <Pencil className="mr-2 h-4 w-4" />
-                        {t.common.edit}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => setDeletingId(project.id)}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        {t.common.delete}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardHeader>
-              {project.description && (
-                <CardContent>
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {project.description}
-                  </p>
-                </CardContent>
-              )}
-            </Card>
-            </a>
+                      />
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() =>
+                            setEditingProject({
+                              id: project.id,
+                              name: project.name,
+                              description: project.description,
+                            })
+                          }
+                        >
+                          <Pencil className="mr-2 h-4 w-4" />
+                          {t.common.edit}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setDeletingId(project.id)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          {t.common.delete}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </CardHeader>
+                {project.description && (
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground line-clamp-2">
+                      {project.description}
+                    </p>
+                  </CardContent>
+                )}
+              </Card>
+            </div>
           ))}
         </div>
       )}
