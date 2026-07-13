@@ -214,7 +214,7 @@ export function Dashboard({ locale = 'en', userId }: { locale?: Locale; userId?:
           <AlertDialogFooter>
             <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
               onClick={handleDelete}
             >
               {t.common.delete}
