@@ -44,6 +44,7 @@ async def create_project(
         owner_id=result.owner_id,
         created_at=result.created_at,
         updated_at=result.updated_at,
+        story_count=0,
     )
 
 
@@ -56,17 +57,20 @@ async def list_projects(
     all_projects = await repo.list()
     total = len(all_projects)
     start = (params.page - 1) * params.size
-    items = [
-        ProjectResponse(
-            id=p.id,
-            name=p.name,
-            description=p.description,
-            owner_id=p.owner_id,
-            created_at=p.created_at,
-            updated_at=p.updated_at,
+    items: list[ProjectResponse] = []
+    for p in all_projects[start : start + params.size]:
+        story_count = await repo.count_stories(p.id)
+        items.append(
+            ProjectResponse(
+                id=p.id,
+                name=p.name,
+                description=p.description,
+                owner_id=p.owner_id,
+                created_at=p.created_at,
+                updated_at=p.updated_at,
+                story_count=story_count,
+            )
         )
-        for p in all_projects[start : start + params.size]
-    ]
     return PaginatedResponse(
         items=items,
         total=total,
@@ -84,6 +88,7 @@ async def get_project(
     project = await repo.find_by_id(project_id)
     if project is None:
         raise EntityNotFound("Project", str(project_id))
+    story_count = await repo.count_stories(project_id)
     return ProjectResponse(
         id=project.id,
         name=project.name,
@@ -91,6 +96,7 @@ async def get_project(
         owner_id=project.owner_id,
         created_at=project.created_at,
         updated_at=project.updated_at,
+        story_count=story_count,
     )
 
 
@@ -113,6 +119,7 @@ async def update_project(
 
     updated = replace(existing, **kwargs)
     result = await repo.save(updated)
+    story_count = await repo.count_stories(project_id)
     return ProjectResponse(
         id=result.id,
         name=result.name,
@@ -120,6 +127,7 @@ async def update_project(
         owner_id=result.owner_id,
         created_at=result.created_at,
         updated_at=result.updated_at,
+        story_count=story_count,
     )
 
 

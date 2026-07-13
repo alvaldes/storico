@@ -9,6 +9,7 @@
     "kanban": "Kanban Board",
     "export": "Export",
     "settings": "Settings",
+    "projects": "Projects",
     "login": "Sign In",
     "logout": "Sign Out",
     "back_to_home": "Back to home"
@@ -102,7 +103,10 @@
     "deleted_toast": "Project deleted",
     "delete_error": "Failed to delete project",
     "delete_confirm_title": "Delete project?",
-    "delete_confirm_description": "This will permanently delete this project and all its user stories. This action cannot be undone."
+    "delete_confirm_description": "This will permanently delete this project and all its user stories. This action cannot be undone.",
+    "no_description": "No description",
+    "story_count": "{count} story",
+    "story_count_plural": "{count} stories"
   },
   "stories": {
     "title": "User Stories",

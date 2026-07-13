@@ -29,9 +29,14 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
   const project = projects.find((p) => p.id === projectId);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
-    if (projects.length === 0) fetchProjects();
+    if (projects.length === 0) {
+      fetchProjects().finally(() => setInitialLoading(false));
+    } else {
+      setInitialLoading(false);
+    }
   }, [fetchProjects, projects.length]);
 
   const handleUpdate = async (data: { name: string; description: string }) => {
@@ -47,7 +52,7 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
     window.history.back();
   };
 
-  if (loading && !project) {
+  if (initialLoading || (loading && !project)) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-primary-500" />
@@ -112,6 +117,7 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
 
       {/* Edit dialog */}
       <ProjectForm
+        key="project-detail-edit"
         open={editing}
         onOpenChange={setEditing}
         onSubmit={handleUpdate}

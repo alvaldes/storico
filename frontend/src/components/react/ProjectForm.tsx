@@ -93,7 +93,7 @@ export function ProjectForm({
             </Button>
             <Button type="submit" disabled={saving || !name.trim()}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t.common.create}
+              {initialData ? t.common.save : t.common.create}
             </Button>
           </DialogFooter>
         </form>

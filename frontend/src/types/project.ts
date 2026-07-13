@@ -5,6 +5,7 @@ export interface Project {
   ownerId: string;
   createdAt: string;
   updatedAt: string;
+  storyCount: number;
 }
 
 export interface CreateProjectParams {

@@ -9,6 +9,7 @@
     "kanban": "Tablero Kanban",
     "export": "Exportar",
     "settings": "Configuración",
+    "projects": "Proyectos",
     "login": "Iniciar Sesión",
     "logout": "Cerrar Sesión",
     "back_to_home": "Volver al inicio"
@@ -102,7 +103,10 @@
     "deleted_toast": "Proyecto eliminado",
     "delete_error": "No se pudo eliminar el proyecto",
     "delete_confirm_title": "¿Eliminar proyecto?",
-    "delete_confirm_description": "Esto eliminará permanentemente el proyecto y todas sus historias de usuario. Esta acción no se puede deshacer."
+    "delete_confirm_description": "Esto eliminará permanentemente el proyecto y todas sus historias de usuario. Esta acción no se puede deshacer.",
+    "no_description": "Sin descripción",
+    "story_count": "{count} historia",
+    "story_count_plural": "{count} historias"
   },
   "stories": {
     "title": "Historias de Usuario",

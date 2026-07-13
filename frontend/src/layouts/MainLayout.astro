@@ -39,7 +39,7 @@ const userJson = JSON.stringify(session?.user ?? null);
       <Header locale={locale} userJson={userJson} currentPath={currentPath} />
 
       <div class="sm:hidden px-4 pt-3">
-        <AutoBreadcrumb locale={locale} segments={segments} />
+        <AutoBreadcrumb locale={locale} segments={segments} client:load />
       </div>
 
       <main class="p-4 lg:p-6">

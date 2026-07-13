@@ -5,13 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import EntityNotFound, Project, RepositoryError
 from storico.domain.ports import ProjectRepository
-from storico.infrastructure.database.models import ProjectModel
+from storico.infrastructure.database.models import ProjectModel, UserStoryModel
 
 
 class SQLAlchemyProjectRepository(ProjectRepository):
@@ -55,6 +55,13 @@ class SQLAlchemyProjectRepository(ProjectRepository):
         await self._session.commit()
         if result.rowcount == 0:
             raise EntityNotFound("Project", str(project_id))
+
+    async def count_stories(self, project_id: UUID) -> int:
+        stmt = select(func.count()).select_from(UserStoryModel).where(
+            UserStoryModel.project_id == project_id
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
 
     def _to_domain(self, model: ProjectModel) -> Project:
         return Project(

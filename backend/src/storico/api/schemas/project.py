@@ -36,3 +36,4 @@ class ProjectResponse(BaseModel):
     owner_id: UUID
     created_at: datetime
     updated_at: datetime
+    story_count: int = 0

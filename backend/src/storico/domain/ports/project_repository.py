@@ -33,3 +33,8 @@ class ProjectRepository(ABC):
     async def delete(self, project_id: UUID) -> None:
         """Delete a project by its unique identifier."""
         ...
+
+    @abstractmethod
+    async def count_stories(self, project_id: UUID) -> int:
+        """Return the number of user stories in a project."""
+        ...

@@ -27,7 +27,7 @@ const segments = cleanPath.split('/').filter(Boolean);
     <MobileNavDropdown locale={locale} currentPath={currentPath} client:load />
 
     <div class="hidden sm:flex">
-      <AutoBreadcrumb locale={locale} segments={segments} />
+      <AutoBreadcrumb locale={locale} segments={segments} client:load />
     </div>
 
   </div>

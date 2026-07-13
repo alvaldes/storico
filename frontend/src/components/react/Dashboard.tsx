@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FolderKanban, Plus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { FolderKanban, Plus, MoreHorizontal, Pencil, Trash2, CalendarDays, FileText } from 'lucide-react';
 import { useProjectStore } from '@/stores/projectStore';
 import { ProjectForm } from '@/components/react/ProjectForm';
 import { Button } from '@/components/ui/button';
@@ -30,9 +30,10 @@ export function Dashboard({ locale = 'en', userId }: { locale?: Locale; userId?:
   const [editingProject, setEditingProject] = useState<{ id: string; name: string; description: string } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
-    fetchProjects();
+    fetchProjects().finally(() => setInitialLoading(false));
   }, [fetchProjects]);
 
   useEffect(() => {
@@ -77,7 +78,7 @@ export function Dashboard({ locale = 'en', userId }: { locale?: Locale; userId?:
     }
   };
 
-  if (loading && projects.length === 0) {
+  if (initialLoading || (loading && projects.length === 0)) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-primary-500" />
@@ -133,9 +134,9 @@ export function Dashboard({ locale = 'en', userId }: { locale?: Locale; userId?:
             <div
               key={project.id}
               onClick={() => window.location.href = `/${locale}/projects/${project.id}`}
-              className="cursor-pointer"
+              className="cursor-pointer flex"
             >
-              <Card className="group">
+              <Card className="group flex flex-col w-full">
                 <CardHeader className="flex flex-row items-start justify-between space-y-0">
                   <CardTitle className="text-base">{project.name}</CardTitle>
                   <div onClick={(e) => e.stopPropagation()}>
@@ -171,13 +172,33 @@ export function Dashboard({ locale = 'en', userId }: { locale?: Locale; userId?:
                     </DropdownMenu>
                   </div>
                 </CardHeader>
-                {project.description && (
-                  <CardContent>
+                <CardContent className="flex flex-col gap-3 pt-0 flex-1">
+                  {project.description ? (
                     <p className="text-sm text-muted-foreground line-clamp-2">
                       {project.description}
                     </p>
-                  </CardContent>
-                )}
+                  ) : (
+                    <p className="text-sm text-muted-foreground/50 italic">
+                      {t.projects.no_description}
+                    </p>
+                  )}
+
+                  <div className="mt-auto flex items-center gap-4 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarDays className="h-3.5 w-3.5" />
+                      {new Date(project.createdAt).toLocaleDateString(
+                        locale === 'es' ? 'es-MX' : 'en-US',
+                        { year: 'numeric', month: 'short', day: 'numeric' }
+                      )}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <FileText className="h-3.5 w-3.5" />
+                      {project.storyCount === 1
+                        ? t.projects.story_count.replace('{count}', String(project.storyCount))
+                        : t.projects.story_count_plural.replace('{count}', String(project.storyCount))}
+                    </span>
+                  </div>
+                </CardContent>
               </Card>
             </div>
           ))}
@@ -194,6 +215,7 @@ export function Dashboard({ locale = 'en', userId }: { locale?: Locale; userId?:
 
       {/* Edit dialog */}
       <ProjectForm
+        key={editingProject?.id ?? 'edit'}
         open={editingProject !== null}
         onOpenChange={(open) => { if (!open) setEditingProject(null); }}
         onSubmit={handleUpdate}
