@@ -92,6 +92,13 @@ export const ALL: APIRoute = async ({ request, params }) => {
     let backendUrl: URL
     try {
       backendUrl = buildBackendUrl(config.apiUrl, params.path ?? '')
+
+      // Reenviar query params de la request original al backend.
+      // params.path (del catch-all [...path]) NO incluye query string.
+      const originalUrl = new URL(request.url)
+      originalUrl.searchParams.forEach((value, key) => {
+        backendUrl.searchParams.append(key, value)
+      })
     } catch {
       return new Response(
         JSON.stringify({ detail: 'Invalid backend URL', type: 'config_error' }),

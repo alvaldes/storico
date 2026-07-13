@@ -24,6 +24,7 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -45,12 +46,28 @@ interface StoriesListProps {
 
 export function StoriesList({ locale = 'en', projectId: initialProjectId }: StoriesListProps) {
   const t = useTranslations(locale);
-  const { projects } = useProjectStore();
+  const { projects, fetchProjects } = useProjectStore();
   const { stories, loading, fetchStories, createStory, updateStory, deleteStory } = useStoryStore();
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(initialProjectId);
   const [formOpen, setFormOpen] = useState(false);
   const [editingStory, setEditingStory] = useState<UserStory | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Build items array for the Base Select (supports null as a native value)
+  const projectItems: { label: string; value: string | null }[] = useMemo(
+    () => [
+      { label: 'All projects', value: null },
+      ...projects.map((p) => ({ label: p.name, value: p.id })),
+    ],
+    [projects],
+  );
+
+  // Fetch projects if they haven't been loaded yet (needed for the filter dropdown)
+  useEffect(() => {
+    if (projects.length === 0) {
+      fetchProjects();
+    }
+  }, [fetchProjects, projects.length]);
 
   // Sync selectedProjectId when the prop changes (e.g. Astro View Transitions)
   useEffect(() => {
@@ -114,19 +131,21 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
         <div className="flex items-center gap-3">
           {!initialProjectId && (
             <Select
-              value={selectedProjectId ?? '_all'}
-              onValueChange={(val) => setSelectedProjectId(val === '_all' ? undefined : val)}
+              items={projectItems}
+              value={selectedProjectId ?? null}
+              onValueChange={(val) => setSelectedProjectId(val ?? undefined)}
             >
               <SelectTrigger className="w-56">
-                <SelectValue placeholder="All projects" />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="_all">All projects</SelectItem>
-                {projects.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  {projectItems.map((item) => (
+                    <SelectItem key={item.value ?? '_all'} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           )}
