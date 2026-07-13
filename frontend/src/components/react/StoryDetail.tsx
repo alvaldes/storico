@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Pencil, Trash2, Sparkles, Loader2, FileText, ListTree } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Sparkles, Loader2, FileText, ListTree, Fingerprint } from 'lucide-react';
+import { shortUUID } from '@/lib/utils';
 import { useStoryStore } from '@/stores/storyStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { StoryForm } from '@/components/react/StoryForm';
@@ -120,6 +121,10 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
           <Badge variant={STATUS_VARIANTS[story.status] ?? 'outline'}>
             {t.stories[`status_${story.status ?? 'pending'}` as keyof typeof t.stories]}
           </Badge>
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/60 font-mono">
+            <Fingerprint className="h-3 w-3" />
+            {shortUUID(story.id)}
+          </span>
           <span className="text-xs text-muted-foreground">
             {t.stories.detail_created}{' '}
             {new Date(story.createdAt).toLocaleDateString(locale === 'es' ? 'es-MX' : 'en-US', {

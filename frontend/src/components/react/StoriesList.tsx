@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   FileText,
+  Fingerprint,
   Info,
   Plus,
   Pencil,
@@ -10,6 +11,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import { useStoryStore } from '@/stores/storyStore';
 import { useProjectStore } from '@/stores/projectStore';
 import type { UserStory } from '@/types/story';
+import { shortUUID } from '@/lib/utils';
 import { StoryForm } from '@/components/react/StoryForm';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -241,6 +243,10 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
                       month: 'short',
                       day: 'numeric',
                     })}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/60 font-mono">
+                    <Fingerprint className="h-3 w-3" />
+                    {shortUUID(story.id)}
                   </span>
                 </div>
                 <p className="text-sm font-medium text-foreground">

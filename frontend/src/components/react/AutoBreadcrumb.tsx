@@ -10,8 +10,7 @@ import {
 import { localizedPath, useTranslations, type Locale } from '@/i18n/utils'
 import { useProjectStore } from '@/stores/projectStore'
 import { getProject } from '@/lib/projects-api'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { shortUUID, UUID_RE } from '@/lib/utils'
 
 // Maps path segments to nav translation keys
 const segmentLabelKey: Record<string, string> = {
@@ -70,7 +69,7 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
           const labelKey = segmentLabelKey[seg]
           const label = labelKey
             ? t.nav[labelKey as keyof typeof t.nav]
-            : (resolvedLabels[seg] ?? (UUID_RE.test(seg) ? seg.slice(0, 8) : seg))
+            : (resolvedLabels[seg] ?? shortUUID(seg))
           const href = localizedPath(
             '/' + segments.slice(0, i + 1).join('/'),
             locale,
