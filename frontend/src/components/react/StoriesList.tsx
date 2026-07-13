@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FileText,
   Plus,
@@ -52,7 +52,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
   const [editingStory, setEditingStory] = useState<UserStory | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Sync selectedProjectId when the prop changes (e.g. Astro rehydration edge cases)
+  // Sync selectedProjectId when the prop changes (e.g. Astro View Transitions)
   useEffect(() => {
     setSelectedProjectId(initialProjectId);
   }, [initialProjectId]);
@@ -60,6 +60,17 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
   useEffect(() => {
     fetchStories(selectedProjectId);
   }, [fetchStories, selectedProjectId]);
+
+  // Client-side filter: guard against View Transition stale store data.
+  // Stories from a previous page survive in the Zustand singleton until
+  // the async fetch completes. Only show stories that belong to the
+  // current project when a filter is active.
+  const visibleStories = useMemo(
+    () => selectedProjectId
+      ? stories.filter((s) => s.projectId === selectedProjectId)
+      : stories,
+    [stories, selectedProjectId],
+  );
 
   const handleCreate = async (data: { actor: string; feature: string; benefit: string; rawText: string }) => {
     if (!selectedProjectId) {
@@ -128,11 +139,11 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
       </div>
 
       {/* Stories list */}
-      {loading && stories.length === 0 ? (
+      {loading && visibleStories.length === 0 ? (
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-primary-500" />
         </div>
-      ) : stories.length === 0 ? (
+      ) : visibleStories.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
           <FileText className="mb-4 h-12 w-12 text-muted-foreground" />
           <p className="text-lg font-medium text-foreground">
@@ -148,7 +159,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
         </div>
       ) : (
         <div className="space-y-3">
-          {stories.map((story) => (
+          {visibleStories.map((story) => (
             <div
               key={story.id}
               onClick={() => window.location.href = `/${locale}/stories/${story.id}`}
