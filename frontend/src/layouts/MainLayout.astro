@@ -33,7 +33,7 @@ const userJson = JSON.stringify(session?.user ?? null);
     <Sidebar locale={locale} currentPath={currentPath} />
 
     <div class="lg:pl-60 sidebar-collapsed:lg:pl-16 transition-[padding] duration-200">
-      <Header locale={locale} userJson={userJson} />
+      <Header locale={locale} userJson={userJson} currentPath={currentPath} />
 
       <main class="p-4 lg:p-6">
         <slot />

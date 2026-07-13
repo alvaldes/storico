@@ -31,7 +31,7 @@ function isActive(href: string): boolean {
 
 <aside
   id="sidebar"
-  class="fixed left-0 z-40 flex w-60 sidebar-collapsed:w-16 flex-col bg-(--color-surface) transition-[width,transform] duration-200 -translate-x-full top-14 rounded-b-xl shadow-lg lg:inset-y-0 lg:top-0 lg:shadow-none lg:rounded-none lg:border-r lg:border-(--color-border) lg:translate-x-0 sidebar-open:translate-x-0"
+  class="fixed left-0 z-40 flex w-60 sidebar-collapsed:w-16 flex-col bg-(--color-surface) transition-[width,transform] duration-200 -translate-x-full top-14 rounded-b-xl shadow-lg lg:inset-y-0 lg:top-0 lg:shadow-none lg:rounded-none lg:border-r lg:border-(--color-border) lg:translate-x-0"
   data-nav="sidebar"
 >
   <!-- Logo — hidden on mobile (header has it), always visible on desktop -->
@@ -83,33 +83,26 @@ function isActive(href: string): boolean {
   </div>
 </aside>
 
-<!-- Overlay for mobile -->
-<div
-  id="sidebar-overlay"
-  class="fixed inset-0 z-30 bg-black/50 opacity-0 pointer-events-none transition-opacity duration-200 lg:hidden sidebar-open:opacity-100 sidebar-open:pointer-events-auto"
-></div>
-
 <script>
-  const overlay = document.getElementById('sidebar-overlay');
-  const sidebar = document.getElementById('sidebar');
-
-  function closeSidebar() {
-    document.documentElement.classList.remove('sidebar-open');
+  // ── Restore persisted collapse state (runs once, bundled as module) ──
+  const saved = localStorage.getItem('sidebar-collapsed');
+  if (saved === 'true') {
+    document.documentElement.classList.add('sidebar-collapsed');
   }
 
-  if (overlay) {
-    overlay.addEventListener('click', closeSidebar);
-  }
+  // ── Desktop collapse toggle ──
+  document.addEventListener('click', (e) => {
+    const collapseBtn = e.target.closest('#sidebar-collapse-toggle');
+    if (collapseBtn) {
+      document.documentElement.classList.toggle('sidebar-collapsed');
+      const isCollapsed = document.documentElement.classList.contains('sidebar-collapsed');
+      localStorage.setItem('sidebar-collapsed', String(isCollapsed));
+      collapseBtn.title = isCollapsed ? collapseBtn.dataset.labelExpand : collapseBtn.dataset.labelCollapse;
+      collapseBtn.setAttribute('aria-label', collapseBtn.title);
+    }
+  });
 
-  // ── Close sidebar on nav link click (mobile) ──
-  if (sidebar) {
-    sidebar.addEventListener('click', (e) => {
-      const link = e.target.closest('[data-nav-link]');
-      if (link) closeSidebar();
-    });
-  }
-
-  // ── Active nav link on View Transitions (client-side nav) ──
+  // ── Active nav link on View Transitions ──
   function updateActiveNav() {
     const path = window.location.pathname.replace(/\/$/, '');
     document.querySelectorAll('[data-nav="sidebar"] [data-nav-link]').forEach((a) => {
@@ -121,30 +114,6 @@ function isActive(href: string): boolean {
       a.classList.toggle('text-(--color-text-secondary)', !match);
     });
   }
-
+  updateActiveNav();
   document.addEventListener('astro:after-swap', updateActiveNav);
-
-  // ── Desktop collapse toggle ──
-  const collapseBtn = document.getElementById('sidebar-collapse-toggle');
-  if (collapseBtn) {
-    function updateCollapseLabel() {
-      const isCollapsed = document.documentElement.classList.contains('sidebar-collapsed');
-      collapseBtn.title = isCollapsed ? collapseBtn.dataset.labelExpand : collapseBtn.dataset.labelCollapse;
-      collapseBtn.setAttribute('aria-label', collapseBtn.title);
-    }
-
-    // Restore persisted state on load and sync label
-    const saved = localStorage.getItem('sidebar-collapsed');
-    if (saved === 'true') {
-      document.documentElement.classList.add('sidebar-collapsed');
-    }
-    updateCollapseLabel();
-
-    collapseBtn.addEventListener('click', () => {
-      document.documentElement.classList.toggle('sidebar-collapsed');
-      const isCollapsed = document.documentElement.classList.contains('sidebar-collapsed');
-      localStorage.setItem('sidebar-collapsed', String(isCollapsed));
-      updateCollapseLabel();
-    });
-  }
 </script>
