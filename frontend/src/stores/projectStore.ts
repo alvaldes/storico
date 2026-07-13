@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { Project, CreateProjectParams, UpdateProjectParams } from '@/types/project';
+import type { Project } from '@/types/project';
+import type { CreateProjectParams, UpdateProjectParams } from '@/schemas';
 import * as api from '@/lib/projects-api';
 
 interface ProjectState {

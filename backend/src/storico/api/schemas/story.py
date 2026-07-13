@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateUserStoryRequest(BaseModel):
@@ -12,10 +12,10 @@ class CreateUserStoryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     project_id: UUID
-    actor: str
-    feature: str
-    benefit: str
-    raw_text: str
+    actor: str = Field(..., min_length=1, max_length=100)
+    feature: str = Field(..., min_length=1, max_length=300)
+    benefit: str = Field(..., min_length=1, max_length=300)
+    raw_text: str = Field(..., max_length=2000)
 
 
 class UpdateUserStoryRequest(BaseModel):
@@ -23,10 +23,10 @@ class UpdateUserStoryRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    actor: str | None = None
-    feature: str | None = None
-    benefit: str | None = None
-    raw_text: str | None = None
+    actor: str | None = Field(None, min_length=1, max_length=100)
+    feature: str | None = Field(None, min_length=1, max_length=300)
+    benefit: str | None = Field(None, min_length=1, max_length=300)
+    raw_text: str | None = Field(None, max_length=2000)
 
 
 class UserStoryResponse(BaseModel):

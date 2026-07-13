@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateProjectRequest(BaseModel):
@@ -11,8 +11,8 @@ class CreateProjectRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str
-    description: str = ""
+    name: str = Field(..., min_length=1, max_length=120)
+    description: str = Field(default="", max_length=500)
     owner_id: UUID
 
 
@@ -21,8 +21,8 @@ class UpdateProjectRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = None
-    description: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=120)
+    description: str | None = Field(None, max_length=500)
 
 
 class ProjectResponse(BaseModel):

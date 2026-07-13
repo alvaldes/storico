@@ -7,13 +7,3 @@ export interface Project {
   updatedAt: string;
   storyCount: number;
 }
-
-export interface CreateProjectParams {
-  name: string;
-  description?: string;
-}
-
-export interface UpdateProjectParams {
-  name?: string;
-  description?: string;
-}

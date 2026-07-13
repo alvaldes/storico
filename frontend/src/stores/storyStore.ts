@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { UserStory, CreateStoryParams, UpdateStoryParams } from '@/types/story';
+import type { UserStory } from '@/types/story';
+import type { CreateStoryParams, UpdateStoryParams } from '@/schemas';
 import * as api from '@/lib/stories-api';
 
 interface StoryState {

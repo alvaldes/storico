@@ -1,6 +1,7 @@
 import { api } from './api';
 import { toCamelCase, toSnakeCase } from './utils';
-import type { UserStory, CreateStoryParams, UpdateStoryParams } from '@/types/story';
+import type { UserStory } from '@/types/story';
+import type { CreateStoryParams, UpdateStoryParams } from '@/schemas';
 import type { PaginatedResponse } from './projects-api';
 
 /** Create a new user story. */

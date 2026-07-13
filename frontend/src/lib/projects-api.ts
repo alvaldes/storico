@@ -1,6 +1,7 @@
 import { api } from './api';
 import { toCamelCase, toSnakeCase } from './utils';
-import type { Project, CreateProjectParams, UpdateProjectParams } from '@/types/project';
+import type { Project } from '@/types/project';
+import type { CreateProjectParams, UpdateProjectParams } from '@/schemas';
 
 export interface PaginatedResponse<T> {
   items: T[];
