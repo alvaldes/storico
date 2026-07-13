@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   FileText,
+  Info,
   Plus,
   Pencil,
   Trash2,
 } from 'lucide-react';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { useStoryStore } from '@/stores/storyStore';
 import { useProjectStore } from '@/stores/projectStore';
 import type { UserStory } from '@/types/story';
@@ -161,10 +163,27 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
           )}
         </div>
 
-        <Button onClick={() => setFormOpen(true)} disabled={!selectedProjectId && !initialProjectId}>
-          <Plus className="h-4 w-4" />
-          {t.stories.create_title}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setFormOpen(true)} disabled={!selectedProjectId && !initialProjectId}>
+            <Plus className="h-4 w-4" />
+            {t.stories.create_title}
+          </Button>
+
+          {!selectedProjectId && !initialProjectId && (
+            <HoverCard>
+              <HoverCardTrigger
+                render={
+                  <span className="inline-flex items-center justify-center rounded-full h-5 w-5 text-muted-foreground hover:text-foreground hover:bg-(--color-surface-tertiary) transition-colors cursor-help">
+                    <Info className="h-4 w-4" />
+                  </span>
+                }
+              />
+              <HoverCardContent side="top" align="start" className="w-72">
+                <p className="text-sm">{t.stories.create_disabled_hint}</p>
+              </HoverCardContent>
+            </HoverCard>
+          )}
+        </div>
       </div>
 
       {/* Stories list */}
@@ -181,10 +200,27 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
           <p className="mt-1 text-sm text-muted-foreground">
             {t.stories.empty_description}
           </p>
-          <Button variant="outline" className="mt-4" onClick={() => setFormOpen(true)} disabled={!selectedProjectId && !initialProjectId}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t.stories.create_title}
-          </Button>
+          <div className="flex items-center gap-2 mt-4">
+            <Button variant="outline" onClick={() => setFormOpen(true)} disabled={!selectedProjectId && !initialProjectId}>
+              <Plus className="mr-2 h-4 w-4" />
+              {t.stories.create_title}
+            </Button>
+
+            {!selectedProjectId && !initialProjectId && (
+              <HoverCard>
+                <HoverCardTrigger
+                  render={
+                    <span className="inline-flex items-center justify-center rounded-full h-5 w-5 text-muted-foreground hover:text-foreground hover:bg-(--color-surface-tertiary) transition-colors cursor-help">
+                      <Info className="h-4 w-4" />
+                    </span>
+                  }
+                />
+                <HoverCardContent side="top" align="start" className="w-72">
+                  <p className="text-sm">{t.stories.create_disabled_hint}</p>
+                </HoverCardContent>
+              </HoverCard>
+            )}
+          </div>
         </div>
       ) : (
         <div className="space-y-3">

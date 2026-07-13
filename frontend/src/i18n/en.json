@@ -146,6 +146,7 @@
     "delete_error": "Failed to delete user story",
     "delete_confirm_title": "Delete user story?",
     "delete_confirm_description": "This will permanently delete this user story and its generated tasks. This action cannot be undone.",
+    "create_disabled_hint": "Select a project first to create a new user story.",
     "status_pending": "Pending",
     "status_processing": "Processing",
     "status_completed": "Completed",

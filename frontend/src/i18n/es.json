@@ -146,6 +146,7 @@
     "delete_error": "No se pudo eliminar la historia de usuario",
     "delete_confirm_title": "¿Eliminar historia de usuario?",
     "delete_confirm_description": "Esto eliminará permanentemente la historia de usuario y sus tareas generadas. Esta acción no se puede deshacer.",
+    "create_disabled_hint": "Seleccioná un proyecto primero para crear una nueva historia de usuario.",
     "status_pending": "Pendiente",
     "status_processing": "Procesando",
     "status_completed": "Completada",
