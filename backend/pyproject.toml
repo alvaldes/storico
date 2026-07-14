@@ -47,6 +47,9 @@ dependencies = [
     # Templating
     "Jinja2>=3.1.0",
 
+    # JWT
+    "PyJWT>=2.9.0",
+
     # Environment
     "python-dotenv>=1.0.0",
 ]

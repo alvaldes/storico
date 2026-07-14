@@ -1,0 +1,17 @@
+---
+import MainLayout from '@/layouts/MainLayout.astro';
+import { WorkspaceSettings } from '@/components/react/WorkspaceSettings';
+import { useTranslations, type Locale } from '@/i18n/utils';
+
+const locale = (Astro.params.locale as Locale) || 'en';
+const workspaceId = Astro.params.id as string;
+const t = useTranslations(locale);
+---
+
+<MainLayout locale={locale}>
+  <div slot="head">
+    <title>{t.app.name} — Workspace Settings</title>
+  </div>
+
+  <WorkspaceSettings client:load locale={locale} workspaceId={workspaceId} />
+</MainLayout>

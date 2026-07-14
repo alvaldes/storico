@@ -10,6 +10,16 @@ from storico.infrastructure.database.models.user_preferences import (
     UserPreferencesModel,
 )
 from storico.infrastructure.database.models.user_story import UserStoryModel
+from storico.infrastructure.database.models.workspace import WorkspaceModel
+from storico.infrastructure.database.models.workspace_llm_config import (
+    WorkspaceLLMConfigModel,
+)
+from storico.infrastructure.database.models.workspace_member import (
+    WorkspaceMemberModel,
+)
+from storico.infrastructure.database.models.workspace_prompt import (
+    WorkspacePromptModel,
+)
 
 __all__ = [
     "Base",
@@ -20,4 +30,8 @@ __all__ = [
     "UserStoryModel",
     "TaskModel",
     "ExtractionModel",
+    "WorkspaceModel",
+    "WorkspaceMemberModel",
+    "WorkspaceLLMConfigModel",
+    "WorkspacePromptModel",
 ]

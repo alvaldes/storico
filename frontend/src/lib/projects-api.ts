@@ -10,47 +10,52 @@ export interface PaginatedResponse<T> {
   size: number;
 }
 
-/** Create a new project. */
+/** Create a new project in a workspace. */
 export async function createProject(
-  params: CreateProjectParams & { ownerId: string },
+  workspaceId: string,
+  params: CreateProjectParams,
 ): Promise<Project> {
   const raw = await api.post<Record<string, unknown>>(
-    '/api/v1/projects/',
+    `/api/v1/workspaces/${workspaceId}/projects/`,
     toSnakeCase(params),
   );
   return toCamelCase<Project>(raw);
 }
 
-/** List all projects with pagination. */
+/** List projects in a workspace with pagination. */
 export async function listProjects(
+  workspaceId: string,
   page = 1,
   size = 20,
 ): Promise<PaginatedResponse<Project>> {
   const raw = await api.get<Record<string, unknown>>(
-    `/api/v1/projects/?page=${page}&size=${size}`,
+    `/api/v1/workspaces/${workspaceId}/projects/?page=${page}&size=${size}`,
   );
   return toCamelCase<PaginatedResponse<Project>>(raw);
 }
 
-/** Get a single project by ID. */
-export async function getProject(id: string): Promise<Project> {
-  const raw = await api.get<Record<string, unknown>>(`/api/v1/projects/${id}`);
+/** Get a single project by ID within a workspace. */
+export async function getProject(workspaceId: string, id: string): Promise<Project> {
+  const raw = await api.get<Record<string, unknown>>(
+    `/api/v1/workspaces/${workspaceId}/projects/${id}`,
+  );
   return toCamelCase<Project>(raw);
 }
 
 /** Update a project. */
 export async function updateProject(
+  workspaceId: string,
   id: string,
   params: UpdateProjectParams,
 ): Promise<Project> {
   const raw = await api.put<Record<string, unknown>>(
-    `/api/v1/projects/${id}`,
+    `/api/v1/workspaces/${workspaceId}/projects/${id}`,
     toSnakeCase(params),
   );
   return toCamelCase<Project>(raw);
 }
 
 /** Delete a project. */
-export async function deleteProject(id: string): Promise<void> {
-  await api.delete(`/api/v1/projects/${id}`);
+export async function deleteProject(workspaceId: string, id: string): Promise<void> {
+  await api.delete(`/api/v1/workspaces/${workspaceId}/projects/${id}`);
 }

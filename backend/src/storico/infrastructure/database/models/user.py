@@ -28,9 +28,6 @@ class UserModel(Base):
         UniqueConstraint("email", name="uq_users_email"),
     )
 
-    projects: Mapped[list["ProjectModel"]] = relationship(  # noqa: F821, UP037
-        back_populates="owner", lazy="selectin"
-    )
     accounts: Mapped[list["UserAccountModel"]] = relationship(  # noqa: F821, UP037
         back_populates="user", lazy="selectin"
     )

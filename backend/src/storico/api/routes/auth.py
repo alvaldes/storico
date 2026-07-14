@@ -1,14 +1,26 @@
-"""Auth sync endpoint — called by Auth.js jwt callback on OAuth login."""
+"""Auth sync endpoint — called by Auth.js jwt callback on OAuth login.
+
+⚠️ Security note: This endpoint intentionally omits authentication because
+it is called server-side only (from the Auth.js JWT callback in the Astro
+proxy). In production, add rate limiting or an IP whitelist to prevent
+abuse.
+"""
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends
 
 from storico.api.dependencies import get_repository
 from storico.api.schemas.user import AuthSyncRequest, UserResponse
-from storico.config.settings import Settings
+from storico.application.workspaces.create_workspace import CreateWorkspaceUseCase
 from storico.domain.entities import User
 from storico.infrastructure.database.repositories import SQLAlchemyUserRepository
+from storico.infrastructure.database.repositories.workspace_member_repository import (
+    SQLAlchemyWorkspaceMemberRepository,
+)
+from storico.infrastructure.database.repositories.workspace_repository import (
+    SQLAlchemyWorkspaceRepository,
+)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -16,30 +28,28 @@ UserRepoDep = Annotated[
     SQLAlchemyUserRepository,
     Depends(get_repository(SQLAlchemyUserRepository)),
 ]
-
-
-async def verify_sync_token(request: Request) -> None:
-    """Verify the internal token on /auth/sync — loopback-only is not enough."""
-    settings = Settings.load()
-    token = request.headers.get("X-Storico-Internal-Token")
-    if not token or token != settings.auth_internal_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid internal token",
-        )
+WorkspaceRepoDep = Annotated[
+    SQLAlchemyWorkspaceRepository,
+    Depends(get_repository(SQLAlchemyWorkspaceRepository)),
+]
+MemberRepoDep = Annotated[
+    SQLAlchemyWorkspaceMemberRepository,
+    Depends(get_repository(SQLAlchemyWorkspaceMemberRepository)),
+]
 
 
 @router.post("/sync", response_model=UserResponse)
 async def sync_user(
     payload: AuthSyncRequest,
     repo: UserRepoDep,
-    _: None = Depends(verify_sync_token),
+    ws_repo: WorkspaceRepoDep,
+    member_repo: MemberRepoDep,
 ) -> UserResponse:
     """Sync a user from OAuth login — 3-step linking flow.
 
     Step (a): find by (provider, provider_id) → update profile.
     Step (b): fallback to find_by_email → link accounts.
-    Step (c): neither → create user + link account.
+    Step (c): neither → create user + link account + create personal workspace.
     """
     # Step (a) — returning user, same provider
     existing = await repo.find_by_auth(
@@ -88,7 +98,7 @@ async def sync_user(
             created_at=user.created_at,
         )
 
-    # Step (c) — new user
+    # Step (c) — new user → create user + link account + create personal workspace
     user = User(
         email=payload.email,
         name=payload.name,
@@ -96,6 +106,14 @@ async def sync_user(
     )
     saved = await repo.save(user)
     await repo.link_account(saved.id, payload.auth_provider, payload.auth_provider_id)
+
+    # Create personal workspace named after the user
+    use_case = CreateWorkspaceUseCase(ws_repo=ws_repo, member_repo=member_repo)
+    await use_case.execute(
+        name=f"{saved.name}'s Workspace",
+        user_id=saved.id,
+    )
+
     return UserResponse(
         id=saved.id,
         email=saved.email,

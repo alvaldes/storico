@@ -1,5 +1,7 @@
 """User Pydantic schemas for Storico API."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from uuid import UUID
 
@@ -30,3 +32,22 @@ class UserResponse(BaseModel):
     auth_id: str
     avatar_url: str | None = None
     created_at: datetime
+
+
+class WorkspaceSummary(BaseModel):
+    """Lightweight workspace reference for the user profile response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    slug: str
+    role: str
+    created_at: datetime
+
+
+class UserProfileResponse(BaseModel):
+    """Full user profile including workspace memberships."""
+
+    user: UserResponse
+    workspaces: list[WorkspaceSummary]

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import EntityNotFound, Project, RepositoryError
 from storico.domain.ports import ProjectRepository
-from storico.infrastructure.database.models import ProjectModel, UserStoryModel
+from storico.infrastructure.database.models import ProjectModel, UserStoryModel, WorkspaceModel
 
 
 class SQLAlchemyProjectRepository(ProjectRepository):
@@ -40,8 +40,10 @@ class SQLAlchemyProjectRepository(ProjectRepository):
         result = await self._session.get(ProjectModel, project_id)
         return self._to_domain(result) if result else None
 
-    async def list_by_owner(self, owner_id: UUID) -> list[Project]:
-        stmt = select(ProjectModel).where(ProjectModel.owner_id == owner_id)
+    async def list_by_workspace(self, workspace_id: UUID) -> list[Project]:
+        stmt = select(ProjectModel).where(
+            ProjectModel.workspace_id == workspace_id
+        )
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
 
@@ -63,11 +65,19 @@ class SQLAlchemyProjectRepository(ProjectRepository):
         result = await self._session.execute(stmt)
         return result.scalar_one()
 
+    async def count_by_workspace(self, workspace_id: UUID) -> int:
+        stmt = select(func.count()).select_from(ProjectModel).where(
+            ProjectModel.workspace_id == workspace_id
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
+
     def _to_domain(self, model: ProjectModel) -> Project:
         return Project(
             name=model.name,
-            owner_id=model.owner_id,
+            workspace_id=model.workspace_id,
             description=model.description,
+            created_by=model.created_by,
             id=model.id,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -78,8 +88,9 @@ class SQLAlchemyProjectRepository(ProjectRepository):
         return {
             "id": project.id,
             "name": project.name,
-            "owner_id": project.owner_id,
+            "workspace_id": project.workspace_id,
             "description": project.description,
+            "created_by": project.created_by,
             "created_at": project.created_at,
             "updated_at": project.updated_at,
         }

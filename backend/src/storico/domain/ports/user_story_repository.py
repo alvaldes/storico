@@ -25,6 +25,11 @@ class UserStoryRepository(ABC):
         ...
 
     @abstractmethod
+    async def list_by_workspace(self, workspace_id: UUID) -> list[UserStory]:
+        """Return all user stories belonging to a workspace."""
+        ...
+
+    @abstractmethod
     async def list(self) -> list[UserStory]:
         """Return all user stories."""
         ...

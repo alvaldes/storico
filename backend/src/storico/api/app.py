@@ -7,12 +7,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from storico.api.errors import (
+    cannot_remove_owner_handler,
     duplicate_entity_handler,
     entity_not_found_handler,
     generic_error_handler,
+    insufficient_role_handler,
+    last_admin_error_handler,
     llm_connection_error_handler,
     llm_model_not_found_handler,
     llm_response_error_handler,
+    owner_transfer_error_handler,
     parse_error_handler,
     repository_error_handler,
 )
@@ -25,17 +29,23 @@ from storico.api.routes import (
     stories,
     tasks,
     users,
+    workspaces,
+    workspace_settings,
 )
 from storico.api.routes import (
     settings as settings_routes,
 )
 from storico.config.settings import Settings
 from storico.domain.entities import (
+    CannotRemoveOwnerError,
     DuplicateEntity,
     EntityNotFound,
+    InsufficientRole,
+    LastAdminError,
     LLMConnectionError,
     LLMModelNotFoundError,
     LLMResponseError,
+    OwnerTransferError,
     ParseError,
     RepositoryError,
 )
@@ -77,6 +87,13 @@ def create_app() -> FastAPI:
     app.add_exception_handler(LLMModelNotFoundError, llm_model_not_found_handler)
     app.add_exception_handler(LLMResponseError, llm_response_error_handler)
     app.add_exception_handler(ParseError, parse_error_handler)
+
+    # Workspace exception handlers
+    app.add_exception_handler(InsufficientRole, insufficient_role_handler)
+    app.add_exception_handler(OwnerTransferError, owner_transfer_error_handler)
+    app.add_exception_handler(LastAdminError, last_admin_error_handler)
+    app.add_exception_handler(CannotRemoveOwnerError, cannot_remove_owner_handler)
+
     app.add_exception_handler(Exception, generic_error_handler)  # type: ignore[arg-type]
 
     # Routers
@@ -90,5 +107,11 @@ def create_app() -> FastAPI:
     app.include_router(extraction.router)
     app.include_router(settings_routes.settings_router)
     app.include_router(settings_routes.test_router)
+
+    # Workspace routes
+    app.include_router(workspaces.router)
+    app.include_router(workspace_settings.router)
+    app.include_router(projects.projects_router)  # workspace-scoped
+    app.include_router(extraction.extraction_router)  # workspace-scoped
 
     return app

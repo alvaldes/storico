@@ -20,8 +20,8 @@ class ProjectRepository(ABC):
         ...
 
     @abstractmethod
-    async def list_by_owner(self, owner_id: UUID) -> list[Project]:
-        """Return all projects owned by a specific user."""
+    async def list_by_workspace(self, workspace_id: UUID) -> list[Project]:
+        """Return all projects scoped to a workspace."""
         ...
 
     @abstractmethod
@@ -37,4 +37,9 @@ class ProjectRepository(ABC):
     @abstractmethod
     async def count_stories(self, project_id: UUID) -> int:
         """Return the number of user stories in a project."""
+        ...
+
+    @abstractmethod
+    async def count_by_workspace(self, workspace_id: UUID) -> int:
+        """Return the number of projects in a workspace."""
         ...

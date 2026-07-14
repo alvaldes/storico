@@ -8,6 +8,14 @@ from storico.domain.ports.user_preferences_repository import (
 from storico.domain.ports.user_repository import UserRepository
 from storico.domain.ports.user_story_repository import UserStoryRepository
 from storico.domain.ports.vector_store_port import ExtractionExample, VectorStorePort
+from storico.domain.ports.workspace_llm_config_repository import (
+    WorkspaceLLMConfigRepository,
+)
+from storico.domain.ports.workspace_member_repository import (
+    WorkspaceMemberRepository,
+)
+from storico.domain.ports.workspace_prompt_repository import WorkspacePromptRepository
+from storico.domain.ports.workspace_repository import WorkspaceRepository
 
 __all__ = [
     "UserRepository",
@@ -22,4 +30,8 @@ __all__ = [
     "ExtractionResult",
     "VectorStorePort",
     "ExtractionExample",
+    "WorkspaceRepository",
+    "WorkspaceMemberRepository",
+    "WorkspaceLLMConfigRepository",
+    "WorkspacePromptRepository",
 ]

@@ -7,14 +7,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 
-from storico.api.dependencies import get_repository
+from storico.api.dependencies import get_current_user, get_repository
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.task import (
     CreateTaskRequest,
     TaskResponse,
     UpdateTaskRequest,
 )
-from storico.domain.entities import EntityNotFound, Task
+from storico.domain.entities import EntityNotFound, Task, User
 from storico.infrastructure.database.repositories import SQLAlchemyTaskRepository
 
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
@@ -28,7 +28,8 @@ TaskRepoDep = Annotated[
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_task(
     body: CreateTaskRequest,
-    repo: TaskRepoDep,
+    current_user: User = Depends(get_current_user),  # noqa: ARG001
+    repo: TaskRepoDep = None,  # type: ignore[assignment]
 ) -> TaskResponse:
     """Create a new task."""
     task = Task(
@@ -58,11 +59,20 @@ async def create_task(
 @router.get("/")
 async def list_tasks(
     params: Annotated[PaginationParams, Depends()],
-    repo: TaskRepoDep,
+    current_user: User = Depends(get_current_user),  # noqa: ARG001
+    repo: TaskRepoDep = None,  # type: ignore[assignment]
     user_story_id: UUID | None = None,
+    workspace_id: UUID | None = None,
 ) -> PaginatedResponse[TaskResponse]:
-    """List tasks with optional user_story_id filter and pagination."""
-    if user_story_id is not None:
+    """List tasks with optional filters and pagination.
+
+    Filters:
+    - ``user_story_id``: filter by user story.
+    - ``workspace_id``: filter by workspace (joins through story → project).
+    """
+    if workspace_id is not None:
+        all_tasks = await repo.list_by_workspace(workspace_id)
+    elif user_story_id is not None:
         all_tasks = await repo.list_by_story(user_story_id)
     else:
         all_tasks = await repo.list()
@@ -95,7 +105,8 @@ async def list_tasks(
 @router.get("/{task_id}")
 async def get_task(
     task_id: UUID,
-    repo: TaskRepoDep,
+    current_user: User = Depends(get_current_user),  # noqa: ARG001
+    repo: TaskRepoDep = None,  # type: ignore[assignment]
 ) -> TaskResponse:
     """Get a task by its ID."""
     task = await repo.find_by_id(task_id)
@@ -119,7 +130,8 @@ async def get_task(
 async def update_task(
     task_id: UUID,
     body: UpdateTaskRequest,
-    repo: TaskRepoDep,
+    current_user: User = Depends(get_current_user),  # noqa: ARG001
+    repo: TaskRepoDep = None,  # type: ignore[assignment]
 ) -> TaskResponse:
     """Update an existing task.
 
@@ -164,7 +176,8 @@ async def update_task(
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(
     task_id: UUID,
-    repo: TaskRepoDep,
+    current_user: User = Depends(get_current_user),  # noqa: ARG001
+    repo: TaskRepoDep = None,  # type: ignore[assignment]
 ) -> None:
     """Delete a task by its ID."""
     await repo.delete(task_id)

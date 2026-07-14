@@ -5,10 +5,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from storico.api.dependencies import get_repository
+from storico.api.dependencies import get_current_user, get_repository
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.extraction import ExtractionResponse
-from storico.domain.entities import EntityNotFound
+from storico.domain.entities import EntityNotFound, User
 from storico.infrastructure.database.repositories import SQLAlchemyExtractionRepository
 
 router = APIRouter(prefix="/api/v1/extractions", tags=["extractions"])
@@ -22,15 +22,24 @@ ExtractionRepoDep = Annotated[
 @router.get("/")
 async def list_extractions(
     params: Annotated[PaginationParams, Depends()],
-    repo: ExtractionRepoDep,
+    current_user: User = Depends(get_current_user),  # noqa: ARG001
+    repo: ExtractionRepoDep = None,  # type: ignore[assignment]
     user_story_id: UUID | None = None,
+    workspace_id: UUID | None = None,
 ) -> PaginatedResponse[ExtractionResponse]:
-    """List extractions for a user story with pagination."""
-    all_extractions = (
-        await repo.list_by_story(user_story_id)
-        if user_story_id is not None
-        else await repo.list()
-    )
+    """List extractions with optional filters and pagination.
+
+    Filters:
+    - ``user_story_id``: filter by user story.
+    - ``workspace_id``: filter by workspace (joins through story → project).
+    """
+    if workspace_id is not None:
+        all_extractions = await repo.list_by_workspace(workspace_id)
+    elif user_story_id is not None:
+        all_extractions = await repo.list_by_story(user_story_id)
+    else:
+        all_extractions = await repo.list()
+
     total = len(all_extractions)
     start = (params.page - 1) * params.size
     items = [
@@ -58,7 +67,8 @@ async def list_extractions(
 @router.get("/{extraction_id}")
 async def get_extraction(
     extraction_id: UUID,
-    repo: ExtractionRepoDep,
+    current_user: User = Depends(get_current_user),  # noqa: ARG001
+    repo: ExtractionRepoDep = None,  # type: ignore[assignment]
 ) -> ExtractionResponse:
     """Get an extraction by its ID."""
     extraction = await repo.find_by_id(extraction_id)

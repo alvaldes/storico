@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 
     # Auth
     auth_internal_token: str = "dev-insecure-token-change-in-production"
+    auth_jwt_secret: str = "dev-insecure-token-change-in-production"
     auth_allowed_origins: str = "http://localhost:4321"
 
     # Server

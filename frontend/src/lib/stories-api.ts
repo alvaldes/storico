@@ -13,15 +13,19 @@ export async function createStory(params: CreateStoryParams): Promise<UserStory>
   return toCamelCase<UserStory>(raw);
 }
 
-/** List user stories with optional project filter and pagination. */
+/** List user stories with optional project filter, workspace filter, and pagination. */
 export async function listStories(
   projectId?: string,
   page = 1,
   size = 20,
+  workspaceId?: string,
 ): Promise<PaginatedResponse<UserStory>> {
   let path = `/api/v1/stories/?page=${page}&size=${size}`;
   if (projectId) {
     path += `&project_id=${projectId}`;
+  }
+  if (workspaceId) {
+    path += `&workspace_id=${workspaceId}`;
   }
   const raw = await api.get<Record<string, unknown>>(path);
   return toCamelCase<PaginatedResponse<UserStory>>(raw);

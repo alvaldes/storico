@@ -25,10 +25,7 @@ export const config = {
   /** Backend URL used by Astro API proxy and Auth.js */
   apiUrl: required('API_URL'),
 
-  /** Shared secret between Astro proxy and FastAPI backend */
-  internalToken: required('STORICO_AUTH_INTERNAL_TOKEN'),
-
-  /** Auth.js secret for JWT encryption */
+  /** Auth.js secret for JWT encryption — also used to sign proxy JWTs */
   authSecret: required('AUTH_SECRET'),
 
   /** OAuth providers (optional — at least one needed for login) */

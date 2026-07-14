@@ -3,7 +3,7 @@ import { ClientRouter } from 'astro:transitions';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
 import globalsCss from '@/styles/globals.css?url';
 import Header from '@/components/astro/Header.astro';
-import Sidebar from '@/components/astro/Sidebar.astro';
+import { Sidebar } from '@/components/react/Sidebar';
 import { AutoBreadcrumb } from '@/components/react/AutoBreadcrumb';
 import { Toaster } from '@/components/ui/sonner';
 import { getSession } from 'auth-astro/server';
@@ -34,7 +34,7 @@ const userJson = JSON.stringify(session?.user ?? null);
     <title>{t.app.name}</title>
   </head>
   <body class="min-h-dvh bg-(--color-surface)">
-    <Sidebar locale={locale} currentPath={currentPath} />
+    <Sidebar client:load locale={locale} currentPath={currentPath} userJson={userJson} />
 
     <div class="lg:pl-60 sidebar-collapsed:lg:pl-16 transition-[padding] duration-200">
       <Header locale={locale} userJson={userJson} currentPath={currentPath} />

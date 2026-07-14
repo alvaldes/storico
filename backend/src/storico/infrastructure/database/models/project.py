@@ -12,15 +12,18 @@ from storico.infrastructure.database.models.base import Base
 
 
 class ProjectModel(Base):
-    """ORM model representing a project owned by a user."""
+    """ORM model representing a project scoped to a workspace."""
 
     __tablename__ = "projects"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    owner_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    workspace_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True, default=None
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
@@ -29,7 +32,7 @@ class ProjectModel(Base):
         DateTime(timezone=True), nullable=False
     )
 
-    owner: Mapped["UserModel"] = relationship(back_populates="projects", lazy="selectin")  # noqa: F821, UP037
+    workspace: Mapped["WorkspaceModel"] = relationship(lazy="selectin")  # noqa: F821, UP037
     user_stories: Mapped[list["UserStoryModel"]] = relationship(  # noqa: F821, UP037
         back_populates="project", lazy="selectin"
     )

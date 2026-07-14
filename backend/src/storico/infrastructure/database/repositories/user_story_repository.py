@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import EntityNotFound, RepositoryError, UserStory, UserStoryStatus
 from storico.domain.ports import UserStoryRepository
-from storico.infrastructure.database.models import UserStoryModel
+from storico.infrastructure.database.models import ProjectModel, UserStoryModel
 
 
 class SQLAlchemyUserStoryRepository(UserStoryRepository):
@@ -39,6 +39,15 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
 
     async def list_by_project(self, project_id: UUID) -> list[UserStory]:
         stmt = select(UserStoryModel).where(UserStoryModel.project_id == project_id)
+        result = await self._session.execute(stmt)
+        return [self._to_domain(row) for row in result.scalars()]
+
+    async def list_by_workspace(self, workspace_id: UUID) -> list[UserStory]:
+        stmt = (
+            select(UserStoryModel)
+            .join(ProjectModel)
+            .where(ProjectModel.workspace_id == workspace_id)
+        )
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
 

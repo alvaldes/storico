@@ -4,11 +4,15 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from storico.domain.entities import (
+    CannotRemoveOwnerError,
     DuplicateEntity,
     EntityNotFound,
+    InsufficientRole,
+    LastAdminError,
     LLMConnectionError,
     LLMModelNotFoundError,
     LLMResponseError,
+    OwnerTransferError,
     ParseError,
     RepositoryError,
 )
@@ -114,4 +118,51 @@ async def parse_error_handler(
             "detail": str(exc),
             "type": "parse_error",
         },
+    )
+
+
+# ── Workspace exception handlers ─────────────────────────────────
+
+
+async def insufficient_role_handler(
+    request: Request,
+    exc: InsufficientRole,
+) -> JSONResponse:
+    """Maps ``InsufficientRole`` to a 403 JSON response."""
+    return JSONResponse(
+        status_code=403,
+        content={"detail": str(exc), "type": "insufficient_role"},
+    )
+
+
+async def owner_transfer_error_handler(
+    request: Request,
+    exc: OwnerTransferError,
+) -> JSONResponse:
+    """Maps ``OwnerTransferError`` to a 400 JSON response."""
+    return JSONResponse(
+        status_code=400,
+        content={"detail": str(exc), "type": "owner_transfer_error"},
+    )
+
+
+async def last_admin_error_handler(
+    request: Request,
+    exc: LastAdminError,
+) -> JSONResponse:
+    """Maps ``LastAdminError`` to a 400 JSON response."""
+    return JSONResponse(
+        status_code=400,
+        content={"detail": str(exc), "type": "last_admin_error"},
+    )
+
+
+async def cannot_remove_owner_handler(
+    request: Request,
+    exc: CannotRemoveOwnerError,
+) -> JSONResponse:
+    """Maps ``CannotRemoveOwnerError`` to a 400 JSON response."""
+    return JSONResponse(
+        status_code=400,
+        content={"detail": str(exc), "type": "cannot_remove_owner"},
     )

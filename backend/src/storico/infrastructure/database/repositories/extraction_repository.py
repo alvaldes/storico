@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import EntityNotFound, Extraction, RepositoryError
 from storico.domain.ports import ExtractionRepository
-from storico.infrastructure.database.models import ExtractionModel
+from storico.infrastructure.database.models import ExtractionModel, ProjectModel, UserStoryModel
 
 
 class SQLAlchemyExtractionRepository(ExtractionRepository):
@@ -39,6 +39,16 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
 
     async def list_by_story(self, user_story_id: UUID) -> list[Extraction]:
         stmt = select(ExtractionModel).where(ExtractionModel.user_story_id == user_story_id)
+        result = await self._session.execute(stmt)
+        return [self._to_domain(row) for row in result.scalars()]
+
+    async def list_by_workspace(self, workspace_id: UUID) -> list[Extraction]:
+        stmt = (
+            select(ExtractionModel)
+            .join(UserStoryModel)
+            .join(ProjectModel)
+            .where(ProjectModel.workspace_id == workspace_id)
+        )
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
 

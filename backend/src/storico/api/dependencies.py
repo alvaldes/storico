@@ -5,12 +5,17 @@ from collections.abc import Awaitable, Callable
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Request, status
+import jwt as pyjwt  # PyJWT library
+from fastapi import Depends, HTTPException, Path, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.application.extraction import ExtractFromStoryUseCase
 from storico.domain.entities import User
+from storico.domain.entities.workspace import Workspace
+from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
 from storico.domain.ports import LLMPort, UserRepository, VectorStorePort
+from storico.domain.ports.workspace_member_repository import WorkspaceMemberRepository
+from storico.domain.ports.workspace_repository import WorkspaceRepository
 from storico.domain.services.extraction_judge_service import LLMJudgeService
 from storico.domain.services.extraction_service import ExtractionService, RAGConfig
 from storico.infrastructure.database.repositories import (
@@ -18,6 +23,12 @@ from storico.infrastructure.database.repositories import (
     SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
+)
+from storico.infrastructure.database.repositories.workspace_member_repository import (
+    SQLAlchemyWorkspaceMemberRepository,
+)
+from storico.infrastructure.database.repositories.workspace_repository import (
+    SQLAlchemyWorkspaceRepository,
 )
 from storico.infrastructure.database.session import get_session
 from storico.infrastructure.llm import OllamaAdapter, PromptManager, TaskParser
@@ -55,47 +66,55 @@ def get_repository[RepoType](repo_class: type[RepoType]) -> Callable[..., Awaita
     return _get_repo
 
 
-INTERNAL_TOKEN_HEADER = "X-Storico-Internal-Token"
-USER_ID_HEADER = "X-Storico-User-Id"
-
-
 async def get_current_user(
     request: Request,
     repo: UserRepository = Depends(get_repository(SQLAlchemyUserRepository)),
 ) -> User:
-    """Validate trusted proxy headers and return the authenticated user.
+    """Validate JWT from Authorization header and return the authenticated user.
 
-    Requires both X-Storico-Internal-Token (shared secret) and
-    X-Storico-User-Id (user UUID set by Astro proxy).
+    Extracts and verifies a JWT from the ``Authorization: Bearer <token>``
+    header, then looks up the user identified by the ``sub`` claim.
     """
     from storico.config.settings import Settings  # late import to avoid circular
 
     settings = Settings.load()
 
-    # Validate internal token
-    token = request.headers.get(INTERNAL_TOKEN_HEADER)
-    if not token or token != settings.auth_internal_token:
+    # Extract Bearer token
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing authentication token",
         )
 
-    # Extract user ID
-    user_id = request.headers.get(USER_ID_HEADER)
-    if not user_id:
+    token = auth_header.removeprefix("Bearer ")
+
+    # Decode JWT
+    try:
+        payload = pyjwt.decode(token, settings.auth_jwt_secret, algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise ValueError("Missing sub claim")
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing user identification",
+            detail="Invalid or missing authentication token",
         )
 
     # Look up user
     try:
         user = await repo.find_by_id(UUID(user_id))
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing authentication token",
+        )
 
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing authentication token",
+        )
 
     return user
 
@@ -189,3 +208,73 @@ def get_extract_use_case(
         extraction_service=extraction_service,
         story_repo=story_repo,
     )
+
+
+# ── Workspace dependencies ──────────────────────────────────────────
+
+
+async def get_workspace_for_user(
+    workspace_id: UUID = Path(...),
+    current_user: User = Depends(get_current_user),
+    ws_repo: WorkspaceRepository = Depends(get_repository(SQLAlchemyWorkspaceRepository)),
+    member_repo: WorkspaceMemberRepository = Depends(
+        get_repository(SQLAlchemyWorkspaceMemberRepository)
+    ),
+) -> tuple[Workspace, WorkspaceRole]:
+    """Resolve workspace and validate membership.
+
+    Returns ``(Workspace, WorkspaceRole)`` if the user is a member.
+    Raises 404 if the workspace does not exist (no 403 — avoids leaking
+    existence to non-members).
+    Raises 403 if the user is authenticated but not a member.
+    """
+    workspace = await ws_repo.find_by_id(workspace_id)
+    if workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Workspace with id '{workspace_id}' not found",
+        )
+
+    member = await member_repo.find_by_workspace_and_user(workspace_id, current_user.id)
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of this workspace",
+        )
+
+    return (workspace, member.role)
+
+
+async def require_admin(
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
+) -> tuple[Workspace, WorkspaceRole]:
+    """Require admin role for the current workspace.
+
+    Must be chained after ``get_workspace_for_user``.
+    Raises 403 if the user is not an admin.
+    """
+    workspace, role = ctx
+    if role != WorkspaceRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return ctx
+
+
+async def require_owner(
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
+) -> Workspace:
+    """Require workspace ownership (for transfer operations).
+
+    Must be chained after ``require_admin``.
+    Raises 403 if the authenticated user is not the workspace owner.
+    """
+    workspace, _ = ctx
+    if workspace.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the workspace owner can perform this action",
+        )
+    return workspace

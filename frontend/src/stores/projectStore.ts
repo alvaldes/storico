@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Project } from '@/types/project';
 import type { CreateProjectParams, UpdateProjectParams } from '@/schemas';
 import * as api from '@/lib/projects-api';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
 
 interface ProjectState {
   projects: Project[];
@@ -9,10 +10,10 @@ interface ProjectState {
   saving: boolean;
   error: string | null;
 
-  /** Fetch all projects from the API. */
+  /** Fetch all projects for the current workspace. */
   fetchProjects: () => Promise<void>;
-  /** Create a new project. */
-  createProject: (params: CreateProjectParams & { ownerId: string }) => Promise<Project>;
+  /** Create a new project in the current workspace. */
+  createProject: (params: CreateProjectParams) => Promise<Project>;
   /** Update an existing project. */
   updateProject: (id: string, params: UpdateProjectParams) => Promise<void>;
   /** Delete a project. */
@@ -28,9 +29,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   error: null,
 
   fetchProjects: async () => {
+    const ws = useWorkspaceStore.getState().currentWorkspace;
+    if (!ws) {
+      set({ projects: [], loading: false });
+      return;
+    }
     set({ loading: true, error: null });
     try {
-      const response = await api.listProjects(1, 100);
+      const response = await api.listProjects(ws.id, 1, 100);
       set({ projects: response.items, loading: false });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch projects';
@@ -39,9 +45,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   createProject: async (params) => {
+    const ws = useWorkspaceStore.getState().currentWorkspace;
+    if (!ws) throw new Error('No workspace selected');
     set({ saving: true, error: null });
     try {
-      const project = await api.createProject(params);
+      const project = await api.createProject(ws.id, params);
       set((state) => ({ projects: [...state.projects, project], saving: false }));
       return project;
     } catch (err) {
@@ -52,9 +60,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   updateProject: async (id, params) => {
+    const ws = useWorkspaceStore.getState().currentWorkspace;
+    if (!ws) throw new Error('No workspace selected');
     set({ saving: true, error: null });
     try {
-      const updated = await api.updateProject(id, params);
+      const updated = await api.updateProject(ws.id, id, params);
       set((state) => ({
         projects: state.projects.map((p) => (p.id === id ? updated : p)),
         saving: false,
@@ -67,9 +77,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   deleteProject: async (id) => {
+    const ws = useWorkspaceStore.getState().currentWorkspace;
+    if (!ws) throw new Error('No workspace selected');
     set({ saving: true, error: null });
     try {
-      await api.deleteProject(id);
+      await api.deleteProject(ws.id, id);
       set((state) => ({
         projects: state.projects.filter((p) => p.id !== id),
         saving: false,

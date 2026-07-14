@@ -25,6 +25,11 @@ class ExtractionRepository(ABC):
         ...
 
     @abstractmethod
+    async def list_by_workspace(self, workspace_id: UUID) -> list[Extraction]:
+        """Return all extractions belonging to a workspace."""
+        ...
+
+    @abstractmethod
     async def list(self) -> list[Extraction]:
         """Return all extractions."""
         ...

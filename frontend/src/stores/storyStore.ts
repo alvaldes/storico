@@ -9,8 +9,8 @@ interface StoryState {
   saving: boolean;
   error: string | null;
 
-  /** Fetch stories, optionally filtered by project. */
-  fetchStories: (projectId?: string) => Promise<void>;
+  /** Fetch stories, optionally filtered by project and/or workspace. */
+  fetchStories: (projectId?: string, workspaceId?: string) => Promise<void>;
   /** Fetch a single story by ID. */
   fetchStory: (id: string) => Promise<void>;
   /** Create a new user story. */
@@ -29,10 +29,10 @@ export const useStoryStore = create<StoryState>((set, get) => ({
   saving: false,
   error: null,
 
-  fetchStories: async (projectId?: string) => {
+  fetchStories: async (projectId?: string, workspaceId?: string) => {
     set({ loading: true, stories: [], error: null });
     try {
-      const response = await api.listStories(projectId, 1, 100);
+      const response = await api.listStories(projectId, 1, 100, workspaceId);
       set({ stories: response.items, loading: false });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch stories';

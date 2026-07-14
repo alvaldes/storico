@@ -4,17 +4,23 @@ from dataclasses import replace
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
-from storico.api.dependencies import get_repository
+from storico.api.dependencies import get_current_user, get_repository
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.story import (
     CreateUserStoryRequest,
     UpdateUserStoryRequest,
     UserStoryResponse,
 )
-from storico.domain.entities import EntityNotFound, UserStory
-from storico.infrastructure.database.repositories import SQLAlchemyUserStoryRepository
+from storico.domain.entities import EntityNotFound, User, UserStory
+from storico.infrastructure.database.repositories import (
+    SQLAlchemyProjectRepository,
+    SQLAlchemyUserStoryRepository,
+)
+from storico.infrastructure.database.repositories.workspace_member_repository import (
+    SQLAlchemyWorkspaceMemberRepository,
+)
 
 router = APIRouter(prefix="/api/v1/stories", tags=["stories"])
 
@@ -23,13 +29,73 @@ StoryRepoDep = Annotated[
     Depends(get_repository(SQLAlchemyUserStoryRepository)),
 ]
 
+ProjectRepoDep = Annotated[
+    SQLAlchemyProjectRepository,
+    Depends(get_repository(SQLAlchemyProjectRepository)),
+]
+
+MemberRepoDep = Annotated[
+    SQLAlchemyWorkspaceMemberRepository,
+    Depends(get_repository(SQLAlchemyWorkspaceMemberRepository)),
+]
+
+
+async def _validate_story_workspace_access(
+    story_id: UUID,
+    current_user: User,
+    story_repo: SQLAlchemyUserStoryRepository,
+    project_repo: SQLAlchemyProjectRepository,
+    member_repo: SQLAlchemyWorkspaceMemberRepository,
+) -> UserStory:
+    """Find a story and verify the user has access to its workspace.
+
+    Returns the story if access is granted. Raises 404 or 403 otherwise.
+    """
+    story = await story_repo.find_by_id(story_id)
+    if story is None:
+        raise EntityNotFound("UserStory", str(story_id))
+
+    project = await project_repo.find_by_id(story.project_id)
+    if project is None:
+        raise EntityNotFound("UserStory", str(story_id))
+
+    member = await member_repo.find_by_workspace_and_user(
+        project.workspace_id, current_user.id
+    )
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of this workspace",
+        )
+    return story
+
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_story(
     body: CreateUserStoryRequest,
-    repo: StoryRepoDep,
+    current_user: User = Depends(get_current_user),
+    repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
 ) -> UserStoryResponse:
-    """Create a new user story."""
+    """Create a new user story.
+
+    The story's project must belong to a workspace the user is a member of.
+    """
+    # Validate the user has access to the project's workspace
+    project = await project_repo.find_by_id(body.project_id)
+    if project is None:
+        raise EntityNotFound("Project", str(body.project_id))
+
+    member = await member_repo.find_by_workspace_and_user(
+        project.workspace_id, current_user.id
+    )
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of this project's workspace",
+        )
+
     story = UserStory(
         project_id=body.project_id,
         actor=body.actor,
@@ -53,11 +119,20 @@ async def create_story(
 @router.get("/")
 async def list_stories(
     params: Annotated[PaginationParams, Depends()],
-    repo: StoryRepoDep,
+    current_user: User = Depends(get_current_user),
+    repo: StoryRepoDep = None,  # type: ignore[assignment]
     project_id: UUID | None = None,
+    workspace_id: UUID | None = None,
 ) -> PaginatedResponse[UserStoryResponse]:
-    """List user stories with optional project_id filter and pagination."""
-    if project_id is not None:
+    """List user stories with optional filters and pagination.
+
+    Filters:
+    - ``project_id``: filter by project.
+    - ``workspace_id``: filter by workspace (requires auth).
+    """
+    if workspace_id is not None:
+        all_stories = await repo.list_by_workspace(workspace_id)
+    elif project_id is not None:
         all_stories = await repo.list_by_project(project_id)
     else:
         all_stories = await repo.list()
@@ -88,12 +163,18 @@ async def list_stories(
 @router.get("/{story_id}")
 async def get_story(
     story_id: UUID,
-    repo: StoryRepoDep,
+    current_user: User = Depends(get_current_user),
+    repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
 ) -> UserStoryResponse:
-    """Get a user story by its ID."""
-    story = await repo.find_by_id(story_id)
-    if story is None:
-        raise EntityNotFound("UserStory", str(story_id))
+    """Get a user story by its ID.
+
+    The user must be a member of the workspace that owns the story's project.
+    """
+    story = await _validate_story_workspace_access(
+        story_id, current_user, repo, project_repo, member_repo
+    )
     return UserStoryResponse(
         id=story.id,
         project_id=story.project_id,
@@ -110,12 +191,18 @@ async def get_story(
 async def update_story(
     story_id: UUID,
     body: UpdateUserStoryRequest,
-    repo: StoryRepoDep,
+    current_user: User = Depends(get_current_user),
+    repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
 ) -> UserStoryResponse:
-    """Update an existing user story."""
-    existing = await repo.find_by_id(story_id)
-    if existing is None:
-        raise EntityNotFound("UserStory", str(story_id))
+    """Update an existing user story.
+
+    The user must be a member of the workspace that owns the story's project.
+    """
+    existing = await _validate_story_workspace_access(
+        story_id, current_user, repo, project_repo, member_repo
+    )
 
     kwargs: dict = {}
     if body.actor is not None:
@@ -144,7 +231,16 @@ async def update_story(
 @router.delete("/{story_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_story(
     story_id: UUID,
-    repo: StoryRepoDep,
+    current_user: User = Depends(get_current_user),
+    repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
 ) -> None:
-    """Delete a user story by its ID."""
+    """Delete a user story by its ID.
+
+    The user must be a member of the workspace that owns the story's project.
+    """
+    await _validate_story_workspace_access(
+        story_id, current_user, repo, project_repo, member_repo
+    )
     await repo.delete(story_id)

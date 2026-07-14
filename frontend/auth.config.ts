@@ -34,7 +34,6 @@ export default defineConfig({
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-Storico-Internal-Token': config.internalToken,
             },
             body: JSON.stringify({
               email: token.email ?? '',

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import EntityNotFound, RepositoryError, Task
 from storico.domain.ports import TaskRepository
-from storico.infrastructure.database.models import TaskModel
+from storico.infrastructure.database.models import ProjectModel, TaskModel, UserStoryModel
 
 
 class SQLAlchemyTaskRepository(TaskRepository):
@@ -42,6 +42,16 @@ class SQLAlchemyTaskRepository(TaskRepository):
 
     async def list_by_story(self, user_story_id: UUID) -> list[Task]:
         stmt = select(TaskModel).where(TaskModel.user_story_id == user_story_id)
+        result = await self._session.execute(stmt)
+        return [self._to_domain(row) for row in result.scalars()]
+
+    async def list_by_workspace(self, workspace_id: UUID) -> list[Task]:
+        stmt = (
+            select(TaskModel)
+            .join(UserStoryModel)
+            .join(ProjectModel)
+            .where(ProjectModel.workspace_id == workspace_id)
+        )
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
 

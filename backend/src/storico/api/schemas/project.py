@@ -7,13 +7,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateProjectRequest(BaseModel):
-    """Request body for creating a new project."""
+    """Request body for creating a new project.
+
+    workspace_id is derived from the URL path, created_by from auth context.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(..., min_length=1, max_length=120)
     description: str = Field(default="", max_length=500)
-    owner_id: UUID
 
 
 class UpdateProjectRequest(BaseModel):
@@ -33,7 +35,8 @@ class ProjectResponse(BaseModel):
     id: UUID
     name: str
     description: str
-    owner_id: UUID
+    workspace_id: UUID
+    created_by: UUID | None = None
     created_at: datetime
     updated_at: datetime
     story_count: int = 0

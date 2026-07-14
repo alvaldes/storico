@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro'
 import { getSession } from 'auth-astro/server'
+import { SignJWT } from 'jose'
 import { config } from '@/lib/config'
 
 /** Headers que NO se reenvían del backend al cliente (hop-by-hop + seguridad). */
@@ -68,8 +69,13 @@ export const ALL: APIRoute = async ({ request, params }) => {
   // Build clean headers — do NOT copy from request (avoids ngrok headers,
   // Host conflicts, and other proxy artifacts).
   const headers = new Headers()
-  headers.set('X-Storico-User-Id', session.user.id as string)
-  headers.set('X-Storico-Internal-Token', config.internalToken)
+
+  // Create a compact JWT from the Auth.js session, signed with AUTH_SECRET.
+  // The backend verifies this JWT to authenticate the user.
+  const jwt = await new SignJWT({ sub: session.user.id })
+    .setProtectedHeader({ alg: 'HS256' })
+    .sign(new TextEncoder().encode(config.authSecret))
+  headers.set('Authorization', `Bearer ${jwt}`)
 
   // AbortController para tener timeout controlado
   const controller = new AbortController()

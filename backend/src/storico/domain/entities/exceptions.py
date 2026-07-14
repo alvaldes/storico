@@ -85,3 +85,52 @@ class PromptTemplateNotFound(LLMError):
     def __init__(self, template_name: str) -> None:
         self.template_name = template_name
         super().__init__(f"Prompt template '{template_name}' not found")
+
+
+class NotWorkspaceMember(RepositoryError):
+    """Raised when a user is not a member of a workspace."""
+
+    def __init__(self, workspace_id: UUID, user_id: UUID) -> None:
+        self.workspace_id = workspace_id
+        self.user_id = user_id
+        super().__init__(
+            f"User '{user_id}' is not a member of workspace '{workspace_id}'"
+        )
+
+
+class InsufficientRole(RepositoryError):
+    """Raised when a user lacks the required role for an action."""
+
+    def __init__(self, workspace_id: UUID, user_id: UUID, required_role: str) -> None:
+        self.workspace_id = workspace_id
+        self.user_id = user_id
+        self.required_role = required_role
+        super().__init__(
+            f"User '{user_id}' lacks required role '{required_role}' "
+            f"in workspace '{workspace_id}'"
+        )
+
+
+class OwnerTransferError(RepositoryError):
+    """Raised when workspace ownership transfer fails."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class LastAdminError(RepositoryError):
+    """Raised when trying to remove or demote the last admin of a workspace."""
+
+    def __init__(
+        self, message: str = "Cannot remove the last admin of a workspace"
+    ) -> None:
+        super().__init__(message)
+
+
+class CannotRemoveOwnerError(RepositoryError):
+    """Raised when trying to remove the workspace owner from the workspace."""
+
+    def __init__(
+        self, message: str = "Cannot remove the workspace owner"
+    ) -> None:
+        super().__init__(message)

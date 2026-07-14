@@ -8,8 +8,9 @@ from uuid import UUID, uuid4
 @dataclass(frozen=True, slots=True)
 class Project:
     name: str
-    owner_id: UUID
+    workspace_id: UUID
     description: str = ""
+    created_by: UUID | None = None
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
