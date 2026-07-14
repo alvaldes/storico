@@ -8,6 +8,8 @@ import { DashboardHeader } from "@/components/react/DashboardHeader"
 import { AutoBreadcrumb } from "@/components/react/AutoBreadcrumb"
 import { Toaster } from "@/components/ui/sonner"
 import { type Locale } from "@/i18n/utils"
+import { useAuthStore, type AuthUser } from "@/stores/authStore"
+import { fetchCurrentUser } from "@/lib/user-api"
 
 interface DashboardShellProps {
   locale: Locale
@@ -41,6 +43,33 @@ export function DashboardShell({
 
   const cleanPath = currentPath.replace(/^\/(en|es)/, "") || "/"
   const segments = cleanPath.split("/").filter(Boolean)
+
+  // Populate auth store from serialised session (used by SettingsPage, etc.)
+  const setUser = useAuthStore((s) => s.setUser)
+  React.useEffect(() => {
+    if (userJson) {
+      try {
+        const parsed: Record<string, unknown> = JSON.parse(userJson)
+        const baseUser: AuthUser = {
+          id: (parsed.id as string) || "",
+          email: (parsed.email as string) || "",
+          name: (parsed.name as string) || "",
+          avatar_url:
+            (parsed.avatar_url as string) || (parsed.image as string) || undefined,
+        }
+        setUser(baseUser)
+        fetchCurrentUser()
+          .then((profile) => {
+            setUser({ ...baseUser, authProvider: profile.authProvider })
+          })
+          .catch(() => {})
+      } catch {
+        setUser(null)
+      }
+    } else {
+      setUser(null)
+    }
+  }, [userJson, setUser])
 
   return (
     <SidebarProvider defaultOpen={sidebarDefaultOpen}>
