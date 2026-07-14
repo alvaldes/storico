@@ -8,7 +8,6 @@ import {
   Sun,
   Moon,
   Languages,
-  Github,
 } from "lucide-react"
 import { signOut } from "auth-astro/client"
 
@@ -150,19 +149,6 @@ export function NavUser({
               >
                 <Languages className="size-4" />
                 {locale === "en" ? "ES" : "EN"}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                render={
-                  <a
-                    href="https://github.com/alvaldes/storico"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  />
-                }
-                aria-label="GitHub repository"
-              >
-                <Github className="size-4" />
-                GitHub
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

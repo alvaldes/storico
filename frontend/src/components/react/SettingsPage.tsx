@@ -15,6 +15,7 @@ import {
   BookOpen,
   Activity,
   Code,
+  Github,
 } from "lucide-react";
 import { useTranslations, type Locale, localizedPath } from "@/i18n/utils";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -700,6 +701,16 @@ export function SettingsPage({ locale }: SettingsPageProps) {
               >
                 <Activity className="h-3.5 w-3.5" />
                 {t.settings.about_status}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+              <a
+                href="https://github.com/alvaldes/storico"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-(--color-border) px-3 py-1.5 text-sm text-(--color-text-secondary) transition-colors hover:border-(--color-primary-300) hover:text-(--color-text)"
+              >
+                <Github className="h-3.5 w-3.5" />
+                GitHub
                 <ExternalLink className="h-3 w-3" />
               </a>
             </div>
