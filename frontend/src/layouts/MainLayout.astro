@@ -11,6 +11,15 @@ const t = useTranslations(locale);
 const currentPath = Astro.url.pathname;
 const session = await getSession(Astro.request);
 const userJson = JSON.stringify(session?.user ?? null);
+
+// Read sidebar state cookie to avoid SSR hydration flash
+const cookies = Astro.request.headers.get('cookie') ?? '';
+const sidebarCookie = cookies
+  .split(';')
+  .find(c => c.trim().startsWith('sidebar_state='))
+  ?.split('=')[1]
+  ?.trim();
+const sidebarDefaultOpen = sidebarCookie !== 'false';
 ---
 
 <!DOCTYPE html>
@@ -35,6 +44,7 @@ const userJson = JSON.stringify(session?.user ?? null);
       locale={locale}
       currentPath={currentPath}
       userJson={userJson}
+      sidebarDefaultOpen={sidebarDefaultOpen}
     >
       <slot />
     </DashboardShell>

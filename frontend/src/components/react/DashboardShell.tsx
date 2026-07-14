@@ -13,6 +13,7 @@ interface DashboardShellProps {
   locale: Locale
   currentPath: string
   userJson: string
+  sidebarDefaultOpen?: boolean
   children: ReactNode
 }
 
@@ -26,6 +27,7 @@ export function DashboardShell({
   locale,
   currentPath,
   userJson,
+  sidebarDefaultOpen = true,
   children,
 }: DashboardShellProps) {
   const user = userJson ? (JSON.parse(userJson) as Record<string, unknown>) : null
@@ -41,7 +43,7 @@ export function DashboardShell({
   const segments = cleanPath.split("/").filter(Boolean)
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={sidebarDefaultOpen}>
       <AppSidebar
         locale={locale}
         currentPath={currentPath}

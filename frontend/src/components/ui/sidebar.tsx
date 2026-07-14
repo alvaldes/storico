@@ -69,6 +69,8 @@ function SidebarProvider({
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
+  // The defaultOpen prop is set from the Astro layout reading the cookie on
+  // every SSR request — so there's no hydration mismatch and no flash.
   const [_open, _setOpen] = React.useState(defaultOpen)
   const open = openProp ?? _open
   const setOpen = React.useCallback(
