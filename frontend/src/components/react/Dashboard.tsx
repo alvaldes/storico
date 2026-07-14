@@ -4,7 +4,6 @@ import { useProjectStore } from '@/stores/projectStore';
 import { useStoryStore } from '@/stores/storyStore';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { useTranslations, type Locale } from '@/i18n/utils';
 
 export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
@@ -88,10 +87,13 @@ export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Recent stories</CardTitle>
-          <Button variant="ghost" size="sm" className="text-muted-foreground gap-1">
+          <a
+            href={`/${locale}/stories`}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
             {t.nav.stories}
             <ChevronRight className="h-4 w-4" />
-          </Button>
+          </a>
         </CardHeader>
         <CardContent>
           {recentStories.length === 0 ? (
