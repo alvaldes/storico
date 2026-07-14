@@ -2,14 +2,17 @@ import { useEffect, useState } from 'react';
 import { FolderKanban, FileText, Sparkles, ChevronRight } from 'lucide-react';
 import { useProjectStore } from '@/stores/projectStore';
 import { useStoryStore } from '@/stores/storyStore';
+import { useAuthStore } from '@/stores/authStore';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { OnboardingModal } from '@/components/react/OnboardingModal';
 import { useTranslations, type Locale } from '@/i18n/utils';
 
 export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
   const t = useTranslations(locale);
   const { projects, fetchProjects } = useProjectStore();
   const { stories, fetchStories } = useStoryStore();
+  const { isFirstLogin } = useAuthStore();
   const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
@@ -34,7 +37,9 @@ export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
   }
 
   return (
-    <div className="space-y-6">
+    <>
+      {isFirstLogin && <OnboardingModal locale={locale} />}
+      <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-foreground">
           {t.nav.dashboard}
@@ -137,5 +142,6 @@ export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }
