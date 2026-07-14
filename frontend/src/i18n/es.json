@@ -17,6 +17,8 @@
   "theme": {
     "light": "Claro",
     "dark": "Oscuro",
+    "mode_light": "Modo Claro",
+    "mode_dark": "Modo Oscuro",
     "system": "Sistema",
     "toggle": "Cambiar tema"
   },

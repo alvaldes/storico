@@ -17,6 +17,8 @@
   "theme": {
     "light": "Light",
     "dark": "Dark",
+    "mode_light": "Light Mode",
+    "mode_dark": "Dark Mode",
     "system": "System",
     "toggle": "Toggle theme"
   },
