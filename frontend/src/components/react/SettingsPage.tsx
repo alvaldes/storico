@@ -21,6 +21,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useUIStore } from "@/stores/uiStore";
 import { testLLMConnection } from "@/lib/settings-api";
+import { UserAvatar } from "@/components/react/UserAvatar";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -522,17 +523,7 @@ export function SettingsPage({ locale }: SettingsPageProps) {
             </div>
           ) : user ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-              {user.avatar_url ? (
-                <img
-                  src={user.avatar_url}
-                  alt={user.name}
-                  className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-(--color-border)"
-                />
-              ) : (
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-(--color-primary-500)/10 text-lg font-semibold text-(--color-primary-600)">
-                  {user.name?.charAt(0)?.toUpperCase() || "?"}
-                </div>
-              )}
+              <UserAvatar src={user.avatar_url} name={user.name} size="lg" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-(--color-text)">
                   {user.name}
