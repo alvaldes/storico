@@ -141,7 +141,7 @@ export function NavUser({
                 ) : (
                   <Moon className="size-4" />
                 )}
-                {theme === "dark" ? "Light Mode" : "Dark Mode"}
+                {theme === "dark" ? t.theme?.light : t.theme?.dark}
               </DropdownMenuItem>
               <DropdownMenuItem
                 render={<a href={otherPath} />}
