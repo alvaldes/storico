@@ -29,7 +29,6 @@ interface OnboardingModalProps {
 
 export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
   const t = useTranslations(locale)
-  const tOnboarding = t.onboarding as Record<string, string> | undefined
 
   const { workspaceName, setOnboardingDone, setWorkspaceName } = useAuthStore()
   const [step, setStep] = useState(1)
@@ -39,13 +38,6 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const originalName = useRef(workspaceName || "")
   const isCompleting = useRef(false)
-
-  const T = (key: string, fallback: string): string => {
-    if (tOnboarding && typeof tOnboarding[key] === "string") {
-      return tOnboarding[key] as string
-    }
-    return fallback
-  }
 
   const handleSkip = async () => {
     if (isSubmitting) return
@@ -96,7 +88,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
         {/* Header with close button */}
         <div className="flex items-start justify-between">
           <DialogTitle className="text-lg">
-            {T("title", "Welcome to Storico")}
+            {t.onboarding.title}
           </DialogTitle>
           <Button
             variant="ghost"
@@ -113,10 +105,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
         <div className="space-y-1">
           <Progress value={(step / 3) * 100} />
           <p className="text-center text-xs text-muted-foreground">
-            {T("step", "Step {step} of 3").replace(
-              "{step}",
-              String(step)
-            )}
+            {t.onboarding.step.replace("{step}", String(step))}
           </p>
         </div>
 
@@ -124,20 +113,17 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
         {step === 1 && (
           <div className="space-y-3 py-2">
             <DialogDescription className="text-sm">
-              {T(
-                "step1_description",
-                "Your workspace was automatically created. Give it a name that reflects your team or project."
-              )}
+              {t.onboarding.step1_description}
             </DialogDescription>
             <div className="space-y-1.5">
               <Label htmlFor="workspace-name">
-                {T("step1_title", "Name your workspace")}
+                {t.onboarding.step1_title}
               </Label>
               <Input
                 id="workspace-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder={T("step1_placeholder", "My Team's Workspace")}
+                placeholder={t.onboarding.step1_placeholder}
               />
             </div>
           </div>
@@ -147,10 +133,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
         {step === 2 && (
           <div className="space-y-3 py-2">
             <DialogDescription className="text-sm">
-              {T(
-                "step2_description",
-                "Here's a quick overview of what you can do with Storico."
-              )}
+              {t.onboarding.step2_description}
             </DialogDescription>
 
             <div className="space-y-2">
@@ -159,13 +142,10 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <div>
                   <p className="text-sm font-medium">
-                    {T("step2_card1_title", "What is Storico?")}
+                    {t.onboarding.step2_card1_title}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {T(
-                      "step2_card1_desc",
-                      "Storico uses AI to break down user stories into structured Kanban tasks automatically."
-                    )}
+                    {t.onboarding.step2_card1_desc}
                   </p>
                 </div>
               </div>
@@ -175,13 +155,10 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 <Puzzle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <div>
                   <p className="text-sm font-medium">
-                    {T("step2_card2_title", "How extraction works")}
+                    {t.onboarding.step2_card2_title}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {T(
-                      "step2_card2_desc",
-                      "Paste a user story, choose your LLM, and get technical tasks with descriptions and labels."
-                    )}
+                    {t.onboarding.step2_card2_desc}
                   </p>
                 </div>
               </div>
@@ -191,13 +168,10 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 <Layers className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <div>
                   <p className="text-sm font-medium">
-                    {T("step2_card3_title", "Workspaces")}
+                    {t.onboarding.step2_card3_title}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {T(
-                      "step2_card3_desc",
-                      "Organize projects and collaborate with your team in dedicated workspaces."
-                    )}
+                    {t.onboarding.step2_card3_desc}
                   </p>
                 </div>
               </div>
@@ -209,15 +183,12 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
         {step === 3 && (
           <div className="space-y-3 py-2">
             <DialogDescription className="text-sm">
-              {T(
-                "step3_description",
-                "Choose your AI provider. You can change this later in Settings."
-              )}
+              {t.onboarding.step3_description}
             </DialogDescription>
 
             <div className="space-y-1.5">
               <Label htmlFor="llm-provider">
-                {T("step3_title", "Configure your LLM")}
+                {t.onboarding.step3_title}
               </Label>
               <Select value={provider} onValueChange={setProvider}>
                 <SelectTrigger className="w-full">
@@ -225,21 +196,18 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ollama">
-                    {T("llm_ollama", "Ollama (Local)")}
+                    {t.onboarding.llm_ollama}
                   </SelectItem>
                   <SelectItem value="openai">
-                    {T("llm_openai", "OpenAI")}
+                    {t.onboarding.llm_openai}
                   </SelectItem>
                   <SelectItem value="anthropic">
-                    {T("llm_anthropic", "Anthropic")}
+                    {t.onboarding.llm_anthropic}
                   </SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {T(
-                  "step3_note",
-                  "Ollama works out of the box with no API key."
-                )}
+                {t.onboarding.step3_note}
               </p>
             </div>
           </div>
@@ -253,12 +221,12 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
             onClick={handleSkip}
             disabled={isSubmitting}
           >
-            {T("skip", "Skip")}
+            {t.onboarding.skip}
           </Button>
 
           {step < 3 ? (
             <Button size="sm" onClick={() => setStep(step + 1)}>
-              {T("next", "Next")}
+              {t.onboarding.next}
             </Button>
           ) : (
             <Button
@@ -266,7 +234,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
               onClick={handleComplete}
               disabled={isSubmitting}
             >
-              {T("get_started", "Get Started")}
+              {t.onboarding.get_started}
             </Button>
           )}
         </div>
