@@ -398,6 +398,19 @@ function LLMForm({
   );
 }
 
+/* ── Provider detection ────────────────────────────────────────── */
+
+function formatProvider(user: { email: string; authProvider?: string }): string {
+  if (user.authProvider) {
+    return user.authProvider.charAt(0).toUpperCase() + user.authProvider.slice(1)
+  }
+  // Fallback when backend hasn't stored authProvider yet
+  const email = user.email.toLowerCase()
+  if (email.endsWith("@gmail.com") || email.includes("google")) return "Google"
+  if (email.includes("github")) return "GitHub"
+  return "OAuth"
+}
+
 /* ── Main Settings Page Component ────────────────────────────── */
 
 interface SettingsPageProps {
@@ -535,11 +548,7 @@ export function SettingsPage({ locale }: SettingsPageProps) {
               </div>
               <Badge variant="outline" className="w-full text-xs sm:w-auto">
                 {t.settings.profile_signed_in_with}{" "}
-                {user.authProvider
-                  ? user.authProvider.charAt(0).toUpperCase() + user.authProvider.slice(1)
-                  : user.email?.includes("google")
-                    ? "Google"
-                    : "GitHub"}
+                {formatProvider(user)}
               </Badge>
             </div>
           ) : (
