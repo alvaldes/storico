@@ -41,6 +41,16 @@
   --radius-xl: 1rem;
   --font-sans: "Inter", "SF Pro", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+
+  /* ── Sidebar (shadcn sidebar-07) ────────────────────────────── */
+  --color-sidebar: var(--color-surface);
+  --color-sidebar-foreground: var(--color-text);
+  --color-sidebar-primary: var(--color-primary-500);
+  --color-sidebar-primary-foreground: oklch(0.99 0 0);
+  --color-sidebar-accent: var(--color-surface-secondary);
+  --color-sidebar-accent-foreground: var(--color-text);
+  --color-sidebar-border: var(--color-border);
+  --color-sidebar-ring: var(--color-primary-500);
 }
 
 /* ── Design Tokens ────────────────────────────────────────────── */
@@ -121,12 +131,6 @@
 /* ── Dark Theme ───────────────────────────────────────────────── */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* ── Sidebar open state (mobile toggle) ──────────────────────── */
-@custom-variant sidebar-open (&:where(.sidebar-open, .sidebar-open *));
-
-/* ── Sidebar collapsed state (desktop toggle) ───────────────── */
-@custom-variant sidebar-collapsed (&:where(.sidebar-collapsed, .sidebar-collapsed *));
-
 @variant dark {
   --color-surface: #0f141d;
   --color-surface-secondary: oklch(0.18 0.01 260);
@@ -134,6 +138,16 @@
   --color-text: oklch(0.93 0.01 260);
   --color-text-secondary: oklch(0.63 0.01 260);
   --color-text-tertiary: #475569;
+
+  /* Sidebar — dark */
+  --color-sidebar: oklch(0.14 0.01 260);
+  --color-sidebar-foreground: oklch(0.93 0.01 260);
+  --color-sidebar-primary: var(--color-primary-500);
+  --color-sidebar-primary-foreground: oklch(0.99 0 0);
+  --color-sidebar-accent: oklch(0.18 0.01 260);
+  --color-sidebar-accent-foreground: oklch(0.93 0.01 260);
+  --color-sidebar-border: oklch(0.25 0.01 260);
+  --color-sidebar-ring: var(--color-primary-500);
 
   --color-body: #0b0f17;
   --color-inverse: #1a1f2e;

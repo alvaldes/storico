@@ -230,7 +230,10 @@
   },
   "sidebar": {
     "collapse": "Collapse sidebar",
-    "expand": "Expand sidebar"
+    "expand": "Expand sidebar",
+    "workspaces": "Workspaces",
+    "newWorkspace": "New Workspace",
+    "createWorkspace": "Create Workspace"
   },
   "footer": {
     "license": "Released under the MIT License.",

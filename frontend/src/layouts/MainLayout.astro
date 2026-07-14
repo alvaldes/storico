@@ -2,18 +2,13 @@
 import { ClientRouter } from 'astro:transitions';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
 import globalsCss from '@/styles/globals.css?url';
-import Header from '@/components/astro/Header.astro';
-import { Sidebar } from '@/components/react/Sidebar';
-import { AutoBreadcrumb } from '@/components/react/AutoBreadcrumb';
-import { Toaster } from '@/components/ui/sonner';
+import { DashboardShell } from '@/components/react/DashboardShell';
 import { getSession } from 'auth-astro/server';
 import { useTranslations } from '@/i18n/utils';
 
 const { locale = 'en' } = Astro.props;
 const t = useTranslations(locale);
 const currentPath = Astro.url.pathname;
-const cleanPath = currentPath.replace(/^\/(en|es)/, '') || '/';
-const segments = cleanPath.split('/').filter(Boolean);
 const session = await getSession(Astro.request);
 const userJson = JSON.stringify(session?.user ?? null);
 ---
@@ -28,26 +23,20 @@ const userJson = JSON.stringify(session?.user ?? null);
     <meta name="theme-color" content="#2563eb" />
     <meta name="description" content={`${t.app.name} — ${t.app.tagline}`} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="stylesheet" href={globalsCss} />
     <ClientRouter />
     <slot name="head" />
     <title>{t.app.name}</title>
   </head>
   <body class="min-h-dvh bg-(--color-surface)">
-    <Sidebar client:load locale={locale} currentPath={currentPath} userJson={userJson} />
-
-    <div class="lg:pl-60 sidebar-collapsed:lg:pl-16 transition-[padding] duration-200">
-      <Header locale={locale} userJson={userJson} currentPath={currentPath} />
-
-      <div class="sm:hidden px-4 pt-3">
-        <AutoBreadcrumb locale={locale} segments={segments} client:load />
-      </div>
-
-      <main class="p-4 lg:p-6">
-        <slot />
-      </main>
-    </div>
-
-    <Toaster client:only="react" />
+    <DashboardShell
+      client:load
+      locale={locale}
+      currentPath={currentPath}
+      userJson={userJson}
+    >
+      <slot />
+    </DashboardShell>
   </body>
 </html>

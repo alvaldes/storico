@@ -230,7 +230,10 @@
   },
   "sidebar": {
     "collapse": "Colapsar barra lateral",
-    "expand": "Expandir barra lateral"
+    "expand": "Expandir barra lateral",
+    "workspaces": "Espacios de trabajo",
+    "newWorkspace": "Nuevo espacio",
+    "createWorkspace": "Crear espacio"
   },
   "footer": {
     "license": "Publicado bajo licencia MIT.",
