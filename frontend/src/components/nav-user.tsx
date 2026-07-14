@@ -1,7 +1,15 @@
 "use client"
 
 import { useCallback } from "react"
-import { LogOut, User as UserIcon, Settings } from "lucide-react"
+import {
+  LogOut,
+  User as UserIcon,
+  Settings,
+  Sun,
+  Moon,
+  Languages,
+  Github,
+} from "lucide-react"
 import { signOut } from "auth-astro/client"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -21,17 +29,28 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { useTranslations, type Locale } from "@/i18n/utils"
+import { useUIStore } from "@/stores/uiStore"
 
 export function NavUser({
   user,
   locale,
+  currentPath,
 }: {
   user: { name: string; email: string; image?: string } | null
   locale: Locale
+  currentPath: string
 }) {
   const { isMobile } = useSidebar()
   const t = useTranslations(locale)
+  const { theme, toggleTheme } = useUIStore()
   const L = (path: string) => `/${locale}${path}`
+
+  const otherLocale = locale === "en" ? "es" : "en"
+  const otherPath =
+    currentPath === "/"
+      ? `/${otherLocale}`
+      : currentPath.replace(/^\/(en|es)/, `/${otherLocale}`) ||
+        `/${otherLocale}`
 
   const initials = user?.name
     ? user.name
@@ -113,6 +132,37 @@ export function NavUser({
               <DropdownMenuItem render={<a href={L("/settings")} />}>
                 <Settings className="size-4" />
                 {t.nav?.settings ?? "Settings"}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem onClick={toggleTheme}>
+                {theme === "dark" ? (
+                  <Sun className="size-4" />
+                ) : (
+                  <Moon className="size-4" />
+                )}
+                {theme === "dark" ? "Light Mode" : "Dark Mode"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                render={<a href={otherPath} />}
+                aria-label="Switch language"
+              >
+                <Languages className="size-4" />
+                {locale === "en" ? "ES" : "EN"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                render={
+                  <a
+                    href="https://github.com/alvaldes/storico"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  />
+                }
+                aria-label="GitHub repository"
+              >
+                <Github className="size-4" />
+                GitHub
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

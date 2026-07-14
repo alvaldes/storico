@@ -115,6 +115,7 @@ export function AppSidebar({
         <NavUser
           user={user}
           locale={locale}
+          currentPath={currentPath}
         />
       </SidebarFooter>
       <SidebarRail />

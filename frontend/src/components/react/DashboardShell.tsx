@@ -53,7 +53,6 @@ export function DashboardShell({
         <DashboardHeader
           locale={locale}
           currentPath={currentPath}
-          userJson={userJson}
         />
 
         {/* Breadcrumb on mobile — shown below the header */}
