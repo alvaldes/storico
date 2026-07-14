@@ -5,7 +5,6 @@ import type { ReactNode } from "react"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { DashboardHeader } from "@/components/react/DashboardHeader"
-import { AutoBreadcrumb } from "@/components/react/AutoBreadcrumb"
 import { Toaster } from "@/components/ui/sonner"
 import { type Locale } from "@/i18n/utils"
 import { useAuthStore, type AuthUser } from "@/stores/authStore"
@@ -40,9 +39,6 @@ export function DashboardShell({
         image: (user.image as string) ?? undefined,
       }
     : null
-
-  const cleanPath = currentPath.replace(/^\/(en|es)/, "") || "/"
-  const segments = cleanPath.split("/").filter(Boolean)
 
   // Populate auth store from serialised session (used by SettingsPage, etc.)
   const setUser = useAuthStore((s) => s.setUser)
@@ -83,11 +79,6 @@ export function DashboardShell({
           locale={locale}
           currentPath={currentPath}
         />
-
-        {/* Breadcrumb on mobile — shown below the header */}
-        <div className="sm:hidden px-4 pt-3">
-          <AutoBreadcrumb locale={locale} segments={segments} />
-        </div>
 
         <main className="flex-1 p-4 lg:p-6">{children}</main>
       </SidebarInset>

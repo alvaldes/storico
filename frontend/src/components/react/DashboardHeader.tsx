@@ -30,8 +30,8 @@ export function DashboardHeader({
           className="hidden sm:block mx-0 my-auto h-4"
         />
 
-        {/* Breadcrumb */}
-        <div className="hidden sm:flex ml-1">
+        {/* Breadcrumb — responsive classes handled by AutoBreadcrumb */}
+        <div className="ml-1 min-w-0">
           <AutoBreadcrumb locale={locale} segments={segments} />
         </div>
       </div>

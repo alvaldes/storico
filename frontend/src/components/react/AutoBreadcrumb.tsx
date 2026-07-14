@@ -6,6 +6,7 @@ import {
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
+  BreadcrumbEllipsis,
 } from "@/components/ui/breadcrumb";
 import { localizedPath, useTranslations, type Locale } from "@/i18n/utils";
 import { useProjectStore } from "@/stores/projectStore";
@@ -159,10 +160,7 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
 
     if (isStoryDetail) {
       return [
-        {
-          label: t.nav.dashboard,
-          href: localizedPath("/dashboard", locale),
-        },
+        // No "Dashboard" text — the house icon already represents it
         {
           label: storyProject?.projectName ?? <LoadingDots />,
           href: storyProject
@@ -174,26 +172,30 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
     }
 
     // Default: URL-based breadcrumb
-    return segments.map((seg, i) => {
-      const href = localizedPath(
-        "/" + segments.slice(0, i + 1).join("/"),
-        locale,
-      );
-      return {
-        label: segmentLabel(seg),
-        href: i === segments.length - 1 ? null : href,
-      };
-    });
+    // Skip "dashboard" segment — the House icon already represents it
+    return segments
+      .filter((seg) => seg !== "dashboard")
+      .map((seg) => {
+        const segIndex = segments.indexOf(seg);
+        const href = localizedPath(
+          "/" + segments.slice(0, segIndex + 1).join("/"),
+          locale,
+        );
+        return {
+          label: segmentLabel(seg),
+          href: segIndex === segments.length - 1 ? null : href,
+        };
+      });
   }
 
   const items = buildItems();
+  const needsEllipsis = items.length > 2;
+  const ellipsisCutoff = needsEllipsis ? items.length - 2 : 0;
 
-  // FUTURE: If breadcrumbs get deeper (5+ items), use <BreadcrumbEllipsis />
-  // from @/components/ui/breadcrumb to collapse middle items.
-  // Example: Storico > Dashboard > ··· > a1b2c3d4
   return (
     <Breadcrumb>
       <BreadcrumbList>
+        {/* House icon — always visible */}
         <BreadcrumbItem>
           <BreadcrumbLink
             href={localizedPath("/dashboard", locale)}
@@ -203,13 +205,36 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
           </BreadcrumbLink>
         </BreadcrumbItem>
 
-        {items.map((item) => (
-          <Fragment
-            key={
-              item.href ??
-              (typeof item.label === "string" ? item.label : "\u2026")
-            }
-          >
+        {/* Leading items — collapsed into ellipsis on mobile */}
+        {needsEllipsis &&
+          items.slice(0, ellipsisCutoff).map((item, i) => (
+            <Fragment key={`lead-${i}`}>
+              <BreadcrumbSeparator className="hidden md:block" />
+              <BreadcrumbItem className="hidden md:block">
+                {item.href ? (
+                  <BreadcrumbLink href={item.href}>
+                    {item.label}
+                  </BreadcrumbLink>
+                ) : (
+                  <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                )}
+              </BreadcrumbItem>
+            </Fragment>
+          ))}
+
+        {/* Ellipsis — only on mobile when items are collapsed */}
+        {needsEllipsis && (
+          <>
+            <BreadcrumbSeparator className="md:hidden" />
+            <BreadcrumbItem className="md:hidden">
+              <BreadcrumbEllipsis />
+            </BreadcrumbItem>
+          </>
+        )}
+
+        {/* Last 1-2 items — always visible */}
+        {items.slice(ellipsisCutoff).map((item, i) => (
+          <Fragment key={`tail-${i}`}>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
               {item.href ? (
