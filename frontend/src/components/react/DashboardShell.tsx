@@ -8,7 +8,7 @@ import { DashboardHeader } from "@/components/react/DashboardHeader"
 import { Toaster } from "@/components/ui/sonner"
 import { type Locale } from "@/i18n/utils"
 import { useAuthStore, type AuthUser } from "@/stores/authStore"
-import { fetchCurrentUser } from "@/lib/user-api"
+import { fetchFullUserProfile } from "@/lib/user-api"
 
 interface DashboardShellProps {
   locale: Locale
@@ -42,6 +42,8 @@ export function DashboardShell({
 
   // Populate auth store from serialised session (used by SettingsPage, etc.)
   const setUser = useAuthStore((s) => s.setUser)
+  const setIsFirstLogin = useAuthStore((s) => s.setIsFirstLogin)
+  const setWorkspaceName = useAuthStore((s) => s.setWorkspaceName)
   React.useEffect(() => {
     if (userJson) {
       try {
@@ -54,9 +56,13 @@ export function DashboardShell({
             (parsed.avatar_url as string) || (parsed.image as string) || undefined,
         }
         setUser(baseUser)
-        fetchCurrentUser()
+        fetchFullUserProfile()
           .then((profile) => {
-            setUser({ ...baseUser, authProvider: profile.authProvider })
+            setUser({ ...baseUser, authProvider: profile.user.authProvider })
+            setIsFirstLogin(profile.user.isFirstLogin)
+            if (profile.workspaces.length > 0) {
+              setWorkspaceName(profile.workspaces[0].name)
+            }
           })
           .catch(() => {})
       } catch {
@@ -65,7 +71,7 @@ export function DashboardShell({
     } else {
       setUser(null)
     }
-  }, [userJson, setUser])
+  }, [userJson, setUser, setIsFirstLogin, setWorkspaceName])
 
   return (
     <SidebarProvider defaultOpen={sidebarDefaultOpen}>
