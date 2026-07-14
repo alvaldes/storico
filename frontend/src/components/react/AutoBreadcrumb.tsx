@@ -12,6 +12,7 @@ import { useProjectStore } from "@/stores/projectStore";
 import { useStoryStore } from "@/stores/storyStore";
 import { getProject } from "@/lib/projects-api";
 import { getStory } from "@/lib/stories-api";
+import { House } from "lucide-react";
 import { shortUUID, UUID_RE } from "@/lib/utils";
 
 // Maps path segments to nav translation keys
@@ -187,12 +188,18 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
 
   const items = buildItems();
 
+  // FUTURE: If breadcrumbs get deeper (5+ items), use <BreadcrumbEllipsis />
+  // from @/components/ui/breadcrumb to collapse middle items.
+  // Example: Storico > Dashboard > ··· > a1b2c3d4
   return (
     <Breadcrumb>
       <BreadcrumbList>
         <BreadcrumbItem>
-          <BreadcrumbLink href={localizedPath("/", locale)}>
-            {t.app.name}
+          <BreadcrumbLink
+            href={localizedPath("/dashboard", locale)}
+            aria-label={t.nav.dashboard}
+          >
+            <House className="h-4 w-4" />
           </BreadcrumbLink>
         </BreadcrumbItem>
 
