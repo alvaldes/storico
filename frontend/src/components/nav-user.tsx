@@ -148,7 +148,9 @@ export function NavUser({
                 aria-label="Switch language"
               >
                 <Languages className="size-4" />
-                {locale === "en" ? "ES" : "EN"}
+                {locale === "en"
+                  ? t.settings?.appearance_language_es
+                  : t.settings?.appearance_language_en}
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
