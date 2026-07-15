@@ -106,7 +106,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
         toast.success(t.stories.detail_extract_started);
       }
     } catch {
-      toast.error('Extraction failed');
+      toast.error(t.stories?.extractionFailed ?? 'Extraction failed');
     }
   };
 
@@ -196,7 +196,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
           {t.stories.raw_text_label}
         </div>
         <p className="text-base text-foreground leading-relaxed">
-          {story.rawText || `As a(n) ${story.actor}, I want ${story.feature}, so that ${story.benefit}`}
+          {story.rawText || `${t.stories?.keyword_as_a ?? 'As a(n)'} ${story.actor}, ${t.stories?.keyword_i_want ?? 'I want'} ${story.feature}, ${t.stories?.keyword_so_that ?? 'so that'} ${story.benefit}`}
         </p>
       </div>
 

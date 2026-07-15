@@ -123,7 +123,7 @@ export function WorkspaceSettings({
       }
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to load settings";
+        err instanceof Error ? err.message : (t.workspace?.loadError ?? "Failed to load settings");
       setError(message);
       toast.error(message);
     } finally {
@@ -149,12 +149,12 @@ export function WorkspaceSettings({
         baseUrl: llmConfig.baseUrl || undefined,
       });
       setLlmSaveResult("success");
-      toast.success("LLM configuration saved");
+      toast.success(t.settings?.llm_saved ?? "LLM configuration saved");
       setTimeout(() => setLlmSaveResult("idle"), 3000);
     } catch (err) {
       setLlmSaveResult("error");
       const message =
-        err instanceof Error ? err.message : "Failed to save LLM config";
+        err instanceof Error ? err.message : (t.workspace?.llmSaveError ?? "Failed to save LLM config");
       toast.error(message);
       setTimeout(() => setLlmSaveResult("idle"), 3000);
     } finally {
@@ -172,12 +172,12 @@ export function WorkspaceSettings({
         instructionTemplate: prompts.instructionTemplate || undefined,
       });
       setPromptSaveResult("success");
-      toast.success("Prompt configuration saved");
+      toast.success(t.workspace?.promptSaved ?? "Prompt configuration saved");
       setTimeout(() => setPromptSaveResult("idle"), 3000);
     } catch (err) {
       setPromptSaveResult("error");
       const message =
-        err instanceof Error ? err.message : "Failed to save prompts";
+        err instanceof Error ? err.message : (t.workspace?.promptSaveError ?? "Failed to save prompts");
       toast.error(message);
       setTimeout(() => setPromptSaveResult("idle"), 3000);
     } finally {
@@ -200,17 +200,17 @@ export function WorkspaceSettings({
       {/* Page Header */}
       <div>
         <h1 className="text-2xl font-semibold text-(--color-text)">
-          Workspace Settings
+          {t.workspace?.settingsTitle ?? "Workspace Settings"}
         </h1>
         <p className="mt-1 text-sm text-(--color-text-secondary)">
-          Configure LLM, prompts, and manage team members for this workspace.
+          {t.workspace?.settingsDescription ?? "Configure LLM, prompts, and manage team members for this workspace."}
         </p>
       </div>
 
       {loading ? (
         <div className="flex items-center gap-2 py-12 text-sm text-(--color-text-secondary)">
           <LoaderCircle className="h-4 w-4 animate-spin" />
-          Loading settings...
+          {t.workspace?.loading ?? "Loading settings..."}
         </div>
       ) : error ? (
         <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
@@ -224,7 +224,7 @@ export function WorkspaceSettings({
               onClick={loadConfigs}
               className="mt-1 text-sm text-red-600 underline hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
             >
-              Try again
+              {t.workspace?.tryAgain ?? "Try again"}
             </button>
           </div>
         </div>
@@ -237,17 +237,16 @@ export function WorkspaceSettings({
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <Bot className="h-4 w-4 text-(--color-text-secondary)" />
-                  <CardTitle>LLM Configuration</CardTitle>
+                  <CardTitle>{t.settings?.llm_title ?? "LLM Configuration"}</CardTitle>
                 </div>
                 <CardDescription>
-                  Configure the AI model used for task extraction in this
-                  workspace
+                  {t.settings?.llm_description ?? "Configure the AI model used for task extraction in this workspace"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* Provider */}
                 <div className="space-y-2">
-                  <Label htmlFor="llm-provider">Provider</Label>
+                  <Label htmlFor="llm-provider">{t.settings?.llm_provider ?? "Provider"}</Label>
                   <Select
                     value={llmConfig.provider}
                     onValueChange={(val) =>
@@ -258,16 +257,16 @@ export function WorkspaceSettings({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ollama">Ollama (Local)</SelectItem>
-                      <SelectItem value="openai">OpenAI</SelectItem>
-                      <SelectItem value="anthropic">Anthropic</SelectItem>
+                      <SelectItem value="ollama">{t.settings?.llm_provider_ollama ?? "Ollama (Local)"}</SelectItem>
+                      <SelectItem value="openai">{t.settings?.llm_provider_openai ?? "OpenAI"}</SelectItem>
+                      <SelectItem value="anthropic">{t.settings?.llm_provider_anthropic ?? "Anthropic"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 {/* Model */}
                 <div className="space-y-2">
-                  <Label htmlFor="llm-model">Model</Label>
+                  <Label htmlFor="llm-model">{t.settings?.llm_ollama_model ?? "Model"}</Label>
                   <Input
                     id="llm-model"
                     type="text"
@@ -280,17 +279,17 @@ export function WorkspaceSettings({
                     }
                     placeholder={
                       llmConfig.provider === "ollama"
-                        ? "llama3.2, mistral"
+                        ? (t.settings?.llm_ollama_model_placeholder ?? "llama3.2, mistral")
                         : llmConfig.provider === "openai"
-                          ? "gpt-4o-mini"
-                          : "claude-3-haiku"
+                          ? (t.settings?.llm_openai_model_placeholder ?? "gpt-4o-mini")
+                          : (t.settings?.llm_anthropic_model_placeholder ?? "claude-3-haiku")
                     }
                   />
                 </div>
 
                 {/* Temperature */}
                 <div className="space-y-2">
-                  <Label htmlFor="llm-temperature">Temperature</Label>
+                  <Label htmlFor="llm-temperature">{t.settings?.llm_temperature ?? "Temperature"}</Label>
                   <div className="flex items-center gap-3">
                     <input
                       id="llm-temperature"
@@ -315,7 +314,7 @@ export function WorkspaceSettings({
 
                 {/* Max Tokens */}
                 <div className="space-y-2">
-                  <Label htmlFor="llm-max-tokens">Max Tokens</Label>
+                  <Label htmlFor="llm-max-tokens">{t.settings?.llm_max_tokens ?? "Max Tokens"}</Label>
                   <Input
                     id="llm-max-tokens"
                     type="number"
@@ -334,7 +333,7 @@ export function WorkspaceSettings({
 
                 {/* Base URL (shown for Ollama) */}
                 <div className="space-y-2">
-                  <Label htmlFor="llm-base-url">Base URL</Label>
+                  <Label htmlFor="llm-base-url">{t.settings?.llm_ollama_url ?? "Base URL"}</Label>
                   <Input
                     id="llm-base-url"
                     type="text"
@@ -349,7 +348,7 @@ export function WorkspaceSettings({
                   />
                   {llmConfig.provider !== "ollama" && (
                     <p className="text-xs text-(--color-text-tertiary)">
-                      Optional for cloud providers
+                      {t.workspace?.llmBaseUrlOptional ?? "Optional for cloud providers"}
                     </p>
                   )}
                 </div>
@@ -369,8 +368,8 @@ export function WorkspaceSettings({
                       <X className="h-4 w-4" />
                     ) : null}
                     {llmSaveResult === "success"
-                      ? "Saved"
-                      : "Save LLM Configuration"}
+                      ? (t.workspace?.llmSaved ?? "Saved")
+                      : (t.settings?.llm_save ?? "Save LLM Configuration")}
                   </Button>
                 </div>
               </CardContent>
@@ -381,17 +380,16 @@ export function WorkspaceSettings({
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <FileText className="h-4 w-4 text-(--color-text-secondary)" />
-                  <CardTitle>Prompt Configuration</CardTitle>
+                  <CardTitle>{t.workspace?.promptTitle ?? "Prompt Configuration"}</CardTitle>
                 </div>
                 <CardDescription>
-                  Customize the prompts used for task extraction in this
-                  workspace
+                  {t.workspace?.promptDescription ?? "Customize the prompts used for task extraction in this workspace"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* System Prompt */}
                 <div className="space-y-2">
-                  <Label htmlFor="system-prompt">System Prompt</Label>
+                  <Label htmlFor="system-prompt">{t.workspace?.systemPrompt ?? "System Prompt"}</Label>
                   <Textarea
                     id="system-prompt"
                     rows={8}
@@ -403,18 +401,17 @@ export function WorkspaceSettings({
                         systemPrompt: e.target.value,
                       }))
                     }
-                    placeholder="You are an expert software development lead who excels at breaking down user stories into clear, actionable development tasks."
+                    placeholder={t.workspace?.systemPromptPlaceholder ?? "You are an expert software development lead who excels at breaking down user stories into clear, actionable development tasks."}
                   />
                   <p className="text-xs text-(--color-text-tertiary)">
-                    The system-level instruction that sets the AI's role and
-                    behavior
+                    {t.workspace?.systemPromptDesc ?? "The system-level instruction that sets the AI's role and behavior"}
                   </p>
                 </div>
 
                 {/* Instruction Template */}
                 <div className="space-y-2">
                   <Label htmlFor="instruction-template">
-                    Instruction Template
+                    {t.workspace?.instructionTemplate ?? "Instruction Template"}
                   </Label>
                   <Textarea
                     id="instruction-template"
@@ -427,11 +424,10 @@ export function WorkspaceSettings({
                         instructionTemplate: e.target.value,
                       }))
                     }
-                    placeholder="Break this user story into smaller development tasks..."
+                    placeholder={t.workspace?.instructionTemplatePlaceholder ?? "Break this user story into smaller development tasks..."}
                   />
                   <p className="text-xs text-(--color-text-tertiary)">
-                    The instruction prompt with format guidelines and few-shot
-                    examples
+                    {t.workspace?.instructionTemplateDesc ?? "The instruction prompt with format guidelines and few-shot examples"}
                   </p>
                 </div>
 
@@ -440,15 +436,14 @@ export function WorkspaceSettings({
                   <div className="flex items-center gap-2">
                     <FlaskConical className="h-4 w-4 text-(--color-text-tertiary)" />
                     <span className="text-sm font-medium text-(--color-text-secondary)">
-                      Few-Shot Examples
+                      {t.workspace?.fewShotTitle ?? "Few-Shot Examples"}
                     </span>
                     <span className="rounded-full border border-(--color-border) px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-(--color-text-tertiary)">
-                      Coming Soon
+                      {t.workspace?.comingSoon ?? "Coming Soon"}
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-(--color-text-tertiary)">
-                    Custom few-shot examples will be available in a future
-                    release.
+                    {t.workspace?.fewShotDesc ?? "Custom few-shot examples will be available in a future release."}
                   </p>
                 </div>
 
@@ -467,8 +462,8 @@ export function WorkspaceSettings({
                       <X className="h-4 w-4" />
                     ) : null}
                     {promptSaveResult === "success"
-                      ? "Saved"
-                      : "Save Prompt Configuration"}
+                      ? (t.workspace?.llmSaved ?? "Saved")
+                      : (t.workspace?.savePrompts ?? "Save Prompt Configuration")}
                   </Button>
                 </div>
               </CardContent>
@@ -480,10 +475,10 @@ export function WorkspaceSettings({
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-(--color-text-secondary)" />
-                <CardTitle>Team Members</CardTitle>
+                <CardTitle>{t.workspace?.teamMembersTitle ?? "Team Members"}</CardTitle>
               </div>
               <CardDescription>
-                Manage members, roles, and ownership for this workspace
+                {t.workspace?.teamMembersDesc ?? "Manage members, roles, and ownership for this workspace"}
               </CardDescription>
             </CardHeader>
             <CardContent>

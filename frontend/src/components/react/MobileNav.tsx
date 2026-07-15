@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
+import { useTranslations, type Locale } from "@/i18n/utils";
 
 export interface MobileNavLink {
   href: string;
@@ -35,6 +36,7 @@ export function MobileNav({
   cta,
   activePath: _activePath,
 }: MobileNavProps) {
+  const t = useTranslations(locale as Locale);
   const [open, setOpen] = useState(false);
 
   // Compute active path from window.location (handles View Transitions client-side nav)
@@ -60,7 +62,7 @@ export function MobileNav({
             variant="ghost"
             size="icon"
             className="lg:hidden"
-            aria-label="Toggle menu"
+            aria-label={t.nav?.toggleMenu ?? "Toggle menu"}
           >
             <Menu className="h-5 w-5" />
           </Button>
@@ -78,7 +80,7 @@ export function MobileNav({
             type="button"
             onClick={() => setOpen(false)}
             className="rounded-md p-1 text-muted-foreground hover:bg-muted transition-colors"
-            aria-label="Close menu"
+            aria-label={t.nav?.closeMenu ?? "Close menu"}
           >
             <X className="h-4 w-4" />
           </button>

@@ -86,12 +86,12 @@ export function StoryForm({
     const b = benefit.trim();
     if (!a && !f && !b) return '';
     const parts: string[] = [];
-    if (a) parts.push(`As a(n) ${a}`);
-    else parts.push('As a(n) […]');
-    if (f) parts.push(`I want ${f}`);
-    else parts.push('I want […]');
-    if (b) parts.push(`so that ${b}`);
-    else parts.push('so that […]');
+    if (a) parts.push(`${t.stories?.keyword_as_a ?? 'As a(n)'} ${a}`);
+    else parts.push(`${t.stories?.keyword_as_a ?? 'As a(n)'} […]`);
+    if (f) parts.push(`${t.stories?.keyword_i_want ?? 'I want'} ${f}`);
+    else parts.push(`${t.stories?.keyword_i_want ?? 'I want'} […]`);
+    if (b) parts.push(`${t.stories?.keyword_so_that ?? 'so that'} ${b}`);
+    else parts.push(`${t.stories?.keyword_so_that ?? 'so that'} […]`);
     return parts.join(', ');
   }, [actor, feature, benefit]);
 
@@ -147,12 +147,12 @@ export function StoryForm({
     if (mode === 'parts') {
       // Validate fields
       const localErrors: Record<string, string> = {};
-      if (!actor.trim()) localErrors.actor = 'Required';
-      if (!feature.trim()) localErrors.feature = 'Required';
-      if (!benefit.trim()) localErrors.benefit = 'Required';
-      if (actor.length > ACTOR_MAX) localErrors.actor = `Max ${ACTOR_MAX} characters`;
-      if (feature.length > FEATURE_MAX) localErrors.feature = `Max ${FEATURE_MAX} characters`;
-      if (benefit.length > BENEFIT_MAX) localErrors.benefit = `Max ${BENEFIT_MAX} characters`;
+      if (!actor.trim()) localErrors.actor = t.stories?.validationRequired ?? 'Required';
+      if (!feature.trim()) localErrors.feature = t.stories?.validationRequired ?? 'Required';
+      if (!benefit.trim()) localErrors.benefit = t.stories?.validationRequired ?? 'Required';
+      if (actor.length > ACTOR_MAX) localErrors.actor = (t.stories?.validationMaxChars ?? 'Max {count} characters').replace('{count}', String(ACTOR_MAX));
+      if (feature.length > FEATURE_MAX) localErrors.feature = (t.stories?.validationMaxChars ?? 'Max {count} characters').replace('{count}', String(FEATURE_MAX));
+      if (benefit.length > BENEFIT_MAX) localErrors.benefit = (t.stories?.validationMaxChars ?? 'Max {count} characters').replace('{count}', String(BENEFIT_MAX));
 
       if (Object.keys(localErrors).length > 0) {
         setErrors(localErrors);
@@ -170,11 +170,11 @@ export function StoryForm({
       // Full text mode
       const text = fullText.trim();
       if (!text) {
-        setErrors({ fullText: 'Required' });
+        setErrors({ fullText: t.stories?.validationRequired ?? 'Required' });
         return;
       }
       if (text.length > RAW_TEXT_MAX) {
-        setErrors({ fullText: `Max ${RAW_TEXT_MAX} characters` });
+        setErrors({ fullText: (t.stories?.validationMaxChars ?? 'Max {count} characters').replace('{count}', String(RAW_TEXT_MAX)) });
         return;
       }
 
@@ -197,7 +197,7 @@ export function StoryForm({
         };
       } else {
         // Fallback — shouldn't happen if keywords pass, but guard anyway
-        setErrors({ fullText: 'Could not parse the user story. Try switching to parts mode.' });
+        setErrors({ fullText: t.stories?.parseError ?? 'Could not parse the user story. Try switching to parts mode.' });
         return;
       }
     }

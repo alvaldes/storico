@@ -47,7 +47,7 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
 
   const handleCreate = async (data: { name: string; description: string }) => {
     if (!userId) {
-      toast.error('You must be signed in to create a project');
+      toast.error(t.stories?.signedInRequired ?? 'You must be signed in to create a project');
       return;
     }
     try {
@@ -96,7 +96,7 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
       <div className="flex flex-col items-center justify-center py-20">
         <p className="text-destructive">{localError}</p>
         <Button variant="outline" className="mt-4" onClick={fetchProjects}>
-          {t.common.retry ?? 'Retry'}
+          {t.common?.retry ?? 'Retry'}
         </Button>
       </div>
     );

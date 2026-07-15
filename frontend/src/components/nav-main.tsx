@@ -1,6 +1,6 @@
 "use client"
 
-import type { Locale } from "@/i18n/utils"
+import { useTranslations, type Locale } from "@/i18n/utils"
 import {
   Collapsible,
   CollapsibleContent,
@@ -36,9 +36,10 @@ export function NavMain({
   items: NavItem[]
   locale: Locale
 }) {
+  const t = useTranslations(_locale);
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+      <SidebarGroupLabel>{t.nav?.navigation ?? "Navigation"}</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) =>
           item.items && item.items.length > 0 ? (

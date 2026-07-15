@@ -144,7 +144,7 @@ export function MemberManagement({
       setMembers(data.members);
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to load members";
+        err instanceof Error ? err.message : (t.members?.failedToLoad ?? "Failed to load members");
       setError(message);
     } finally {
       setLoading(false);
@@ -158,20 +158,20 @@ export function MemberManagement({
   /* ── Add Member ── */
   const handleAddMember = async () => {
     if (!newUserId.trim()) {
-      setAddError("User ID is required");
+      setAddError(t.members?.userIdRequired ?? "User ID is required");
       return;
     }
     setAddSaving(true);
     setAddError(null);
     try {
       await addMember(workspaceId, newUserId.trim());
-      toast.success("Member added");
+      toast.success(t.members?.addedToast ?? "Member added");
       setAddOpen(false);
       setNewUserId("");
       loadMembers();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to add member";
+        err instanceof Error ? err.message : (t.members?.failedToAdd ?? "Failed to add member");
       setAddError(message);
     } finally {
       setAddSaving(false);
@@ -185,13 +185,13 @@ export function MemberManagement({
       await updateMemberRole(workspaceId, userId, newRole);
       toast.success(
         newRole === "admin"
-          ? "Member promoted to admin"
-          : "Admin demoted to member",
+          ? (t.members?.promotedToast ?? "Member promoted to admin")
+          : (t.members?.demotedToast ?? "Admin demoted to member"),
       );
       loadMembers();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to change role";
+        err instanceof Error ? err.message : (t.members?.failedRoleChange ?? "Failed to change role");
       toast.error(message);
     } finally {
       setChangingRole(null);
@@ -204,12 +204,12 @@ export function MemberManagement({
     setRemoveSaving(true);
     try {
       await removeMember(workspaceId, removeTarget.userId);
-      toast.success("Member removed");
+      toast.success(t.members?.removedToast ?? "Member removed");
       setRemoveTarget(null);
       loadMembers();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to remove member";
+        err instanceof Error ? err.message : (t.members?.failedToRemove ?? "Failed to remove member");
       toast.error(message);
     } finally {
       setRemoveSaving(false);
@@ -219,20 +219,20 @@ export function MemberManagement({
   /* ── Transfer Ownership ── */
   const handleTransferOwnership = async () => {
     if (!transferTargetId) {
-      setTransferError("Select a new owner");
+      setTransferError(t.members?.selectOwnerError ?? "Select a new owner");
       return;
     }
     setTransferSaving(true);
     setTransferError(null);
     try {
       await transferOwnership(workspaceId, transferTargetId);
-      toast.success("Ownership transferred");
+      toast.success(t.members?.transferredToast ?? "Ownership transferred");
       setTransferOpen(false);
       setTransferTargetId("");
       loadMembers();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to transfer ownership";
+        err instanceof Error ? err.message : (t.members?.failedToTransfer ?? "Failed to transfer ownership");
       setTransferError(message);
     } finally {
       setTransferSaving(false);
@@ -247,7 +247,7 @@ export function MemberManagement({
     return (
       <div className="flex items-center gap-2 py-4 text-sm text-(--color-text-secondary)">
         <LoaderCircle className="h-4 w-4 animate-spin" />
-        Loading members...
+        {t.members?.loading ?? "Loading members..."}
       </div>
     );
   }
@@ -266,7 +266,7 @@ export function MemberManagement({
             onClick={loadMembers}
             className="mt-1 text-sm text-red-600 underline hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
           >
-            Try again
+            {t.members?.tryAgain ?? "Try again"}
           </button>
         </div>
       </div>
@@ -281,27 +281,28 @@ export function MemberManagement({
         {/* Header row */}
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium text-(--color-text)">
-            {members.length}{" "}
-            {members.length === 1 ? "member" : "members"}
+            {members.length === 1
+              ? (t.members?.count ?? "{count} member").replace("{count}", String(members.length))
+              : (t.members?.countPlural ?? "{count} members").replace("{count}", String(members.length))}
           </p>
           {isAdmin && (
             <Dialog open={addOpen} onOpenChange={setAddOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm">
                   <UserPlus className="h-4 w-4" />
-                  Add Member
+                  {t.members?.addTitle ?? "Add Member"}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Add Member</DialogTitle>
+                  <DialogTitle>{t.members?.addTitle ?? "Add Member"}</DialogTitle>
                   <DialogDescription>
-                    Enter the user ID (UUID) of the person you want to add
+                    {t.members?.addDescription ?? "Enter the user ID (UUID) of the person you want to add"}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-2">
                   <div className="space-y-2">
-                    <Label htmlFor="new-user-id">User ID</Label>
+                    <Label htmlFor="new-user-id">{t.members?.userIdLabel ?? "User ID"}</Label>
                     <Input
                       id="new-user-id"
                       type="text"
@@ -311,7 +312,7 @@ export function MemberManagement({
                         setNewUserId(e.target.value);
                         setAddError(null);
                       }}
-                      placeholder="00000000-0000-0000-0000-000000000000"
+                      placeholder={t.members?.userIdPlaceholder ?? "00000000-0000-0000-0000-000000000000"}
                     />
                     {addError && (
                       <p className="text-xs text-red-500">{addError}</p>
@@ -320,7 +321,7 @@ export function MemberManagement({
                 </div>
                 <DialogFooter>
                   <DialogClose asChild>
-                    <Button variant="outline">Cancel</Button>
+                    <Button variant="outline">{t.common?.cancel ?? "Cancel"}</Button>
                   </DialogClose>
                   <Button onClick={handleAddMember} disabled={addSaving}>
                     {addSaving ? (
@@ -328,7 +329,7 @@ export function MemberManagement({
                     ) : (
                       <UserPlus className="h-4 w-4" />
                     )}
-                    Add
+                    {t.members?.addButton ?? "Add"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -366,7 +367,7 @@ export function MemberManagement({
                     )}
                     {isSelf && (
                       <span className="text-xs text-(--color-text-tertiary)">
-                        (you)
+                        {t.members?.you ?? "(you)"}
                       </span>
                     )}
                   </div>
@@ -377,7 +378,7 @@ export function MemberManagement({
 
                 {/* Role badge */}
                 {isOwner ? (
-                  <Badge variant="default">Owner</Badge>
+                  <Badge variant="default">{t.members?.owner ?? "Owner"}</Badge>
                 ) : (
                   <Badge
                     variant={member.role === "admin" ? "default" : "secondary"}
@@ -387,7 +388,7 @@ export function MemberManagement({
                     ) : (
                       <Shield className="mr-1 h-3 w-3" />
                     )}
-                    {member.role === "admin" ? "Admin" : "Member"}
+                    {member.role === "admin" ? (t.members?.admin ?? "Admin") : (t.members?.memberRole ?? "Member")}
                   </Badge>
                 )}
 
@@ -411,8 +412,8 @@ export function MemberManagement({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="member">Member</SelectItem>
+                        <SelectItem value="admin">{t.members?.admin ?? "Admin"}</SelectItem>
+                        <SelectItem value="member">{t.members?.memberRole ?? "Member"}</SelectItem>
                       </SelectContent>
                     </Select>
 
@@ -435,15 +436,15 @@ export function MemberManagement({
                       </AlertDialogTrigger>
                       <AlertDialogContent size="sm">
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Remove member?</AlertDialogTitle>
+                          <AlertDialogTitle>{t.members?.removeTitle ?? "Remove member?"}</AlertDialogTitle>
                           <AlertDialogDescription>
                             {isLastAdmin
-                              ? "You are the last admin. Removing yourself will leave this workspace without administrators."
-                              : `Are you sure you want to remove ${member.name} from this workspace?`}
+                              ? (t.members?.removeLastAdminWarning ?? "You are the last admin. Removing yourself will leave this workspace without administrators.")
+                              : (t.members?.removeDescription ?? "Are you sure you want to remove {name} from this workspace?").replace("{name}", member.name)}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogCancel>{t.common?.cancel ?? "Cancel"}</AlertDialogCancel>
                           <AlertDialogAction
                             variant="destructive"
                             onClick={handleRemoveMember}
@@ -454,7 +455,7 @@ export function MemberManagement({
                             ) : (
                               <Trash2 className="h-4 w-4" />
                             )}
-                            Remove
+                            {t.members?.removeButton ?? "Remove"}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -473,11 +474,10 @@ export function MemberManagement({
       <div className="space-y-4">
         <div>
           <h3 className="text-sm font-medium text-(--color-text)">
-            Workspace Ownership
+            {t.members?.ownershipTitle ?? "Workspace Ownership"}
           </h3>
           <p className="text-xs text-(--color-text-secondary)">
-            The workspace owner has full control over the workspace and cannot be
-            removed. Ownership can be transferred to another admin.
+            {t.members?.ownershipDescription ?? "The workspace owner has full control over the workspace and cannot be removed. Ownership can be transferred to another admin."}
           </p>
         </div>
 
@@ -496,10 +496,10 @@ export function MemberManagement({
                 <span className="text-sm font-medium text-(--color-text)">
                   {ownerMember.name}
                 </span>
-                <Badge variant="default" className="bg-amber-500/15 text-amber-600">
-                  <Crown className="mr-1 h-3 w-3" />
-                  Owner
-                </Badge>
+                  <Badge variant="default" className="bg-amber-500/15 text-amber-600">
+                    <Crown className="mr-1 h-3 w-3" />
+                    {t.members?.owner ?? "Owner"}
+                  </Badge>
               </div>
               <p className="text-xs text-(--color-text-secondary)">
                 {ownerMember.email}
@@ -512,20 +512,19 @@ export function MemberManagement({
                 <DialogTrigger asChild>
                   <Button variant="outline" size="sm">
                     <Send className="h-4 w-4" />
-                    Transfer
+                    {t.members?.transferButton ?? "Transfer"}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Transfer Ownership</DialogTitle>
+                    <DialogTitle>{t.members?.transferTitle ?? "Transfer Ownership"}</DialogTitle>
                     <DialogDescription>
-                      Select an admin to become the new workspace owner. You will
-                      become a regular admin.
+                      {t.members?.transferDescription ?? "Select an admin to become the new workspace owner. You will become a regular admin."}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-2">
                     <div className="space-y-2">
-                      <Label htmlFor="new-owner">New Owner</Label>
+                      <Label htmlFor="new-owner">{t.members?.newOwnerLabel ?? "New Owner"}</Label>
                       <Select
                         value={transferTargetId}
                         onValueChange={(val) => {
@@ -537,7 +536,7 @@ export function MemberManagement({
                           id="new-owner"
                           className="w-full"
                         >
-                          <SelectValue placeholder="Select an admin..." />
+                          <SelectValue placeholder={t.members?.selectAdminPlaceholder ?? "Select an admin..."} />
                         </SelectTrigger>
                         <SelectContent>
                           {nonOwnerAdmins.map((admin) => (
@@ -559,18 +558,17 @@ export function MemberManagement({
                     {transferTargetId && (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
                         <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
-                          ⚠️ This action cannot be undone
+                          ⚠️ {t.members?.transferWarning ?? "This action cannot be undone"}
                         </p>
                         <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                          The new owner will have full control over this
-                          workspace, including the ability to remove you.
+                          {t.members?.transferWarningDesc ?? "The new owner will have full control over this workspace, including the ability to remove you."}
                         </p>
                       </div>
                     )}
                   </div>
                   <DialogFooter>
                     <DialogClose asChild>
-                      <Button variant="outline">Cancel</Button>
+                      <Button variant="outline">{t.common?.cancel ?? "Cancel"}</Button>
                     </DialogClose>
                     <Button
                       onClick={handleTransferOwnership}
@@ -581,7 +579,7 @@ export function MemberManagement({
                       ) : (
                         <Send className="h-4 w-4" />
                       )}
-                      Transfer Ownership
+                      {t.members?.transferTitle ?? "Transfer Ownership"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>

@@ -45,7 +45,7 @@ export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
           {t.nav.dashboard}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Welcome back — here's an overview of your workspace.
+          {t.dashboard?.welcome ?? "Welcome back — here's an overview of your workspace."}
         </p>
       </div>
 
@@ -79,7 +79,7 @@ export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
           <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-2">
             <Sparkles className="h-5 w-5 text-primary" />
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Extractions
+              {t.dashboard?.extractions ?? "Extractions"}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -91,7 +91,7 @@ export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
       {/* Recent stories */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Recent stories</CardTitle>
+          <CardTitle className="text-base">{t.dashboard?.recentStories ?? "Recent stories"}</CardTitle>
           <a
             href={`/${locale}/stories`}
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"

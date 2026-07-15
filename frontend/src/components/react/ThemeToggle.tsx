@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Sun, Moon, Monitor } from "lucide-react";
 import { useUIStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils";
+import { useTranslations, type Locale } from "@/i18n/utils";
 
-export function ThemeToggle() {
+export function ThemeToggle({ locale = 'en' }: { locale?: Locale }) {
+  const t = useTranslations(locale);
   const { theme, toggleTheme } = useUIStore();
   const [mounted, setMounted] = useState(false);
 
@@ -28,8 +30,8 @@ export function ThemeToggle() {
         mounted &&
           "focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary-500)",
       )}
-      aria-label={mounted ? "Toggle theme" : "Loading theme toggle"}
-      {...(mounted ? { title: `Current: ${theme}. Click to switch.` } : {})}
+      aria-label={mounted ? (t.theme?.toggle ?? "Toggle theme") : (t.theme?.loadingToggle ?? "Loading theme toggle")}
+      {...(mounted ? { title: (t.theme?.currentTheme ?? "Current: {theme}. Click to switch.").replace("{theme}", theme) } : {})}
     >
       <Icon className="h-5 w-5" />
     </button>

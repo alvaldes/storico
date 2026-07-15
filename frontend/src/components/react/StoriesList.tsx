@@ -60,7 +60,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
   // Build items array for the Base Select (supports null as a native value)
   const projectItems: { label: string; value: string | null }[] = useMemo(
     () => [
-      { label: 'All projects', value: null },
+      { label: t.stories?.allProjects ?? 'All projects', value: null },
       ...projects.map((p) => ({ label: p.name, value: p.id })),
     ],
     [projects],
@@ -105,7 +105,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
 
   const handleCreate = async (data: { actor: string; feature: string; benefit: string; rawText: string }) => {
     if (!selectedProjectId) {
-      toast.error('Select a project first');
+      toast.error(t.stories?.selectProjectFirst ?? 'Select a project first');
       return;
     }
     try {
@@ -250,8 +250,8 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
                   </span>
                 </div>
                 <p className="text-sm font-medium text-foreground">
-                  As a(n) <span className="text-primary">{story.actor}</span>, I want{' '}
-                  <span className="text-primary">{story.feature}</span>, so that{' '}
+                  {t.stories?.keyword_as_a ?? 'As a(n)'} <span className="text-primary">{story.actor}</span>, {t.stories?.keyword_i_want ?? 'I want'}{' '}
+                  <span className="text-primary">{story.feature}</span>, {t.stories?.keyword_so_that ?? 'so that'}{' '}
                   <span className="text-primary">{story.benefit}</span>
                 </p>
               </div>

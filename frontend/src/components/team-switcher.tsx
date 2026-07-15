@@ -168,7 +168,7 @@ export function TeamSwitcher({
               {t.sidebar?.newWorkspace ?? "New Workspace"}
             </DialogTitle>
             <DialogDescription>
-              Create a new workspace to organize your projects and stories.
+              {t.sidebar?.createWorkspaceDescription ?? "Create a new workspace to organize your projects and stories."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -177,11 +177,11 @@ export function TeamSwitcher({
                 htmlFor="team-name"
                 className="text-sm font-medium text-foreground"
               >
-                Workspace name
+                {t.sidebar?.workspaceNameLabel ?? "Workspace name"}
               </label>
               <Input
                 id="team-name"
-                placeholder="e.g. My Team"
+                placeholder={t.sidebar?.workspaceNamePlaceholder ?? "e.g. My Team"}
                 value={workspaceName}
                 onChange={(e) => setWorkspaceName(e.target.value)}
                 onKeyDown={(e) => {
