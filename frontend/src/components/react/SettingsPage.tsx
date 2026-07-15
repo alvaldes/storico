@@ -41,11 +41,8 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@/components/ui/toggle-group";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
+import { SegmentedControl } from "@/components/react/SegmentedControl";
 import type { LLMProvider, ExportFormat } from "@/types/settings";
 import pkg from "../../../package.json";
 
@@ -152,19 +149,13 @@ function LLMForm({
       {/* Provider selection */}
       <Field>
         <FieldLabel>{t.settings.llm_provider}</FieldLabel>
-        <ToggleGroup
-          value={[form.provider]}
+        <SegmentedControl
+          value={form.provider}
           onValueChange={(value) => {
-            updateField("provider", value as unknown as LLMProvider)
+            updateField("provider", value as LLMProvider)
           }}
-          variant="outline"
-        >
-          {providerOptions.map((opt) => (
-            <ToggleGroupItem key={opt.value} value={opt.value}>
-              {opt.label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+          options={providerOptions}
+        />
       </Field>
 
       {/* Ollama fields */}
@@ -594,46 +585,34 @@ export function SettingsPage({ locale }: SettingsPageProps) {
           {/* Theme */}
           <Field>
             <FieldLabel>{t.settings.appearance_theme}</FieldLabel>
-            <ToggleGroup
-              value={[theme]}
+            <SegmentedControl
+              value={theme}
               onValueChange={(value) => {
-                setTheme(value as unknown as "light" | "dark" | "system")
+                setTheme(value as "light" | "dark" | "system")
               }}
-              variant="outline"
-            >
-              {(["light", "dark", "system"] as const).map((tVal) => (
-                <ToggleGroupItem key={tVal} value={tVal}>
-                  {tVal === "light"
-                    ? t.settings.appearance_theme_light
-                    : tVal === "dark"
-                      ? t.settings.appearance_theme_dark
-                      : t.settings.appearance_theme_system}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+              options={[
+                { value: "light", label: t.settings.appearance_theme_light },
+                { value: "dark", label: t.settings.appearance_theme_dark },
+                { value: "system", label: t.settings.appearance_theme_system },
+              ]}
+            />
           </Field>
 
           {/* Language */}
           <Field>
             <FieldLabel>{t.settings.appearance_language}</FieldLabel>
-            <ToggleGroup
-              value={[locale]}
+            <SegmentedControl
+              value={locale}
               onValueChange={(value) => {
-                const lang = value as unknown as string
-                if (lang !== locale) {
-                  window.location.href = localizedPath("/settings", lang as "en" | "es")
+                if (value !== locale) {
+                  window.location.href = localizedPath("/settings", value as "en" | "es")
                 }
               }}
-              variant="outline"
-            >
-              {(["en", "es"] as const).map((lang) => (
-                <ToggleGroupItem key={lang} value={lang}>
-                  {lang === "en"
-                    ? t.settings.appearance_language_en
-                    : t.settings.appearance_language_es}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+              options={[
+                { value: "en", label: t.settings.appearance_language_en },
+                { value: "es", label: t.settings.appearance_language_es },
+              ]}
+            />
           </Field>
         </CardContent>
       </Card>
