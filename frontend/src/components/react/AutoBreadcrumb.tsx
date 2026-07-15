@@ -147,6 +147,7 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
   function segmentLabel(seg: string): string | ReactNode {
     const labelKey = segmentLabelKey[seg];
     if (labelKey) return t.nav[labelKey as keyof typeof t.nav];
+
     if (resolvedLabels[seg]) return resolvedLabels[seg];
     // Show loading dots for any unresolved UUID that hasn't failed yet
     if (UUID_RE.test(seg) && !resolveErrors[seg]) return <LoadingDots />;
@@ -178,8 +179,16 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
 
     // Default: URL-based breadcrumb
     // Skip "dashboard" segment — the House icon already represents it
+    // Skip "workspaces" segment and the workspace ID that follows it
+    // — sidebar already shows the workspace context
     return segments
-      .filter((seg) => seg !== "dashboard")
+      .filter((seg, i, arr) => {
+        if (seg === "dashboard") return false;
+        if (seg === "workspaces") return false;
+        // Skip the segment right after "workspaces" (the workspace ID)
+        if (i > 0 && arr[i - 1] === "workspaces") return false;
+        return true;
+      })
       .map((seg) => {
         const segIndex = segments.indexOf(seg);
         const href = localizedPath(
