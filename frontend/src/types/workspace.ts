@@ -24,6 +24,7 @@ export interface WorkspaceLLMConfig {
   temperature?: number | null;
   maxTokens?: number | null;
   baseUrl?: string | null;
+  apiKey?: string | null;
 }
 
 export interface WorkspacePrompt {

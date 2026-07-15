@@ -63,6 +63,7 @@ export function WorkspaceSettings({
     temperature: 0.1,
     maxTokens: 2048,
     baseUrl: "http://localhost:11434",
+    apiKey: "",
   });
   const [llmSaving, setLlmSaving] = useState(false);
   const [llmSaveResult, setLlmSaveResult] = useState<
@@ -118,6 +119,7 @@ export function WorkspaceSettings({
           temperature: llm.temperature ?? 0.1,
           maxTokens: llm.maxTokens ?? 2048,
           baseUrl: llm.baseUrl ?? "http://localhost:11434",
+          apiKey: llm.apiKey ?? "",
         });
       }
       if (promptData) {
@@ -152,6 +154,7 @@ export function WorkspaceSettings({
         temperature: llmConfig.temperature ?? undefined,
         maxTokens: llmConfig.maxTokens ?? undefined,
         baseUrl: llmConfig.baseUrl || undefined,
+        apiKey: llmConfig.apiKey || undefined,
       });
       setLlmSaveResult("success");
       toast.success(t.settings?.llm_saved ?? "LLM configuration saved");
@@ -256,7 +259,13 @@ export function WorkspaceSettings({
                     value={llmConfig.provider}
                     onValueChange={(val) => {
                       if (val === null) return;
-                      setLlmConfig((prev) => ({ ...prev, provider: val }));
+                      setLlmConfig((prev) => ({
+                        ...prev,
+                        provider: val,
+                        // Clear irrelevant fields when switching provider
+                        baseUrl: val !== "ollama" ? "" : prev.baseUrl,
+                        apiKey: val === "ollama" ? "" : prev.apiKey,
+                      }));
                     }}
                   >
                     <SelectTrigger id="llm-provider" className="w-full">
@@ -348,27 +357,86 @@ export function WorkspaceSettings({
                   </FieldDescription>
                 </Field>
 
-                {/* Base URL (shown for Ollama) */}
-                <Field>
-                  <FieldLabel htmlFor="llm-base-url">{t.settings?.llm_ollama_url ?? "Base URL"}</FieldLabel>
-                  <Input
-                    id="llm-base-url"
-                    type="text"
-                    value={llmConfig.baseUrl ?? ""}
-                    onChange={(e) =>
-                      setLlmConfig((prev) => ({
-                        ...prev,
-                        baseUrl: e.target.value,
-                      }))
-                    }
-                    placeholder="http://localhost:11434"
-                  />
-                  <FieldDescription>
-                    {llmConfig.provider !== "ollama"
-                      ? (t.workspace?.llmBaseUrlOptional ?? "Optional for cloud providers")
-                      : (t.workspace?.llmBaseUrlDesc ?? "The URL where your Ollama instance is running.")}
-                  </FieldDescription>
-                </Field>
+                {/* ── Provider-specific fields ── */}
+                {llmConfig.provider === "ollama" ? (
+                  /* Base URL — required for Ollama */
+                  <Field>
+                    <FieldLabel htmlFor="llm-base-url">
+                      {t.settings?.llm_base_url ?? "Base URL"}
+                    </FieldLabel>
+                    <Input
+                      id="llm-base-url"
+                      type="text"
+                      value={llmConfig.baseUrl ?? ""}
+                      onChange={(e) =>
+                        setLlmConfig((prev) => ({
+                          ...prev,
+                          baseUrl: e.target.value,
+                        }))
+                      }
+                      placeholder="http://localhost:11434"
+                    />
+                    <FieldDescription>
+                      {t.workspace?.llmBaseUrlDesc ?? "The URL where your Ollama instance is running."}
+                    </FieldDescription>
+                  </Field>
+                ) : (
+                  <>
+                    {/* API Key — required for cloud providers */}
+                    <Field>
+                      <FieldLabel htmlFor="llm-api-key">
+                        {llmConfig.provider === "openai"
+                          ? (t.settings?.llm_openai_api_key ?? "API Key")
+                          : (t.settings?.llm_anthropic_api_key ?? "API Key")}
+                      </FieldLabel>
+                      <Input
+                        id="llm-api-key"
+                        type="password"
+                        value={llmConfig.apiKey ?? ""}
+                        onChange={(e) =>
+                          setLlmConfig((prev) => ({
+                            ...prev,
+                            apiKey: e.target.value,
+                          }))
+                        }
+                        placeholder={
+                          llmConfig.provider === "openai" ? "sk-..." : "sk-ant-..."
+                        }
+                      />
+                      <FieldDescription>
+                        {t.workspace?.llmApiKeyDesc ??
+                          "Your API key for this provider. Stored encrypted at rest."}
+                      </FieldDescription>
+                    </Field>
+
+                    {/* Base URL — optional for cloud providers (proxy/custom endpoint) */}
+                    <Field>
+                      <FieldLabel htmlFor="llm-base-url">
+                        {t.settings?.llm_base_url ?? "Base URL"}
+                      </FieldLabel>
+                      <Input
+                        id="llm-base-url"
+                        type="text"
+                        value={llmConfig.baseUrl ?? ""}
+                        onChange={(e) =>
+                          setLlmConfig((prev) => ({
+                            ...prev,
+                            baseUrl: e.target.value,
+                          }))
+                        }
+                        placeholder={
+                          llmConfig.provider === "openai"
+                            ? "https://api.openai.com/v1"
+                            : "https://api.anthropic.com"
+                        }
+                      />
+                      <FieldDescription>
+                        {t.workspace?.llmBaseUrlCloudDesc ??
+                          "Optional. Leave empty to use the default API endpoint."}
+                      </FieldDescription>
+                    </Field>
+                  </>
+                )}
 
                 {/* Save Button */}
                 <div className="flex items-center gap-3 pt-1">

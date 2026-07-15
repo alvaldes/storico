@@ -24,6 +24,7 @@ export const llmConfigSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().positive().optional(),
   baseUrl: z.string().max(500).optional(),
+  apiKey: z.string().max(500).optional(),
 });
 
 export const promptConfigSchema = z.object({
