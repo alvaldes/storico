@@ -19,7 +19,7 @@ export function DashboardHeader({
   const segments = cleanPath.split("/").filter(Boolean);
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--color-surface) px-3 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+    <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--color-surface) px-3 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
       <div className="flex items-center gap-2">
         {/* Sidebar collapse/expand — desktop (sidebar-07 pattern) */}
         <SidebarTrigger className="inline-flex" />

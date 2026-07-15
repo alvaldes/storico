@@ -74,19 +74,22 @@ export function DashboardShell({
   }, [userJson, setUser, setIsFirstLogin, setWorkspaceName])
 
   return (
-    <SidebarProvider defaultOpen={sidebarDefaultOpen}>
+    <SidebarProvider
+      defaultOpen={sidebarDefaultOpen}
+      className="max-h-svh"
+    >
       <AppSidebar
         locale={locale}
         currentPath={currentPath}
         user={parsedUser}
       />
-      <SidebarInset>
+      <SidebarInset className="max-h-dvh">
         <DashboardHeader
           locale={locale}
           currentPath={currentPath}
         />
 
-        <main className="flex-1 p-4 lg:p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
       </SidebarInset>
       <Toaster />
     </SidebarProvider>
