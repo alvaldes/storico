@@ -1,6 +1,6 @@
 ---
 import MainLayout from '@/layouts/MainLayout.astro';
-import { SettingsPage } from '@/components/react/SettingsPage';
+import { AccountPage } from '@/components/react/AccountPage';
 import { useTranslations, type Locale } from '@/i18n/utils';
 
 const locale = (Astro.params.locale as Locale) || 'en';
@@ -9,8 +9,8 @@ const t = useTranslations(locale);
 
 <MainLayout locale={locale}>
   <div slot="head">
-    <title>{t.app.name} — {t.nav.settings}</title>
+    <title>{t.app.name} — {t.account.page_title}</title>
   </div>
 
-  <SettingsPage client:load locale={locale} />
+  <AccountPage client:load locale={locale} />
 </MainLayout>

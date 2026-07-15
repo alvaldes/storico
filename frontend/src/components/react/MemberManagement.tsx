@@ -281,11 +281,9 @@ export function MemberManagement({
           </p>
           {isAdmin && (
             <Dialog open={addOpen} onOpenChange={setAddOpen}>
-              <DialogTrigger>
-                <Button variant="outline" size="sm">
-                  <UserPlus className="h-4 w-4" />
-                  {t.members?.addTitle ?? "Add Member"}
-                </Button>
+              <DialogTrigger render={<Button variant="outline" size="sm" />}>
+                <UserPlus className="h-4 w-4" />
+                {t.members?.addTitle ?? "Add Member"}
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
@@ -314,8 +312,8 @@ export function MemberManagement({
                   </Field>
                 </div>
                 <DialogFooter>
-                  <DialogClose>
-                    <Button variant="outline">{t.common?.cancel ?? "Cancel"}</Button>
+                  <DialogClose render={<Button variant="outline" />}>
+                    {t.common?.cancel ?? "Cancel"}
                   </DialogClose>
                   <Button onClick={handleAddMember} disabled={addSaving}>
                     {addSaving ? (
@@ -419,15 +417,17 @@ export function MemberManagement({
                         if (!open) setRemoveTarget(null);
                       }}
                     >
-                      <AlertDialogTrigger>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-(--color-text-tertiary) hover:text-red-500"
-                          onClick={() => setRemoveTarget(member)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                      <AlertDialogTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-(--color-text-tertiary) hover:text-red-500"
+                            onClick={() => setRemoveTarget(member)}
+                          />
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </AlertDialogTrigger>
                       <AlertDialogContent size="sm">
                         <AlertDialogHeader>
@@ -504,11 +504,9 @@ export function MemberManagement({
             {/* Transfer button (only owner can transfer) */}
             {isOwner && (
               <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
-              <DialogTrigger>
-                  <Button variant="outline" size="sm">
-                    <Send className="h-4 w-4" />
-                    {t.members?.transferButton ?? "Transfer"}
-                  </Button>
+              <DialogTrigger render={<Button variant="outline" size="sm" />}>
+                  <Send className="h-4 w-4" />
+                  {t.members?.transferButton ?? "Transfer"}
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
@@ -559,8 +557,8 @@ export function MemberManagement({
                     )}
                   </div>
                   <DialogFooter>
-                    <DialogClose>
-                      <Button variant="outline">{t.common?.cancel ?? "Cancel"}</Button>
+                    <DialogClose render={<Button variant="outline" />}>
+                      {t.common?.cancel ?? "Cancel"}
                     </DialogClose>
                     <Button
                       onClick={handleTransferOwnership}

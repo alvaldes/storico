@@ -4,7 +4,6 @@ import { useCallback } from "react"
 import {
   LogOut,
   User as UserIcon,
-  Settings,
   Sun,
   Moon,
   Languages,
@@ -128,9 +127,9 @@ export function NavUser({
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem render={<a href={L("/settings")} />}>
-                <Settings className="size-4" />
-                {t.nav?.settings ?? "Settings"}
+              <DropdownMenuItem render={<a href={L("/account")} />}>
+                <UserIcon className="size-4" />
+                {t.nav?.account ?? "Account"}
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

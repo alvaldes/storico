@@ -60,7 +60,8 @@ export function toggleTheme(): 'light' | 'dark' {
 // ── View Transition helpers ─────────────────────────────────────
 
 export function onBeforeSwap(e: Event) {
-  const evt = e as CustomEvent<{ newDocument: Document }>;
+  const evt = e as CustomEvent<{ newDocument?: Document }>;
+  if (!evt.detail?.newDocument) return;
   evt.detail.newDocument.documentElement.dataset.theme = resolveTheme();
 }
 

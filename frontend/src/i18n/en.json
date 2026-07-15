@@ -9,6 +9,7 @@
     "kanban": "Kanban Board",
     "export": "Export",
     "settings": "Settings",
+    "account": "Account",
     "projects": "Projects",
     "login": "Sign In",
     "logout": "Sign Out",
@@ -247,6 +248,10 @@
     "danger_delete_description": "Permanently delete your account and all data. This action cannot be undone.",
     "danger_delete_confirm": "Are you sure? Type DELETE to confirm.",
     "save": "Save Changes"
+  },
+  "account": {
+    "page_title": "Account",
+    "page_description": "Manage your personal preferences"
   },
   "onboarding": {
     "title": "Welcome to Storico",

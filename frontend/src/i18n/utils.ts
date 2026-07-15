@@ -51,7 +51,7 @@ const PROTECTED_PATHS = [
   '/stories',
   '/kanban',
   '/export',
-  '/settings',
+  '/account',
 ];
 
 /**

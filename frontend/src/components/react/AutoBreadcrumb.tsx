@@ -24,6 +24,7 @@ const segmentLabelKey: Record<string, string> = {
   kanban: "kanban",
   export: "export",
   settings: "settings",
+  account: "account",
   projects: "projects",
 };
 

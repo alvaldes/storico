@@ -88,9 +88,9 @@ export function AppSidebar({
     },
     {
       title: t.nav.settings,
-      url: L("/settings"),
+      url: currentWorkspace ? L(`/workspaces/${currentWorkspace.id}/settings`) : "#",
       icon: <Settings />,
-      isActive: isActive(L("/settings")),
+      isActive: currentWorkspace ? isActive(L(`/workspaces/${currentWorkspace.id}/settings`)) : false,
     },
   ]
 

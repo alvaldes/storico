@@ -9,6 +9,7 @@
     "kanban": "Tablero Kanban",
     "export": "Exportar",
     "settings": "Configuración",
+    "account": "Cuenta",
     "projects": "Proyectos",
     "login": "Iniciar Sesión",
     "logout": "Cerrar Sesión",
@@ -247,6 +248,10 @@
     "danger_delete_description": "Eliminá permanentemente tu cuenta y todos los datos. Esta acción no se puede deshacer.",
     "danger_delete_confirm": "¿Estás seguro? Escribí DELETE para confirmar.",
     "save": "Guardar Cambios"
+  },
+  "account": {
+    "page_title": "Cuenta",
+    "page_description": "Administrá tus preferencias personales"
   },
   "onboarding": {
     "title": "Bienvenido a Storico",
