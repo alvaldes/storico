@@ -95,26 +95,14 @@ describe('OnboardingModal', () => {
     expect(useAuthStore.getState().isFirstLogin).toBe(false);
   });
 
-  it('shows close button (X) and calls handleSkip on click', async () => {
-    const { completeOnboarding } = await import('@/lib/user-api');
-    const user = userEvent.setup();
+  it('has no close button (X) — can only dismiss via Skip or completing all steps', async () => {
     render(<OnboardingModal locale="en" />);
 
-    // Wait for modal to render
     await waitFor(() => {
       expect(screen.getByText('Welcome to Storico')).toBeInTheDocument();
     });
 
-    // Find the close button (X icon button with aria-label "Close")
-    const closeButton = screen.getByRole('button', { name: 'Close' });
-    expect(closeButton).toBeInTheDocument();
-
-    // Click the close button
-    await user.click(closeButton);
-
-    // completeOnboarding should have been called
-    await waitFor(() => {
-      expect(completeOnboarding).toHaveBeenCalled();
-    });
+    // No button with aria-label "Close" should exist
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
   });
 });

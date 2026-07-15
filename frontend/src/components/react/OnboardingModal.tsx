@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Sparkles, Puzzle, Layers, XIcon } from "lucide-react"
+import { Sparkles, Puzzle, Layers } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -89,7 +89,12 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
     }
   }
 
-  const handleOpenChange = (isOpen: boolean) => {
+  const handleOpenChange = (isOpen: boolean, eventDetails?: { reason?: string; cancel?: () => void }) => {
+    // Escape key → no cerrar, solo se sale con Skip o completando
+    if (!isOpen && eventDetails?.reason === "escapeKey") {
+      eventDetails.cancel?.()
+      return
+    }
     if (!isOpen && !isCompleting.current) {
       handleSkip()
     }
@@ -101,21 +106,10 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
         showCloseButton={false}
         className="sm:max-w-lg"
       >
-        {/* Header with close button */}
-        <div className="flex items-start justify-between">
-          <DialogTitle className="text-lg">
-            {t.onboarding.title}
-          </DialogTitle>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleSkip}
-            disabled={isSubmitting}
-            aria-label="Close"
-          >
-            <XIcon className="h-4 w-4" />
-          </Button>
-        </div>
+        {/* Header — sin botón X, solo se puede salir con Skip o completando */}
+        <DialogTitle className="text-lg">
+          {t.onboarding.title}
+        </DialogTitle>
 
         {/* Progress bar */}
         <div className="space-y-1">
