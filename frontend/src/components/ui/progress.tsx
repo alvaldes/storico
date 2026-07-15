@@ -15,6 +15,7 @@ function Progress({
         "relative h-2 w-full overflow-hidden rounded-full bg-muted",
         className
       )}
+      value={value}
       {...props}
     >
       <ProgressPrimitive.Track className="h-full w-full">

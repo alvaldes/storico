@@ -287,7 +287,7 @@ export function MemberManagement({
           </p>
           {isAdmin && (
             <Dialog open={addOpen} onOpenChange={setAddOpen}>
-              <DialogTrigger asChild>
+              <DialogTrigger>
                 <Button variant="outline" size="sm">
                   <UserPlus className="h-4 w-4" />
                   {t.members?.addTitle ?? "Add Member"}
@@ -320,7 +320,7 @@ export function MemberManagement({
                   </div>
                 </div>
                 <DialogFooter>
-                  <DialogClose asChild>
+                  <DialogClose>
                     <Button variant="outline">{t.common?.cancel ?? "Cancel"}</Button>
                   </DialogClose>
                   <Button onClick={handleAddMember} disabled={addSaving}>
@@ -403,9 +403,10 @@ export function MemberManagement({
                     {/* Role change */}
                     <Select
                       value={member.role}
-                      onValueChange={(val) =>
-                        handleRoleChange(member.userId, val)
-                      }
+                      onValueChange={(val) => {
+                        if (val === null) return;
+                        handleRoleChange(member.userId, val);
+                      }}
                       disabled={changingRole === member.userId}
                     >
                       <SelectTrigger size="sm" className="h-7 min-w-[7rem]">
@@ -424,7 +425,7 @@ export function MemberManagement({
                         if (!open) setRemoveTarget(null);
                       }}
                     >
-                      <AlertDialogTrigger asChild>
+                      <AlertDialogTrigger>
                         <Button
                           variant="ghost"
                           size="icon-sm"
@@ -509,7 +510,7 @@ export function MemberManagement({
             {/* Transfer button (only owner can transfer) */}
             {isOwner && (
               <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
-                <DialogTrigger asChild>
+              <DialogTrigger>
                   <Button variant="outline" size="sm">
                     <Send className="h-4 w-4" />
                     {t.members?.transferButton ?? "Transfer"}
@@ -528,6 +529,7 @@ export function MemberManagement({
                       <Select
                         value={transferTargetId}
                         onValueChange={(val) => {
+                          if (val === null) return;
                           setTransferTargetId(val);
                           setTransferError(null);
                         }}
@@ -567,7 +569,7 @@ export function MemberManagement({
                     )}
                   </div>
                   <DialogFooter>
-                    <DialogClose asChild>
+                    <DialogClose>
                       <Button variant="outline">{t.common?.cancel ?? "Cancel"}</Button>
                     </DialogClose>
                     <Button

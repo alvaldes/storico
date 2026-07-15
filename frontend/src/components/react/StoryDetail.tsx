@@ -4,6 +4,7 @@ import { shortUUID } from '@/lib/utils';
 import { useProjectStore } from '@/stores/projectStore';
 import { useStoryStore } from '@/stores/storyStore';
 import { useTaskStore } from '@/stores/taskStore';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { getProject } from '@/lib/projects-api';
 import { StoryForm } from '@/components/react/StoryForm';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,7 @@ interface StoryDetailProps {
 
 export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const t = useTranslations(locale);
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
   const { stories, loading: storyLoading, fetchStory, updateStory, deleteStory } = useStoryStore();
   const { tasks, loading: tasksLoading, extracting, fetchTasks, extractTasks } = useTaskStore();
 
@@ -59,7 +61,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
 
   // Resolve parent project for contextual back link
   useEffect(() => {
-    if (!story?.projectId) {
+    if (!story?.projectId || !workspaceId) {
       setParentProject(null);
       return;
     }
@@ -72,11 +74,11 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
     }
 
     setResolvingProject(true);
-    getProject(story.projectId)
+    getProject(workspaceId, story.projectId)
       .then((project) => setParentProject({ id: project.id, name: project.name }))
       .catch(() => setParentProject(null))
       .finally(() => setResolvingProject(false));
-  }, [story?.projectId]);
+  }, [story?.projectId, workspaceId]);
 
   const handleUpdate = async (data: { actor: string; feature: string; benefit: string; rawText: string }) => {
     try {

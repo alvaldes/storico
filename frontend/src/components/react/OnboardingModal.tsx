@@ -212,7 +212,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
               <Label htmlFor="llm-provider">
                 {t.onboarding.step3_title}
               </Label>
-              <Select value={provider} onValueChange={setProvider}>
+              <Select value={provider} onValueChange={(val) => { if (val !== null) setProvider(val); }}>
                 <SelectTrigger id="llm-provider-trigger" className="w-full">
                   <SelectValue />
                 </SelectTrigger>

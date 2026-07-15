@@ -29,7 +29,7 @@ export const llmConfigSchema = z.object({
 export const promptConfigSchema = z.object({
   systemPrompt: z.string().optional(),
   instructionTemplate: z.string().optional(),
-  fewShotExamples: z.array(z.record(z.unknown())).optional(),
+  fewShotExamples: z.array(z.record(z.string(), z.unknown())).optional(),
 });
 
 export type CreateWorkspaceParams = z.infer<typeof createWorkspaceSchema>;

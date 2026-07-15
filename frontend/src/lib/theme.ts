@@ -61,7 +61,7 @@ export function toggleTheme(): 'light' | 'dark' {
 
 export function onBeforeSwap(e: Event) {
   const evt = e as CustomEvent<{ newDocument: Document }>;
-  evt.newDocument.documentElement.dataset.theme = resolveTheme();
+  evt.detail.newDocument.documentElement.dataset.theme = resolveTheme();
 }
 
 export function onAfterSwap() {

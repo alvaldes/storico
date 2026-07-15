@@ -11,6 +11,7 @@ import {
 import { localizedPath, useTranslations, type Locale } from "@/i18n/utils";
 import { useProjectStore } from "@/stores/projectStore";
 import { useStoryStore } from "@/stores/storyStore";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { getProject } from "@/lib/projects-api";
 import { getStory } from "@/lib/stories-api";
 import { House } from "lucide-react";
@@ -57,6 +58,7 @@ function LoadingDots() {
 
 export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
   const t = useTranslations(locale);
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
   const [resolvedLabels, setResolvedLabels] = useState<
     Record<string, string>
   >({});
@@ -96,7 +98,8 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
       }
 
       // Try as project first
-      getProject(id)
+      if (!workspaceId) return;
+      getProject(workspaceId, id)
         .then((project) => {
           setResolvedLabels((prev) => ({ ...prev, [id]: project.name }));
         })
@@ -125,12 +128,13 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
   }, [segments]);
 
   function resolveStoryProject(projectId: string) {
+    if (!workspaceId) return;
     const projectStore = useProjectStore.getState();
     const cached = projectStore.getById(projectId);
     if (cached) {
       setStoryProject({ projectId, projectName: cached.name });
     } else {
-      getProject(projectId)
+      getProject(workspaceId, projectId)
         .then((p) => setStoryProject({ projectId, projectName: p.name }))
         .catch(() => {
           setResolveErrors((prev) => ({ ...prev, [projectId]: true }));

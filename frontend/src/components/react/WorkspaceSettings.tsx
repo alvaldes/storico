@@ -249,9 +249,10 @@ export function WorkspaceSettings({
                   <Label htmlFor="llm-provider">{t.settings?.llm_provider ?? "Provider"}</Label>
                   <Select
                     value={llmConfig.provider}
-                    onValueChange={(val) =>
-                      setLlmConfig((prev) => ({ ...prev, provider: val }))
-                    }
+                    onValueChange={(val) => {
+                      if (val === null) return;
+                      setLlmConfig((prev) => ({ ...prev, provider: val }));
+                    }}
                   >
                     <SelectTrigger id="llm-provider" className="w-full">
                       <SelectValue />

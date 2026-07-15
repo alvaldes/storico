@@ -52,7 +52,7 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
     }
     try {
       setLocalError(null);
-      await createProject({ ...data, ownerId: userId });
+      await createProject(data);
       toast.success(t.projects.create_toast);
     } catch {
       toast.error(t.projects.create_error);
