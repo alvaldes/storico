@@ -12,5 +12,5 @@ const t = useTranslations(locale);
     <title>{t.app.name} — {t.nav.dashboard}</title>
   </div>
 
-  <Dashboard locale={locale} />
+  <Dashboard client:load locale={locale} />
 </MainLayout>

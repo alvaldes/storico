@@ -117,6 +117,7 @@ class SQLAlchemyUserRepository(UserRepository):
             name=model.name,
             id=model.id,
             avatar_url=model.avatar_url or "",
+            is_first_login=model.is_first_login,
             created_at=model.created_at,
         )
 
@@ -127,5 +128,6 @@ class SQLAlchemyUserRepository(UserRepository):
             "email": user.email,
             "name": user.name,
             "avatar_url": user.avatar_url or None,
+            "is_first_login": user.is_first_login,
             "created_at": user.created_at,
         }

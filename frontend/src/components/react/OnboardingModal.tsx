@@ -79,11 +79,10 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange} disablePointerDismissal>
       <DialogContent
         showCloseButton={false}
         className="sm:max-w-lg"
-        onInteractOutside={(e: Event) => e.preventDefault()}
       >
         {/* Header with close button */}
         <div className="flex items-start justify-between">

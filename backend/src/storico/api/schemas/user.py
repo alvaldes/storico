@@ -31,7 +31,16 @@ class UserResponse(BaseModel):
     auth_provider: str
     auth_id: str
     avatar_url: str | None = None
+    is_first_login: bool
     created_at: datetime
+
+
+class OnboardingRequest(BaseModel):
+    """Request body for completing onboarding."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_name: str | None = None
 
 
 class WorkspaceSummary(BaseModel):

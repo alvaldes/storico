@@ -34,6 +34,7 @@ class TestSyncUser:
         assert data["auth_id"] == "g-new"
         assert "id" in data
         assert "created_at" in data
+        assert data["is_first_login"] is True  # step (c) — new user
 
         # Verify it was actually saved
         get_me_headers = {
@@ -67,6 +68,7 @@ class TestSyncUser:
         assert resp2.json()["id"] == user_id
         assert resp2.json()["name"] == "Updated Name"
         assert resp2.json()["email"] == "existing@example.com"
+        assert resp2.json()["is_first_login"] is False  # step (a) — returning user
 
         # Verify via get_current_user
         get_me_headers = {
@@ -138,6 +140,7 @@ class TestSyncUser:
         assert resp2.json()["id"] == user_id  # same user
         assert resp2.json()["auth_provider"] == "github"  # reflects login provider
         assert resp2.json()["auth_id"] == "gh-link-1"
+        assert resp2.json()["is_first_login"] is False  # step (b) — existing user, new auth
 
         # Verify both providers can find the same user
         repo_sync = SQLAlchemyUserRepository  # get repo from fixture context

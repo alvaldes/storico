@@ -61,6 +61,7 @@ async def sync_user(
             email=payload.email,
             name=payload.name,
             avatar_url=payload.avatar_url or existing.avatar_url,
+            is_first_login=existing.is_first_login,
             created_at=existing.created_at,
         )
         await repo.save(user)
@@ -71,6 +72,7 @@ async def sync_user(
             auth_provider=payload.auth_provider,
             auth_id=payload.auth_provider_id,
             avatar_url=payload.avatar_url or user.avatar_url or None,
+            is_first_login=user.is_first_login,
             created_at=user.created_at,
         )
 
@@ -85,6 +87,7 @@ async def sync_user(
             email=payload.email,
             name=payload.name,
             avatar_url=payload.avatar_url or email_user.avatar_url,
+            is_first_login=email_user.is_first_login,
             created_at=email_user.created_at,
         )
         await repo.save(user)
@@ -95,6 +98,7 @@ async def sync_user(
             auth_provider=payload.auth_provider,
             auth_id=payload.auth_provider_id,
             avatar_url=payload.avatar_url or user.avatar_url or None,
+            is_first_login=user.is_first_login,
             created_at=user.created_at,
         )
 
@@ -103,6 +107,7 @@ async def sync_user(
         email=payload.email,
         name=payload.name,
         avatar_url=payload.avatar_url or "",
+        is_first_login=True,
     )
     saved = await repo.save(user)
     await repo.link_account(saved.id, payload.auth_provider, payload.auth_provider_id)
@@ -121,5 +126,6 @@ async def sync_user(
         auth_provider=payload.auth_provider,
         auth_id=payload.auth_provider_id,
         avatar_url=payload.avatar_url or saved.avatar_url or None,
+        is_first_login=saved.is_first_login,
         created_at=saved.created_at,
     )

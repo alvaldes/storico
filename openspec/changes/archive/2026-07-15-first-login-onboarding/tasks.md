@@ -51,8 +51,8 @@ Chain strategy: pending
 
 ## Phase 5: Tests
 
-- [ ] 5.1 Backend: add `is_first_login` assertions to existing auth sync tests (step (c) = true, steps (a/b) = false)
-- [ ] 5.2 Backend: integration tests for `PATCH /api/v1/users/me/onboarding` — authenticated call sets flag false, optional rename, idempotency
-- [ ] 5.3 Frontend: unit test — `authStore.setOnboardingDone()` sets `isFirstLogin` to false
-- [ ] 5.4 Frontend: component test — `OnboardingModal` renders with 3 steps and skip behavior
-- [ ] 5.5 Frontend: component test — Dashboard renders modal conditionally on `isFirstLogin`
+- [x] 5.1 Backend: add `is_first_login` assertions to existing auth sync tests (step (c) = true, steps (a/b) = false)
+- [x] 5.2 Backend: integration tests for `PATCH /api/v1/users/me/onboarding` — authenticated call sets flag false, optional rename, idempotency
+- [x] 5.3 Frontend: unit test — `authStore.setOnboardingDone()` sets `isFirstLogin` to false
+- [x] 5.4 Frontend: component test — `OnboardingModal` renders with 3 steps and skip behavior
+- [x] 5.5 Frontend: component test — Dashboard renders modal conditionally on `isFirstLogin`
