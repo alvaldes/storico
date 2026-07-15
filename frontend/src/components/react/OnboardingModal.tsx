@@ -37,7 +37,21 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
   const [open, setOpen] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const originalName = useRef(workspaceName || "")
-  const isCompleting = useRef(false)
+
+  // Bloquear Escape a nivel DOM antes de que Base UI lo procese.
+  // Base UI usa un listener en document para cerrar con Escape, y su
+  // mecanismo de cancel() no siempre frena el cierre interno del store.
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+      }
+    }
+    document.addEventListener("keydown", handler, { capture: true })
+    return () => document.removeEventListener("keydown", handler, { capture: true })
+  }, [open])
 
   // Focus management: al cambiar de step, mover el foco al elemento
   // donde el usuario debe prestar atención primero.
@@ -72,7 +86,6 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
 
   const handleComplete = async () => {
     if (isSubmitting) return
-    isCompleting.current = true
     setIsSubmitting(true)
     const shouldRename = name.trim() !== originalName.current.trim() && name.trim().length > 0
     try {
@@ -89,16 +102,10 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
     }
   }
 
-  const handleOpenChange = (isOpen: boolean, eventDetails?: { reason?: string; cancel?: () => void }) => {
-    // Escape key → no cerrar, solo se sale con Skip o completando
-    if (!isOpen && eventDetails?.reason === "escapeKey") {
-      eventDetails.cancel?.()
-      return
-    }
-    if (!isOpen && !isCompleting.current) {
-      handleSkip()
-    }
-  }
+  // No-op: el diálogo solo se cierra desde Skip o Complete.
+  // Escape se bloquea a nivel DOM en el useEffect de arriba.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleOpenChange = (_isOpen: boolean) => {}
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange} disablePointerDismissal>
