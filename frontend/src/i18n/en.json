@@ -234,6 +234,7 @@
     "title": "Welcome to Storico",
     "step": "Step {step} of 3",
     "next": "Next",
+    "back": "Back",
     "skip": "Skip",
     "get_started": "Get Started",
     "step1_title": "Name your workspace",

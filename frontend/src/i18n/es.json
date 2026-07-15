@@ -234,6 +234,7 @@
     "title": "Bienvenido a Storico",
     "step": "Paso {step} de 3",
     "next": "Siguiente",
+    "back": "Atrás",
     "skip": "Saltar",
     "get_started": "Comenzar",
     "step1_title": "Nombra tu espacio de trabajo",

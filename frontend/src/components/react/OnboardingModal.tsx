@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Sparkles, Puzzle, Layers, XIcon } from "lucide-react"
 import {
   Dialog,
@@ -38,6 +38,23 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const originalName = useRef(workspaceName || "")
   const isCompleting = useRef(false)
+
+  // Focus management: al cambiar de step, mover el foco al elemento
+  // donde el usuario debe prestar atención primero.
+  useEffect(() => {
+    // requestAnimationFrame asegura que el DOM ya se actualizó
+    // después del render condicional.
+    const raf = requestAnimationFrame(() => {
+      if (step === 1) {
+        document.getElementById("workspace-name")?.focus()
+      } else if (step === 2) {
+        document.getElementById("onboarding-next")?.focus()
+      } else if (step === 3) {
+        document.getElementById("llm-provider-trigger")?.focus()
+      }
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [step])
 
   const handleSkip = async () => {
     if (isSubmitting) return
@@ -124,6 +141,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 onChange={(e) => setName(e.target.value)}
                 placeholder={t.onboarding.step1_placeholder}
                 maxLength={100}
+                autoFocus
               />
               <div className="flex justify-end text-xs">
                 <span className="text-muted-foreground">{name.length}/100</span>
@@ -194,7 +212,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 {t.onboarding.step3_title}
               </Label>
               <Select value={provider} onValueChange={setProvider}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="llm-provider-trigger" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -227,19 +245,32 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
             {t.onboarding.skip}
           </Button>
 
-          {step < 3 ? (
-            <Button size="sm" onClick={() => setStep(step + 1)}>
-              {t.onboarding.next}
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              onClick={handleComplete}
-              disabled={isSubmitting}
-            >
-              {t.onboarding.get_started}
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {step > 1 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setStep(step - 1)}
+              >
+                {t.onboarding.back}
+              </Button>
+            )}
+
+            {step < 3 ? (
+              <Button id="onboarding-next" size="sm" onClick={() => setStep(step + 1)}>
+                {t.onboarding.next}
+              </Button>
+            ) : (
+              <Button
+                id="onboarding-next"
+                size="sm"
+                onClick={handleComplete}
+                disabled={isSubmitting}
+              >
+                {t.onboarding.get_started}
+              </Button>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
