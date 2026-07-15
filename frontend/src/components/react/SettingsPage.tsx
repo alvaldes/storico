@@ -32,34 +32,24 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group";
+import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import type { LLMProvider, ExportFormat } from "@/types/settings";
 import pkg from "../../../package.json";
 
 /* ── Helpers ─────────────────────────────────────────────────── */
-
-function inputClass(hasError?: boolean): string {
-  const base =
-    "flex h-9 w-full rounded-lg border bg-(--color-surface) px-3 py-1 text-sm text-(--color-text) transition-colors placeholder:text-(--color-text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary-500) disabled:cursor-not-allowed disabled:opacity-50";
-  const error = "border-red-500 focus-visible:ring-red-500";
-  return `${base} ${hasError ? error : "border-(--color-border)"}`;
-}
-
-function labelClass(): string {
-  return "block text-sm font-medium text-(--color-text) mb-1.5";
-}
-
-function radioGroupClass(): string {
-  return "flex flex-wrap gap-2";
-}
-
-function radioOptionClass(selected: boolean): string {
-  const base =
-    "inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium cursor-pointer transition-colors";
-  if (selected) {
-    return `${base} border-(--color-primary-500) bg-(--color-primary-500)/10 text-(--color-primary-600)`;
-  }
-  return `${base} border-(--color-border) text-(--color-text-secondary) hover:border-(--color-primary-300) hover:text-(--color-text)`;
-}
 
 /* ── Provider-specific LLM Form ──────────────────────────────── */
 
@@ -160,74 +150,72 @@ function LLMForm({
   return (
     <div className="space-y-5">
       {/* Provider selection */}
-      <fieldset>
-        <legend className={labelClass()}>{t.settings.llm_provider}</legend>
-        <div className={radioGroupClass()}>
+      <Field>
+        <FieldLabel>{t.settings.llm_provider}</FieldLabel>
+        <ToggleGroup
+          value={[form.provider]}
+          onValueChange={(value) => {
+            updateField("provider", value as unknown as LLMProvider)
+          }}
+          variant="outline"
+        >
           {providerOptions.map((opt) => (
-            <label
-              key={opt.value}
-              className={radioOptionClass(form.provider === opt.value)}
-            >
-              <input
-                type="radio"
-                name="llm-provider"
-                value={opt.value}
-                checked={form.provider === opt.value}
-                onChange={() => updateField("provider", opt.value)}
-                className="sr-only"
-              />
+            <ToggleGroupItem key={opt.value} value={opt.value}>
               {opt.label}
-            </label>
+            </ToggleGroupItem>
           ))}
-        </div>
-      </fieldset>
+        </ToggleGroup>
+      </Field>
 
       {/* Ollama fields */}
       {form.provider === "ollama" && (
         <div className="space-y-4 rounded-lg border border-(--color-border) bg-(--color-surface-secondary)/50 p-4">
-          <div>
-            <label htmlFor="ollama-url" className={labelClass()}>
+          <Field>
+            <FieldLabel htmlFor="ollama-url">
               {t.settings.llm_ollama_url}
-            </label>
-            <input
+            </FieldLabel>
+            <Input
               id="ollama-url"
               type="text"
-              className={inputClass()}
               value={form.ollama.baseUrl}
               onChange={(e) =>
                 updateNested("ollama", "baseUrl", e.target.value)
               }
               placeholder="http://localhost:11434"
             />
-          </div>
-          <div>
-            <label htmlFor="ollama-model" className={labelClass()}>
+            <FieldDescription>
+              Base URL for your local Ollama instance
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="ollama-model">
               {t.settings.llm_ollama_model}
-            </label>
-            <input
+            </FieldLabel>
+            <Input
               id="ollama-model"
               type="text"
-              className={inputClass()}
               value={form.ollama.model}
               onChange={(e) => updateNested("ollama", "model", e.target.value)}
               placeholder={t.settings.llm_ollama_model_placeholder}
             />
-          </div>
+            <FieldDescription>
+              Model name as listed in your Ollama installation
+            </FieldDescription>
+          </Field>
         </div>
       )}
 
       {/* OpenAI fields */}
       {form.provider === "openai" && (
         <div className="space-y-4 rounded-lg border border-(--color-border) bg-(--color-surface-secondary)/50 p-4">
-          <div>
-            <label htmlFor="openai-key" className={labelClass()}>
+          <Field>
+            <FieldLabel htmlFor="openai-key">
               {t.settings.llm_openai_api_key}
-            </label>
+            </FieldLabel>
             <div className="relative">
-              <input
+              <Input
                 id="openai-key"
                 type={showOpenAI ? "text" : "password"}
-                className={inputClass()}
                 value={form.openai.apiKey}
                 onChange={(e) =>
                   updateNested("openai", "apiKey", e.target.value)
@@ -247,35 +235,41 @@ function LLMForm({
                 )}
               </button>
             </div>
-          </div>
-          <div>
-            <label htmlFor="openai-model" className={labelClass()}>
+            <FieldDescription>
+              API key from your OpenAI account dashboard
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="openai-model">
               {t.settings.llm_openai_model}
-            </label>
-            <input
+            </FieldLabel>
+            <Input
               id="openai-model"
               type="text"
-              className={inputClass()}
               value={form.openai.model}
-              onChange={(e) => updateNested("openai", "model", e.target.value)}
+              onChange={(e) =>
+                updateNested("openai", "model", e.target.value)
+              }
               placeholder="gpt-4o-mini"
             />
-          </div>
+            <FieldDescription>
+              Model identifier (e.g., gpt-4o-mini, gpt-4)
+            </FieldDescription>
+          </Field>
         </div>
       )}
 
       {/* Anthropic fields */}
       {form.provider === "anthropic" && (
         <div className="space-y-4 rounded-lg border border-(--color-border) bg-(--color-surface-secondary)/50 p-4">
-          <div>
-            <label htmlFor="anthropic-key" className={labelClass()}>
+          <Field>
+            <FieldLabel htmlFor="anthropic-key">
               {t.settings.llm_anthropic_api_key}
-            </label>
+            </FieldLabel>
             <div className="relative">
-              <input
+              <Input
                 id="anthropic-key"
                 type={showAnthropic ? "text" : "password"}
-                className={inputClass()}
                 value={form.anthropic.apiKey}
                 onChange={(e) =>
                   updateNested("anthropic", "apiKey", e.target.value)
@@ -295,57 +289,62 @@ function LLMForm({
                 )}
               </button>
             </div>
-          </div>
-          <div>
-            <label htmlFor="anthropic-model" className={labelClass()}>
+            <FieldDescription>
+              API key from your Anthropic Console
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="anthropic-model">
               {t.settings.llm_anthropic_model}
-            </label>
-            <input
+            </FieldLabel>
+            <Input
               id="anthropic-model"
               type="text"
-              className={inputClass()}
               value={form.anthropic.model}
               onChange={(e) =>
                 updateNested("anthropic", "model", e.target.value)
               }
               placeholder="claude-3-haiku"
             />
-          </div>
+            <FieldDescription>
+              Model identifier (e.g., claude-3-haiku, claude-3-sonnet)
+            </FieldDescription>
+          </Field>
         </div>
       )}
 
       {/* Shared parameters */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="llm-temperature" className={labelClass()}>
+        <Field>
+          <FieldLabel htmlFor="llm-temperature">
             {t.settings.llm_temperature}
-          </label>
+          </FieldLabel>
           <div className="flex items-center gap-3">
-            <input
+            <Slider
               id="llm-temperature"
-              type="range"
-              min="0"
-              max="2"
-              step="0.1"
-              value={form.temperature}
-              onChange={(e) =>
-                updateField("temperature", parseFloat(e.target.value))
-              }
-              className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-(--color-border) accent-(--color-primary-500)"
+              value={[form.temperature]}
+              onValueChange={(value) => updateField("temperature", Array.isArray(value) ? value[0] : value)}
+              min={0}
+              max={2}
+              step={0.1}
+              className="flex-1"
             />
             <span className="min-w-[2.5rem] text-sm font-medium tabular-nums text-(--color-text-secondary)">
               {form.temperature.toFixed(1)}
             </span>
           </div>
-        </div>
-        <div>
-          <label htmlFor="llm-max-tokens" className={labelClass()}>
+          <FieldDescription>
+            Controls randomness in generated responses. Lower values produce
+            more deterministic outputs.
+          </FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="llm-max-tokens">
             {t.settings.llm_max_tokens}
-          </label>
-          <input
+          </FieldLabel>
+          <Input
             id="llm-max-tokens"
             type="number"
-            className={inputClass()}
             value={form.maxTokens}
             onChange={(e) =>
               updateField("maxTokens", parseInt(e.target.value, 10) || 0)
@@ -354,7 +353,10 @@ function LLMForm({
             max={8192}
             step={256}
           />
-        </div>
+          <FieldDescription>
+            Maximum tokens in the generated response (256-8192)
+          </FieldDescription>
+        </Field>
       </div>
 
       {/* Actions */}
@@ -590,50 +592,49 @@ export function SettingsPage({ locale }: SettingsPageProps) {
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Theme */}
-          <fieldset>
-            <legend className={labelClass()}>
-              {t.settings.appearance_theme}
-            </legend>
-            <div className={radioGroupClass()}>
+          <Field>
+            <FieldLabel>{t.settings.appearance_theme}</FieldLabel>
+            <ToggleGroup
+              value={[theme]}
+              onValueChange={(value) => {
+                setTheme(value as unknown as "light" | "dark" | "system")
+              }}
+              variant="outline"
+            >
               {(["light", "dark", "system"] as const).map((tVal) => (
-                <label key={tVal} className={radioOptionClass(theme === tVal)}>
-                  <input
-                    type="radio"
-                    name="theme"
-                    value={tVal}
-                    checked={theme === tVal}
-                    onChange={() => setTheme(tVal)}
-                    className="sr-only"
-                  />
+                <ToggleGroupItem key={tVal} value={tVal}>
                   {tVal === "light"
                     ? t.settings.appearance_theme_light
                     : tVal === "dark"
                       ? t.settings.appearance_theme_dark
                       : t.settings.appearance_theme_system}
-                </label>
+                </ToggleGroupItem>
               ))}
-            </div>
-          </fieldset>
+            </ToggleGroup>
+          </Field>
 
           {/* Language */}
-          <fieldset>
-            <legend className={labelClass()}>
-              {t.settings.appearance_language}
-            </legend>
-            <div className={radioGroupClass()}>
+          <Field>
+            <FieldLabel>{t.settings.appearance_language}</FieldLabel>
+            <ToggleGroup
+              value={[locale]}
+              onValueChange={(value) => {
+                const lang = value as unknown as string
+                if (lang !== locale) {
+                  window.location.href = localizedPath("/settings", lang as "en" | "es")
+                }
+              }}
+              variant="outline"
+            >
               {(["en", "es"] as const).map((lang) => (
-                <a
-                  key={lang}
-                  href={localizedPath("/settings", lang)}
-                  className={radioOptionClass(locale === lang)}
-                >
+                <ToggleGroupItem key={lang} value={lang}>
                   {lang === "en"
                     ? t.settings.appearance_language_en
                     : t.settings.appearance_language_es}
-                </a>
+                </ToggleGroupItem>
               ))}
-            </div>
-          </fieldset>
+            </ToggleGroup>
+          </Field>
         </CardContent>
       </Card>
 
@@ -647,23 +648,26 @@ export function SettingsPage({ locale }: SettingsPageProps) {
           <CardDescription>{t.settings.export_description}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div>
-            <label htmlFor="export-format" className={labelClass()}>
+          <Field>
+            <FieldLabel htmlFor="export-format">
               {t.settings.export_format}
-            </label>
-            <select
-              id="export-format"
-              className={inputClass()}
+            </FieldLabel>
+            <Select
               value={settings.export.defaultFormat}
-              onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+              onValueChange={(value) => setExportFormat(value as ExportFormat)}
             >
-              <option value="trello">{t.settings.export_format_trello}</option>
-              <option value="json">{t.settings.export_format_json}</option>
-              <option value="markdown">
-                {t.settings.export_format_markdown}
-              </option>
-            </select>
-          </div>
+              <SelectTrigger id="export-format" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="trello">{t.settings.export_format_trello}</SelectItem>
+                <SelectItem value="json">{t.settings.export_format_json}</SelectItem>
+                <SelectItem value="markdown">
+                  {t.settings.export_format_markdown}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
         </CardContent>
       </Card>
 
@@ -686,7 +690,9 @@ export function SettingsPage({ locale }: SettingsPageProps) {
             </span>
           </div>
           <div>
-            <p className={labelClass()}>{t.settings.about_links}</p>
+            <p className="mb-1.5 text-sm font-medium text-(--color-text)">
+              {t.settings.about_links}
+            </p>
             <div className="flex flex-wrap gap-2">
               <a
                 href={localizedPath("/docs", locale)}

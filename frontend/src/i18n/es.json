@@ -258,6 +258,7 @@
     "step1_title": "Nombra tu espacio de trabajo",
     "step1_description": "Tu espacio de trabajo se creó automáticamente. Dale un nombre que refleje tu equipo o proyecto.",
     "step1_placeholder": "Espacio de Mi Equipo",
+    "step1_name_hint": "Podés cambiarlo después en la configuración del espacio. Máx. 100 caracteres.",
     "step2_description": "Una vista rápida de lo que podés hacer con Storico.",
     "step2_card1_title": "¿Qué es Storico?",
     "step2_card1_desc": "Storico usa IA para descomponer automáticamente historias de usuario en tareas Kanban estructuradas.",
@@ -280,7 +281,8 @@
     "createWorkspace": "Crear espacio",
     "createWorkspaceDescription": "Creá un espacio de trabajo para organizar tus proyectos e historias.",
     "workspaceNameLabel": "Nombre del espacio",
-    "workspaceNamePlaceholder": "ej. Mi Equipo"
+    "workspaceNamePlaceholder": "ej. Mi Equipo",
+    "workspaceNameDescription": "Elegí un nombre que refleje tu equipo o el foco del proyecto."
   },
   "workspace": {
     "settingsTitle": "Configuración del Espacio",
@@ -291,6 +293,11 @@
     "llmSaveError": "No se pudo guardar la configuración del LLM",
     "llmSaved": "Guardado",
     "llmBaseUrlOptional": "Opcional para proveedores en la nube",
+    "llmBaseUrlDesc": "La URL donde se ejecuta tu instancia de Ollama.",
+    "llmProviderDesc": "El proveedor de modelos de IA para la extracción de tareas.",
+    "llmModelDesc": "El nombre del modelo a usar para la extracción de tareas.",
+    "llmTemperatureDesc": "Valores bajos = salida más consistente. Valores altos = más creativa.",
+    "llmMaxTokensDesc": "Cantidad máxima de tokens que el modelo puede generar por respuesta.",
     "llmSaveButton": "Guardar Configuración del LLM",
     "promptTitle": "Configuración de Prompts",
     "promptDescription": "Personalizá los prompts usados para la extracción de tareas en este espacio",
@@ -318,6 +325,7 @@
     "addDescription": "Ingresá el ID de usuario (UUID) de la persona que querés agregar",
     "userIdLabel": "ID de Usuario",
     "userIdPlaceholder": "00000000-0000-0000-0000-000000000000",
+    "userIdDescription": "Ingresá el UUID del usuario que querés agregar a este espacio.",
     "addButton": "Agregar",
     "you": "(vos)",
     "owner": "Propietario",

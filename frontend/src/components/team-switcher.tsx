@@ -28,6 +28,11 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Field,
+  FieldLabel,
+  FieldDescription,
+} from "@/components/ui/field"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useTranslations, type Locale } from "@/i18n/utils"
 
@@ -172,13 +177,10 @@ export function TeamSwitcher({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <label
-                htmlFor="team-name"
-                className="text-sm font-medium text-foreground"
-              >
+            <Field>
+              <FieldLabel htmlFor="team-name">
                 {t.sidebar?.workspaceNameLabel ?? "Workspace name"}
-              </label>
+              </FieldLabel>
               <Input
                 id="team-name"
                 placeholder={t.sidebar?.workspaceNamePlaceholder ?? "e.g. My Team"}
@@ -195,7 +197,10 @@ export function TeamSwitcher({
                 }}
                 autoFocus
               />
-            </div>
+              <FieldDescription>
+                {t.sidebar?.workspaceNameDescription ?? "Choose a name that reflects your team or project focus."}
+              </FieldDescription>
+            </Field>
           </div>
           <DialogFooter>
             <Button

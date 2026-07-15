@@ -258,6 +258,7 @@
     "step1_title": "Name your workspace",
     "step1_description": "Your workspace was automatically created. Give it a name that reflects your team or project.",
     "step1_placeholder": "My Team's Workspace",
+    "step1_name_hint": "You can change this later in workspace settings. Max 100 characters.",
     "step2_description": "Here's a quick overview of what you can do with Storico.",
     "step2_card1_title": "What is Storico?",
     "step2_card1_desc": "Storico uses AI to break down user stories into structured Kanban tasks automatically.",
@@ -280,7 +281,8 @@
     "createWorkspace": "Create Workspace",
     "createWorkspaceDescription": "Create a new workspace to organize your projects and stories.",
     "workspaceNameLabel": "Workspace name",
-    "workspaceNamePlaceholder": "e.g. My Team"
+    "workspaceNamePlaceholder": "e.g. My Team",
+    "workspaceNameDescription": "Choose a name that reflects your team or project focus."
   },
   "workspace": {
     "settingsTitle": "Workspace Settings",
@@ -291,6 +293,11 @@
     "llmSaveError": "Failed to save LLM config",
     "llmSaved": "Saved",
     "llmBaseUrlOptional": "Optional for cloud providers",
+    "llmBaseUrlDesc": "The URL where your Ollama instance is running.",
+    "llmProviderDesc": "The AI model provider for task extraction.",
+    "llmModelDesc": "The model name to use for task extraction.",
+    "llmTemperatureDesc": "Lower values = more consistent output. Higher values = more creative.",
+    "llmMaxTokensDesc": "Maximum number of tokens the model can generate per response.",
     "llmSaveButton": "Save LLM Configuration",
     "promptTitle": "Prompt Configuration",
     "promptDescription": "Customize the prompts used for task extraction in this workspace",
@@ -318,6 +325,7 @@
     "addDescription": "Enter the user ID (UUID) of the person you want to add",
     "userIdLabel": "User ID",
     "userIdPlaceholder": "00000000-0000-0000-0000-000000000000",
+    "userIdDescription": "Enter the UUID of the user you want to add to this workspace.",
     "addButton": "Add",
     "you": "(you)",
     "owner": "Owner",

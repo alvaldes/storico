@@ -10,7 +10,11 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import {
+  Field,
+  FieldLabel,
+  FieldDescription,
+} from "@/components/ui/field"
 import { Progress } from "@/components/ui/progress"
 import {
   Select,
@@ -132,10 +136,10 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
             <DialogDescription className="text-sm">
               {t.onboarding.step1_description}
             </DialogDescription>
-            <div className="space-y-1.5">
-              <Label htmlFor="workspace-name">
+            <Field>
+              <FieldLabel htmlFor="workspace-name">
                 {t.onboarding.step1_title}
-              </Label>
+              </FieldLabel>
               <Input
                 id="workspace-name"
                 value={name}
@@ -144,10 +148,11 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 maxLength={100}
                 autoFocus
               />
-              <div className="flex justify-end text-xs">
-                <span className="text-muted-foreground">{name.length}/100</span>
-              </div>
-            </div>
+              <FieldDescription>
+                {t.onboarding.step1_name_hint ?? "You can change this later in workspace settings. Max 100 characters."}
+              </FieldDescription>
+              <p className="text-xs text-muted-foreground text-right">{name.length}/100</p>
+            </Field>
           </div>
         )}
 
@@ -208,10 +213,10 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
               {t.onboarding.step3_description}
             </DialogDescription>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="llm-provider">
+            <Field>
+              <FieldLabel htmlFor="llm-provider-trigger">
                 {t.onboarding.step3_title}
-              </Label>
+              </FieldLabel>
               <Select value={provider} onValueChange={(val) => { if (val !== null) setProvider(val); }}>
                 <SelectTrigger id="llm-provider-trigger" className="w-full">
                   <SelectValue />
@@ -228,10 +233,10 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                   </SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
+              <FieldDescription>
                 {t.onboarding.step3_note}
-              </p>
-            </div>
+              </FieldDescription>
+            </Field>
           </div>
         )}
 

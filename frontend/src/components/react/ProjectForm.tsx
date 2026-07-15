@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Field, FieldLabel, FieldDescription, FieldError } from '@/components/ui/field';
 import { Loader2 } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { createProjectSchema } from '@/schemas';
@@ -81,10 +82,8 @@ export function ProjectForm({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="name" className="text-sm font-medium text-foreground">
-              {t.projects.name_label}
-            </label>
+          <Field>
+            <FieldLabel htmlFor="name">{t.projects.name_label}</FieldLabel>
             <Input
               id="name"
               value={name}
@@ -93,22 +92,16 @@ export function ProjectForm({
               maxLength={NAME_MAX}
               required
               autoFocus
-              aria-invalid={!!nameError}
             />
+            <FieldDescription>A short, descriptive name for your project.</FieldDescription>
             <div className="flex justify-between text-xs">
-              {nameError ? (
-                <span className="text-destructive">{nameError}</span>
-              ) : (
-                <span />
-              )}
+              <FieldError>{nameError}</FieldError>
               <span className="text-muted-foreground">{name.length}/{NAME_MAX}</span>
             </div>
-          </div>
+          </Field>
 
-          <div className="space-y-2">
-            <label htmlFor="description" className="text-sm font-medium text-foreground">
-              {t.projects.description_label}
-            </label>
+          <Field>
+            <FieldLabel htmlFor="description">{t.projects.description_label}</FieldLabel>
             <Textarea
               id="description"
               value={description}
@@ -116,17 +109,13 @@ export function ProjectForm({
               placeholder={t.projects.description_placeholder}
               maxLength={DESC_MAX}
               rows={3}
-              aria-invalid={!!descError}
             />
+            <FieldDescription>Optional. Describe the project's purpose, goals, or any relevant context.</FieldDescription>
             <div className="flex justify-between text-xs">
-              {descError ? (
-                <span className="text-destructive">{descError}</span>
-              ) : (
-                <span />
-              )}
+              <FieldError>{descError}</FieldError>
               <span className="text-muted-foreground">{description.length}/{DESC_MAX}</span>
             </div>
-          </div>
+          </Field>
 
           <DialogFooter>
             <Button

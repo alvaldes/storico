@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
+import { Field, FieldLabel, FieldDescription, FieldError } from '@/components/ui/field';
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupInput } from '@/components/ui/input-group';
 import { Loader2, Check, X, Eye } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
@@ -264,8 +264,8 @@ export function StoryForm({
           {/* ─── PARTS MODE ─── */}
           {mode === 'parts' && (
             <div className="min-h-[280px] space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="actor">{t.stories.actor_label}</Label>
+              <Field>
+                <FieldLabel htmlFor="actor">{t.stories.actor_label}</FieldLabel>
                 <InputGroup>
                   <InputGroupAddon>
                     <InputGroupText>As a(n)</InputGroupText>
@@ -282,17 +282,13 @@ export function StoryForm({
                   />
                 </InputGroup>
                 <div className="flex justify-between text-xs">
-                  {errors.actor ? (
-                    <span className="text-destructive">{errors.actor}</span>
-                  ) : (
-                    <span />
-                  )}
+                  <FieldError>{errors.actor}</FieldError>
                   <span className="text-muted-foreground">{actor.length}/{ACTOR_MAX}</span>
                 </div>
-              </div>
+              </Field>
 
-              <div className="space-y-2">
-                <Label htmlFor="feature">{t.stories.feature_label}</Label>
+              <Field>
+                <FieldLabel htmlFor="feature">{t.stories.feature_label}</FieldLabel>
                 <InputGroup>
                   <InputGroupAddon>
                     <InputGroupText>I want</InputGroupText>
@@ -308,17 +304,13 @@ export function StoryForm({
                   />
                 </InputGroup>
                 <div className="flex justify-between text-xs">
-                  {errors.feature ? (
-                    <span className="text-destructive">{errors.feature}</span>
-                  ) : (
-                    <span />
-                  )}
+                  <FieldError>{errors.feature}</FieldError>
                   <span className="text-muted-foreground">{feature.length}/{FEATURE_MAX}</span>
                 </div>
-              </div>
+              </Field>
 
-              <div className="space-y-2">
-                <Label htmlFor="benefit">{t.stories.benefit_label}</Label>
+              <Field>
+                <FieldLabel htmlFor="benefit">{t.stories.benefit_label}</FieldLabel>
                 <InputGroup>
                   <InputGroupAddon>
                     <InputGroupText>so that</InputGroupText>
@@ -334,14 +326,10 @@ export function StoryForm({
                   />
                 </InputGroup>
                 <div className="flex justify-between text-xs">
-                  {errors.benefit ? (
-                    <span className="text-destructive">{errors.benefit}</span>
-                  ) : (
-                    <span />
-                  )}
+                  <FieldError>{errors.benefit}</FieldError>
                   <span className="text-muted-foreground">{benefit.length}/{BENEFIT_MAX}</span>
                 </div>
-              </div>
+              </Field>
 
               {/* Live preview — always visible */}
               <div className="rounded-lg border border-border/50 bg-muted/30 p-4 space-y-2">
@@ -365,8 +353,8 @@ export function StoryForm({
           {/* ─── FULL TEXT MODE ─── */}
           {mode === 'full' && (
             <div className="min-h-[280px] space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="fullText">{t.stories.raw_text_label}</Label>
+              <Field>
+                <FieldLabel htmlFor="fullText">{t.stories.raw_text_label}</FieldLabel>
                 <Textarea
                   id="fullText"
                   value={fullText}
@@ -378,15 +366,12 @@ export function StoryForm({
                   aria-invalid={!!errors.fullText}
                   className="min-h-[100px] resize-y"
                 />
+                <FieldDescription>{"Write a complete user story in the format: As a(n) [role], I want [feature], so that [benefit]."}</FieldDescription>
                 <div className="flex justify-between text-xs">
-                  {errors.fullText ? (
-                    <span className="text-destructive">{errors.fullText}</span>
-                  ) : (
-                    <span />
-                  )}
+                  <FieldError>{errors.fullText}</FieldError>
                   <span className="text-muted-foreground">{fullText.length}/{RAW_TEXT_MAX}</span>
                 </div>
-              </div>
+              </Field>
 
               {/* Keyword validation — always visible */}
               <div className="rounded-lg border border-border/50 bg-muted/30 p-4 space-y-3">

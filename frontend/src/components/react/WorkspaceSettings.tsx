@@ -21,8 +21,13 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import {
+  Field,
+  FieldLabel,
+  FieldDescription,
+} from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -245,8 +250,8 @@ export function WorkspaceSettings({
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* Provider */}
-                <div className="space-y-2">
-                  <Label htmlFor="llm-provider">{t.settings?.llm_provider ?? "Provider"}</Label>
+                <Field>
+                  <FieldLabel htmlFor="llm-provider">{t.settings?.llm_provider ?? "Provider"}</FieldLabel>
                   <Select
                     value={llmConfig.provider}
                     onValueChange={(val) => {
@@ -263,11 +268,14 @@ export function WorkspaceSettings({
                       <SelectItem value="anthropic">{t.settings?.llm_provider_anthropic ?? "Anthropic"}</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                  <FieldDescription>
+                    {t.workspace?.llmProviderDesc ?? "The AI model provider for task extraction."}
+                  </FieldDescription>
+                </Field>
 
                 {/* Model */}
-                <div className="space-y-2">
-                  <Label htmlFor="llm-model">{t.settings?.llm_ollama_model ?? "Model"}</Label>
+                <Field>
+                  <FieldLabel htmlFor="llm-model">{t.settings?.llm_ollama_model ?? "Model"}</FieldLabel>
                   <Input
                     id="llm-model"
                     type="text"
@@ -286,36 +294,41 @@ export function WorkspaceSettings({
                           : (t.settings?.llm_anthropic_model_placeholder ?? "claude-3-haiku")
                     }
                   />
-                </div>
+                  <FieldDescription>
+                    {t.workspace?.llmModelDesc ?? "The model name to use for task extraction."}
+                  </FieldDescription>
+                </Field>
 
                 {/* Temperature */}
-                <div className="space-y-2">
-                  <Label htmlFor="llm-temperature">{t.settings?.llm_temperature ?? "Temperature"}</Label>
+                <Field>
+                  <FieldLabel htmlFor="llm-temperature">{t.settings?.llm_temperature ?? "Temperature"}</FieldLabel>
                   <div className="flex items-center gap-3">
-                    <input
+                    <Slider
                       id="llm-temperature"
-                      type="range"
-                      min="0"
-                      max="2"
-                      step="0.1"
-                      value={llmConfig.temperature ?? 0.1}
-                      onChange={(e) =>
+                      value={[llmConfig.temperature ?? 0.1]}
+                      onValueChange={(value) =>
                         setLlmConfig((prev) => ({
                           ...prev,
-                          temperature: parseFloat(e.target.value),
+                          temperature: Array.isArray(value) ? value[0] : value,
                         }))
                       }
-                      className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-(--color-border) accent-(--color-primary-500)"
+                      min={0}
+                      max={2}
+                      step={0.1}
+                      className="flex-1"
                     />
                     <span className="min-w-[2.5rem] text-sm font-medium tabular-nums text-(--color-text-secondary)">
                       {(llmConfig.temperature ?? 0.1).toFixed(1)}
                     </span>
                   </div>
-                </div>
+                  <FieldDescription>
+                    {t.workspace?.llmTemperatureDesc ?? "Lower values = more consistent output. Higher values = more creative."}
+                  </FieldDescription>
+                </Field>
 
                 {/* Max Tokens */}
-                <div className="space-y-2">
-                  <Label htmlFor="llm-max-tokens">{t.settings?.llm_max_tokens ?? "Max Tokens"}</Label>
+                <Field>
+                  <FieldLabel htmlFor="llm-max-tokens">{t.settings?.llm_max_tokens ?? "Max Tokens"}</FieldLabel>
                   <Input
                     id="llm-max-tokens"
                     type="number"
@@ -330,11 +343,14 @@ export function WorkspaceSettings({
                     max={8192}
                     step={256}
                   />
-                </div>
+                  <FieldDescription>
+                    {t.workspace?.llmMaxTokensDesc ?? "Maximum number of tokens the model can generate per response."}
+                  </FieldDescription>
+                </Field>
 
                 {/* Base URL (shown for Ollama) */}
-                <div className="space-y-2">
-                  <Label htmlFor="llm-base-url">{t.settings?.llm_ollama_url ?? "Base URL"}</Label>
+                <Field>
+                  <FieldLabel htmlFor="llm-base-url">{t.settings?.llm_ollama_url ?? "Base URL"}</FieldLabel>
                   <Input
                     id="llm-base-url"
                     type="text"
@@ -347,12 +363,12 @@ export function WorkspaceSettings({
                     }
                     placeholder="http://localhost:11434"
                   />
-                  {llmConfig.provider !== "ollama" && (
-                    <p className="text-xs text-(--color-text-tertiary)">
-                      {t.workspace?.llmBaseUrlOptional ?? "Optional for cloud providers"}
-                    </p>
-                  )}
-                </div>
+                  <FieldDescription>
+                    {llmConfig.provider !== "ollama"
+                      ? (t.workspace?.llmBaseUrlOptional ?? "Optional for cloud providers")
+                      : (t.workspace?.llmBaseUrlDesc ?? "The URL where your Ollama instance is running.")}
+                  </FieldDescription>
+                </Field>
 
                 {/* Save Button */}
                 <div className="flex items-center gap-3 pt-1">
@@ -389,8 +405,8 @@ export function WorkspaceSettings({
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* System Prompt */}
-                <div className="space-y-2">
-                  <Label htmlFor="system-prompt">{t.workspace?.systemPrompt ?? "System Prompt"}</Label>
+                <Field>
+                  <FieldLabel htmlFor="system-prompt">{t.workspace?.systemPrompt ?? "System Prompt"}</FieldLabel>
                   <Textarea
                     id="system-prompt"
                     rows={8}
@@ -404,16 +420,16 @@ export function WorkspaceSettings({
                     }
                     placeholder={t.workspace?.systemPromptPlaceholder ?? "You are an expert software development lead who excels at breaking down user stories into clear, actionable development tasks."}
                   />
-                  <p className="text-xs text-(--color-text-tertiary)">
+                  <FieldDescription>
                     {t.workspace?.systemPromptDesc ?? "The system-level instruction that sets the AI's role and behavior"}
-                  </p>
-                </div>
+                  </FieldDescription>
+                </Field>
 
                 {/* Instruction Template */}
-                <div className="space-y-2">
-                  <Label htmlFor="instruction-template">
+                <Field>
+                  <FieldLabel htmlFor="instruction-template">
                     {t.workspace?.instructionTemplate ?? "Instruction Template"}
-                  </Label>
+                  </FieldLabel>
                   <Textarea
                     id="instruction-template"
                     rows={12}
@@ -427,10 +443,10 @@ export function WorkspaceSettings({
                     }
                     placeholder={t.workspace?.instructionTemplatePlaceholder ?? "Break this user story into smaller development tasks..."}
                   />
-                  <p className="text-xs text-(--color-text-tertiary)">
+                  <FieldDescription>
                     {t.workspace?.instructionTemplateDesc ?? "The instruction prompt with format guidelines and few-shot examples"}
-                  </p>
-                </div>
+                  </FieldDescription>
+                </Field>
 
                 {/* Few-Shot Examples (Coming Soon) */}
                 <div className="rounded-lg border border-dashed border-(--color-border) bg-(--color-surface-secondary)/30 p-4">

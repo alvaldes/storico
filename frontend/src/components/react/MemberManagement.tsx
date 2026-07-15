@@ -25,7 +25,12 @@ import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  Field,
+  FieldLabel,
+  FieldDescription,
+  FieldError,
+} from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -68,17 +73,6 @@ interface MemberManagementProps {
 }
 
 /* ── Helpers ────────────────────────────────────────────────── */
-
-function labelClass(): string {
-  return "block text-sm font-medium text-(--color-text) mb-1.5";
-}
-
-function inputClass(hasError?: boolean): string {
-  const base =
-    "flex h-9 w-full rounded-lg border bg-(--color-surface) px-3 py-1 text-sm text-(--color-text) transition-colors placeholder:text-(--color-text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary-500) disabled:cursor-not-allowed disabled:opacity-50";
-  const error = "border-red-500 focus-visible:ring-red-500";
-  return `${base} ${hasError ? error : "border-(--color-border)"}`;
-}
 
 function formatDate(dateStr: string, locale: string): string {
   const date = new Date(dateStr);
@@ -301,12 +295,11 @@ export function MemberManagement({
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="new-user-id">{t.members?.userIdLabel ?? "User ID"}</Label>
+                  <Field>
+                    <FieldLabel htmlFor="new-user-id">{t.members?.userIdLabel ?? "User ID"}</FieldLabel>
                     <Input
                       id="new-user-id"
                       type="text"
-                      className={inputClass(!!addError)}
                       value={newUserId}
                       onChange={(e) => {
                         setNewUserId(e.target.value);
@@ -314,10 +307,11 @@ export function MemberManagement({
                       }}
                       placeholder={t.members?.userIdPlaceholder ?? "00000000-0000-0000-0000-000000000000"}
                     />
-                    {addError && (
-                      <p className="text-xs text-red-500">{addError}</p>
-                    )}
-                  </div>
+                    <FieldDescription>
+                      {t.members?.userIdDescription ?? "Enter the UUID of the user you want to add to this workspace."}
+                    </FieldDescription>
+                    <FieldError>{addError}</FieldError>
+                  </Field>
                 </div>
                 <DialogFooter>
                   <DialogClose>
@@ -524,8 +518,8 @@ export function MemberManagement({
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="new-owner">{t.members?.newOwnerLabel ?? "New Owner"}</Label>
+                    <Field>
+                      <FieldLabel htmlFor="new-owner">{t.members?.newOwnerLabel ?? "New Owner"}</FieldLabel>
                       <Select
                         value={transferTargetId}
                         onValueChange={(val) => {
@@ -551,12 +545,8 @@ export function MemberManagement({
                           ))}
                         </SelectContent>
                       </Select>
-                      {transferError && (
-                        <p className="text-xs text-red-500">
-                          {transferError}
-                        </p>
-                      )}
-                    </div>
+                      <FieldError>{transferError}</FieldError>
+                    </Field>
                     {transferTargetId && (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
                         <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
