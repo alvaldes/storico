@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AuthSyncRequest(BaseModel):
@@ -40,7 +40,7 @@ class OnboardingRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    workspace_name: str | None = None
+    workspace_name: str | None = Field(None, max_length=100)
 
 
 class WorkspaceSummary(BaseModel):

@@ -6,12 +6,15 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+WORKSPACE_NAME_MAX = 100
+
+
 class CreateWorkspaceRequest(BaseModel):
     """Request body for creating a new workspace."""
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(..., min_length=1, max_length=255)
+    name: str = Field(..., min_length=1, max_length=WORKSPACE_NAME_MAX)
     slug: str | None = Field(None, max_length=100)
 
 
@@ -20,7 +23,7 @@ class UpdateWorkspaceRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = Field(None, min_length=1, max_length=255)
+    name: str | None = Field(None, min_length=1, max_length=WORKSPACE_NAME_MAX)
     slug: str | None = Field(None, max_length=100)
 
 

@@ -115,7 +115,7 @@ async def sync_user(
     # Create personal workspace named after the user
     use_case = CreateWorkspaceUseCase(ws_repo=ws_repo, member_repo=member_repo)
     await use_case.execute(
-        name=f"{saved.name}'s Workspace",
+        name=f"{saved.name}'s Workspace"[:100],
         user_id=saved.id,
     )
 

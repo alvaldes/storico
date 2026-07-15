@@ -110,7 +110,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
 
         {/* Step 1: Rename workspace */}
         {step === 1 && (
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 py-2 min-h-[310px]">
             <DialogDescription className="text-sm">
               {t.onboarding.step1_description}
             </DialogDescription>
@@ -123,14 +123,18 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={t.onboarding.step1_placeholder}
+                maxLength={100}
               />
+              <div className="flex justify-end text-xs">
+                <span className="text-muted-foreground">{name.length}/100</span>
+              </div>
             </div>
           </div>
         )}
 
         {/* Step 2: Tutorial cards */}
         {step === 2 && (
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 py-2 min-h-[310px]">
             <DialogDescription className="text-sm">
               {t.onboarding.step2_description}
             </DialogDescription>
@@ -180,7 +184,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
 
         {/* Step 3: Optional LLM config */}
         {step === 3 && (
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 py-2 min-h-[310px]">
             <DialogDescription className="text-sm">
               {t.onboarding.step3_description}
             </DialogDescription>
