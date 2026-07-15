@@ -15,7 +15,9 @@ import {
   BookOpen,
   Activity,
   Code,
-  Github,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import { useTranslations, type Locale, localizedPath } from "@/i18n/utils";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -43,6 +45,14 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { SegmentedControl } from "@/components/react/SegmentedControl";
+import { OllamaLight } from "@/components/ui/svgs/ollamaLight";
+import { OllamaDark } from "@/components/ui/svgs/ollamaDark";
+import { Openai } from "@/components/ui/svgs/openai";
+import { OpenaiDark } from "@/components/ui/svgs/openaiDark";
+import { AnthropicBlack } from "@/components/ui/svgs/anthropicBlack";
+import { AnthropicWhite } from "@/components/ui/svgs/anthropicWhite";
+import { GithubLight } from "@/components/ui/svgs/githubLight";
+import { GithubDark } from "@/components/ui/svgs/githubDark";
 import type { LLMProvider, ExportFormat } from "@/types/settings";
 import pkg from "../../../package.json";
 
@@ -138,10 +148,37 @@ function LLMForm({
     }
   };
 
-  const providerOptions: { value: LLMProvider; label: string }[] = [
-    { value: "ollama", label: t.settings.llm_provider_ollama },
-    { value: "openai", label: t.settings.llm_provider_openai },
-    { value: "anthropic", label: t.settings.llm_provider_anthropic },
+  const providerOptions: { value: LLMProvider; label: React.ReactNode }[] = [
+    {
+      value: "ollama",
+      label: (
+        <>
+          <span className="block dark:hidden"><OllamaLight className="h-4 w-4" /></span>
+          <span className="hidden dark:block"><OllamaDark className="h-4 w-4" /></span>
+          {t.settings.llm_provider_ollama}
+        </>
+      ),
+    },
+    {
+      value: "openai",
+      label: (
+        <>
+          <span className="block dark:hidden"><Openai className="h-4 w-4" /></span>
+          <span className="hidden dark:block"><OpenaiDark className="h-4 w-4" /></span>
+          {t.settings.llm_provider_openai}
+        </>
+      ),
+    },
+    {
+      value: "anthropic",
+      label: (
+        <>
+          <span className="block dark:hidden"><AnthropicBlack className="h-4 w-4" /></span>
+          <span className="hidden dark:block"><AnthropicWhite className="h-4 w-4" /></span>
+          {t.settings.llm_provider_anthropic}
+        </>
+      ),
+    },
   ];
 
   return (
@@ -591,9 +628,9 @@ export function SettingsPage({ locale }: SettingsPageProps) {
                 setTheme(value as "light" | "dark" | "system")
               }}
               options={[
-                { value: "light", label: t.settings.appearance_theme_light },
-                { value: "dark", label: t.settings.appearance_theme_dark },
-                { value: "system", label: t.settings.appearance_theme_system },
+                { value: "light", label: <><Sun className="h-4 w-4" /> {t.settings.appearance_theme_light}</> },
+                { value: "dark", label: <><Moon className="h-4 w-4" /> {t.settings.appearance_theme_dark}</> },
+                { value: "system", label: <><Monitor className="h-4 w-4" /> {t.settings.appearance_theme_system}</> },
               ]}
             />
           </Field>
@@ -609,8 +646,8 @@ export function SettingsPage({ locale }: SettingsPageProps) {
                 }
               }}
               options={[
-                { value: "en", label: t.settings.appearance_language_en },
-                { value: "es", label: t.settings.appearance_language_es },
+                { value: "en", label: <>🇺🇸 {t.settings.appearance_language_en}</> },
+                { value: "es", label: <>🇪🇸 {t.settings.appearance_language_es}</> },
               ]}
             />
           </Field>
@@ -703,7 +740,10 @@ export function SettingsPage({ locale }: SettingsPageProps) {
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-(--color-border) px-3 py-1.5 text-sm text-(--color-text-secondary) transition-colors hover:border-(--color-primary-300) hover:text-(--color-text)"
               >
-                <Github className="h-3.5 w-3.5" />
+                <>
+                  <span className="block dark:hidden"><GithubLight className="h-3.5 w-3.5" /></span>
+                  <span className="hidden dark:block"><GithubDark className="h-3.5 w-3.5" /></span>
+                </>
                 GitHub
                 <ExternalLink className="h-3 w-3" />
               </a>

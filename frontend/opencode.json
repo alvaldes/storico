@@ -12,12 +12,26 @@
     },
     "figma": {
       "type": "local",
-      "command": ["npx", "-y", "figma-developer-mcp", "--stdio"],
+      "command": [
+        "npx",
+        "-y",
+        "figma-developer-mcp",
+        "--stdio"
+      ],
       "environment": {
         "FIGMA_API_KEY": "${FIGMA_API_KEY}"
       },
       "enabled": true,
       "timeout": 15000
+    },
+    "shadcn": {
+      "type": "local",
+      "command": [
+        "npx",
+        "shadcn@latest",
+        "mcp"
+      ],
+      "enabled": true
     }
   }
 }

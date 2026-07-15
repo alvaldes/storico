@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 export interface SegmentedOption {
   value: string;
-  label: string;
+  label: React.ReactNode;
 }
 
 interface SegmentedControlProps {
@@ -52,7 +52,9 @@ export function SegmentedControl({
             "first:rounded-l-lg last:rounded-r-lg",
           )}
         >
-          {opt.label}
+          <span className="inline-flex items-center gap-1.5 justify-center">
+            {opt.label}
+          </span>
         </RadioPrimitive.Root>
       ))}
     </RadioGroupPrimitive>
