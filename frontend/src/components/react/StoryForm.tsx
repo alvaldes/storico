@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -78,6 +78,18 @@ export function StoryForm({
   // Shared state
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  /* ── sync local state from initialData when dialog opens ── */
+  useEffect(() => {
+    if (open) {
+      setActor(initialData?.actor ?? '');
+      setFeature(initialData?.feature ?? '');
+      setBenefit(initialData?.benefit ?? '');
+      setFullText(initialData?.rawText ?? '');
+      setMode('parts');
+      setErrors({});
+    }
+  }, [open, initialData]);
 
   // Derived: live preview in parts mode
   const livePreview = useMemo(() => {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,6 +36,16 @@ export function ProjectForm({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  /* ── sync local state from initialData when dialog opens ── */
+  useEffect(() => {
+    if (open) {
+      setName(initialData?.name ?? '');
+      setDescription(initialData?.description ?? '');
+      setIcon(initialData?.icon ?? 'folder-kanban');
+      setErrors({});
+    }
+  }, [open, initialData]);
 
   const clearError = (field: string) => {
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: '' }));
