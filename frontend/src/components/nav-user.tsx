@@ -145,8 +145,11 @@ export function NavUser({
                 {theme === "dark" ? t.theme?.mode_light : t.theme?.mode_dark}
               </DropdownMenuItem>
               <DropdownMenuItem
-                render={<a href={otherPath} />}
                 aria-label="Switch language"
+                onClick={async () => {
+                  const { navigate } = await import("astro:transitions/client");
+                  navigate(otherPath, { history: "replace" });
+                }}
               >
                 <Languages className="size-4" />
                 {locale === "en"

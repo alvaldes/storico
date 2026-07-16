@@ -190,6 +190,15 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
 
   document.addEventListener('astro:after-swap', updatePublicNav);
   document.addEventListener('DOMContentLoaded', updatePublicNav);
+
+  // Language toggle: replace history entry instead of pushing a new one
+  document.addEventListener('click', async function onLangToggle(e) {
+    const link = e.target.closest('a[data-lang-toggle]');
+    if (!link) return;
+    e.preventDefault();
+    const { navigate } = await import('astro:transitions/client');
+    navigate(link.href, { history: 'replace' });
+  });
   </script>
   </body>
 </html>

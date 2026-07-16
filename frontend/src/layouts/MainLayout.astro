@@ -2,6 +2,9 @@
 import { ClientRouter } from 'astro:transitions';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
 import globalsCss from '@/styles/globals.css?url';
+// Import sonner's CSS as a URL (Vite copies it to the output). The <link>
+// gets data-astro-transition-persist so View Transitions never strips it.
+import sonnerCss from 'sonner/dist/styles.css?url';
 import { DashboardShell } from '@/components/react/DashboardShell';
 import { getSession } from 'auth-astro/server';
 import { useTranslations } from '@/i18n/utils';
@@ -34,6 +37,7 @@ const sidebarDefaultOpen = sidebarCookie !== 'false';
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="stylesheet" href={globalsCss} />
+    <link rel="stylesheet" href={sonnerCss} data-astro-transition-persist />
     <ClientRouter />
     <slot name="head" />
     <title>{t.app.name}</title>
@@ -48,5 +52,17 @@ const sidebarDefaultOpen = sidebarCookie !== 'false';
     >
       <slot />
     </DashboardShell>
+
+    <script>
+    // Language toggle: replace history entry instead of pushing a new one
+    document.addEventListener('click', async function onLangToggle(e) {
+      const target = e.target as Element | null;
+      const link = target?.closest('a[data-lang-toggle]');
+      if (!link) return;
+      e.preventDefault();
+      const { navigate } = await import('astro:transitions/client');
+      navigate((link as HTMLAnchorElement).href, { history: 'replace' });
+    });
+    </script>
   </body>
 </html>

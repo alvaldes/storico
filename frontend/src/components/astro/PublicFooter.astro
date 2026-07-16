@@ -90,6 +90,7 @@ const L = (path: string) => localizedPath(path, locale);
         </a>
         <a
           href={langToggleHref}
+          data-lang-toggle
           class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)"
         >
           {locale === 'en' ? t.language.es : t.language.en}

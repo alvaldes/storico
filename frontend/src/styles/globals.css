@@ -39,6 +39,8 @@
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
+  /* shadcn's default --radius token (maps to our --radius-md base). */
+  --radius: var(--radius-md);
   --font-sans: "Inter", "SF Pro", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
 
