@@ -25,5 +25,6 @@ class WorkspaceLLMConfig:
     temperature: float | None = None
     max_tokens: int | None = None
     base_url: str | None = None
+    api_key: str | None = None
     id: UUID = field(default_factory=uuid4)
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))

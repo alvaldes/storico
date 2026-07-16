@@ -21,8 +21,6 @@ class Settings(BaseSettings):
     # Ollama (local LLM)
     ollama_base_url: str = "http://localhost:11434"
     ollama_host: str = "http://localhost:11434"
-    default_llm_model: str = "llama3.2"
-    judge_llm_model: str = "llama3.2"
     llm_timeout: int = 120
 
     # Embedding

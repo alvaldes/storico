@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Bot,
   FileText,
@@ -8,11 +8,22 @@ import {
   Users,
   TriangleAlert,
   FlaskConical,
+  RotateCw,
+  CircleHelp,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getLLMConfig, upsertLLMConfig } from "@/lib/llm-config-api";
+import { getLLMConfig, upsertLLMConfig, fetchAvailableModels } from "@/lib/llm-config-api";
+import type { AvailableModel } from "@/lib/llm-config-api";
 import { getPrompts, upsertPrompts } from "@/lib/prompts-api";
 import { Button } from "@/components/ui/button";
+import {
+  Combobox,
+  ComboboxInput,
+  ComboboxContent,
+  ComboboxList,
+  ComboboxItem,
+  ComboboxEmpty,
+} from "@/components/ui/combobox";
 import {
   Card,
   CardHeader,
@@ -80,6 +91,20 @@ export function WorkspaceSettings({
     "idle" | "success" | "error"
   >("idle");
 
+  /* ── Available Models State ── */
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+
+  const searchTerm = llmConfig.model?.toLowerCase() ?? "";
+  const filteredModels = useMemo(
+    () =>
+      searchTerm
+        ? availableModels.filter((m) => m.name.toLowerCase().includes(searchTerm))
+        : availableModels,
+    [availableModels, searchTerm],
+  );
+
   /* ── Shared State ── */
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -138,10 +163,39 @@ export function WorkspaceSettings({
     }
   }, [workspaceId]);
 
+  /* ── Fetch Available Models ── */
+  const loadModels = useCallback(async () => {
+    setModelsLoading(true);
+    setModelsError(null);
+    try {
+      const models = await fetchAvailableModels(workspaceId);
+      setAvailableModels(models);
+    } catch (err) {
+      setAvailableModels([]);
+      const msg = err instanceof Error ? err.message : String(err);
+      // Surface provider errors (bad API key, wrong URL) so the user knows
+      // it's a config issue, not a system failure.
+      if (msg.includes("502") || msg.includes("Failed to fetch")) {
+        setModelsError(t.workspace?.llmModelsFetchError
+          ?? "Could not reach the provider. Check your API key and Base URL.");
+      } else {
+        setModelsError(msg);
+      }
+    } finally {
+      setModelsLoading(false);
+    }
+  }, [workspaceId, t]);
+
   useEffect(() => {
     setMounted(true);
     loadConfigs();
   }, [loadConfigs]);
+
+  // Auto-fetch models when provider changes (only after initial load)
+  useEffect(() => {
+    if (!mounted) return;
+    loadModels();
+  }, [loadModels, llmConfig.provider, mounted]);
 
   /* ── LLM Save Handler ── */
   const handleLLMSave = async () => {
@@ -262,9 +316,9 @@ export function WorkspaceSettings({
                       setLlmConfig((prev) => ({
                         ...prev,
                         provider: val,
-                        // Clear irrelevant fields when switching provider
-                        baseUrl: val !== "ollama" ? "" : prev.baseUrl,
-                        apiKey: val === "ollama" ? "" : prev.apiKey,
+                        model: "",
+                        apiKey: "",
+                        baseUrl: val === "ollama" ? "http://localhost:11434" : "",
                       }));
                     }}
                   >
@@ -282,29 +336,93 @@ export function WorkspaceSettings({
                   </FieldDescription>
                 </Field>
 
-                {/* Model */}
+                {/* Model — Combobox with auto-populated suggestions */}
                 <Field>
                   <FieldLabel htmlFor="llm-model">{t.settings?.llm_ollama_model ?? "Model"}</FieldLabel>
-                  <Input
-                    id="llm-model"
-                    type="text"
-                    value={llmConfig.model ?? ""}
-                    onChange={(e) =>
-                      setLlmConfig((prev) => ({
-                        ...prev,
-                        model: e.target.value,
-                      }))
-                    }
-                    placeholder={
-                      llmConfig.provider === "ollama"
-                        ? (t.settings?.llm_ollama_model_placeholder ?? "llama3.2, mistral")
-                        : llmConfig.provider === "openai"
-                          ? (t.settings?.llm_openai_model_placeholder ?? "gpt-4o-mini")
-                          : (t.settings?.llm_anthropic_model_placeholder ?? "claude-3-haiku")
-                    }
-                  />
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1">
+                      {/* key=provider forces remount when switching; controlled inputValue avoids React warning */}
+                      <Combobox
+                        key={`model-${llmConfig.provider}`}
+                        inputValue={llmConfig.model ?? ""}
+                        onValueChange={(val) => {
+                          if (val !== null && val !== undefined) {
+                            setLlmConfig((prev) => ({ ...prev, model: String(val) }));
+                          }
+                        }}
+                        onInputValueChange={(inputVal) => {
+                          setLlmConfig((prev) => ({ ...prev, model: inputVal }));
+                        }}
+                      >
+                        <ComboboxInput
+                          id="llm-model"
+                          disabled={llmConfig.provider !== "ollama" && !llmConfig.apiKey}
+                          placeholder={
+                            llmConfig.provider === "ollama"
+                              ? (t.settings?.llm_ollama_model_placeholder ?? "llama3.2, mistral")
+                              : llmConfig.provider === "openai"
+                                ? (t.settings?.llm_openai_model_placeholder ?? "gpt-4o-mini")
+                                : (t.settings?.llm_anthropic_model_placeholder ?? "claude-3-haiku")
+                          }
+                        />
+                        <ComboboxContent>
+                          <ComboboxList>
+                            {filteredModels.map((m) => (
+                              <ComboboxItem key={m.id} value={m.id}>
+                                {m.name}
+                              </ComboboxItem>
+                            ))}
+                          </ComboboxList>
+                          {modelsLoading ? (
+                            <ComboboxEmpty>
+                              {t.workspace?.llmModelsLoading ?? "Loading models..."}
+                            </ComboboxEmpty>
+                          ) : filteredModels.length === 0 ? (
+                            <ComboboxEmpty>
+                              {modelsError
+                                ? modelsError
+                                : (t.workspace?.llmModelsEmpty ?? "No models found. Type a custom name.")}
+                            </ComboboxEmpty>
+                          ) : null}
+                        </ComboboxContent>
+                      </Combobox>
+                    </div>
+                    <div className="relative">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={loadModels}
+                        disabled={
+                          modelsLoading ||
+                          (llmConfig.provider !== "ollama" && !llmConfig.apiKey)
+                        }
+                        title={
+                          llmConfig.provider !== "ollama" && !llmConfig.apiKey
+                            ? (t.workspace?.llmModelsNoApiKey ?? "Add your API key first")
+                            : (t.workspace?.llmRefreshModels ?? "Refresh models")
+                        }
+                      >
+                        <RotateCw
+                          className={`h-4 w-4 ${modelsLoading ? "animate-spin" : ""}`}
+                        />
+                      </Button>
+                    </div>
+                  </div>
                   <FieldDescription>
-                    {t.workspace?.llmModelDesc ?? "The model name to use for task extraction."}
+                    {modelsError ? (
+                      <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                        <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                        {modelsError}
+                      </span>
+                    ) : llmConfig.provider !== "ollama" && !llmConfig.apiKey ? (
+                      <span className="flex items-center gap-1.5 text-(--color-text-tertiary)">
+                        <CircleHelp className="h-3.5 w-3.5 shrink-0" />
+                        {t.workspace?.llmModelsNoApiKey ?? "Add your API key and save to enable model suggestions."}
+                      </span>
+                    ) : (
+                      t.workspace?.llmModelDesc ?? "The model name to use for task extraction."
+                    )}
                   </FieldDescription>
                 </Field>
 

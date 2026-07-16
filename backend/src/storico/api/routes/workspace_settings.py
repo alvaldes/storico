@@ -9,12 +9,14 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from storico.api.dependencies import get_repository, require_admin
 from storico.api.schemas.workspace_llm_config import (
     LLMConfigRequest,
     LLMConfigResponse,
+    ModelInfo,
 )
 from storico.api.schemas.workspace_prompt import PromptRequest, PromptResponse
 from storico.config.settings import Settings
@@ -63,19 +65,20 @@ async def resolve_llm_config(
     if ws_config is None:
         return LLMConfigResponse(
             provider="ollama",
-            model=settings.default_llm_model,
+            model=None,
             temperature=0.1,
             max_tokens=2048,
             base_url=settings.ollama_base_url,
         )
     return LLMConfigResponse(
         provider=ws_config.provider,
-        model=ws_config.model or settings.default_llm_model,
+        model=ws_config.model,
         temperature=ws_config.temperature
         if ws_config.temperature is not None
         else 0.1,
         max_tokens=ws_config.max_tokens or 2048,
         base_url=ws_config.base_url or settings.ollama_base_url,
+        api_key=ws_config.api_key,
     )
 
 
@@ -173,6 +176,9 @@ async def upsert_llm_config(
         base_url=body.base_url
         if body.base_url is not None
         else (existing.base_url if existing else None),
+        api_key=body.api_key
+        if body.api_key is not None
+        else (existing.api_key if existing else None),
     )
 
     await config_repo.upsert(merged)
@@ -226,3 +232,98 @@ async def upsert_prompts(
 
     await prompt_repo.upsert(merged)
     return await resolve_prompt(workspace.id, prompt_repo)
+
+
+# ── Available models endpoint ────────────────────────────────────
+
+
+# Default API endpoints for cloud providers
+OPENAI_API_BASE = "https://api.openai.com/v1"
+ANTHROPIC_API_BASE = "https://api.anthropic.com"
+
+
+async def fetch_ollama_models(base_url: str) -> list[ModelInfo]:
+    """Fetch available models from Ollama's /api/tags endpoint."""
+    url = f"{base_url.rstrip('/')}/api/tags"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        data = resp.json()
+    return [
+        ModelInfo(id=m["name"], name=m["name"])
+        for m in data.get("models", [])
+    ]
+
+
+async def fetch_openai_models(api_key: str, base_url: str | None) -> list[ModelInfo]:
+    """Fetch available models from the OpenAI API."""
+    url = f"{base_url.rstrip('/')}/models" if base_url else f"{OPENAI_API_BASE}/models"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            url,
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    return [
+        ModelInfo(id=m["id"], name=m["id"])
+        for m in data.get("data", [])
+    ]
+
+
+async def fetch_anthropic_models(api_key: str) -> list[ModelInfo]:
+    """Fetch available models from the Anthropic API."""
+    url = f"{ANTHROPIC_API_BASE}/v1/models"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            url,
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    return [
+        ModelInfo(id=m["id"], name=m.get("display_name", m["id"]))
+        for m in data.get("data", [])
+    ]
+
+
+@router.get("/llm/models")
+async def list_available_models(
+    config_repo: LLMConfigRepoDep,
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(require_admin),
+) -> list[ModelInfo]:
+    """List available models from the workspace's configured LLM provider.
+
+    Proxies the request to the provider's model list API. Requires the
+    workspace LLM config to have the necessary credentials saved first.
+    """
+    workspace, _ = ctx
+    config = await config_repo.get(workspace.id)
+
+    if config is None:
+        return []
+
+    try:
+        if config.provider == "ollama":
+            base_url = config.base_url or "http://localhost:11434"
+            return await fetch_ollama_models(base_url)
+
+        if config.provider == "openai":
+            if not config.api_key:
+                return []
+            return await fetch_openai_models(config.api_key, config.base_url)
+
+        if config.provider == "anthropic":
+            if not config.api_key:
+                return []
+            return await fetch_anthropic_models(config.api_key)
+
+        return []
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to fetch models from {config.provider}: {e}",
+        )

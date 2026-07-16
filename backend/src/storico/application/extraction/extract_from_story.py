@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from storico.config.settings import Settings
 from storico.domain.entities import EntityNotFound
 from storico.domain.entities.exceptions import LLMError, ParseError
 from storico.domain.ports import LLMConfig, UserStoryRepository
@@ -58,12 +57,13 @@ class ExtractFromStoryUseCase:
             raise EntityNotFound("UserStory", str(story_id))
 
         # 2. Build LLM config
-        settings = Settings.load()
+        if model is None:
+            raise ValueError("model is required for extraction")
         llm_config = LLMConfig(
-            model=model or settings.default_llm_model,
+            model=model,
             temperature=temperature if temperature is not None else 0.1,
             max_tokens=2048,
-            timeout=settings.llm_timeout,
+            timeout=120,
         )
 
         # 3. Run extraction (includes persistence)

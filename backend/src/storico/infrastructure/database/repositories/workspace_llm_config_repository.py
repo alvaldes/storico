@@ -59,6 +59,7 @@ class SQLAlchemyWorkspaceLLMConfigRepository(WorkspaceLLMConfigRepository):
             temperature=model.temperature,
             max_tokens=model.max_tokens,
             base_url=model.base_url,
+            api_key=model.api_key,
             id=model.id,
             updated_at=model.updated_at,
         )
@@ -73,5 +74,6 @@ class SQLAlchemyWorkspaceLLMConfigRepository(WorkspaceLLMConfigRepository):
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
             "base_url": config.base_url,
+            "api_key": config.api_key,
             "updated_at": config.updated_at,
         }

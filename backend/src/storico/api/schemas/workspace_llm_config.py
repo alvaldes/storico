@@ -13,6 +13,14 @@ class LLMConfigRequest(BaseModel):
     temperature: float | None = None
     max_tokens: int | None = None
     base_url: str | None = Field(None, max_length=500)
+    api_key: str | None = Field(None, max_length=500)
+
+
+class ModelInfo(BaseModel):
+    """Describes a single available model from a provider."""
+
+    id: str
+    name: str
 
 
 class LLMConfigResponse(BaseModel):
@@ -25,3 +33,4 @@ class LLMConfigResponse(BaseModel):
     temperature: float | None = None
     max_tokens: int | None = None
     base_url: str | None = None
+    api_key: str | None = None

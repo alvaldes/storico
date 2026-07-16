@@ -25,6 +25,7 @@ class WorkspaceLLMConfigModel(Base):
     temperature: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True, default=None)
+    api_key: Mapped[str | None] = mapped_column(String(500), nullable=True, default=None)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
