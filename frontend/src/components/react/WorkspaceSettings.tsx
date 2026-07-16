@@ -45,7 +45,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { MemberManagement } from "@/components/react/MemberManagement";
@@ -336,7 +335,13 @@ export function WorkspaceSettings({
                     <SelectTrigger id="llm-provider" className="w-full">
                       <div className="flex items-center gap-2">
                         <ProviderIcon provider={llmConfig.provider} theme={resolvedTheme} className="h-4 w-4 shrink-0" />
-                        <SelectValue />
+                        <span>
+                          {llmConfig.provider === "ollama"
+                            ? (t.settings?.llm_provider_ollama ?? "Ollama (Local)")
+                            : llmConfig.provider === "openai"
+                              ? (t.settings?.llm_provider_openai ?? "OpenAI")
+                              : (t.settings?.llm_provider_anthropic ?? "Anthropic")}
+                        </span>
                       </div>
                     </SelectTrigger>
                     <SelectContent>
