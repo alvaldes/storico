@@ -1,0 +1,50 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import {
+  getLocaleFromPath,
+  detectLocale,
+  useTranslations,
+  localizedPath,
+  type Locale,
+} from '@/i18n/utils';
+
+const url = Astro.url;
+const locale: Locale =
+  getLocaleFromPath(url.pathname) ??
+  detectLocale(Astro.request.headers.get('accept-language'));
+const t = useTranslations(locale);
+const L = (path: string) => localizedPath(path, locale);
+
+Astro.response.status = 404;
+---
+
+<PublicLayout
+  locale={locale}
+  title={`404 — ${t.app.name}`}
+  description={t.pages.notFound.description}
+  showCta={false}
+>
+  <main class="mx-auto flex max-w-lg flex-col items-center gap-6 px-4 py-20 text-center md:py-32">
+    <span
+      class="text-[8rem] font-extrabold leading-none tracking-[-6px] text-(--color-primary-600) md:text-[10rem]"
+      style="font-family: 'Space Grotesk', sans-serif;"
+    >
+      404
+    </span>
+
+    <h1 class="text-2xl font-bold text-(--color-text) md:text-3xl">
+      {t.pages.notFound.title}
+    </h1>
+
+    <p class="max-w-sm text-base text-(--color-text-secondary) md:text-lg">
+      {t.pages.notFound.description}
+    </p>
+
+    <a
+      href={L('/')}
+      class="inline-flex items-center justify-center rounded-lg bg-(--color-primary-600) px-7 py-3.5 text-base font-semibold text-(--color-inverse-text) no-underline shadow-primary-sm transition-all hover:bg-(--color-primary-700)"
+    >
+      {t.nav.back_to_home}
+    </a>
+  </main>
+</PublicLayout>

@@ -551,9 +551,13 @@
       "vector_store_desc": "Qdrant",
       "operational": "Operativo",
       "error": "Error",
-      "checking": "Verificando\u2026",
+      "checking": "Verificando…",
       "unavailable": "No disponible",
       "last_updated": "Última actualización"
+    },
+    "notFound": {
+      "title": "Página no encontrada",
+      "description": "La página que buscas no existe o ha sido movida."
     }
   }
 }

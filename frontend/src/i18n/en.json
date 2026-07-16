@@ -551,9 +551,13 @@
       "vector_store_desc": "Qdrant",
       "operational": "Operational",
       "error": "Error",
-      "checking": "Checking\u2026",
+      "checking": "Checking…",
       "unavailable": "Unavailable",
       "last_updated": "Last updated"
+    },
+    "notFound": {
+      "title": "Page not found",
+      "description": "The page you are looking for does not exist or has been moved."
     }
   }
 }
