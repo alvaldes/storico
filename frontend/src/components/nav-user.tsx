@@ -7,6 +7,7 @@ import {
   Sun,
   Moon,
   Languages,
+  ChevronsUpDown,
 } from "lucide-react"
 import { signOut } from "auth-astro/client"
 
@@ -100,6 +101,7 @@ export function NavUser({
                 {user.email}
               </span>
             </div>
+            <ChevronsUpDown className="ml-auto size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
             className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
