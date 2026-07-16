@@ -10,6 +10,7 @@ import {
   FlaskConical,
   RotateCw,
   CircleHelp,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getLLMConfig, upsertLLMConfig, fetchAvailableModels } from "@/lib/llm-config-api";
@@ -326,9 +327,18 @@ export function WorkspaceSettings({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ollama">{t.settings?.llm_provider_ollama ?? "Ollama (Local)"}</SelectItem>
-                      <SelectItem value="openai">{t.settings?.llm_provider_openai ?? "OpenAI"}</SelectItem>
-                      <SelectItem value="anthropic">{t.settings?.llm_provider_anthropic ?? "Anthropic"}</SelectItem>
+                      <SelectItem value="ollama">
+                        <Bot className="mr-2 h-4 w-4" />
+                        {t.settings?.llm_provider_ollama ?? "Ollama (Local)"}
+                      </SelectItem>
+                      <SelectItem value="openai">
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        {t.settings?.llm_provider_openai ?? "OpenAI"}
+                      </SelectItem>
+                      <SelectItem value="anthropic">
+                        <FlaskConical className="mr-2 h-4 w-4" />
+                        {t.settings?.llm_provider_anthropic ?? "Anthropic"}
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                   <FieldDescription>
