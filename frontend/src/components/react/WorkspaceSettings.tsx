@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useUIStore } from "@/stores/uiStore";
 import {
   Bot,
   FileText,
@@ -10,7 +11,6 @@ import {
   FlaskConical,
   RotateCw,
   CircleHelp,
-  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getLLMConfig, upsertLLMConfig, fetchAvailableModels } from "@/lib/llm-config-api";
@@ -52,6 +52,7 @@ import { MemberManagement } from "@/components/react/MemberManagement";
 import type { WorkspaceLLMConfig, WorkspacePrompt } from "@/types/workspace";
 import en from "@/i18n/en.json";
 import es from "@/i18n/es.json";
+import { ProviderIcon } from "@/components/ui/provider-icon";
 
 /* ── Props ─────────────────────────────────────────────────── */
 
@@ -67,6 +68,15 @@ export function WorkspaceSettings({
   workspaceId,
 }: WorkspaceSettingsProps) {
   const t = locale === "es" ? es : en;
+  const { theme: rawTheme } = useUIStore();
+  const resolvedTheme: "light" | "dark" =
+    rawTheme === "system"
+      ? typeof window !== "undefined"
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light"
+        : "light"
+      : rawTheme;
 
   /* ── LLM Config State ── */
   const [llmConfig, setLlmConfig] = useState<WorkspaceLLMConfig>({
@@ -324,19 +334,22 @@ export function WorkspaceSettings({
                     }}
                   >
                     <SelectTrigger id="llm-provider" className="w-full">
-                      <SelectValue />
+                      <div className="flex items-center gap-2">
+                        <ProviderIcon provider={llmConfig.provider} theme={resolvedTheme} className="h-4 w-4 shrink-0" />
+                        <SelectValue />
+                      </div>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="ollama">
-                        <Bot className="mr-2 h-4 w-4" />
+                        <ProviderIcon provider="ollama" theme={resolvedTheme} className="mr-2 h-4 w-4 shrink-0" />
                         {t.settings?.llm_provider_ollama ?? "Ollama (Local)"}
                       </SelectItem>
                       <SelectItem value="openai">
-                        <Sparkles className="mr-2 h-4 w-4" />
+                        <ProviderIcon provider="openai" theme={resolvedTheme} className="mr-2 h-4 w-4 shrink-0" />
                         {t.settings?.llm_provider_openai ?? "OpenAI"}
                       </SelectItem>
                       <SelectItem value="anthropic">
-                        <FlaskConical className="mr-2 h-4 w-4" />
+                        <ProviderIcon provider="anthropic" theme={resolvedTheme} className="mr-2 h-4 w-4 shrink-0" />
                         {t.settings?.llm_provider_anthropic ?? "Anthropic"}
                       </SelectItem>
                     </SelectContent>
