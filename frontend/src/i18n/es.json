@@ -332,7 +332,15 @@
     "promptSaved": "Configuración de prompts guardada",
     "promptSaveError": "No se pudieron guardar los prompts",
     "teamMembersTitle": "Miembros del Equipo",
-    "teamMembersDesc": "Administra miembros, roles y propietario de este espacio de trabajo"
+    "teamMembersDesc": "Administra miembros, roles y propietario de este espacio de trabajo",
+    "infoTitle": "Información",
+    "infoDescription": "Nombre e icono del espacio",
+    "nameLabel": "Nombre del espacio",
+    "namePlaceholder": "ej. Mi Equipo",
+    "iconLabel": "Icono",
+    "savedInfo": "Espacio actualizado",
+    "saveInfoError": "No se pudo actualizar el espacio",
+    "infoNonAdminHint": "Solo los administradores pueden editar la configuración del espacio."
   },
   "members": {
     "loading": "Cargando miembros...",

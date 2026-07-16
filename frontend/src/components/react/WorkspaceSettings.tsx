@@ -7,6 +7,7 @@ import {
   X,
   LoaderCircle,
   Users,
+  Settings,
   TriangleAlert,
   FlaskConical,
   RotateCw,
@@ -49,14 +50,18 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { MemberManagement } from "@/components/react/MemberManagement";
 import type { WorkspaceLLMConfig, WorkspacePrompt } from "@/types/workspace";
+import { IconPicker, IconTrigger } from "@/components/ui/icon-picker";
+import * as workspaceApi from "@/lib/workspace-api";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
 import en from "@/i18n/en.json";
 import es from "@/i18n/es.json";
+import { type Locale } from "@/i18n/utils";
 import { ProviderIcon } from "@/components/ui/provider-icon";
 
 /* ── Props ─────────────────────────────────────────────────── */
 
 interface WorkspaceSettingsProps {
-  locale: string;
+  locale: Locale;
   workspaceId: string;
 }
 
@@ -115,6 +120,13 @@ export function WorkspaceSettings({
     [availableModels, searchTerm],
   );
 
+  /* ── Workspace Info State ── */
+  const [wsName, setWsName] = useState("");
+  const [wsIcon, setWsIcon] = useState("building-2");
+  const [wsRole, setWsRole] = useState<"admin" | "member">("member");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [infoSaving, setInfoSaving] = useState(false);
+
   /* ── Shared State ── */
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +137,17 @@ export function WorkspaceSettings({
     setLoading(true);
     setError(null);
     try {
-      const [llm, promptData] = await Promise.all([
+      const [ws, llm, promptData] = await Promise.all([
+        workspaceApi.getWorkspace(workspaceId).catch((err) => {
+          // If 403, still allow viewing other configs
+          if (
+            err instanceof Error &&
+            (err.message.includes("403") || err.message.includes("admin"))
+          ) {
+            return null;
+          }
+          throw err;
+        }),
         getLLMConfig(workspaceId).catch((err) => {
           // If 403, the user is not admin — we still allow viewing prompts
           if (
@@ -162,6 +184,11 @@ export function WorkspaceSettings({
           systemPrompt: promptData.systemPrompt ?? "",
           instructionTemplate: promptData.instructionTemplate ?? "",
         });
+      }
+      if (ws) {
+        setWsName(ws.name ?? "");
+        setWsIcon(ws.icon ?? "building-2");
+        setWsRole(ws.role ?? "member");
       }
     } catch (err) {
       const message =
@@ -257,6 +284,24 @@ export function WorkspaceSettings({
     }
   };
 
+  /* ── Workspace Info Save Handler ── */
+  const handleInfoSave = async () => {
+    setInfoSaving(true);
+    try {
+      await useWorkspaceStore.getState().updateWorkspace(workspaceId, {
+        name: wsName || undefined,
+        icon: wsIcon !== "building-2" ? wsIcon : undefined,
+      });
+      toast.success(t.workspace?.savedInfo ?? "Workspace updated");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : (t.workspace?.saveInfoError ?? "Failed to update workspace");
+      toast.error(message);
+    } finally {
+      setInfoSaving(false);
+    }
+  };
+
   /* ── Loading State ── */
   if (!mounted) {
     return (
@@ -278,6 +323,62 @@ export function WorkspaceSettings({
           {t.workspace?.settingsDescription ?? "Configure LLM, prompts, and manage team members for this workspace."}
         </p>
       </div>
+
+      {/* ── Section 1: General (Workspace Info) ── */}
+      {!loading && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Settings className="h-4 w-4 text-(--color-text-secondary)" />
+              <CardTitle className="text-base">{t.workspace?.infoTitle ?? "General"}</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3">
+              <IconTrigger
+                value={wsIcon}
+                onClick={() => setPickerOpen(true)}
+                locale={locale}
+              />
+              <Input
+                id="ws-name"
+                value={wsName}
+                onChange={(e) => setWsName(e.target.value)}
+                placeholder={t.workspace?.namePlaceholder ?? "e.g. My Team"}
+                disabled={wsRole !== "admin"}
+                className="flex-1"
+              />
+              <Button
+                onClick={handleInfoSave}
+                disabled={infoSaving || wsRole !== "admin"}
+                size="sm"
+              >
+                {infoSaving ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                {t.common?.save ?? "Save"}
+              </Button>
+            </div>
+
+            {wsRole !== "admin" && (
+              <p className="mt-2 text-xs text-(--color-text-tertiary)">
+                {t.workspace?.infoNonAdminHint ?? "Only admins can edit workspace settings."}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Icon Picker dialog */}
+      <IconPicker
+        value={wsIcon}
+        onChange={setWsIcon}
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        locale={locale}
+      />
 
       {loading ? (
         <div className="flex items-center gap-2 py-12 text-sm text-(--color-text-secondary)">

@@ -332,7 +332,15 @@
     "promptSaved": "Prompt configuration saved",
     "promptSaveError": "Failed to save prompts",
     "teamMembersTitle": "Team Members",
-    "teamMembersDesc": "Manage members, roles, and ownership for this workspace"
+    "teamMembersDesc": "Manage members, roles, and ownership for this workspace",
+    "infoTitle": "General",
+    "infoDescription": "Workspace name and icon",
+    "nameLabel": "Workspace name",
+    "namePlaceholder": "e.g. My Team",
+    "iconLabel": "Icon",
+    "savedInfo": "Workspace updated",
+    "saveInfoError": "Failed to update workspace",
+    "infoNonAdminHint": "Only admins can edit workspace settings."
   },
   "members": {
     "loading": "Loading members...",
