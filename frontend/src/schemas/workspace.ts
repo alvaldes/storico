@@ -3,11 +3,13 @@ import { z } from 'zod';
 export const createWorkspaceSchema = z.object({
   name: z.string().min(1, { message: 'Workspace name is required' }).max(255),
   slug: z.string().max(100).optional(),
+  icon: z.string().max(100).optional(),
 });
 
 export const updateWorkspaceSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   slug: z.string().max(100).optional(),
+  icon: z.string().max(100).optional(),
 });
 
 export const addMemberSchema = z.object({

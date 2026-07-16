@@ -2,6 +2,7 @@ export interface Workspace {
   id: string;
   name: string;
   slug: string;
+  icon?: string | null;
   ownerId: string;
   role: 'admin' | 'member';
   memberCount: number;

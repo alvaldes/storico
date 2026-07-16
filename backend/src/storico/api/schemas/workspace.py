@@ -16,6 +16,7 @@ class CreateWorkspaceRequest(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=WORKSPACE_NAME_MAX)
     slug: str | None = Field(None, max_length=100)
+    icon: str | None = Field(None, max_length=100)
 
 
 class UpdateWorkspaceRequest(BaseModel):
@@ -25,6 +26,7 @@ class UpdateWorkspaceRequest(BaseModel):
 
     name: str | None = Field(None, min_length=1, max_length=WORKSPACE_NAME_MAX)
     slug: str | None = Field(None, max_length=100)
+    icon: str | None = Field(None, max_length=100)
 
 
 class WorkspaceResponse(BaseModel):
@@ -35,6 +37,7 @@ class WorkspaceResponse(BaseModel):
     id: UUID
     name: str
     slug: str
+    icon: str | None = None
     owner_id: UUID
     role: str
     member_count: int = 0

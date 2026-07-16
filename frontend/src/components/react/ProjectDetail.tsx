@@ -39,7 +39,7 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
     }
   }, [fetchProjects, projects.length]);
 
-  const handleUpdate = async (data: { name: string; description: string }) => {
+  const handleUpdate = async (data: { name: string; description: string; icon?: string }) => {
     await updateProject(projectId, data);
     setEditing(false);
     toast.success(t.projects.updated_toast);
@@ -122,7 +122,7 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
         onOpenChange={setEditing}
         onSubmit={handleUpdate}
         locale={locale}
-        initialData={{ name: project.name, description: project.description }}
+        initialData={{ name: project.name, description: project.description, icon: project.icon ?? undefined }}
         title={t.common.edit}
       />
 

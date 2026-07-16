@@ -280,15 +280,19 @@
     "llm_anthropic": "Anthropic"
   },
   "sidebar": {
-    "collapse": "Colapsar barra lateral",
-    "expand": "Expandir barra lateral",
     "workspaces": "Espacios de trabajo",
     "newWorkspace": "Nuevo espacio",
     "createWorkspace": "Crear espacio",
     "createWorkspaceDescription": "Crea un espacio de trabajo para organizar tus proyectos e historias.",
     "workspaceNameLabel": "Nombre del espacio",
-    "workspaceNamePlaceholder": "ej. Mi Equipo",
-    "workspaceNameDescription": "Elige un nombre que refleje tu equipo o el foco del proyecto."
+    "workspaceNamePlaceholder": "ej. Mi Equipo"
+  },
+  "iconPicker": {
+    "title": "Elige un icono",
+    "searchPlaceholder": "Buscar iconos…",
+    "noResults": "Ningún icono coincide con tu búsqueda.",
+    "selected": "Seleccionado:",
+    "selectIcon": "Seleccionar un icono"
   },
   "workspace": {
     "settingsTitle": "Configuración del Espacio",

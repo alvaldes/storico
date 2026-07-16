@@ -35,6 +35,7 @@ class CreateWorkspaceUseCase:
         name: str,
         user_id: UUID,
         slug: str | None = None,
+        icon: str | None = None,
     ) -> Workspace:
         """Create a workspace and add the creator as admin+owner.
 
@@ -61,7 +62,7 @@ class CreateWorkspaceUseCase:
         if final_slug in existing_slugs:
             raise DuplicateEntity("Workspace", "slug", final_slug)
 
-        workspace = Workspace(name=name.strip(), slug=final_slug, owner_id=user_id)
+        workspace = Workspace(name=name.strip(), slug=final_slug, owner_id=user_id, icon=icon)
 
         # Persist workspace first, then add the owner as an admin member.
         # Each repo call manages its own transaction.

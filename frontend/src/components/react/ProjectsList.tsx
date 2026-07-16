@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FolderKanban, Plus, MoreHorizontal, Pencil, Trash2, CalendarDays, FileText } from 'lucide-react';
+import { IconDisplay } from '@/components/ui/icon-display';
 import { useProjectStore } from '@/stores/projectStore';
 import { ProjectForm } from '@/components/react/ProjectForm';
 import { Button } from '@/components/ui/button';
@@ -32,7 +33,7 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
   const t = useTranslations(locale);
   const { projects, loading, error, fetchProjects, createProject, updateProject, deleteProject } = useProjectStore();
   const [formOpen, setFormOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState<{ id: string; name: string; description: string } | null>(null);
+  const [editingProject, setEditingProject] = useState<{ id: string; name: string; description: string; icon?: string } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -45,7 +46,7 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
     if (error) setLocalError(error);
   }, [error]);
 
-  const handleCreate = async (data: { name: string; description: string }) => {
+  const handleCreate = async (data: { name: string; description: string; icon?: string }) => {
     if (!userId) {
       toast.error(t.stories?.signedInRequired ?? 'You must be signed in to create a project');
       return;
@@ -59,7 +60,7 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
     }
   };
 
-  const handleUpdate = async (data: { name: string; description: string }) => {
+  const handleUpdate = async (data: { name: string; description: string; icon?: string }) => {
     if (!editingProject) return;
     try {
       setLocalError(null);
@@ -143,7 +144,10 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
             >
               <Card className="group flex flex-col w-full">
                 <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                  <CardTitle className="text-base">{project.name}</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <IconDisplay name={project.icon} className="size-4 shrink-0 text-muted-foreground" fallback={FolderKanban} />
+                    <CardTitle className="text-base">{project.name}</CardTitle>
+                  </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger
@@ -160,6 +164,7 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
                               id: project.id,
                               name: project.name,
                               description: project.description,
+                              icon: project.icon ?? undefined,
                             })
                           }
                         >

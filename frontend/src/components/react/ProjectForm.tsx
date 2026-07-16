@@ -7,6 +7,7 @@ import { Field, FieldLabel, FieldDescription, FieldError } from '@/components/ui
 import { Loader2 } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { createProjectSchema } from '@/schemas';
+import { IconPicker, IconTrigger } from '@/components/ui/icon-picker';
 
 const NAME_MAX = 120;
 const DESC_MAX = 500;
@@ -14,9 +15,9 @@ const DESC_MAX = 500;
 interface ProjectFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: { name: string; description: string }) => Promise<void>;
+  onSubmit: (data: { name: string; description: string; icon?: string }) => Promise<void>;
   locale?: Locale;
-  initialData?: { name: string; description: string };
+  initialData?: { name: string; description: string; icon?: string };
   title?: string;
 }
 
@@ -31,6 +32,8 @@ export function ProjectForm({
   const t = useTranslations(locale);
   const [name, setName] = useState(initialData?.name ?? '');
   const [description, setDescription] = useState(initialData?.description ?? '');
+  const [icon, setIcon] = useState(initialData?.icon ?? 'folder-kanban');
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -42,7 +45,7 @@ export function ProjectForm({
     e.preventDefault();
     setErrors({});
 
-    const result = createProjectSchema.safeParse({ name, description });
+    const result = createProjectSchema.safeParse({ name, description, icon });
     if (!result.success) {
       const fieldErrors: Record<string, string> = {};
       for (const issue of result.error.issues) {
@@ -60,6 +63,7 @@ export function ProjectForm({
       onOpenChange(false);
       setName('');
       setDescription('');
+      setIcon('folder-kanban');
       setErrors({});
     } finally {
       setSaving(false);
@@ -84,15 +88,23 @@ export function ProjectForm({
         <form onSubmit={handleSubmit} className="space-y-4">
           <Field>
             <FieldLabel htmlFor="name">{t.projects.name_label}</FieldLabel>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => { setName(e.target.value); clearError('name'); }}
-              placeholder={t.projects.name_placeholder}
-              maxLength={NAME_MAX}
-              required
-              autoFocus
-            />
+            <div className="flex items-center gap-2">
+              <IconTrigger
+                value={icon}
+                onClick={() => setPickerOpen(true)}
+                locale={locale}
+              />
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => { setName(e.target.value); clearError('name'); }}
+                placeholder={t.projects.name_placeholder}
+                maxLength={NAME_MAX}
+                required
+                autoFocus
+                className="flex-1"
+              />
+            </div>
             <FieldDescription>A short, descriptive name for your project.</FieldDescription>
             <div className="flex justify-between text-xs">
               <FieldError>{nameError}</FieldError>
@@ -133,6 +145,14 @@ export function ProjectForm({
           </DialogFooter>
         </form>
       </DialogContent>
+
+      <IconPicker
+        value={icon}
+        onChange={setIcon}
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        locale={locale}
+      />
     </Dialog>
   );
 }

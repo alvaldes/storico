@@ -98,6 +98,7 @@ export function AppSidebar({
     name: ws.name,
     id: ws.id,
     role: ws.role ?? "member",
+    icon: ws.icon ?? undefined,
   }))
 
   return (

@@ -18,6 +18,7 @@ class Workspace:
     name: str
     slug: str
     owner_id: UUID
+    icon: str | None = None
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))

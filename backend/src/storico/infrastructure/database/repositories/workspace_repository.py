@@ -79,6 +79,7 @@ class SQLAlchemyWorkspaceRepository(WorkspaceRepository):
             name=model.name,
             slug=model.slug,
             owner_id=model.owner_id,
+            icon=model.icon,
             id=model.id,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -91,6 +92,7 @@ class SQLAlchemyWorkspaceRepository(WorkspaceRepository):
             "name": workspace.name,
             "slug": workspace.slug,
             "owner_id": workspace.owner_id,
+            "icon": workspace.icon,
             "created_at": workspace.created_at,
             "updated_at": workspace.updated_at,
         }

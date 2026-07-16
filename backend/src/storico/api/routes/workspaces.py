@@ -73,6 +73,7 @@ def _workspace_to_response(
         id=workspace.id,
         name=workspace.name,
         slug=workspace.slug,
+        icon=workspace.icon,
         owner_id=workspace.owner_id,
         role=role,
         member_count=member_count,
@@ -115,6 +116,7 @@ async def create_workspace(
         name=body.name,
         user_id=current_user.id,
         slug=body.slug,
+        icon=body.icon,
     )
     return _workspace_to_response(workspace, role="admin", member_count=1)
 
@@ -175,6 +177,8 @@ async def update_workspace(
                     detail=f"Workspace with slug '{body.slug}' already exists",
                 )
         kwargs["slug"] = body.slug
+    if body.icon is not None:
+        kwargs["icon"] = body.icon
 
     updated = replace(workspace, **kwargs)
     result = await ws_repo.save(updated)

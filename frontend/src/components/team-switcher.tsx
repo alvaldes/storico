@@ -1,7 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { Building2, Plus, Check, ChevronsUpDown } from "lucide-react"
+import {
+  Building2,
+  Plus,
+  Check,
+  ChevronsUpDown,
+  SearchIcon,
+} from "lucide-react"
+import { IconDisplay } from "@/components/ui/icon-display"
 
 import {
   DropdownMenu,
@@ -31,15 +38,16 @@ import { Input } from "@/components/ui/input"
 import {
   Field,
   FieldLabel,
-  FieldDescription,
 } from "@/components/ui/field"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useTranslations, type Locale } from "@/i18n/utils"
+import { IconPicker, IconTrigger } from "@/components/ui/icon-picker"
 
 interface Team {
   name: string
   id: string
   role: string
+  icon?: string
 }
 
 export function TeamSwitcher({
@@ -56,7 +64,9 @@ export function TeamSwitcher({
 
   const [createOpen, setCreateOpen] = React.useState(false)
   const [workspaceName, setWorkspaceName] = React.useState("")
+  const [workspaceIcon, setWorkspaceIcon] = React.useState("building-2")
   const [creating, setCreating] = React.useState(false)
+  const [pickerOpen, setPickerOpen] = React.useState(false)
 
   const activeTeam = currentWorkspace ?? teams[0]
 
@@ -64,9 +74,13 @@ export function TeamSwitcher({
     if (!workspaceName.trim()) return
     setCreating(true)
     try {
-      await createWorkspace({ name: workspaceName.trim() })
+      await createWorkspace({
+        name: workspaceName.trim(),
+        icon: workspaceIcon,
+      })
       setCreateOpen(false)
       setWorkspaceName("")
+      setWorkspaceIcon("building-2")
     } catch {
       // error handled by store
     } finally {
@@ -107,7 +121,7 @@ export function TeamSwitcher({
               }
             >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <Building2 className="size-4" />
+                <IconDisplay name={activeTeam.icon} className="size-4" fallback={Building2} />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{activeTeam.name}</span>
@@ -139,7 +153,7 @@ export function TeamSwitcher({
                     className="gap-2 p-2"
                   >
                     <div className="flex size-6 items-center justify-center rounded-md border">
-                      <Building2 className="size-3.5 shrink-0" />
+                      <IconDisplay name={team.icon} className="size-3.5 shrink-0" fallback={Building2} />
                     </div>
                     <span className="flex-1">{team.name}</span>
                     {team.id === activeTeam.id && (
@@ -181,25 +195,30 @@ export function TeamSwitcher({
               <FieldLabel htmlFor="team-name">
                 {t.sidebar?.workspaceNameLabel ?? "Workspace name"}
               </FieldLabel>
-              <Input
-                id="team-name"
-                placeholder={t.sidebar?.workspaceNamePlaceholder ?? "e.g. My Team"}
-                value={workspaceName}
-                onChange={(e) => setWorkspaceName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !creating &&
-                    workspaceName.trim()
-                  ) {
-                    handleCreate()
-                  }
-                }}
-                autoFocus
-              />
-              <FieldDescription>
-                {t.sidebar?.workspaceNameDescription ?? "Choose a name that reflects your team or project focus."}
-              </FieldDescription>
+              <div className="flex items-center gap-2">
+                <IconTrigger
+                  value={workspaceIcon}
+                  onClick={() => setPickerOpen(true)}
+                  locale={locale}
+                />
+                <Input
+                  id="team-name"
+                  placeholder={t.sidebar?.workspaceNamePlaceholder ?? "e.g. My Team"}
+                  value={workspaceName}
+                  onChange={(e) => setWorkspaceName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      !creating &&
+                      workspaceName.trim()
+                    ) {
+                      handleCreate()
+                    }
+                  }}
+                  autoFocus
+                  className="flex-1"
+                />
+              </div>
             </Field>
           </div>
           <DialogFooter>
@@ -208,6 +227,7 @@ export function TeamSwitcher({
               onClick={() => {
                 setCreateOpen(false)
                 setWorkspaceName("")
+                setWorkspaceIcon("building-2")
               }}
             >
               {t.common?.cancel ?? "Cancel"}
@@ -221,6 +241,15 @@ export function TeamSwitcher({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Icon Picker */}
+      <IconPicker
+        value={workspaceIcon}
+        onChange={setWorkspaceIcon}
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        locale={locale}
+      />
     </>
   )
 }
