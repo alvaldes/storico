@@ -133,6 +133,19 @@ npm run dev        # http://localhost:4321
 npm run build      # Production build
 ```
 
+## Documentation
+
+For detailed technical documentation, see the [`docs/`](./docs/) folder:
+
+- [Architecture](./docs/architecture.md) — ADRs, stack, diagrama de capas
+- [Database](./docs/database.md) — Schema, tablas, migraciones
+- [API Reference](./docs/api.md) — Endpoints REST
+- [Testing](./docs/testing.md) — Estrategia de tests
+- [Frontend State](./docs/frontend-state.md) — Stores Zustand
+- [Deployment](./docs/deployment.md) — Docker Compose + producción
+- [i18n](./docs/i18n.md) — Internacionalización
+- [Security](./docs/security.md) — Auth y permisos
+
 ## License
 
 MIT — Angel Luis Valdés Sánchez, Universidad Tecnológica de la Mixteca (2026)
