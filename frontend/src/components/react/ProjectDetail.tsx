@@ -4,6 +4,7 @@ import { useProjectStore } from '@/stores/projectStore';
 import { StoriesList } from '@/components/react/StoriesList';
 import { ProjectForm } from '@/components/react/ProjectForm';
 import { Button } from '@/components/ui/button';
+import { IconDisplay } from '@/components/ui/icon-display';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,28 +75,31 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
   return (
     <div className="space-y-6">
       {/* Back link */}
-      <a
-        href={`/${locale}/dashboard`}
+      <button
+        onClick={() => window.history.back()}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
-        {t.nav.dashboard}
-      </a>
+        {t.nav.back}
+      </button>
 
       {/* Project header */}
       <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">{project.name}</h1>
-          {project.description && (
-            <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
-          )}
-          <p className="mt-1 text-xs text-muted-foreground">
-            Created {new Date(project.createdAt).toLocaleDateString(locale === 'es' ? 'es-MX' : 'en-US', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })}
-          </p>
+        <div className="flex items-start gap-3">
+          <IconDisplay name={project.icon} className="mt-1 size-6 shrink-0 text-muted-foreground" />
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">{project.name}</h1>
+            {project.description && (
+              <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
+            )}
+            <p className="mt-1 text-xs text-muted-foreground">
+              Created {new Date(project.createdAt).toLocaleDateString(locale === 'es' ? 'es-MX' : 'en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })}
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

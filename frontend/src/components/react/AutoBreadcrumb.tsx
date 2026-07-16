@@ -88,6 +88,15 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
     const uuidSegments = segments.filter((seg) => UUID_RE.test(seg));
     if (uuidSegments.length === 0) return;
 
+    // If no workspace context yet, mark all UUIDs as errors so they
+    // fall back to shortUUID instead of showing LoadingDots forever
+    if (!workspaceId) {
+      setResolveErrors(
+        Object.fromEntries(uuidSegments.map((id) => [id, true])),
+      );
+      return;
+    }
+
     const projectStore = useProjectStore.getState();
     const storyStore = useStoryStore.getState();
 
@@ -99,7 +108,6 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
       }
 
       // Try as project first
-      if (!workspaceId) return;
       getProject(workspaceId, id)
         .then((project) => {
           setResolvedLabels((prev) => ({ ...prev, [id]: project.name }));
@@ -126,7 +134,7 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
         });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segments]);
+  }, [segments, workspaceId]);
 
   function resolveStoryProject(projectId: string) {
     if (!workspaceId) return;

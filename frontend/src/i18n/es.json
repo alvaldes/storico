@@ -16,7 +16,8 @@
     "back_to_home": "Volver al inicio",
     "navigation": "Navegación",
     "toggleMenu": "Abrir menú",
-    "closeMenu": "Cerrar menú"
+    "closeMenu": "Cerrar menú",
+    "back": "Atrás"
   },
   "theme": {
     "light": "Claro",

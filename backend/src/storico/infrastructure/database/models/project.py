@@ -19,6 +19,7 @@ class ProjectModel(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    icon: Mapped[str | None] = mapped_column(String(100), nullable=True, default=None)
     workspace_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
     )

@@ -61,7 +61,6 @@ const POPULAR_ICONS: string[] = [
   "gem",
   "git-branch",
   "git-merge",
-  "github",
   "globe",
   "hammer",
   "hard-drive",

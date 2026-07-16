@@ -16,7 +16,8 @@
     "back_to_home": "Back to home",
     "navigation": "Navigation",
     "toggleMenu": "Toggle menu",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "back": "Back"
   },
   "theme": {
     "light": "Light",

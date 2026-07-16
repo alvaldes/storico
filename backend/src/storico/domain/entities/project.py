@@ -10,6 +10,7 @@ class Project:
     name: str
     workspace_id: UUID
     description: str = ""
+    icon: str | None = None
     created_by: UUID | None = None
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))

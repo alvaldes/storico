@@ -103,6 +103,7 @@ async def create_project(
         name=body.name,
         workspace_id=workspace.id,
         description=body.description,
+        icon=body.icon,
         created_by=current_user.id,
     )
     result = await repo.save(project)
@@ -110,6 +111,7 @@ async def create_project(
         id=result.id,
         name=result.name,
         description=result.description,
+        icon=result.icon,
         workspace_id=result.workspace_id,
         created_by=result.created_by,
         created_at=result.created_at,
@@ -137,6 +139,7 @@ async def list_projects(
                 id=p.id,
                 name=p.name,
                 description=p.description,
+                icon=p.icon,
                 workspace_id=p.workspace_id,
                 created_by=p.created_by,
                 created_at=p.created_at,
@@ -168,6 +171,7 @@ async def get_project(
         id=project.id,
         name=project.name,
         description=project.description,
+        icon=project.icon,
         workspace_id=project.workspace_id,
         created_by=project.created_by,
         created_at=project.created_at,
@@ -194,6 +198,8 @@ async def update_project(
         kwargs["name"] = body.name
     if body.description is not None:
         kwargs["description"] = body.description
+    if body.icon is not None:
+        kwargs["icon"] = body.icon
 
     updated = replace(existing, **kwargs)
     result = await repo.save(updated)
@@ -202,6 +208,7 @@ async def update_project(
         id=result.id,
         name=result.name,
         description=result.description,
+        icon=result.icon,
         workspace_id=result.workspace_id,
         created_by=result.created_by,
         created_at=result.created_at,

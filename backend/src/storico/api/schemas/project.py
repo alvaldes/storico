@@ -16,6 +16,7 @@ class CreateProjectRequest(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=120)
     description: str = Field(default="", max_length=500)
+    icon: str | None = Field(None, max_length=100)
 
 
 class UpdateProjectRequest(BaseModel):
@@ -25,6 +26,7 @@ class UpdateProjectRequest(BaseModel):
 
     name: str | None = Field(None, min_length=1, max_length=120)
     description: str | None = Field(None, max_length=500)
+    icon: str | None = Field(None, max_length=100)
 
 
 class ProjectResponse(BaseModel):
@@ -35,6 +37,7 @@ class ProjectResponse(BaseModel):
     id: UUID
     name: str
     description: str
+    icon: str | None = None
     workspace_id: UUID
     created_by: UUID | None = None
     created_at: datetime

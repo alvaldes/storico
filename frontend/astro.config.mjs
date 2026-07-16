@@ -39,7 +39,7 @@ export default defineConfig({
   },
   vite: {
     optimizeDeps: {
-      include: ['zustand'],
+      include: ['react', 'react-dom', 'zustand', 'zod'],
       exclude: ['auth-astro', 'auth:config'],
     },
   },
