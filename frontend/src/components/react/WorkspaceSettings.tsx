@@ -9,6 +9,7 @@ import {
   Users,
   Settings,
   TriangleAlert,
+  Trash2,
   FlaskConical,
   RotateCw,
   CircleHelp,
@@ -32,6 +33,7 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
+  CardFooter,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -48,14 +50,26 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import { MemberManagement } from "@/components/react/MemberManagement";
 import type { WorkspaceLLMConfig, WorkspacePrompt } from "@/types/workspace";
 import { IconPicker, IconTrigger } from "@/components/ui/icon-picker";
 import * as workspaceApi from "@/lib/workspace-api";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
+import { useAuthStore } from "@/stores/authStore";
 import en from "@/i18n/en.json";
 import es from "@/i18n/es.json";
-import { type Locale } from "@/i18n/utils";
+import { localizedPath, type Locale } from "@/i18n/utils";
 import { ProviderIcon } from "@/components/ui/provider-icon";
 
 /* ── Props ─────────────────────────────────────────────────── */
@@ -124,8 +138,40 @@ export function WorkspaceSettings({
   const [wsName, setWsName] = useState("");
   const [wsIcon, setWsIcon] = useState("building-2");
   const [wsRole, setWsRole] = useState<"admin" | "member">("member");
+  const [wsOwnerId, setWsOwnerId] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [infoSaving, setInfoSaving] = useState(false);
+
+  /* ── Delete Workspace State ── */
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteName, setDeleteName] = useState("");
+  const [deleteVerify, setDeleteVerify] = useState("");
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const verifyPhrase = t.workspace?.deleteConfirmPhrase ?? "delete my workspace";
+
+  /* ── Current User ── */
+  const currentUser = useAuthStore((s) => s.user);
+
+  /* ── Resolve workspaceId from URL (survives View Transitions) ── */
+  const [resolvedWsId, setResolvedWsId] = useState(workspaceId);
+  // Use resolved URL ID (survives View Transitions) instead of initial prop
+  const wsId = resolvedWsId;
+
+  useEffect(() => {
+    function onSwap() {
+      const match = window.location.pathname.match(/\/workspaces\/([^/]+)\/settings/);
+      if (match && match[1]) {
+        setResolvedWsId(match[1]);
+        setDeleteName("");
+        setDeleteVerify("");
+        setDeleteError(null);
+        setDeleteOpen(false);
+      }
+    }
+    document.addEventListener("astro:after-swap", onSwap);
+    return () => document.removeEventListener("astro:after-swap", onSwap);
+  }, []);
 
   /* ── Shared State ── */
   const [loading, setLoading] = useState(true);
@@ -138,7 +184,7 @@ export function WorkspaceSettings({
     setError(null);
     try {
       const [ws, llm, promptData] = await Promise.all([
-        workspaceApi.getWorkspace(workspaceId).catch((err) => {
+        workspaceApi.getWorkspace(wsId).catch((err) => {
           // If 403, still allow viewing other configs
           if (
             err instanceof Error &&
@@ -148,7 +194,7 @@ export function WorkspaceSettings({
           }
           throw err;
         }),
-        getLLMConfig(workspaceId).catch((err) => {
+        getLLMConfig(wsId).catch((err) => {
           // If 403, the user is not admin — we still allow viewing prompts
           if (
             err instanceof Error &&
@@ -158,7 +204,7 @@ export function WorkspaceSettings({
           }
           throw err;
         }),
-        getPrompts(workspaceId).catch((err) => {
+        getPrompts(wsId).catch((err) => {
           if (
             err instanceof Error &&
             (err.message.includes("403") || err.message.includes("admin"))
@@ -189,6 +235,7 @@ export function WorkspaceSettings({
         setWsName(ws.name ?? "");
         setWsIcon(ws.icon ?? "building-2");
         setWsRole(ws.role ?? "member");
+        setWsOwnerId(ws.ownerId ?? "");
       }
     } catch (err) {
       const message =
@@ -198,16 +245,16 @@ export function WorkspaceSettings({
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [wsId]);
 
   /* ── Fetch Available Models ── */
   const loadModels = useCallback(async () => {
     setModelsLoading(true);
     setModelsError(null);
     try {
-      const models = await fetchAvailableModels(workspaceId);
+      const models = await fetchAvailableModels(wsId);
       setAvailableModels(models);
-    } catch (err) {
+     } catch (err) {
       setAvailableModels([]);
       const msg = err instanceof Error ? err.message : String(err);
       // Surface provider errors (bad API key, wrong URL) so the user knows
@@ -221,7 +268,7 @@ export function WorkspaceSettings({
     } finally {
       setModelsLoading(false);
     }
-  }, [workspaceId, t]);
+  }, [wsId, t]);
 
   useEffect(() => {
     setMounted(true);
@@ -239,7 +286,7 @@ export function WorkspaceSettings({
     setLlmSaving(true);
     setLlmSaveResult("idle");
     try {
-      await upsertLLMConfig(workspaceId, {
+      await upsertLLMConfig(wsId, {
         provider: llmConfig.provider,
         model: llmConfig.model || undefined,
         temperature: llmConfig.temperature ?? undefined,
@@ -266,7 +313,7 @@ export function WorkspaceSettings({
     setPromptSaving(true);
     setPromptSaveResult("idle");
     try {
-      await upsertPrompts(workspaceId, {
+      await upsertPrompts(wsId, {
         systemPrompt: prompts.systemPrompt || undefined,
         instructionTemplate: prompts.instructionTemplate || undefined,
       });
@@ -288,7 +335,7 @@ export function WorkspaceSettings({
   const handleInfoSave = async () => {
     setInfoSaving(true);
     try {
-      await useWorkspaceStore.getState().updateWorkspace(workspaceId, {
+      await useWorkspaceStore.getState().updateWorkspace(wsId, {
         name: wsName || undefined,
         icon: wsIcon !== "building-2" ? wsIcon : undefined,
       });
@@ -301,6 +348,34 @@ export function WorkspaceSettings({
       setInfoSaving(false);
     }
   };
+
+  /* ── Delete Workspace Handler ── */
+  const handleDeleteWorkspace = async () => {
+    const nameMismatch = deleteName !== wsName;
+    const phraseMismatch = deleteVerify !== verifyPhrase;
+    if (nameMismatch || phraseMismatch) {
+      setDeleteError(t.workspace?.deleteConfirmError ?? "Failed to delete workspace");
+      return;
+    }
+    setDeleteSaving(true);
+    setDeleteError(null);
+    try {
+      await useWorkspaceStore.getState().deleteWorkspace(wsId);
+      toast.success(t.workspace?.deleteConfirmSuccess ?? "Workspace deleted");
+      // Redirect to dashboard
+      window.location.href = localizedPath("/dashboard", locale);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : (t.workspace?.deleteConfirmError ?? "Failed to delete workspace");
+      setDeleteError(message);
+      setDeleteSaving(false);
+    }
+  };
+
+  const canDelete = deleteName === wsName && deleteVerify === verifyPhrase;
+
+  /* ── Derived ── */
+  const isOwner = currentUser?.id === wsOwnerId;
 
   /* ── Loading State ── */
   if (!mounted) {
@@ -816,10 +891,116 @@ export function WorkspaceSettings({
             <CardContent>
               <MemberManagement
                 locale={locale}
-                workspaceId={workspaceId}
+                workspaceId={wsId}
               />
             </CardContent>
           </Card>
+
+          {/* ── Section 4: Danger Zone (owner only) ── */}
+          {isOwner && (
+            <Card className="border-red-300 dark:border-red-700">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <TriangleAlert className="h-4 w-4 text-red-500" />
+                  <CardTitle className="text-red-600 dark:text-red-400">
+                    {t.workspace?.deleteTitle ?? "Delete workspace"}
+                  </CardTitle>
+                </div>
+                <CardDescription>
+                  {t.workspace?.deleteDescription ?? "Permanently delete this workspace and all its data. This action cannot be undone."}
+                </CardDescription>
+              </CardHeader>
+              <CardFooter className="bg-red-50/80 dark:bg-red-950/20 border-t-red-200 dark:border-t-red-800 justify-end">
+                <AlertDialog open={deleteOpen} onOpenChange={(open) => {
+                  setDeleteOpen(open);
+                  if (open) {
+                    setDeleteName("");
+                    setDeleteVerify("");
+                    setDeleteError(null);
+                  }
+                }}>
+                  <AlertDialogTrigger
+                    render={<Button variant="destructive" />}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {t.workspace?.deleteButton ?? "Delete workspace"}
+                  </AlertDialogTrigger>
+                  <AlertDialogContent size="default" className="min-w-[500px]">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        {t.workspace?.deleteConfirmTitle ?? "Delete Workspace"}
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {t.workspace?.deleteConfirmDescription ?? "This will permanently delete the workspace and related resources like Projects, User Stories and Tasks."}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <div className="-mx-4 border-y border-(--color-border) bg-(--color-surface-secondary)/30 px-4 py-4 space-y-5">
+                      {/* Step 1: type workspace name */}
+                      <label className="flex flex-col gap-2">
+                        <p className="text-sm text-(--color-text)">
+                          {t.workspace?.deleteConfirmNameLabel ?? "To confirm, type"} <b className="font-semibold break-all">{wsName}</b>
+                        </p>
+                        <Input
+                          value={deleteName}
+                          onChange={(e) => {
+                            setDeleteName(e.target.value);
+                            setDeleteError(null);
+                          }}
+                          disabled={deleteSaving}
+                        />
+                      </label>
+
+                      {/* Step 2: type verification phrase */}
+                      <label className="flex flex-col gap-2">
+                        <p className="text-sm text-(--color-text)">
+                          {t.workspace?.deleteConfirmPhraseLabel ?? "To confirm, type"} <b className="font-semibold" translate="no">{verifyPhrase}</b>
+                        </p>
+                        <Input
+                          value={deleteVerify}
+                          onChange={(e) => {
+                            setDeleteVerify(e.target.value);
+                            setDeleteError(null);
+                          }}
+                          disabled={deleteSaving}
+                        />
+                      </label>
+                    </div>
+
+                    {/* Warning note */}
+                    <div className="flex items-start gap-3 rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/30">
+                      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                      <p className="text-sm text-red-800 dark:text-red-200">
+                        {(t.workspace?.deleteConfirmNote ?? "Deleting {name} cannot be undone.").replace("{name}", wsName)}
+                      </p>
+                    </div>
+
+                    {deleteError && (
+                      <p className="text-xs text-red-500">{deleteError}</p>
+                    )}
+
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={deleteSaving}>
+                        {t.common?.cancel ?? "Cancel"}
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        variant="destructive"
+                        onClick={handleDeleteWorkspace}
+                        disabled={!canDelete || deleteSaving}
+                      >
+                        {deleteSaving ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                        {t.workspace?.deleteButton ?? "Delete workspace"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </CardFooter>
+            </Card>
+          )}
         </>
       )}
     </div>

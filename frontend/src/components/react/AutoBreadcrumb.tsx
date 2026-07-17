@@ -85,7 +85,10 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
     setStoryProject(null);
     setResolveErrors({});
 
-    const uuidSegments = segments.filter((seg) => UUID_RE.test(seg));
+    // Skip UUIDs that are workspace IDs (segment right after "workspaces")
+    const uuidSegments = segments.filter(
+      (seg, i) => UUID_RE.test(seg) && !(i > 0 && segments[i - 1] === "workspaces"),
+    );
     if (uuidSegments.length === 0) return;
 
     // If no workspace context yet, mark all UUIDs as errors so they

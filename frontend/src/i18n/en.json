@@ -341,7 +341,18 @@
     "iconLabel": "Icon",
     "savedInfo": "Workspace updated",
     "saveInfoError": "Failed to update workspace",
-    "infoNonAdminHint": "Only admins can edit workspace settings."
+    "infoNonAdminHint": "Only admins can edit workspace settings.",
+    "deleteTitle": "Delete workspace",
+    "deleteDescription": "Permanently delete this workspace and all its data. This action cannot be undone.",
+    "deleteButton": "Delete workspace",
+    "deleteConfirmTitle": "Delete Workspace",
+    "deleteConfirmDescription": "This will permanently delete the workspace and related resources like Projects, User Stories and Tasks.",
+    "deleteConfirmNameLabel": "To confirm, type",
+    "deleteConfirmPhraseLabel": "To confirm, type",
+    "deleteConfirmPhrase": "delete my workspace",
+    "deleteConfirmNote": "Deleting {name} cannot be undone.",
+    "deleteConfirmSuccess": "Workspace deleted",
+    "deleteConfirmError": "Failed to delete workspace"
   },
   "members": {
     "loading": "Loading members...",

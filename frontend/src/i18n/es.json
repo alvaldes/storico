@@ -341,7 +341,18 @@
     "iconLabel": "Icono",
     "savedInfo": "Espacio actualizado",
     "saveInfoError": "No se pudo actualizar el espacio",
-    "infoNonAdminHint": "Solo los administradores pueden editar la configuración del espacio."
+    "infoNonAdminHint": "Solo los administradores pueden editar la configuración del espacio.",
+    "deleteTitle": "Eliminar espacio",
+    "deleteDescription": "Elimina permanentemente este espacio y todos sus datos. Esta acción no se puede deshacer.",
+    "deleteButton": "Eliminar espacio",
+    "deleteConfirmTitle": "Eliminar Espacio",
+    "deleteConfirmDescription": "Esto eliminará permanentemente el espacio de trabajo y recursos relacionados como Proyectos, Historias de Usuario y Tareas.",
+    "deleteConfirmNameLabel": "Para confirmar, escribe",
+    "deleteConfirmPhraseLabel": "Para confirmar, escribe",
+    "deleteConfirmPhrase": "eliminar mi espacio",
+    "deleteConfirmNote": "No se puede deshacer la eliminación de {name}.",
+    "deleteConfirmSuccess": "Espacio eliminado",
+    "deleteConfirmError": "No se pudo eliminar el espacio"
   },
   "members": {
     "loading": "Cargando miembros...",

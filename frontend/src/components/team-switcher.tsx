@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/field"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useTranslations, type Locale } from "@/i18n/utils"
+import { navigate } from "astro:transitions/client"
 import { IconPicker, IconTrigger } from "@/components/ui/icon-picker"
 
 interface Team {
@@ -145,10 +146,20 @@ export function TeamSwitcher({
                   <DropdownMenuItem
                     key={team.id}
                     onClick={() => {
+                      if (team.id === activeTeam.id) return
                       const ws = useWorkspaceStore
                         .getState()
                         .workspaces.find((w) => w.id === team.id)
-                      if (ws) setCurrentWorkspace(ws)
+                      if (!ws) return
+                      setCurrentWorkspace(ws)
+                      // Navigate to the same page but with the new workspace UUID
+                      const pathname = window.location.pathname
+                      const wsMatch = pathname.match(
+                        /^(\/[a-z]{2}\/workspaces\/)[^/]+(\/.*)?$/,
+                      )
+                      if (wsMatch) {
+                        navigate(`${wsMatch[1]}${team.id}${wsMatch[2] ?? ""}`)
+                      }
                     }}
                     className="gap-2 p-2"
                   >
