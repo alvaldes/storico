@@ -18,7 +18,7 @@ class ExtractionModel(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     user_story_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("user_stories.id"), nullable=False
+        Uuid, ForeignKey("user_stories.id", ondelete="CASCADE"), nullable=False
     )
     model_used: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(

@@ -18,7 +18,7 @@ class UserStoryModel(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     project_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("projects.id"), nullable=False
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
     actor: Mapped[str] = mapped_column(Text, nullable=False)
     feature: Mapped[str] = mapped_column(Text, nullable=False)

@@ -249,6 +249,16 @@
     "danger_delete_account": "Delete Account",
     "danger_delete_description": "Permanently delete your account and all data. This action cannot be undone.",
     "danger_delete_confirm": "Are you sure? Type DELETE to confirm.",
+    "danger_delete_dialog_title": "Delete Personal Account",
+    "danger_delete_dialog_description_1": "Storico will <b>delete all of your projects</b>, along with all user stories, tasks, extractions, and all other resources belonging to your account.",
+    "danger_delete_dialog_description_2": "This action is not reversible. Please continue with caution.",
+    "danger_delete_dialog_email_label": "Enter your email <b>{email}</b> to continue:",
+    "danger_delete_dialog_verify_label": "To verify, type <b>delete my personal account</b> below:",
+    "danger_delete_dialog_verify_phrase": "delete my personal account",
+    "danger_delete_dialog_cancel": "Cancel",
+    "danger_delete_dialog_confirm": "Delete",
+    "danger_delete_dialog_deleting": "Deleting account…",
+    "danger_delete_dialog_error": "Failed to delete account. Please try again.",
     "save": "Save Changes"
   },
   "account": {

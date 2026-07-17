@@ -19,6 +19,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useUIStore } from "@/stores/uiStore";
 import { UserAvatar } from "@/components/react/UserAvatar";
+import { DeleteAccountDialog } from "@/components/react/DeleteAccountDialog";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -71,6 +72,7 @@ export function AccountPage({ locale }: AccountPageProps) {
   const { user, loading: authLoading } = useAuthStore();
   const { theme, setTheme } = useUIStore();
   const [mounted, setMounted] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -300,14 +302,20 @@ export function AccountPage({ locale }: AccountPageProps) {
             </p>
             <Button
               variant="outline"
-              disabled
-              className="mt-3 border-red-300 text-red-600 hover:bg-red-100 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/50"
+              onClick={() => setDeleteDialogOpen(true)}
+              className="mt-3 cursor-pointer border-red-300 text-red-600 hover:bg-red-100 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/50 dark:hover:text-red-300"
             >
               {t.settings.danger_delete_account}
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      <DeleteAccountDialog
+        locale={locale}
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+      />
     </div>
   );
 }

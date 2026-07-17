@@ -249,6 +249,16 @@
     "danger_delete_account": "Eliminar Cuenta",
     "danger_delete_description": "Elimina permanentemente tu cuenta y todos los datos. Esta acción no se puede deshacer.",
     "danger_delete_confirm": "¿Estás seguro? Escribe DELETE para confirmar.",
+    "danger_delete_dialog_title": "Eliminar Cuenta Personal",
+    "danger_delete_dialog_description_1": "Storico <b>eliminará todos tus proyectos</b>, junto con todas las historias de usuario, tareas, extracciones y cualquier otro recurso perteneciente a tu cuenta.",
+    "danger_delete_dialog_description_2": "Esta acción no se puede revertir. Continuá con precaución.",
+    "danger_delete_dialog_email_label": "Ingresá tu correo <b>{email}</b> para continuar:",
+    "danger_delete_dialog_verify_label": "Para verificar, escribí <b>eliminar mi cuenta personal</b> abajo:",
+    "danger_delete_dialog_verify_phrase": "eliminar mi cuenta personal",
+    "danger_delete_dialog_cancel": "Cancelar",
+    "danger_delete_dialog_confirm": "Eliminar",
+    "danger_delete_dialog_deleting": "Eliminando cuenta…",
+    "danger_delete_dialog_error": "No se pudo eliminar la cuenta. Intentalo de nuevo.",
     "save": "Guardar Cambios"
   },
   "account": {

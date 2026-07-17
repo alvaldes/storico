@@ -18,7 +18,7 @@ class TaskModel(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     user_story_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("user_stories.id"), nullable=False
+        Uuid, ForeignKey("user_stories.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
