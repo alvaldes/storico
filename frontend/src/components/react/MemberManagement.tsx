@@ -393,7 +393,8 @@ export function MemberManagement({
                 {/* Actions (admin only, not for owner) */}
                 {canManage && (
                   <div className="flex items-center gap-1">
-                    {/* Role change */}
+                    {/* Role change — admins can change others, not themselves */}
+                    {!isSelf && (
                     <Select
                       value={member.role}
                       onValueChange={(val) => {
@@ -417,6 +418,7 @@ export function MemberManagement({
                         <SelectItem value="member">{t.members?.memberRole ?? "Member"}</SelectItem>
                       </SelectContent>
                     </Select>
+                    )}
 
                     {/* Remove button */}
                     <AlertDialog
