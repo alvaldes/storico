@@ -223,6 +223,8 @@ export function MemberManagement({
       setTransferOpen(false);
       setTransferTargetId("");
       loadMembers();
+      // Refresh workspace info — updates ownerId and current user's role in the store
+      useWorkspaceStore.getState().fetchWorkspaces();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : (t.members?.failedToTransfer ?? "Failed to transfer ownership");
