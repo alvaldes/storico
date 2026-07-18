@@ -68,7 +68,7 @@ async def resolve_llm_config(
             model=None,
             temperature=0.1,
             max_tokens=2048,
-            base_url=settings.ollama_base_url,
+            base_url=settings.ollama_host,
         )
     return LLMConfigResponse(
         provider=ws_config.provider,
@@ -77,7 +77,7 @@ async def resolve_llm_config(
         if ws_config.temperature is not None
         else 0.1,
         max_tokens=ws_config.max_tokens or 2048,
-        base_url=ws_config.base_url or settings.ollama_base_url,
+        base_url=ws_config.base_url or settings.ollama_host,
         api_key=ws_config.api_key,
     )
 
