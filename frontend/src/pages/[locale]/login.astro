@@ -14,8 +14,9 @@ const L = (path: string) => localizedPath(path, locale);
 
   <div class="flex flex-col items-center text-center">
     <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl">
-      <!-- <span class="text-xl font-bold text-white">S</span> -->
-      <img src="/favicon.svg" alt="" class="h-7 w-auto md:h-8" />
+      <a href={L('/')} class="block">
+        <img src="/favicon.svg" alt="Storico" class="h-7 w-auto md:h-8" />
+      </a>
     </div>
 
     <h1 class="text-xl font-bold text-(--color-text)">
