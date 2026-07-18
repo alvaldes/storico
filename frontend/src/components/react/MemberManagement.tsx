@@ -402,7 +402,12 @@ export function MemberManagement({
                       disabled={changingRole === member.userId}
                     >
                       <SelectTrigger size="sm" className="h-7 min-w-[7rem]">
-                        <SelectValue />
+                        {changingRole === member.userId && (
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin shrink-0" />
+                        )}
+                        <span className={changingRole === member.userId ? "opacity-50" : ""}>
+                          <SelectValue />
+                        </span>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="admin">{t.members?.admin ?? "Admin"}</SelectItem>
