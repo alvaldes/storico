@@ -473,48 +473,48 @@ export function MemberManagement({
         </div>
       </div>
 
-      {/* ── Ownership Section ── */}
-      <Separator />
+      {/* ── Ownership Section (owner only) ── */}
+      {isOwner && (
+        <>
+        <Separator />
 
-      <div className="space-y-4">
-        <div>
-          <h3 className="text-sm font-medium text-(--color-text)">
-            {t.members?.ownershipTitle ?? "Workspace Ownership"}
-          </h3>
-          <p className="text-xs text-(--color-text-secondary)">
-            {t.members?.ownershipDescription ?? "The workspace owner has full control over the workspace and cannot be removed. Ownership can be transferred to another admin."}
-          </p>
-        </div>
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-medium text-(--color-text)">
+              {t.members?.ownershipTitle ?? "Workspace Ownership"}
+            </h3>
+            <p className="text-xs text-(--color-text-secondary)">
+              {t.members?.ownershipDescription ?? "The workspace owner has full control over the workspace and cannot be removed. Ownership can be transferred to another admin."}
+            </p>
+          </div>
 
-        {/* Current owner */}
-        {ownerMember && (
-          <div className="flex items-center gap-3 rounded-lg border border-(--color-border) bg-(--color-surface-secondary)/30 px-4 py-3">
-            <UserAvatar
-              src={ownerMember.avatarUrl}
-              name={ownerMember.name}
-              size="md"
-              className="ring-amber-300"
-              fallbackClass="bg-amber-500/10 text-amber-600"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-medium text-(--color-text)">
-                  {ownerMember.name}
-                </span>
-                  <Badge variant="default" className="bg-amber-500/15 text-amber-600">
-                    <Crown className="mr-1 h-3 w-3" />
-                    {t.members?.owner ?? "Owner"}
-                  </Badge>
+          {/* Current owner */}
+          {ownerMember && (
+            <div className="flex items-center gap-3 rounded-lg border border-(--color-border) bg-(--color-surface-secondary)/30 px-4 py-3">
+              <UserAvatar
+                src={ownerMember.avatarUrl}
+                name={ownerMember.name}
+                size="md"
+                className="ring-amber-300"
+                fallbackClass="bg-amber-500/10 text-amber-600"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium text-(--color-text)">
+                    {ownerMember.name}
+                  </span>
+                    <Badge variant="default" className="bg-amber-500/15 text-amber-600">
+                      <Crown className="mr-1 h-3 w-3" />
+                      {t.members?.owner ?? "Owner"}
+                    </Badge>
+                </div>
+                <p className="text-xs text-(--color-text-secondary)">
+                  {ownerMember.email}
+                </p>
               </div>
-              <p className="text-xs text-(--color-text-secondary)">
-                {ownerMember.email}
-              </p>
-            </div>
 
-            {/* Transfer button (only owner can transfer) */}
-            {isOwner && (
               <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
-              <DialogTrigger render={<Button variant="outline" size="sm" />}>
+                <DialogTrigger render={<Button variant="outline" size="sm" />}>
                   <Send className="h-4 w-4" />
                   {t.members?.transferButton ?? "Transfer"}
                 </DialogTrigger>
@@ -589,10 +589,11 @@ export function MemberManagement({
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-            )}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
+        </>
+      )}
     </div>
   );
 }
