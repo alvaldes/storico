@@ -6,6 +6,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  LoaderCircle,
 } from 'lucide-react';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { useStoryStore } from '@/stores/storyStore';
@@ -56,6 +57,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
   const [formOpen, setFormOpen] = useState(false);
   const [editingStory, setEditingStory] = useState<UserStory | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
 
   // Build items array for the Base Select (supports null as a native value)
   const projectItems: { label: string; value: string | null }[] = useMemo(
@@ -129,12 +131,15 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
 
   const handleDelete = async () => {
     if (!deletingId) return;
+    setDeleteSaving(true);
     try {
       await deleteStory(deletingId);
       setDeletingId(null);
       toast.success(t.stories.deleted_toast);
     } catch {
       toast.error(t.stories.delete_error);
+    } finally {
+      setDeleteSaving(false);
     }
   };
 
@@ -318,8 +323,12 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleDelete}
+              disabled={deleteSaving}
             >
-              {t.common.delete}
+              {deleteSaving && <LoaderCircle className="animate-spin" />}
+              <span className={deleteSaving ? "opacity-50" : ""}>
+                {t.common.delete}
+              </span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

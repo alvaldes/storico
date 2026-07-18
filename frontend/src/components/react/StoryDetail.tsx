@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Pencil, Trash2, Sparkles, Loader2, FileText, ListTree, Fingerprint } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Sparkles, Loader2, LoaderCircle, FileText, ListTree, Fingerprint } from 'lucide-react';
 import { shortUUID } from '@/lib/utils';
 import { useProjectStore } from '@/stores/projectStore';
 import { useStoryStore } from '@/stores/storyStore';
@@ -43,6 +43,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const [initialLoad, setInitialLoad] = useState(true);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteSaving, setDeleteSaving] = useState(false);
   const [parentProject, setParentProject] = useState<{ id: string; name: string } | null>(null);
   const [resolvingProject, setResolvingProject] = useState(false);
 
@@ -91,6 +92,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   };
 
   const handleDelete = async () => {
+    setDeleteSaving(true);
     try {
       await deleteStory(storyId);
       setDeleting(false);
@@ -98,6 +100,8 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       window.history.back();
     } catch {
       toast.error(t.stories.delete_error);
+    } finally {
+      setDeleteSaving(false);
     }
   };
 
@@ -300,8 +304,12 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleDelete}
+              disabled={deleteSaving}
             >
-              {t.common.delete}
+              {deleteSaving && <LoaderCircle className="animate-spin" />}
+              <span className={deleteSaving ? "opacity-50" : ""}>
+                {t.common.delete}
+              </span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

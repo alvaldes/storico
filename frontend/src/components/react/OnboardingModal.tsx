@@ -310,7 +310,12 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
             onClick={handleSkip}
             disabled={isSubmitting}
           >
-            {t.onboarding.skip}
+            {isSubmitting && (
+              <LoaderCircle className="animate-spin" />
+            )}
+            <span className={isSubmitting ? "opacity-50" : ""}>
+              {t.onboarding.skip}
+            </span>
           </Button>
 
           <div className="flex items-center gap-2">

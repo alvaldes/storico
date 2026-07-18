@@ -7,6 +7,7 @@ import {
   Check,
   ChevronsUpDown,
   SearchIcon,
+  LoaderCircle,
 } from "lucide-react"
 import { IconDisplay } from "@/components/ui/icon-display"
 
@@ -247,7 +248,10 @@ export function TeamSwitcher({
               onClick={handleCreate}
               disabled={!workspaceName.trim() || creating}
             >
-              {creating ? t.common?.loading ?? "Creating..." : t.common?.create ?? "Create"}
+              {creating && <LoaderCircle className="animate-spin" />}
+              <span className={creating ? "opacity-50" : ""}>
+                {creating ? t.common?.loading ?? "Creating..." : t.common?.create ?? "Create"}
+              </span>
             </Button>
           </DialogFooter>
         </DialogContent>

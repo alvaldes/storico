@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, LoaderCircle } from 'lucide-react';
 import { useProjectStore } from '@/stores/projectStore';
 import { StoriesList } from '@/components/react/StoriesList';
 import { ProjectForm } from '@/components/react/ProjectForm';
@@ -30,6 +30,7 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
   const project = projects.find((p) => p.id === projectId);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteSaving, setDeleteSaving] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
@@ -47,10 +48,15 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
   };
 
   const handleDelete = async () => {
-    await deleteProject(projectId);
-    setDeleting(false);
-    toast.success(t.projects.deleted_toast);
-    window.history.back();
+    setDeleteSaving(true);
+    try {
+      await deleteProject(projectId);
+      setDeleting(false);
+      toast.success(t.projects.deleted_toast);
+      window.history.back();
+    } finally {
+      setDeleteSaving(false);
+    }
   };
 
   if (initialLoading || (loading && !project)) {
@@ -144,8 +150,12 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleDelete}
+              disabled={deleteSaving}
             >
-              {t.common.delete}
+              {deleteSaving && <LoaderCircle className="animate-spin" />}
+              <span className={deleteSaving ? "opacity-50" : ""}>
+                {t.common.delete}
+              </span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

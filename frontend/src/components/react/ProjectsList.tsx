@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FolderKanban, Plus, MoreHorizontal, Pencil, Trash2, CalendarDays, FileText } from 'lucide-react';
+import { FolderKanban, Plus, MoreHorizontal, Pencil, Trash2, CalendarDays, FileText, LoaderCircle } from 'lucide-react';
 import { IconDisplay } from '@/components/ui/icon-display';
 import { useProjectStore } from '@/stores/projectStore';
 import { ProjectForm } from '@/components/react/ProjectForm';
@@ -37,6 +37,8 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [deleteSaving, setDeleteSaving] = useState(false);
 
   useEffect(() => {
     fetchProjects().finally(() => setInitialLoading(false));
@@ -74,6 +76,7 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
 
   const handleDelete = async () => {
     if (!deletingId) return;
+    setDeleteSaving(true);
     try {
       setLocalError(null);
       await deleteProject(deletingId);
@@ -81,6 +84,8 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
       toast.success(t.projects.deleted_toast);
     } catch {
       toast.error(t.projects.delete_error);
+    } finally {
+      setDeleteSaving(false);
     }
   };
 
@@ -96,8 +101,20 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <p className="text-destructive">{localError}</p>
-        <Button variant="outline" className="mt-4" onClick={fetchProjects}>
-          {t.common?.retry ?? 'Retry'}
+        <Button
+          variant="outline"
+          className="mt-4"
+          onClick={async () => {
+            setIsRetrying(true);
+            await fetchProjects();
+            setIsRetrying(false);
+          }}
+          disabled={isRetrying}
+        >
+          {isRetrying && <LoaderCircle className="animate-spin" />}
+          <span className={isRetrying ? "opacity-50" : ""}>
+            {t.common?.retry ?? 'Retry'}
+          </span>
         </Button>
       </div>
     );
@@ -248,8 +265,12 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
             <AlertDialogAction
               variant="destructive"
               onClick={handleDelete}
+              disabled={deleteSaving}
             >
-              {t.common.delete}
+              {deleteSaving && <LoaderCircle className="animate-spin" />}
+              <span className={deleteSaving ? "opacity-50" : ""}>
+                {t.common.delete}
+              </span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
