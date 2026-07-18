@@ -60,7 +60,7 @@ export function TeamSwitcher({
   locale: Locale
 }) {
   const { isMobile } = useSidebar()
-  const { currentWorkspace, setCurrentWorkspace, createWorkspace } =
+  const { currentWorkspace, setCurrentWorkspace, createWorkspace, loading } =
     useWorkspaceStore()
   const t = useTranslations(locale)
 
@@ -91,6 +91,48 @@ export function TeamSwitcher({
   }
 
   if (!teams.length) {
+    // We know about a workspace from persistence — show it while loading the full list
+    if (currentWorkspace) {
+      return (
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" disabled>
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary/50 text-sidebar-primary-foreground/50">
+                <LoaderCircle className="size-4 animate-spin" />
+              </div>
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-medium">{currentWorkspace.name}</span>
+                <span className="truncate text-xs text-sidebar-foreground/60">
+                  {t.common?.loading ?? "Loading..."}
+                </span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      )
+    }
+
+    // No persisted workspace — show skeleton while fetch is in flight
+    if (loading) {
+      return (
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" disabled>
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary/50 text-sidebar-primary-foreground/50">
+                <LoaderCircle className="size-4 animate-spin" />
+              </div>
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-medium text-muted-foreground">
+                  {t.common?.loading ?? "Loading..."}
+                </span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      )
+    }
+
+    // Truly no workspaces
     return (
       <SidebarMenu>
         <SidebarMenuItem>
