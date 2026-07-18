@@ -53,3 +53,9 @@ data/
 
 # Astro
 .astro/
+
+# OpenCode / AI tooling
+.atl/
+.agents/
+.mcp.json
+skills-lock.json
