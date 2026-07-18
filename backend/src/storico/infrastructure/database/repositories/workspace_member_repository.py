@@ -111,45 +111,45 @@ class SQLAlchemyWorkspaceMemberRepository(WorkspaceMemberRepository):
         new_owner_id: UUID,
     ) -> None:
         try:
-            async with self._session.begin():
-                # Verify current owner matches
-                workspace = await self._session.get(WorkspaceModel, workspace_id)
-                if not workspace:
-                    raise EntityNotFound("Workspace", str(workspace_id))
-                if workspace.owner_id != current_owner_id:
-                    raise OwnerTransferError(
-                        "Current owner does not match workspace owner"
-                    )
+            # Verify current owner matches
+            workspace = await self._session.get(WorkspaceModel, workspace_id)
+            if not workspace:
+                raise EntityNotFound("Workspace", str(workspace_id))
+            if workspace.owner_id != current_owner_id:
+                raise OwnerTransferError(
+                    "Current owner does not match workspace owner"
+                )
 
-                # Verify new owner is an admin member
-                member_stmt = select(WorkspaceMemberModel).where(
+            # Verify new owner is an admin member
+            member_stmt = select(WorkspaceMemberModel).where(
+                WorkspaceMemberModel.workspace_id == workspace_id,
+                WorkspaceMemberModel.user_id == new_owner_id,
+            )
+            member_result = await self._session.execute(member_stmt)
+            new_owner_member = member_result.scalar_one_or_none()
+            if not new_owner_member:
+                raise OwnerTransferError(
+                    "New owner must be a member of the workspace"
+                )
+            if new_owner_member.role != WorkspaceRole.ADMIN.value:
+                raise OwnerTransferError(
+                    "New owner must have admin role"
+                )
+
+            # Update workspace owner
+            workspace.owner_id = new_owner_id
+
+            # Demote old owner to admin
+            demote_stmt = (
+                update(WorkspaceMemberModel)
+                .where(
                     WorkspaceMemberModel.workspace_id == workspace_id,
-                    WorkspaceMemberModel.user_id == new_owner_id,
+                    WorkspaceMemberModel.user_id == current_owner_id,
                 )
-                member_result = await self._session.execute(member_stmt)
-                new_owner_member = member_result.scalar_one_or_none()
-                if not new_owner_member:
-                    raise OwnerTransferError(
-                        "New owner must be a member of the workspace"
-                    )
-                if new_owner_member.role != WorkspaceRole.ADMIN.value:
-                    raise OwnerTransferError(
-                        "New owner must have admin role"
-                    )
-
-                # Update workspace owner
-                workspace.owner_id = new_owner_id
-
-                # Demote old owner to admin
-                demote_stmt = (
-                    update(WorkspaceMemberModel)
-                    .where(
-                        WorkspaceMemberModel.workspace_id == workspace_id,
-                        WorkspaceMemberModel.user_id == current_owner_id,
-                    )
-                    .values(role=WorkspaceRole.ADMIN.value)
-                )
-                await self._session.execute(demote_stmt)
+                .values(role=WorkspaceRole.ADMIN.value)
+            )
+            await self._session.execute(demote_stmt)
+            await self._session.commit()
         except (SQLAlchemyError, OwnerTransferError, EntityNotFound) as e:
             await self._session.rollback()
             if isinstance(e, (OwnerTransferError, EntityNotFound)):
