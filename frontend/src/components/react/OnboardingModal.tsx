@@ -342,7 +342,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 {isSubmitting && (
                   <LoaderCircle className="animate-spin" />
                 )}
-                <span className={isSubmitting ? "opacity-0" : ""}>
+                <span className={isSubmitting ? "opacity-50" : ""}>
                   {t.onboarding.get_started}
                 </span>
               </Button>
