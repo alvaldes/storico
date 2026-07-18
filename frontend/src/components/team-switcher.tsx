@@ -128,7 +128,11 @@ export function TeamSwitcher({
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{activeTeam.name}</span>
                 <span className="truncate text-xs text-sidebar-foreground/60">
-                  {activeTeam.role}
+                  {activeTeam.role === "admin"
+                    ? (t.members?.admin ?? "Admin")
+                    : activeTeam.role === "owner"
+                      ? (t.members?.owner ?? "Owner")
+                      : (t.members?.memberRole ?? "Member")}
                 </span>
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
