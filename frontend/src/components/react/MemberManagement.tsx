@@ -406,7 +406,9 @@ export function MemberManagement({
                           <LoaderCircle className="h-3.5 w-3.5 animate-spin shrink-0" />
                         )}
                         <span className={changingRole === member.userId ? "opacity-50" : ""}>
-                          <SelectValue />
+                          {member.role === "admin"
+                            ? (t.members?.admin ?? "Admin")
+                            : (t.members?.memberRole ?? "Member")}
                         </span>
                       </SelectTrigger>
                       <SelectContent>
