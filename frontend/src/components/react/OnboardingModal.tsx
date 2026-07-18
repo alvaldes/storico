@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Sparkles, Puzzle, Layers } from "lucide-react";
+import { Sparkles, Puzzle, Layers, LoaderCircle } from "lucide-react";
 import { WorkspaceSetupIllustration } from "@/components/illustrations/WorkspaceSetupIllustration";
 import { ModelConfigIllustration } from "@/components/illustrations/ModelConfigIllustration";
 import {
@@ -339,7 +339,12 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 onClick={handleComplete}
                 disabled={isSubmitting}
               >
-                {t.onboarding.get_started}
+                {isSubmitting && (
+                  <LoaderCircle className="animate-spin" />
+                )}
+                <span className={isSubmitting ? "opacity-0" : ""}>
+                  {t.onboarding.get_started}
+                </span>
               </Button>
             )}
           </div>
