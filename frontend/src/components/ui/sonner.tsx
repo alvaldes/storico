@@ -32,9 +32,10 @@ import {
  * MutationObserver here.
  *
  * Tokens: shadcn's sonner template references `--popover`, `--popover-fg`,
- * `--border` and `--radius`. We map them to this project's design tokens
- * (see globals.css): --popover -> --color-surface, --popover-foreground ->
- * --color-text, --border -> --color-border, --radius -> --radius-md.
+ * `--border` and `--radius`. In Tailwind v4 with `@theme inline`, the
+ * generated CSS variables use `--color-*` prefixes, so we must reference
+ * `--color-popover`, `--color-popover-foreground`, and `--color-border`.
+ * Only `--radius` is unprefixed (no color category).
  *
  * @see https://ui.shadcn.com/docs/components/base/sonner
  * @see https://sonner.emilkowal.ski
@@ -69,9 +70,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
       offset="80px"
       style={
         {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "var(--border)",
+          "--normal-bg": "var(--color-popover)",
+          "--normal-text": "var(--color-popover-foreground)",
+          "--normal-border": "var(--color-border)",
           "--border-radius": "var(--radius)",
         } as React.CSSProperties
       }
