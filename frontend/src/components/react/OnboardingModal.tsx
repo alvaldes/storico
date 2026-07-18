@@ -24,6 +24,7 @@ import {
 import { useAuthStore } from "@/stores/authStore"
 import { useUIStore } from "@/stores/uiStore"
 import { ProviderIcon } from "@/components/ui/provider-icon";
+import { IconPicker, IconTrigger } from "@/components/ui/icon-picker";
 import { completeOnboarding } from "@/lib/user-api";
 import { useTranslations, type Locale } from "@/i18n/utils";
 
@@ -37,6 +38,8 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
   const { workspaceName, setOnboardingDone, setWorkspaceName } = useAuthStore();
   const [step, setStep] = useState(1);
   const [name, setName] = useState(workspaceName || "");
+  const [workspaceIcon, setWorkspaceIcon] = useState("building-2");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [provider, setProvider] = useState("ollama");
   const [open, setOpen] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -104,8 +107,12 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
     setIsSubmitting(true);
     const shouldRename =
       name.trim() !== originalName.current.trim() && name.trim().length > 0;
+    const hasIcon = workspaceIcon !== "building-2";
     try {
-      await completeOnboarding(shouldRename ? name.trim() : undefined);
+      await completeOnboarding(
+        shouldRename ? name.trim() : undefined,
+        hasIcon ? workspaceIcon : undefined,
+      );
       if (shouldRename) {
         setWorkspaceName(name.trim());
       }
@@ -148,14 +155,22 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 <FieldLabel htmlFor="workspace-name">
                   {t.onboarding.step1_title}
                 </FieldLabel>
-                <Input
-                  id="workspace-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={t.onboarding.step1_placeholder}
-                  maxLength={100}
-                  autoFocus
-                />
+                <div className="flex items-center gap-2">
+                  <IconTrigger
+                    value={workspaceIcon}
+                    onClick={() => setPickerOpen(true)}
+                    locale={locale}
+                  />
+                  <Input
+                    id="workspace-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder={t.onboarding.step1_placeholder}
+                    maxLength={100}
+                    autoFocus
+                    className="flex-1"
+                  />
+                </div>
                 <FieldDescription>
                   {t.onboarding.step1_name_hint ??
                     "You can change this later in workspace settings. Max 100 characters."}
@@ -330,6 +345,15 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
           </div>
         </div>
       </DialogContent>
+
+      {/* Icon Picker */}
+      <IconPicker
+        value={workspaceIcon}
+        onChange={setWorkspaceIcon}
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        locale={locale}
+      />
     </Dialog>
   );
 }

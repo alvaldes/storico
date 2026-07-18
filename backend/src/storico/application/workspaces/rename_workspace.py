@@ -24,6 +24,7 @@ class RenameWorkspaceUseCase:
         self,
         user_id: UUID,
         new_name: str,
+        new_icon: str | None = None,
     ) -> Workspace:
         """Rename the user's personal workspace.
 
@@ -34,6 +35,7 @@ class RenameWorkspaceUseCase:
             user_id: UUID of the workspace owner.
             new_name: New display name for the workspace (required,
                 non-empty).
+            new_icon: Optional new icon identifier for the workspace.
 
         Returns:
             The updated ``Workspace`` entity with the new name and slug.
@@ -66,6 +68,7 @@ class RenameWorkspaceUseCase:
             name=new_name.strip(),
             slug=new_slug,
             owner_id=workspace.owner_id,
+            icon=new_icon or workspace.icon,
             id=workspace.id,
             created_at=workspace.created_at,
             updated_at=workspace.updated_at,

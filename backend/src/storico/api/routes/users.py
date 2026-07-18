@@ -103,11 +103,19 @@ async def complete_onboarding(
     updated = replace(current_user, is_first_login=False)
     await repo.save(updated)
 
-    if payload.workspace_name:
+    if payload.workspace_name or payload.workspace_icon:
+        # When only the icon is provided, keep the current workspace name.
+        name = payload.workspace_name
+        if not name and payload.workspace_icon:
+            workspaces = await ws_repo.list_by_user(current_user.id)
+            if workspaces:
+                name = workspaces[0].name
+
         use_case = RenameWorkspaceUseCase(ws_repo=ws_repo)
         await use_case.execute(
             user_id=current_user.id,
-            new_name=payload.workspace_name,
+            new_name=name or "",
+            new_icon=payload.workspace_icon,
         )
 
     return {"success": True}

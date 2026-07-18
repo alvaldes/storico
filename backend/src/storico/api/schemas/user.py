@@ -41,6 +41,7 @@ class OnboardingRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     workspace_name: str | None = Field(None, max_length=100)
+    workspace_icon: str | None = Field(None, max_length=100)
 
 
 class WorkspaceSummary(BaseModel):

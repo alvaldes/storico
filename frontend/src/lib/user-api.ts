@@ -39,8 +39,13 @@ export async function fetchFullUserProfile(): Promise<FullUserProfile> {
   return toCamelCase<FullUserProfile>(raw);
 }
 
-/** Mark onboarding as completed, optionally renaming the workspace. */
-export async function completeOnboarding(workspaceName?: string): Promise<void> {
-  const body = workspaceName ? { workspace_name: workspaceName } : undefined;
-  await api.patch('/api/v1/users/me/onboarding', body);
+/** Mark onboarding as completed, optionally renaming the workspace and setting an icon. */
+export async function completeOnboarding(
+  workspaceName?: string,
+  workspaceIcon?: string,
+): Promise<void> {
+  const body: Record<string, string> = {};
+  if (workspaceName) body.workspace_name = workspaceName;
+  if (workspaceIcon) body.workspace_icon = workspaceIcon;
+  await api.patch('/api/v1/users/me/onboarding', Object.keys(body).length ? body : undefined);
 }
