@@ -48,7 +48,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               persisted && workspaces.find((w) => w.id === persisted.id);
             return {
               workspaces,
-              loading: false,
+      loading: true,
               currentWorkspace:
                 match ?? (workspaces.length > 0 ? workspaces[0] : null),
             };
