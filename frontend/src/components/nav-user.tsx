@@ -61,8 +61,8 @@ export function NavUser({
     : "??"
 
   const handleLogout = useCallback(() => {
-    signOut()
-  }, [])
+    signOut({ callbackUrl: `/${locale}/login` })
+  }, [locale])
 
   if (!user) {
     return (
