@@ -10,7 +10,7 @@ const t = useTranslations(locale);
 
 <MainLayout locale={locale}>
   <div slot="head">
-    <title>{t.app.name} — Workspace Settings</title>
+    <title>{t.app.name} — {t.workspace?.settingsTitle ?? "Workspace Settings"}</title>
   </div>
 
   <WorkspaceSettings client:load locale={locale} workspaceId={workspaceId} />

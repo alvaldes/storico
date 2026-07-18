@@ -64,7 +64,7 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
   if (!project) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <p className="text-destructive">Project not found</p>
+        <p className="text-destructive">{t.projects?.notFound ?? "Project not found"}</p>
         <Button variant="outline" className="mt-4" onClick={() => window.history.back()}>
           {t.nav.back_to_home}
         </Button>

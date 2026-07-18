@@ -29,7 +29,7 @@ const t = useTranslations(locale);
         {t.pages.api.intro}
         <a href={`${config.apiUrl}/docs`} target="_blank" rel="noopener noreferrer"
            class="inline-link"
-           aria-label="OpenAPI documentation (opens in new tab)">
+           aria-label={t.pages.api.aria_openapi}>
           <code class="rounded bg-(--color-surface-secondary) px-1.5 py-0.5 text-sm font-mono text-(--color-text) underline decoration-dotted underline-offset-2 transition-colors hover:text-(--color-primary-600)">/docs</code>
         </a>
         {t.pages.api.intro_end}
@@ -69,7 +69,7 @@ const t = useTranslations(locale);
         {t.pages.api.footer}
         <a href={`${config.apiUrl}/docs`} target="_blank" rel="noopener noreferrer"
            class="inline-link"
-           aria-label="Swagger documentation (opens in new tab)">
+           aria-label={t.pages.api.aria_swagger}>
           <code class="rounded bg-(--color-surface-secondary) px-1.5 py-0.5 text-sm font-mono text-(--color-text) underline decoration-dotted underline-offset-2 transition-colors hover:text-(--color-primary-600)">/docs</code>
         </a>
         {t.pages.api.footer_end}

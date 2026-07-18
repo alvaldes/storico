@@ -115,6 +115,7 @@
     "delete_confirm_title": "¿Eliminar proyecto?",
     "delete_confirm_description": "Esto eliminará permanentemente el proyecto y todas sus historias de usuario. Esta acción no se puede deshacer.",
     "no_description": "Sin descripción",
+    "notFound": "Proyecto no encontrado",
     "story_count": "{count} historia",
     "story_count_plural": "{count} historias"
   },
@@ -408,6 +409,7 @@
   },
   "footer": {
     "license": "Publicado bajo licencia MIT.",
+    "aria_github": "Repositorio de GitHub",
     "product": "Producto",
     "resources": "Recursos",
     "company": "Compañía",
@@ -561,8 +563,10 @@
       "endpoints_title": "Endpoints",
       "endpoint_extract_desc": "Extrae tareas de una historia de usuario.",
       "endpoint_batch_desc": "Procesa múltiples historias de usuario de forma asíncrona.",
-      "endpoint_status_desc": "Verifica el estado de una extracción batch asíncrona.",
-      "footer": "Para esquemas detallados de solicitud/respuesta, inicia el backend y visita",
+    "endpoint_status_desc": "Verifica el estado de una extracción batch asíncrona.",
+    "aria_openapi": "Documentación de OpenAPI (se abre en nueva pestaña)",
+    "aria_swagger": "Documentación de Swagger (se abre en nueva pestaña)",
+    "footer": "Para esquemas detallados de solicitud/respuesta, inicia el backend y visita",
       "footer_end": "para la documentación interactiva de Swagger."
     },
     "status": {
