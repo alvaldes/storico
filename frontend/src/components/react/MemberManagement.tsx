@@ -101,7 +101,7 @@ export function MemberManagement({
 
   /* Add member dialog */
   const [addOpen, setAddOpen] = useState(false);
-  const [newUserId, setNewUserId] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -150,17 +150,17 @@ export function MemberManagement({
 
   /* ── Add Member ── */
   const handleAddMember = async () => {
-    if (!newUserId.trim()) {
-      setAddError(t.members?.userIdRequired ?? "User ID is required");
+    if (!newUserEmail.trim()) {
+      setAddError(t.members?.emailRequired ?? "Email is required");
       return;
     }
     setAddSaving(true);
     setAddError(null);
     try {
-      await addMember(workspaceId, newUserId.trim());
+      await addMember(workspaceId, newUserEmail.trim());
       toast.success(t.members?.addedToast ?? "Member added");
       setAddOpen(false);
-      setNewUserId("");
+      setNewUserEmail("");
       loadMembers();
     } catch (err) {
       const message =
@@ -295,19 +295,19 @@ export function MemberManagement({
                 </DialogHeader>
                 <div className="space-y-4 py-2">
                   <Field>
-                    <FieldLabel htmlFor="new-user-id">{t.members?.userIdLabel ?? "User ID"}</FieldLabel>
+                    <FieldLabel htmlFor="new-user-email">{t.members?.emailLabel ?? "Email"}</FieldLabel>
                     <Input
-                      id="new-user-id"
-                      type="text"
-                      value={newUserId}
+                      id="new-user-email"
+                      type="email"
+                      value={newUserEmail}
                       onChange={(e) => {
-                        setNewUserId(e.target.value);
+                        setNewUserEmail(e.target.value);
                         setAddError(null);
                       }}
-                      placeholder={t.members?.userIdPlaceholder ?? "00000000-0000-0000-0000-000000000000"}
+                      placeholder={t.members?.emailPlaceholder ?? "user@example.com"}
                     />
                     <FieldDescription>
-                      {t.members?.userIdDescription ?? "Enter the UUID of the user you want to add to this workspace."}
+                      {t.members?.emailDescription ?? "Enter the email of the user you want to add to this workspace."}
                     </FieldDescription>
                     <FieldError>{addError}</FieldError>
                   </Field>

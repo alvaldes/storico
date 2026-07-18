@@ -11,7 +11,12 @@ class AddMemberRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    user_id: UUID
+    user_email: str = Field(
+        ...,
+        min_length=5,
+        max_length=255,
+        description="Email of the user to add to the workspace",
+    )
 
 
 class TransferOwnershipRequest(BaseModel):

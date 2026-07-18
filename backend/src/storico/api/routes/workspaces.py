@@ -225,10 +225,10 @@ async def add_member(
     member_repo: MemberRepoDep = None,  # type: ignore[assignment]
     user_repo: UserRepoDep = None,  # type: ignore[assignment]
 ) -> MemberResponse:
-    """Add a user as a member of the workspace. Admin only."""
+    """Add a user as a member of the workspace by email. Admin only."""
     workspace, _ = ctx
     use_case = AddMemberUseCase(ws_repo, member_repo, user_repo)
-    new_member = await use_case.execute(workspace.id, body.user_id)
+    new_member = await use_case.execute(workspace.id, body.user_email)
     return await _enrich_member(new_member, user_repo)
 
 

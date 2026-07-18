@@ -40,13 +40,13 @@ class AddMemberUseCase:
     async def execute(
         self,
         workspace_id: UUID,
-        target_user_id: UUID,
+        target_user_email: str,
     ) -> WorkspaceMember:
         """Add a user to a workspace with role ``member``.
 
         Args:
             workspace_id: The workspace to add the user to.
-            target_user_id: UUID of the user to add.
+            target_user_email: Email of the user to add.
 
         Returns:
             The newly created ``WorkspaceMember`` entity.
@@ -60,25 +60,25 @@ class AddMemberUseCase:
         if workspace is None:
             raise EntityNotFound("Workspace", str(workspace_id))
 
-        # Validate target user exists
-        user = await self._user_repo.find_by_id(target_user_id)
+        # Validate target user exists by email
+        user = await self._user_repo.find_by_email(target_user_email)
         if user is None:
-            raise EntityNotFound("User", str(target_user_id))
+            raise EntityNotFound("User", target_user_email)
 
         # Validate not already a member
         existing = await self._member_repo.find_by_workspace_and_user(
-            workspace_id, target_user_id
+            workspace_id, user.id
         )
         if existing is not None:
             raise DuplicateEntity(
                 "WorkspaceMember",
-                "user_id",
-                str(target_user_id),
+                "user_email",
+                target_user_email,
             )
 
         member = WorkspaceMember(
             workspace_id=workspace_id,
-            user_id=target_user_id,
+            user_id=user.id,
             role=WorkspaceRole.MEMBER,
         )
         return await self._member_repo.add(member)

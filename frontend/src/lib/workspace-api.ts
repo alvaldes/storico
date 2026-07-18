@@ -47,11 +47,11 @@ export async function listMembers(wsId: string): Promise<{ members: WorkspaceMem
   return toCamelCase<{ members: WorkspaceMember[] }>(raw);
 }
 
-/** Add a member to a workspace (admin only). */
-export async function addMember(wsId: string, userId: string): Promise<void> {
+/** Add a member to a workspace by email (admin only). */
+export async function addMember(wsId: string, email: string): Promise<void> {
   await api.post(
     `/api/v1/workspaces/${wsId}/members`,
-    toSnakeCase({ userId }),
+    toSnakeCase({ userEmail: email }),
   );
 }
 
