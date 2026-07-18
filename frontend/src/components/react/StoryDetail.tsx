@@ -106,8 +106,12 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   };
 
   const handleExtract = async () => {
+    if (!workspaceId) {
+      toast.error(t.stories?.extractionFailed ?? 'Extraction failed');
+      return;
+    }
     try {
-      await extractTasks(storyId);
+      await extractTasks(storyId, workspaceId);
       if (tasks[storyId]?.length) {
         toast.success(t.stories.detail_extract_started);
       }

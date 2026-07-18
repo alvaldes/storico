@@ -9,7 +9,7 @@ interface TaskState {
   error: string | null;
 
   fetchTasks: (storyId: string) => Promise<void>;
-  extractTasks: (storyId: string) => Promise<void>;
+  extractTasks: (storyId: string, workspaceId: string) => Promise<void>;
   setTasks: (storyId: string, tasks: Task[]) => void;
   updateTask: (taskId: string, updates: Partial<Task>) => void;
 }
@@ -34,10 +34,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
   },
 
-  extractTasks: async (storyId: string) => {
+  extractTasks: async (storyId: string, workspaceId: string) => {
     set({ extracting: true, error: null });
     try {
-      const result = await api.extractTasks(storyId);
+      const result = await api.extractTasks(storyId, workspaceId);
       if (result.status === 'completed') {
         set((state) => ({
           tasks: { ...state.tasks, [storyId]: result.tasks },
