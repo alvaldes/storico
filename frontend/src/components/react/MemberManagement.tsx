@@ -59,7 +59,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import type { WorkspaceMember } from "@/types/workspace";
 import en from "@/i18n/en.json";
@@ -537,7 +536,12 @@ export function MemberManagement({
                           id="new-owner"
                           className="w-full"
                         >
-                          <SelectValue placeholder={t.members?.selectAdminPlaceholder ?? "Select an admin..."} />
+                          <span className={transferTargetId ? "" : "text-muted-foreground"}>
+                            {transferTargetId
+                              ? nonOwnerAdmins.find((a) => a.userId === transferTargetId)
+                                ?.name ?? transferTargetId
+                              : (t.members?.selectAdminPlaceholder ?? "Select an admin...")}
+                          </span>
                         </SelectTrigger>
                         <SelectContent>
                           {nonOwnerAdmins.map((admin) => (
