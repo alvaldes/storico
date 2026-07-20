@@ -152,10 +152,10 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
         </span>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-x-auto px-4 lg:px-6 pb-4 lg:pb-6 pt-4">
+      <div className="flex-1 min-h-0 overflow-hidden overflow-x-auto px-4 lg:px-6 pb-4 lg:pb-6 pt-4">
         <DndErrorBoundary>
           <DragDropContext onDragEnd={handleDragEnd}>
-            <div className="flex gap-4 min-h-full" style={{ minWidth: 'fit-content' }}>
+            <div className="flex gap-4 h-full items-stretch" style={{ minWidth: 'fit-content' }}>
               {COLUMNS.map((colId) => (
                 <KanbanColumn
                   key={colId}
