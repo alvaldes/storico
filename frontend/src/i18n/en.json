@@ -11,6 +11,7 @@
     "settings": "Settings",
     "account": "Account",
     "projects": "Projects",
+    "allProjects": "All Projects",
     "login": "Sign In",
     "logout": "Sign Out",
     "back_to_home": "Back to home",

@@ -11,6 +11,7 @@
     "settings": "Configuración",
     "account": "Cuenta",
     "projects": "Proyectos",
+    "allProjects": "Todos los Proyectos",
     "login": "Iniciar Sesión",
     "logout": "Cerrar Sesión",
     "back_to_home": "Volver al inicio",

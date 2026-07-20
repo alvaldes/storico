@@ -4,6 +4,7 @@ import * as React from "react"
 import { useSidebar } from "@/components/ui/sidebar"
 import { useTranslations, type Locale } from "@/i18n/utils"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { useProjectStore } from "@/stores/projectStore"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -30,6 +31,10 @@ export interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user: { name: string; email: string; image?: string } | null
 }
 
+function stripLocale(path: string): string {
+  return path.replace(/^\/(en|es)/, "") || "/"
+}
+
 export function AppSidebar({
   locale,
   currentPath,
@@ -39,22 +44,41 @@ export function AppSidebar({
   const t = useTranslations(locale)
   const L = (path: string) => `/${locale}${path}`
   const { workspaces, currentWorkspace, fetchWorkspaces } = useWorkspaceStore()
+  const { projects, fetchProjects } = useProjectStore()
   const { state } = useSidebar()
 
-  // Fetch workspaces once
+  // ── Bootstrap data ──
   React.useEffect(() => {
     if (workspaces.length === 0) {
       fetchWorkspaces()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Detect active link from currentPath
-  const cleanPath = currentPath.replace(/^\/(en|es)/, "") || "/"
-  const isActive = (href: string) => {
-    const clean = (s: string) => s.replace(/\/$/, "")
-    return clean(cleanPath) === clean(href)
-  }
+  React.useEffect(() => {
+    if (currentWorkspace) {
+      fetchProjects()
+    }
+  }, [currentWorkspace?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Track path on the client so active state works with View Transitions ──
+  const [livePath, setLivePath] = React.useState(currentPath)
+  React.useEffect(() => {
+    const updatePath = () => setLivePath(window.location.pathname)
+    updatePath()
+    document.addEventListener("astro:page-load", updatePath)
+    return () => document.removeEventListener("astro:page-load", updatePath)
+  }, [])
+
+  // ── Active-link detection ──
+  const cleanPath = stripLocale(livePath)
+  const isActive = (href: string) => {
+    const a = cleanPath.replace(/\/$/, "")
+    const b = stripLocale(href).replace(/\/$/, "")
+    return a === b
+  }
+  const isProjectsActive = /^\/projects(\/|$)/.test(cleanPath)
+
+  // ── Navigation items ──
   const navMain = [
     {
       title: t.nav.dashboard,
@@ -66,7 +90,19 @@ export function AppSidebar({
       title: t.nav.projects,
       url: L("/projects"),
       icon: <FolderKanban />,
-      isActive: isActive(L("/projects")),
+      isActive: isProjectsActive,
+      items: [
+        {
+          title: t.nav.allProjects,
+          url: L("/projects"),
+          isActive: isActive(L("/projects")),
+        },
+        ...projects.map((p) => ({
+          title: p.name,
+          url: L(`/projects/${p.id}`),
+          isActive: cleanPath === `/projects/${p.id}`,
+        })),
+      ],
     },
     {
       title: t.nav.stories,
@@ -90,7 +126,9 @@ export function AppSidebar({
       title: t.nav.settings,
       url: currentWorkspace ? L(`/workspaces/${currentWorkspace.id}/settings`) : "#",
       icon: <Settings />,
-      isActive: currentWorkspace ? isActive(L(`/workspaces/${currentWorkspace.id}/settings`)) : false,
+      isActive: currentWorkspace
+        ? isActive(L(`/workspaces/${currentWorkspace.id}/settings`))
+        : false,
     },
   ]
 

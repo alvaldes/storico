@@ -26,6 +26,7 @@ export interface NavItem {
   items?: {
     title: string
     url: string
+    isActive?: boolean
   }[]
 }
 
@@ -51,7 +52,9 @@ export function NavMain({
               render={<SidebarMenuItem />}
             >
               <CollapsibleTrigger
-                render={<SidebarMenuButton tooltip={item.title} />}
+                render={
+                  <SidebarMenuButton isActive={item.isActive} tooltip={item.title} />
+                }
               >
                 {item.icon}
                 <span>{item.title}</span>
@@ -62,6 +65,7 @@ export function NavMain({
                   {item.items.map((subItem) => (
                     <SidebarMenuSubItem key={subItem.title}>
                       <SidebarMenuSubButton
+                        isActive={subItem.isActive}
                         render={<a href={subItem.url} />}
                       >
                         <span>{subItem.title}</span>
