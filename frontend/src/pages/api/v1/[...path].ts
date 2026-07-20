@@ -19,8 +19,12 @@ const HOP_BY_HOP = new Set([
   'content-length',    // lo recalcula el Response constructor
 ])
 
-/** Tiempo máximo de espera para el backend (en ms). */
-const BACKEND_TIMEOUT = 30_000
+/** Tiempo máximo de espera para el backend (en ms).
+ *
+ * Debe coincidir con el timeout del LLM en ``LLMConfig`` (120s)
+ * para evitar 504 del proxy cuando el modelo tarda en responder.
+ */
+const BACKEND_TIMEOUT = 120_000
 
 /** Limpia un path de segmentos peligrosos (path traversal). */
 function sanitizePath(raw: string): string {

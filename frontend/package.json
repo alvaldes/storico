@@ -19,6 +19,7 @@
     "@auth/core": "^0.37.4",
     "@base-ui/react": "^1.6.0",
     "@fontsource-variable/geist": "^5.2.9",
+    "@hello-pangea/dnd": "^18.0.1",
     "astro": "^5.7.10",
     "auth-astro": "^4.2.0",
     "class-variance-authority": "^0.7.1",

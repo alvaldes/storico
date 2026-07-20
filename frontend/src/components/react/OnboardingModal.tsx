@@ -264,7 +264,9 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                           ? (t.settings?.llm_provider_ollama ?? "Ollama (Local)")
                           : provider === "openai"
                             ? (t.settings?.llm_provider_openai ?? "OpenAI")
-                            : (t.settings?.llm_provider_anthropic ?? "Anthropic")}
+                            : provider === "gemini"
+                              ? (t.settings?.llm_provider_gemini ?? "Gemini")
+                              : (t.settings?.llm_provider_anthropic ?? "Anthropic")}
                       </span>
                     </div>
                   </SelectTrigger>
@@ -292,6 +294,14 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                         className="mr-2 h-4 w-4 shrink-0"
                       />
                       {t.onboarding.llm_anthropic}
+                    </SelectItem>
+                    <SelectItem value="gemini">
+                      <ProviderIcon
+                        provider="gemini"
+                        theme={resolvedTheme}
+                        className="mr-2 h-4 w-4 shrink-0"
+                      />
+                      {t.onboarding.llm_gemini}
                     </SelectItem>
                   </SelectContent>
                 </Select>

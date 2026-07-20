@@ -1,3 +1,5 @@
+import type { Task } from '@/types/task';
+
 const BASE_URL = '';  // Proxy through Astro (same-origin)
 
 export interface ApiError {
@@ -103,6 +105,49 @@ class ApiClient {
   async patch<T>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('PATCH', path, body);
   }
+
+  // ── Task-specific methods ──
+
+  async listTasksByWorkspace(workspaceId: string): Promise<Task[]> {
+    const resp = await this.get<{ items: TaskResponseRaw[] }>(
+      `/api/v1/tasks/?workspace_id=${workspaceId}`,
+    );
+    return resp.items.map(mapTaskResponse);
+  }
+
+  async updateTaskStatus(taskId: string, status: string): Promise<void> {
+    await this.put(`/api/v1/tasks/${taskId}`, { status });
+  }
+}
+
+// ── Type mapping helpers ──
+
+interface TaskResponseRaw {
+  id: string;
+  user_story_id: string;
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  labels: string[];
+  dependencies: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+function mapTaskResponse(raw: TaskResponseRaw): Task {
+  return {
+    id: raw.id,
+    storyId: raw.user_story_id,
+    title: raw.title,
+    description: raw.description,
+    labels: raw.labels,
+    dependencies: raw.dependencies,
+    status: raw.status,
+    priority: raw.priority,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
 }
 
 export const api = new ApiClient(BASE_URL);

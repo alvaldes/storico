@@ -178,6 +178,12 @@
     "validationRequired": "Obligatorio",
     "validationMaxChars": "Máx. {count} caracteres",
     "extractionFailed": "Extracción fallida",
+    "extractionTimeout": "La extracción tardó demasiado. El modelo de IA no respondió a tiempo. Intenta de nuevo o usa un modelo más pequeño.",
+    "extractionUnauthorized": "Extracción fallida — sesión expirada o no has iniciado sesión",
+    "extractionAuthError": "Error de autenticación — intenta iniciar sesión de nuevo",
+    "extraction_pending": "Extrayendo...",
+    "extraction_complete": "Extraído",
+    "extraction_retry": "Reintentar",
     "signedInRequired": "Tienes que iniciar sesión para crear un proyecto"
   },
   "dashboard": {
@@ -188,6 +194,54 @@
     "extractions": "Extracciones",
     "recentStories": "Historias recientes",
     "welcome": "Bienvenido de vuelta — aquí tienes una vista general de tu espacio de trabajo."
+  },
+  "kanban": {
+    "title": "Tablero Kanban",
+    "columns": {
+      "backlog": "Pendiente",
+      "todo": "Por Hacer",
+      "in_progress": "En Progreso",
+      "review": "Revisión",
+      "done": "Terminado"
+    },
+    "empty_column": "Sin tareas aún",
+    "total_tasks": "{count} tareas",
+    "error_load": "Error al cargar tareas",
+    "no_workspace": "Selecciona un workspace para ver el tablero Kanban."
+  },
+  "taskEditor": {
+    "title": "Editar Tarea",
+    "description": "Actualiza los detalles de la tarea",
+    "title_label": "Título",
+    "title_placeholder": "Título de la tarea",
+    "description_label": "Descripción",
+    "description_placeholder": "Descripción de la tarea",
+    "labels_label": "Etiquetas",
+    "labels_placeholder": "Agrega una etiqueta y presiona Enter",
+    "labels_duplicate": "La etiqueta ya existe",
+    "labels_empty": "La etiqueta no puede estar vacía",
+    "dependencies_label": "Dependencias",
+    "dependencies_placeholder": "Agrega una dependencia y presiona Enter",
+    "dependency_self": "Una tarea no puede depender de sí misma",
+    "dependency_empty": "La dependencia no puede estar vacía",
+    "save": "Guardar Cambios",
+    "saving": "Guardando...",
+    "saved": "Tarea actualizada",
+    "error_save": "Error al guardar la tarea — intenta de nuevo",
+    "cancel": "Cancelar"
+  },
+  "exportPage": {
+    "title": "Exportar Tareas",
+    "description": "Exporta todas las tareas del espacio de trabajo en formato JSON o Markdown.",
+    "format_label": "Formato",
+    "format_json": "JSON",
+    "format_markdown": "Markdown",
+    "download": "Descargar",
+    "downloading": "Descargando...",
+    "error_fetch": "Error al cargar tareas para exportar",
+    "error_download": "Error al descargar — intenta de nuevo",
+    "no_workspace": "Selecciona un espacio de trabajo para exportar tareas.",
+    "no_tasks": "No hay tareas para exportar en este espacio de trabajo."
   },
   "settings": {
     "page_title": "Configuración",
@@ -202,16 +256,20 @@
     "llm_provider_ollama": "Ollama (Local)",
     "llm_provider_openai": "OpenAI",
     "llm_provider_anthropic": "Anthropic",
+    "llm_provider_gemini": "Gemini",
     "llm_ollama_url": "URL Base",
     "llm_base_url": "URL Base",
     "llm_ollama_model": "Modelo",
     "llm_ollama_model_placeholder": "ej. llama3.2, mistral",
     "llm_openai_model_placeholder": "gpt-4o-mini",
     "llm_anthropic_model_placeholder": "claude-3-haiku",
+    "llm_gemini_model_placeholder": "gemini-2.0-flash",
     "llm_openai_api_key": "API Key",
     "llm_openai_model": "Modelo",
     "llm_anthropic_api_key": "API Key",
     "llm_anthropic_model": "Modelo",
+    "llm_gemini_api_key": "API Key",
+    "llm_gemini_model": "Modelo",
     "llm_temperature": "Temperatura",
     "llm_max_tokens": "Máx. de Tokens",
     "llm_test": "Probar Conexión",
@@ -289,7 +347,8 @@
     "step3_note": "Ollama funciona sin configuración adicional, sin API key.",
     "llm_ollama": "Ollama (Local)",
     "llm_openai": "OpenAI",
-    "llm_anthropic": "Anthropic"
+    "llm_anthropic": "Anthropic",
+    "llm_gemini": "Gemini"
   },
   "sidebar": {
     "workspaces": "Espacios de trabajo",
@@ -551,6 +610,7 @@
       "llm_backend_ollama": "Ollama — LLaMA 3.2, Mistral y otros modelos locales",
       "llm_backend_openai": "OpenAI — GPT-3.5, GPT-4 (requiere API key)",
       "llm_backend_anthropic": "Anthropic — Claude (requiere API key)",
+      "llm_backend_gemini": "Gemini — Gemini 2.0 Flash (requiere API key)",
       "more_coming": "Documentación más detallada, incluyendo guías de API y visión general de la arquitectura, próximamente."
     },
     "api": {

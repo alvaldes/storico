@@ -5,8 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from storico.infrastructure.database.models.base import Base
@@ -26,7 +25,7 @@ class WorkspacePromptModel(Base):
         Text, nullable=True, default=None
     )
     few_shot_examples: Mapped[dict | None] = mapped_column(
-        JSONB, nullable=True, default=None
+        JSON, nullable=True, default=None
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False

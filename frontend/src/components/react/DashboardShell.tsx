@@ -83,13 +83,17 @@ export function DashboardShell({
         currentPath={currentPath}
         user={parsedUser}
       />
-      <SidebarInset className="max-h-dvh">
+      <SidebarInset className="max-h-dvh min-w-0">
         <DashboardHeader
           locale={locale}
           currentPath={currentPath}
         />
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
+        <main className="flex-1 flex flex-col min-w-0 p-4 lg:p-6">
+          <div className="relative flex-1 min-h-0 overflow-hidden">
+            {children}
+          </div>
+        </main>
       </SidebarInset>
       <Toaster />
     </SidebarProvider>

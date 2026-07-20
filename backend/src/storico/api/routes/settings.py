@@ -140,9 +140,43 @@ async def test_llm_connection(
                 latency_ms=elapsed,
             )
 
+    if body.provider == "gemini":
+        api_key = body.api_key or Settings.load().gemini_api_key
+        if not api_key:
+            return LLMTestResponse(
+                success=False,
+                message="Gemini API key is required. Set it in workspace settings or STORICO_GEMINI_API_KEY.",
+            )
+        from storico.infrastructure.llm import GeminiAdapter
+
+        adapter = GeminiAdapter(api_key=api_key)
+        config = LLMConfig(
+            model=body.model,
+            temperature=0.1,
+            max_tokens=10,
+            timeout=30,
+        )
+
+        try:
+            response = await adapter.generate("Hello", config)
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=True,
+                message=f"Gemini responded: {response[:100]}",
+                model=body.model,
+                latency_ms=elapsed,
+            )
+        except Exception as e:
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=False,
+                message=f"Gemini connection failed: {e}",
+                latency_ms=elapsed,
+            )
+
     msg = (
         f"{body.provider.title()} adapter not yet implemented. "
-        "Only Ollama is supported for connection testing at this time."
+        "Only Ollama and Gemini are supported for connection testing at this time."
     )
     return LLMTestResponse(success=False, message=msg)
 

@@ -178,6 +178,12 @@
     "validationRequired": "Required",
     "validationMaxChars": "Max {count} characters",
     "extractionFailed": "Extraction failed",
+    "extractionTimeout": "Extraction timed out. The AI model took too long to respond. Please try again or use a smaller model.",
+    "extractionUnauthorized": "Extraction failed — session expired or not signed in",
+    "extractionAuthError": "Authentication error — please try signing in again",
+    "extraction_pending": "Extracting...",
+    "extraction_complete": "Extracted",
+    "extraction_retry": "Retry",
     "signedInRequired": "You must be signed in to create a project"
   },
   "dashboard": {
@@ -188,6 +194,54 @@
     "extractions": "Extractions",
     "recentStories": "Recent stories",
     "welcome": "Welcome back — here's an overview of your workspace."
+  },
+  "kanban": {
+    "title": "Kanban Board",
+    "columns": {
+      "backlog": "Backlog",
+      "todo": "To Do",
+      "in_progress": "In Progress",
+      "review": "Review",
+      "done": "Done"
+    },
+    "empty_column": "No tasks yet",
+    "total_tasks": "{count} tasks",
+    "error_load": "Failed to load tasks",
+    "no_workspace": "Select a workspace to view the Kanban board."
+  },
+  "taskEditor": {
+    "title": "Edit Task",
+    "description": "Update task details",
+    "title_label": "Title",
+    "title_placeholder": "Task title",
+    "description_label": "Description",
+    "description_placeholder": "Task description",
+    "labels_label": "Labels",
+    "labels_placeholder": "Add a label and press Enter",
+    "labels_duplicate": "Label already exists",
+    "labels_empty": "Label cannot be empty",
+    "dependencies_label": "Dependencies",
+    "dependencies_placeholder": "Add a dependency and press Enter",
+    "dependency_self": "A task cannot depend on itself",
+    "dependency_empty": "Dependency cannot be empty",
+    "save": "Save Changes",
+    "saving": "Saving...",
+    "saved": "Task updated",
+    "error_save": "Failed to update task — please try again",
+    "cancel": "Cancel"
+  },
+  "exportPage": {
+    "title": "Export Tasks",
+    "description": "Export all workspace tasks in JSON or Markdown format.",
+    "format_label": "Format",
+    "format_json": "JSON",
+    "format_markdown": "Markdown",
+    "download": "Download",
+    "downloading": "Downloading...",
+    "error_fetch": "Failed to load tasks for export",
+    "error_download": "Download failed — please try again",
+    "no_workspace": "Select a workspace to export tasks.",
+    "no_tasks": "No tasks to export in this workspace."
   },
   "settings": {
     "page_title": "Settings",
@@ -202,16 +256,20 @@
     "llm_provider_ollama": "Ollama (Local)",
     "llm_provider_openai": "OpenAI",
     "llm_provider_anthropic": "Anthropic",
+    "llm_provider_gemini": "Gemini",
     "llm_ollama_url": "Base URL",
     "llm_base_url": "Base URL",
     "llm_ollama_model": "Model",
     "llm_ollama_model_placeholder": "e.g. llama3.2, mistral",
     "llm_openai_model_placeholder": "gpt-4o-mini",
     "llm_anthropic_model_placeholder": "claude-3-haiku",
+    "llm_gemini_model_placeholder": "gemini-2.0-flash",
     "llm_openai_api_key": "API Key",
     "llm_openai_model": "Model",
     "llm_anthropic_api_key": "API Key",
     "llm_anthropic_model": "Model",
+    "llm_gemini_api_key": "API Key",
+    "llm_gemini_model": "Model",
     "llm_temperature": "Temperature",
     "llm_max_tokens": "Max Tokens",
     "llm_test": "Test Connection",
@@ -289,7 +347,8 @@
     "step3_note": "Ollama works out of the box with no API key.",
     "llm_ollama": "Ollama (Local)",
     "llm_openai": "OpenAI",
-    "llm_anthropic": "Anthropic"
+    "llm_anthropic": "Anthropic",
+    "llm_gemini": "Gemini"
   },
   "sidebar": {
     "workspaces": "Workspaces",
@@ -551,6 +610,7 @@
       "llm_backend_ollama": "Ollama \u2014 LLaMA 3.2, Mistral, and other local models",
       "llm_backend_openai": "OpenAI \u2014 GPT-3.5, GPT-4 (requires API key)",
       "llm_backend_anthropic": "Anthropic \u2014 Claude (requires API key)",
+      "llm_backend_gemini": "Gemini \u2014 Gemini 2.0 Flash (requires API key)",
       "more_coming": "More detailed documentation, including API guides and architecture overview, coming soon."
     },
     "api": {

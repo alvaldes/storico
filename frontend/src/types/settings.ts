@@ -1,4 +1,4 @@
-export type LLMProvider = 'ollama' | 'openai' | 'anthropic';
+export type LLMProvider = 'ollama' | 'openai' | 'anthropic' | 'gemini';
 
 export interface OllamaConfig {
   baseUrl: string;
@@ -21,11 +21,19 @@ export interface AnthropicConfig {
   maxTokens: number;
 }
 
+export interface GeminiConfig {
+  apiKey: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+}
+
 export interface LLMConfig {
   provider: LLMProvider;
   ollama: OllamaConfig;
   openai: OpenAIConfig;
   anthropic: AnthropicConfig;
+  gemini: GeminiConfig;
 }
 
 export type ExportFormat = 'trello' | 'json' | 'markdown';
@@ -57,6 +65,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
     anthropic: {
       apiKey: '',
       model: 'claude-3-haiku',
+      temperature: 0.1,
+      maxTokens: 2048,
+    },
+    gemini: {
+      apiKey: '',
+      model: 'gemini-2.0-flash',
       temperature: 0.1,
       maxTokens: 2048,
     },

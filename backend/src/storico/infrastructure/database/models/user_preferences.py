@@ -5,8 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Uuid
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import DateTime, ForeignKey, JSON, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from storico.infrastructure.database.models.base import Base
@@ -22,7 +21,7 @@ class UserPreferencesModel(Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    preferences: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    preferences: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

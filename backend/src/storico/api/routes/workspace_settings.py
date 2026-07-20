@@ -240,6 +240,7 @@ async def upsert_prompts(
 # Default API endpoints for cloud providers
 OPENAI_API_BASE = "https://api.openai.com/v1"
 ANTHROPIC_API_BASE = "https://api.anthropic.com"
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 
 async def fetch_ollama_models(base_url: str) -> list[ModelInfo]:
@@ -290,6 +291,23 @@ async def fetch_anthropic_models(api_key: str) -> list[ModelInfo]:
     ]
 
 
+async def fetch_gemini_models(api_key: str) -> list[ModelInfo]:
+    """Fetch available models from the Gemini API.
+
+    Returns only models that support content generation (``generateContent``).
+    """
+    url = f"{GEMINI_API_BASE}/models?key={api_key}"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        data = resp.json()
+    return [
+        ModelInfo(id=m["name"], name=m.get("displayName", m["name"]))
+        for m in data.get("models", [])
+        if "generateContent" in m.get("supportedGenerationMethods", [])
+    ]
+
+
 @router.get("/llm/models")
 async def list_available_models(
     config_repo: LLMConfigRepoDep,
@@ -320,6 +338,11 @@ async def list_available_models(
             if not config.api_key:
                 return []
             return await fetch_anthropic_models(config.api_key)
+
+        if config.provider == "gemini":
+            if not config.api_key:
+                return []
+            return await fetch_gemini_models(config.api_key)
 
         return []
     except httpx.HTTPError as e:

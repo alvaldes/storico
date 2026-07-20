@@ -38,7 +38,7 @@ class LLMSettings(CamelCaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    provider: Literal["ollama", "openai", "anthropic"] = "ollama"
+    provider: Literal["ollama", "openai", "anthropic", "gemini"] = "ollama"
     ollama: LLMProviderConfig = LLMProviderConfig(
         model="llama3.2",
         base_url="http://localhost:11434",
@@ -49,6 +49,10 @@ class LLMSettings(CamelCaseModel):
     )
     anthropic: LLMProviderConfig = LLMProviderConfig(
         model="claude-3-haiku",
+        api_key="",
+    )
+    gemini: LLMProviderConfig = LLMProviderConfig(
+        model="gemini-2.0-flash",
         api_key="",
     )
 
@@ -90,7 +94,7 @@ class LLMTestRequest(CamelCaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    provider: Literal["ollama", "openai", "anthropic"]
+    provider: Literal["ollama", "openai", "anthropic", "gemini"]
     base_url: str | None = None
     api_key: str | None = None
     model: str = "llama3.2"

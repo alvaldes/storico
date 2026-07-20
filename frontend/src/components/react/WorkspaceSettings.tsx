@@ -516,7 +516,9 @@ export function WorkspaceSettings({
                             ? (t.settings?.llm_provider_ollama ?? "Ollama (Local)")
                             : llmConfig.provider === "openai"
                               ? (t.settings?.llm_provider_openai ?? "OpenAI")
-                              : (t.settings?.llm_provider_anthropic ?? "Anthropic")}
+                              : llmConfig.provider === "gemini"
+                                ? (t.settings?.llm_provider_gemini ?? "Gemini")
+                                : (t.settings?.llm_provider_anthropic ?? "Anthropic")}
                         </span>
                       </div>
                     </SelectTrigger>
@@ -532,6 +534,10 @@ export function WorkspaceSettings({
                       <SelectItem value="anthropic">
                         <ProviderIcon provider="anthropic" theme={resolvedTheme} className="mr-2 h-4 w-4 shrink-0" />
                         {t.settings?.llm_provider_anthropic ?? "Anthropic"}
+                      </SelectItem>
+                      <SelectItem value="gemini">
+                        <ProviderIcon provider="gemini" theme={resolvedTheme} className="mr-2 h-4 w-4 shrink-0" />
+                        {t.settings?.llm_provider_gemini ?? "Gemini"}
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -566,7 +572,9 @@ export function WorkspaceSettings({
                               ? (t.settings?.llm_ollama_model_placeholder ?? "llama3.2, mistral")
                               : llmConfig.provider === "openai"
                                 ? (t.settings?.llm_openai_model_placeholder ?? "gpt-4o-mini")
-                                : (t.settings?.llm_anthropic_model_placeholder ?? "claude-3-haiku")
+                                : llmConfig.provider === "gemini"
+                                  ? (t.settings?.llm_gemini_model_placeholder ?? "gemini-2.0-flash")
+                                  : (t.settings?.llm_anthropic_model_placeholder ?? "claude-3-haiku")
                           }
                         />
                         <ComboboxContent>
@@ -709,7 +717,9 @@ export function WorkspaceSettings({
                       <FieldLabel htmlFor="llm-api-key">
                         {llmConfig.provider === "openai"
                           ? (t.settings?.llm_openai_api_key ?? "API Key")
-                          : (t.settings?.llm_anthropic_api_key ?? "API Key")}
+                          : llmConfig.provider === "gemini"
+                            ? (t.settings?.llm_gemini_api_key ?? "API Key")
+                            : (t.settings?.llm_anthropic_api_key ?? "API Key")}
                       </FieldLabel>
                       <Input
                         id="llm-api-key"
@@ -722,7 +732,9 @@ export function WorkspaceSettings({
                           }))
                         }
                         placeholder={
-                          llmConfig.provider === "openai" ? "sk-..." : "sk-ant-..."
+                          llmConfig.provider === "openai" ? "sk-..." :
+                          llmConfig.provider === "gemini" ? "AIzaSyD-..." :
+                          "sk-ant-..."
                         }
                       />
                       <FieldDescription>

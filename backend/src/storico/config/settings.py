@@ -1,6 +1,12 @@
 """Application configuration via pydantic-settings."""
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Path to .env: resolve relative to THIS file (settings.py), not to cwd.
+#   backend/src/storico/config/settings.py → .parent*4 = backend/
+_ENV_FILE = Path(__file__).resolve().parent.parent.parent.parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -14,6 +20,9 @@ class Settings(BaseSettings):
 
     # Ollama — fallback default; users configure their LLM host per workspace in DB
     ollama_host: str = "http://localhost:11434"
+
+    # Gemini
+    gemini_api_key: str = ""
 
     # Embedding
     embedding_model: str = "nomic-embed-text"
@@ -29,11 +38,14 @@ class Settings(BaseSettings):
     # Auth — CORS origins (comma-separated)
     auth_allowed_origins: str = "http://localhost:4321"
 
+    # Celery — async task broker (Redis)
+    celery_broker_url: str = "redis://localhost:6379/0"
+
     # Auth — JWT secret for verifying proxy-generated tokens
     auth_jwt_secret: str = "dev-insecure-token-change-in-production"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         env_prefix="STORICO_",
         extra="ignore",

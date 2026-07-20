@@ -31,7 +31,7 @@ from storico.infrastructure.database.repositories.workspace_repository import (
     SQLAlchemyWorkspaceRepository,
 )
 from storico.infrastructure.database.session import get_session
-from storico.infrastructure.llm import OllamaAdapter, PromptManager, TaskParser
+from storico.infrastructure.llm import GeminiAdapter, OllamaAdapter, PromptManager, TaskParser
 from storico.infrastructure.vector import EmbeddingService, QdrantAdapter
 
 logger = logging.getLogger(__name__)
@@ -119,11 +119,25 @@ async def get_current_user(
     return user
 
 
-def get_llm_port() -> LLMPort:
-    """Factory for the LLM port — returns an ``OllamaAdapter``."""
+def get_llm_port(provider: str = "ollama", api_key: str | None = None) -> LLMPort:
+    """Factory for the LLM port — returns the appropriate adapter.
+
+    Args:
+        provider: The LLM provider name (``ollama``, ``gemini``, etc.).
+        api_key: API key for cloud providers (Gemini, OpenAI, Anthropic).
+
+    Returns:
+        An ``LLMPort`` implementation for the requested provider.
+    """
     from storico.config.settings import Settings  # late import to avoid circular
 
     settings = Settings.load()
+
+    if provider == "gemini":
+        key = api_key or settings.gemini_api_key
+        return GeminiAdapter(api_key=key)
+
+    # Default to Ollama
     return OllamaAdapter(base_url=settings.ollama_host)
 
 

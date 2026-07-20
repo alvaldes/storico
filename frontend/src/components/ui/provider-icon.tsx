@@ -5,6 +5,7 @@ import { Openai } from "@/components/ui/svgs/openai";
 import { OpenaiDark } from "@/components/ui/svgs/openaiDark";
 import { AnthropicWhite } from "@/components/ui/svgs/anthropicWhite";
 import { AnthropicBlack } from "@/components/ui/svgs/anthropicBlack";
+import { Gemini } from "@/components/ui/svgs/gemini";
 
 interface ProviderIconProps extends SVGProps<SVGSVGElement> {
   provider: string;
@@ -21,6 +22,8 @@ export function ProviderIcon({ provider, theme, ...props }: ProviderIconProps) {
       return isDark ? <OpenaiDark {...props} /> : <Openai {...props} />;
     case "anthropic":
       return isDark ? <AnthropicWhite {...props} /> : <AnthropicBlack {...props} />;
+    case "gemini":
+      return <Gemini {...props} />;
     default:
       return null;
   }

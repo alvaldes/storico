@@ -1,0 +1,16 @@
+---
+import MainLayout from '@/layouts/MainLayout.astro';
+import { ExportPanel } from '@/components/react/ExportPanel';
+import { useTranslations, type Locale } from '@/i18n/utils';
+
+const locale = (Astro.params.locale as Locale) || 'en';
+const t = useTranslations(locale);
+---
+
+<MainLayout locale={locale}>
+  <div slot="head">
+    <title>{t.app.name} — {t.nav.export}</title>
+  </div>
+
+  <ExportPanel client:load locale={locale} />
+</MainLayout>

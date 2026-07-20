@@ -6,8 +6,20 @@ This module provides two routers:
    410 Gone, directing clients to the workspace-scoped endpoint.
 2. ``extraction_router`` (prefix ``/api/v1/workspaces/{workspace_id}/extract``)
    — workspace-scoped extraction routes.
+
+The POST endpoint is **asynchronous**: it creates a pending extraction record,
+enqueues a Celery task for the LLM call, and responds immediately with
+``202 Accepted``. The client polls
+``GET /api/v1/extractions/{extraction_id}`` to get the final status.
+
+The Celery worker is started separately::
+
+    celery -A storico.infrastructure.tasks worker --loglevel=info
+
+See ``todo.md`` for the full async extraction design.
 """
 
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -15,7 +27,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from storico.api.dependencies import (
     get_current_user,
-    get_extract_use_case,
     get_repository,
     get_workspace_for_user,
 )
@@ -23,16 +34,19 @@ from storico.api.schemas.extraction import (
     ExtractRequest,
     ExtractResponse,
     ExtractionResponse,
-    TaskSchema,
 )
-from storico.application.extraction import ExtractFromStoryUseCase
-from storico.domain.entities import EntityNotFound, User, Workspace, WorkspaceRole
+from storico.domain.entities import EntityNotFound, Extraction, User, Workspace, WorkspaceRole
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
-    SQLAlchemyTaskRepository,
     SQLAlchemyUserStoryRepository,
 )
+from storico.infrastructure.database.repositories.workspace_llm_config_repository import (
+    SQLAlchemyWorkspaceLLMConfigRepository,
+)
+from storico.infrastructure.tasks.extraction_task import extract_from_story_task
+
+logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════
 # Legacy router — 410 Gone
@@ -78,11 +92,6 @@ ExtractionRepoDep = Annotated[
     Depends(get_repository(SQLAlchemyExtractionRepository)),
 ]
 
-TaskRepoDep = Annotated[
-    SQLAlchemyTaskRepository,
-    Depends(get_repository(SQLAlchemyTaskRepository)),
-]
-
 StoryRepoDep = Annotated[
     SQLAlchemyUserStoryRepository,
     Depends(get_repository(SQLAlchemyUserStoryRepository)),
@@ -91,6 +100,11 @@ StoryRepoDep = Annotated[
 ProjectRepoDep = Annotated[
     SQLAlchemyProjectRepository,
     Depends(get_repository(SQLAlchemyProjectRepository)),
+]
+
+LLMConfigRepoDep = Annotated[
+    SQLAlchemyWorkspaceLLMConfigRepository,
+    Depends(get_repository(SQLAlchemyWorkspaceLLMConfigRepository)),
 ]
 
 
@@ -121,15 +135,14 @@ async def _validate_story_belongs_to_workspace(
         )
 
 
-@extraction_router.post("/", status_code=status.HTTP_201_CREATED)
+@extraction_router.post("/", status_code=status.HTTP_202_ACCEPTED)
 async def extract_tasks(
     body: ExtractRequest,
     ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
-    use_case: ExtractFromStoryUseCase = Depends(get_extract_use_case),
     extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
-    task_repo: TaskRepoDep = None,  # type: ignore[assignment]
     story_repo: StoryRepoDep = None,  # type: ignore[assignment]
     project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    llm_config_repo: LLMConfigRepoDep = None,  # type: ignore[assignment]
 ) -> ExtractResponse:
     """Extract tasks from a user story using an LLM.
 
@@ -137,9 +150,16 @@ async def extract_tasks(
     in the URL path. Workspace membership is validated via
     ``get_workspace_for_user``.
 
-    The extraction runs synchronously. On success, the response contains
-    the generated tasks. On failure, ``status`` will be ``"failed"`` with
-    an ``error_info`` message.
+    **This endpoint is asynchronous.** It creates a pending extraction
+    record, launches the LLM call in a background task, and responds
+    **immediately** with ``202 Accepted``. The client must poll
+    ``GET /api/v1/extractions/{extraction_id}`` to get the final status.
+
+    When the extraction completes, tasks are persisted to the database
+    and can be fetched via ``GET /api/v1/tasks?user_story_id=...``.
+
+    If ``body.model`` is ``None``, the model is resolved from the
+    workspace's LLM config.
     """
     workspace, _ = ctx
 
@@ -148,37 +168,60 @@ async def extract_tasks(
         body.user_story_id, workspace.id, story_repo, project_repo
     )
 
-    # 1. Run extraction
-    result = await use_case.execute(
-        story_id=body.user_story_id,
-        model=body.model,
+    # Resolve model, provider, api_key, and base_url from workspace config.
+    # Even when body.model is provided, we fetch the workspace config for
+    # api_key and base_url (which are never exposed in the request body).
+    ws_config = await llm_config_repo.get(workspace.id)
+
+    model = body.model or (ws_config.model if ws_config else None)
+    api_key = ws_config.api_key if ws_config and ws_config.api_key else None
+    base_url = ws_config.base_url if ws_config and ws_config.base_url else None
+
+    # The user must pick a model (body override or workspace config)
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No LLM model configured for this workspace. "
+            "Please configure a model in Workspace Settings before extracting.",
+        )
+
+    # Provider: body has precedence, then workspace config, fallback ollama
+    provider = "ollama"
+    if ws_config and ws_config.provider:
+        provider = ws_config.provider
+
+    # 1. Create pending extraction record — gives the client something to poll
+    pending = Extraction(
+        user_story_id=body.user_story_id,
+        model_used=model,
+        raw_response="",
+        status="pending",
+        prompt_config={
+            "validate": body.run_validation,
+            "temperature": body.temperature,
+        },
+    )
+    pending = await extraction_repo.save(pending)
+    extraction_id = pending.id
+
+    # 2. Enqueue Celery task for background extraction
+    extract_from_story_task.delay(
+        extraction_id=str(extraction_id),
+        user_story_id=str(body.user_story_id),
+        model=model,
         temperature=body.temperature,
         validate=body.run_validation,
+        provider=provider,
+        api_key=api_key,
+        base_url=base_url,
     )
 
-    # 2. Load tasks if extraction completed
-    tasks: list[TaskSchema] = []
-    if result["status"] == "completed" and extraction_repo is not None:
-        extraction = await extraction_repo.find_by_id(result["extraction_id"])
-        if extraction is not None:
-            persisted_tasks = await task_repo.list_by_story(extraction.user_story_id)
-            tasks = [
-                TaskSchema(
-                    title=t.title,
-                    description=t.description,
-                    labels=t.labels,
-                    dependencies=t.dependencies,
-                )
-                for t in persisted_tasks
-            ]
-
+    # 3. Respond immediately — no tasks yet, client will poll
     return ExtractResponse(
-        extraction_id=result["extraction_id"],
-        status=result["status"],
-        error_info=result.get("error_info"),
-        tasks=tasks,
-        model_used=result["model_used"],
-        confidence_score=result.get("confidence_score"),
+        extraction_id=extraction_id,
+        status="pending",
+        tasks=[],
+        model_used=model,
     )
 
 

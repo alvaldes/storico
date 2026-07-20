@@ -104,36 +104,44 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
     const storyStore = useStoryStore.getState();
 
     uuidSegments.forEach((id) => {
+      // Detect if the UUID follows "stories" in the path — it's a story ID,
+      // not a project ID. Skip the "try as project" guess to avoid a 404.
+      const segIndex = segments.indexOf(id);
+      const isStoryId = segIndex > 0 && segments[segIndex - 1] === "stories";
+
+      if (isStoryId) {
+        // Resolve as story context directly
+        if (id !== segments[segments.length - 1]) {
+          setResolveErrors((prev) => ({ ...prev, [id]: true }));
+          return;
+        }
+
+        const cachedStory = storyStore.getById(id);
+        if (cachedStory) {
+          resolveStoryProject(cachedStory.projectId);
+        } else {
+          getStory(id)
+            .then((story) => resolveStoryProject(story.projectId))
+            .catch(() => {
+              setResolveErrors((prev) => ({ ...prev, [id]: true }));
+            });
+        }
+        return;
+      }
+
       const cachedProject = projectStore.getById(id);
       if (cachedProject) {
         setResolvedLabels((prev) => ({ ...prev, [id]: cachedProject.name }));
         return;
       }
 
-      // Try as project first
+      // Try as project first (only for non-story UUIDs)
       getProject(workspaceId, id)
         .then((project) => {
           setResolvedLabels((prev) => ({ ...prev, [id]: project.name }));
         })
         .catch(() => {
-          // Not a project — try to resolve as story context
-          // (only matters for the last segment, the current page)
-          if (id !== segments[segments.length - 1]) {
-            setResolveErrors((prev) => ({ ...prev, [id]: true }));
-            return;
-          }
-
-          const cachedStory = storyStore.getById(id);
-          if (cachedStory) {
-            resolveStoryProject(cachedStory.projectId);
-          } else {
-            getStory(id)
-              .then((story) => resolveStoryProject(story.projectId))
-              .catch(() => {
-                // Not a story either
-                setResolveErrors((prev) => ({ ...prev, [id]: true }));
-              });
-          }
+          setResolveErrors((prev) => ({ ...prev, [id]: true }));
         });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
