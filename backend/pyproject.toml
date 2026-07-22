@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "storico-backend"
-version = "0.1.0"
+version = "0.3.0"
 authors = [
     {name = "Angel L. Valdés Sánchez"}
 ]
@@ -18,7 +18,7 @@ classifiers = [
 
 dependencies = [
     # Web framework
-    "fastapi>=0.115.0",
+    "fastapi[standard]>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "mangum>=0.17.0",
 
@@ -30,10 +30,6 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.0",
     "asyncpg>=0.30.0",
     "alembic>=1.13.0",
-
-    # Async processing
-    "celery[redis]>=5.4.0",
-    "redis>=5.2.0",
 
     # LLM
     "ollama>=0.3.0",

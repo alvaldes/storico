@@ -36,20 +36,6 @@ services:
       - storico-net
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    container_name: storico-redis
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - storico-net
-    restart: unless-stopped
-
   storico-ollama:
     image: ollama/ollama:latest
     container_name: storico-ollama
@@ -71,7 +57,6 @@ services:
     environment:
       STORICO_DATABASE_URL: postgresql+asyncpg://storico:storico_dev@postgres:5432/storico
       STORICO_QDRANT_URL: http://qdrant:6333
-      STORICO_REDIS_URL: redis://redis:6379
       STORICO_OLLAMA_BASE_URL: http://storico-ollama:11434
     env_file:
       - .env
@@ -79,29 +64,6 @@ services:
       postgres:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - storico-net
-    restart: unless-stopped
-
-  storico-worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: storico-worker
-    command: celery -A storico.infrastructure.tasks worker --loglevel=info
-    environment:
-      STORICO_DATABASE_URL: postgresql+asyncpg://storico:storico_dev@postgres:5432/storico
-      STORICO_QDRANT_URL: http://qdrant:6333
-      STORICO_OLLAMA_BASE_URL: http://storico-ollama:11434
-    env_file:
-      - .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     networks:
       - storico-net

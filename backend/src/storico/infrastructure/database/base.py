@@ -55,7 +55,13 @@ def get_engine(db_url: str | None = None) -> AsyncEngine:
     if _engine is None:
         url = _normalize_db_url(db_url or Settings.load().database_url)
         _engine = create_async_engine(
-            url, echo=False, pool_size=5, max_overflow=10
+            url,
+            echo=False,
+            pool_size=1,
+            max_overflow=2,
+            pool_timeout=10,
+            pool_pre_ping=True,  # verify connections before use (Neon drops idle conns)
+            connect_args={"timeout": 10},
         )
     return _engine
 

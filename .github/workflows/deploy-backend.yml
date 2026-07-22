@@ -1,0 +1,45 @@
+name: Deploy backend to Oracle VM
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH to Oracle VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            echo "=== Pull latest code ==="
+            cd /home/ubuntu/storico
+            git pull origin main
+
+            echo "=== Rebuild Docker image ==="
+            docker build -t storico-api -f backend/Dockerfile backend/
+
+            echo "=== Stop & remove old container ==="
+            docker stop storico-api 2>/dev/null || true
+            docker rm storico-api 2>/dev/null || true
+
+            echo "=== Start new container ==="
+            docker run -d \
+              --name storico-api \
+              --restart unless-stopped \
+              --network host \
+              --env-file /home/ubuntu/storico/backend/.env \
+              storico-api
+
+            echo "=== Verify health ==="
+            sleep 3
+            curl -sf http://localhost:8000/api/v1/health && echo " — OK" || echo " — FAILED"

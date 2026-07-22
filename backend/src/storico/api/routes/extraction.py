@@ -8,17 +8,14 @@ This module provides two routers:
    — workspace-scoped extraction routes.
 
 The POST endpoint is **asynchronous**: it creates a pending extraction record,
-enqueues a Celery task for the LLM call, and responds immediately with
-``202 Accepted``. The client polls
+launches a background ``asyncio.create_task`` for the LLM call, and responds
+immediately with ``202 Accepted``.  The client polls
 ``GET /api/v1/extractions/{extraction_id}`` to get the final status.
 
-The Celery worker is started separately::
-
-    celery -A storico.infrastructure.tasks worker --loglevel=info
-
-See ``todo.md`` for the full async extraction design.
+No Celery, no Redis — the background task runs in the same process.
 """
 
+import asyncio
 import logging
 from typing import Annotated
 from uuid import UUID
@@ -44,7 +41,7 @@ from storico.infrastructure.database.repositories import (
 from storico.infrastructure.database.repositories.workspace_llm_config_repository import (
     SQLAlchemyWorkspaceLLMConfigRepository,
 )
-from storico.infrastructure.tasks.extraction_task import extract_from_story_task
+from storico.infrastructure.tasks.extraction_task import run_background_extraction
 
 logger = logging.getLogger(__name__)
 
@@ -204,16 +201,19 @@ async def extract_tasks(
     pending = await extraction_repo.save(pending)
     extraction_id = pending.id
 
-    # 2. Enqueue Celery task for background extraction
-    extract_from_story_task.delay(
-        extraction_id=str(extraction_id),
-        user_story_id=str(body.user_story_id),
-        model=model,
-        temperature=body.temperature,
-        validate=body.run_validation,
-        provider=provider,
-        api_key=api_key,
-        base_url=base_url,
+    # 2. Launch background extraction in the same process
+    #    No Celery, no Redis — just asyncio.create_task
+    asyncio.create_task(
+        run_background_extraction(
+            extraction_id=extraction_id,
+            story_id=body.user_story_id,
+            model=model,
+            temperature=body.temperature,
+            validate=body.run_validation,
+            provider=provider,
+            api_key=api_key,
+            base_url=base_url,
+        )
     )
 
     # 3. Respond immediately — no tasks yet, client will poll

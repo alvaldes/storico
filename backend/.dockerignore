@@ -1,0 +1,15 @@
+.venv/
+.venv/**/*
+__pycache__/
+__pycache__/**/*
+*.pyc
+.env
+*.egg-info/
+
+# flyctl launch added from .pytest_cache/.gitignore
+.pytest_cache/**/*
+
+# flyctl launch added from .ruff_cache/.gitignore
+.ruff_cache/**/*
+
+fly.toml

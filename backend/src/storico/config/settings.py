@@ -21,9 +21,6 @@ class Settings(BaseSettings):
     # Ollama — fallback default; users configure their LLM host per workspace in DB
     ollama_host: str = "http://localhost:11434"
 
-    # Gemini
-    gemini_api_key: str = ""
-
     # Embedding
     embedding_model: str = "nomic-embed-text"
     embedding_dimensions: int = 768
@@ -37,9 +34,6 @@ class Settings(BaseSettings):
 
     # Auth — CORS origins (comma-separated)
     auth_allowed_origins: str = "http://localhost:4321"
-
-    # Celery — async task broker (Redis)
-    celery_broker_url: str = "redis://localhost:6379/0"
 
     # Auth — JWT secret for verifying proxy-generated tokens
     auth_jwt_secret: str = "dev-insecure-token-change-in-production"

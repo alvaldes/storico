@@ -128,17 +128,19 @@ def get_llm_port(provider: str = "ollama", api_key: str | None = None) -> LLMPor
 
     Returns:
         An ``LLMPort`` implementation for the requested provider.
+
+    Raises:
+        ValueError: If ``gemini`` is requested but no ``api_key`` is provided.
     """
-    from storico.config.settings import Settings  # late import to avoid circular
-
-    settings = Settings.load()
-
     if provider == "gemini":
-        key = api_key or settings.gemini_api_key
-        return GeminiAdapter(api_key=key)
+        if not api_key:
+            raise ValueError("API key is required for Gemini provider")
+        return GeminiAdapter(api_key=api_key)
 
     # Default to Ollama
-    return OllamaAdapter(base_url=settings.ollama_host)
+    from storico.config.settings import Settings  # late import
+
+    return OllamaAdapter(base_url=Settings.load().ollama_host)
 
 
 def get_prompt_manager() -> PromptManager:

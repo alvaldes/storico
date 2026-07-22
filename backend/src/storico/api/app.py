@@ -57,6 +57,15 @@ from storico.infrastructure.database.base import dispose_engine, get_engine
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """FastAPI lifespan — initializes engine on startup and disposes on shutdown."""
     get_engine()
+
+    # Recover any extractions that were left pending after a server crash
+    try:
+        from storico.infrastructure.tasks.extraction_task import recover_stuck_extractions
+
+        await recover_stuck_extractions()
+    except Exception:
+        pass  # non-blocking — the API should still start
+
     yield
     dispose_engine()
 
@@ -117,3 +126,8 @@ def create_app() -> FastAPI:
     app.include_router(export.router)  # workspace-scoped
 
     return app
+
+
+# Module-level instance for uvicorn (no --factory flag).
+# Kept separate from create_app() so tests can still call create_app() directly.
+app = create_app()

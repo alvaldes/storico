@@ -59,3 +59,11 @@ data/
 .agents/
 .mcp.json
 skills-lock.json
+
+# Oracle VM keys
+.oci-vm-key
+.oci-vm-key.pub
+
+# Stale deployment files
+railway.json
+backend/fly.toml

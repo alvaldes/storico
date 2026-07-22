@@ -1,19 +1,30 @@
-"""Celery task for background LLM extraction.
+"""Background extraction — runs as ``asyncio.create_task`` in the API process.
 
-Migrated from ``asyncio.create_task`` (inline background function in
-``extraction.py``) to a proper Celery task. The worker runs in a separate
-process and the task survives API server restarts.
+Replaces the previous Celery task with an async function that runs in the
+same event loop as the web server.  No Redis, no worker process.
 
-Run the worker::
+Call pattern (in route handler)::
 
-    celery -A storico.infrastructure.tasks worker --loglevel=info
+    asyncio.create_task(run_background_extraction(...))
+    return 202 Accepted  # client polls GET /extractions/{id}
+
+The function:
+
+- Preserves the "pending → completed/failed" flow so the client's polling
+  endpoint works without changes.
+- Retries up to ``max_retries`` times with exponential backoff on transient
+  errors (connection timeouts, 5xx).  Deterministic errors (bad story, bad
+  LLM response) are not retried.
+- On catastrophic failure (server crash mid-extraction), the extraction
+  stays ``pending``.  Call ``recover_stuck_extractions()`` at startup to
+  mark those as ``failed``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from storico.domain.entities import Extraction, Task
@@ -28,46 +39,48 @@ from storico.infrastructure.database.repositories import (
     SQLAlchemyUserStoryRepository,
 )
 from storico.infrastructure.llm import GeminiAdapter, OllamaAdapter, PromptManager, TaskParser
-from storico.infrastructure.tasks import celery_app
 from storico.infrastructure.vector import EmbeddingService, QdrantAdapter
 
 logger = logging.getLogger(__name__)
 
+# ── Public API ─────────────────────────────────────────────────────
 
-@celery_app.task(
-    bind=True,
-    max_retries=2,
-    default_retry_delay=60,
-    acks_late=True,
-    track_started=True,
-)
-def extract_from_story_task(
-    self,
-    extraction_id: str,
-    user_story_id: str,
+
+async def run_background_extraction(
+    extraction_id: UUID,
+    story_id: UUID,
     model: str,
     temperature: float | None = None,
     validate: bool = False,
     provider: str = "ollama",
     api_key: str | None = None,
     base_url: str | None = None,
-) -> dict:
-    """Celery task: run LLM extraction and persist results.
+    max_retries: int = 2,
+) -> None:
+    """Run LLM extraction in the background and persist results.
 
-    Accepts string UUIDs (Celery serialisation requirement) and converts
-    them internally.
+    Designed to be launched via ``asyncio.create_task``.  The extraction
+    record is expected to already exist with ``status="pending"`` — this
+    function updates it to ``completed`` or ``failed``.
 
-    Returns a dict with ``{"extraction_id": ..., "status": ..., "task_count": ...}``
-    on success, or raises on failure (Celery retries up to ``max_retries``).
+    Args:
+        extraction_id: ID of the pending extraction record.
+        story_id: ID of the user story to extract from.
+        model: LLM model name (e.g. ``gemini-2.0-flash``, ``llama3.2``).
+        temperature: Generation temperature (default: 0.1).
+        validate: Whether to run LLM-as-a-Judge validation.
+        provider: ``"ollama"`` or ``"gemini"``.
+        api_key: API key for the provider (Gemini).
+        base_url: Base URL for the provider (Ollama).
+        max_retries: Number of retry attempts on transient errors.
     """
-    extraction_uuid = UUID(extraction_id)
-    story_uuid = UUID(user_story_id)
+    retry_delay = 1  # seconds, doubles each attempt
 
-    try:
-        asyncio.run(
-            _run_celery_extraction(
-                extraction_id=extraction_uuid,
-                story_id=story_uuid,
+    for attempt in range(max_retries + 1):
+        try:
+            await _run_extraction(
+                extraction_id=extraction_id,
+                story_id=story_id,
                 model=model,
                 temperature=temperature,
                 validate=validate,
@@ -75,37 +88,78 @@ def extract_from_story_task(
                 api_key=api_key,
                 base_url=base_url,
             )
-        )
-    except (LLMError, ParseError) as exc:
-        logger.error("Celery extraction %s failed (will NOT retry): %s", extraction_id, exc)
-        asyncio.run(
-            _mark_extraction_failed_async(
-                extraction_id=extraction_uuid,
-                error_info=str(exc),
+            logger.info(
+                "Extraction %s completed", extraction_id,
             )
-        )
-        # Don't retry — these errors are deterministic (bad story, bad LLM response)
-        return {"extraction_id": extraction_id, "status": "failed", "error": str(exc)}
-    except Exception as exc:
-        logger.exception(
-            "Celery extraction %s failed with unexpected error (will retry)", extraction_id
-        )
-        # Mark failed in DB before retrying
-        asyncio.run(
-            _mark_extraction_failed_async(
-                extraction_id=extraction_uuid,
-                error_info=f"Unexpected error: {exc}",
+            return  # success
+
+        except (LLMError, ParseError) as exc:
+            # Deterministic errors — don't retry
+            logger.error(
+                "Extraction %s failed (will NOT retry): %s", extraction_id, exc,
             )
-        )
-        raise self.retry(exc=exc)
+            await _mark_extraction_failed(extraction_id, str(exc))
+            return
 
-    return {"extraction_id": extraction_id, "status": "completed"}
+        except Exception as exc:
+            logger.exception(
+                "Extraction %s failed with unexpected error (attempt %d/%d)",
+                extraction_id,
+                attempt + 1,
+                max_retries + 1,
+            )
+            if attempt < max_retries:
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+            else:
+                await _mark_extraction_failed(
+                    extraction_id,
+                    f"Unexpected error after {max_retries + 1} attempts: {exc}",
+                )
 
 
-# ── Async core — mirrors the original _run_background_extraction ──────
+async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
+    """Mark any ``pending`` extractions older than *max_age_minutes* as
+    ``failed``.
+
+    Call this once during application startup to clean up extractions
+    that were abandoned when the server crashed.
+    """
+    factory = create_session_factory(get_engine())
+    async with factory() as session:
+        repo = SQLAlchemyExtractionRepository(session)
+        deadline = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
+        try:
+            all_extractions = await repo.list()
+        except Exception:
+            logger.warning("Could not list extractions for recovery")
+            return
+
+        recovered = 0
+        for ext in all_extractions:
+            if ext.status == "pending" and ext.created_at and ext.created_at < deadline:
+                await repo.save(
+                    Extraction(
+                        id=ext.id,
+                        user_story_id=ext.user_story_id,
+                        model_used=ext.model_used or "",
+                        raw_response=ext.raw_response or "",
+                        status="failed",
+                        error_info="Server restarted while extraction was pending",
+                        prompt_config=ext.prompt_config,
+                        created_at=ext.created_at,
+                    )
+                )
+                recovered += 1
+
+        if recovered:
+            logger.warning("Recovered %d stuck pending extraction(s)", recovered)
 
 
-async def _run_celery_extraction(
+# ── Internal extraction logic ─────────────────────────────────────
+
+
+async def _run_extraction(
     extraction_id: UUID,
     story_id: UUID,
     model: str,
@@ -115,29 +169,30 @@ async def _run_celery_extraction(
     api_key: str | None = None,
     base_url: str | None = None,
 ) -> None:
-    """Async core of the Celery extraction task.
+    """Core extraction — loads story, calls LLM, persists results.
 
-    Creates a fresh database session and all required dependencies, then
-    runs the full extraction pipeline: load story → LLM call → parse →
-    optional judge → persist tasks → store in vector store for RAG.
+    Creates a fresh database session and all required dependencies,
+    then runs the full pipeline: load story → LLM call → parse →
+    optional judge → persist tasks → store in vector store.
     """
     from storico.config.settings import Settings  # late import to avoid circular
 
     settings = Settings.load()
 
-    # Build dependencies with a fresh session
     factory = create_session_factory(get_engine())
     async with factory() as session:
         extraction_repo = SQLAlchemyExtractionRepository(session)
         task_repo = SQLAlchemyTaskRepository(session)
         story_repo = SQLAlchemyUserStoryRepository(session)
 
-        # Create the appropriate LLM adapter based on the workspace's provider.
-        # The API key and base_url come from the workspace config (DB), not from
-        # environment variables (settings.py fallbacks are only for development).
+        # LLM adapter — API key MUST come from workspace config, not env
         if provider == "gemini":
-            key = api_key or settings.gemini_api_key
-            llm_port = GeminiAdapter(api_key=key)
+            if not api_key:
+                raise LLMError(
+                    "Gemini API key is not configured for this workspace. "
+                    "Set it in Workspace Settings before extracting."
+                )
+            llm_port = GeminiAdapter(api_key=api_key)
         else:
             url = base_url or settings.ollama_host
             llm_port = OllamaAdapter(base_url=url)
@@ -157,7 +212,7 @@ async def _run_celery_extraction(
                 vector_size=settings.embedding_dimensions,
             )
         except Exception:
-            logger.warning("Qdrant unavailable in Celery task, RAG disabled")
+            logger.warning("Qdrant unavailable, RAG disabled")
             vector_store = None
 
         extraction_service = ExtractionService(
@@ -174,87 +229,71 @@ async def _run_celery_extraction(
             ),
         )
 
-        try:
-            # 1. Load user story
-            story = await story_repo.find_by_id(story_id)
-            if story is None:
-                await _mark_failed(extraction_repo, extraction_id, "User story not found")
-                return
+        # 1. Load user story
+        story = await story_repo.find_by_id(story_id)
+        if story is None:
+            await _mark_failed(extraction_repo, extraction_id, "User story not found")
+            return
 
-            # 2. Build LLM config
-            llm_config = LLMConfig(
-                model=model,
-                temperature=temperature if temperature is not None else 0.1,
-                max_tokens=2048,
-                timeout=120,
-            )
+        # 2. Build LLM config
+        llm_config = LLMConfig(
+            model=model,
+            temperature=temperature if temperature is not None else 0.1,
+            max_tokens=2048,
+            timeout=120,
+        )
 
-            # 3. Run extraction (prompt → LLM → parse) — no persistence yet
-            parsed_tasks, raw_response = await extraction_service.extract(story, llm_config)
+        # 3. Run extraction (prompt → LLM → parse) — no persistence yet
+        parsed_tasks, raw_response = await extraction_service.extract(story, llm_config)
 
-            # 4. Optionally validate via LLM-as-a-Judge
-            confidence: float | None = None
-            if validate and extraction_service._judge_service is not None:
-                try:
-                    judge_result = await extraction_service._judge_service.validate(
-                        user_story=getattr(story, "raw_text", str(story)),
-                        tasks=[
-                            {"summary": pt.summary, "description": pt.description}
-                            for pt in parsed_tasks
-                        ],
-                        config=llm_config,
-                    )
-                    confidence = judge_result.total_score / 50.0
-                    if not judge_result.approved and confidence is not None and confidence > 0.5:
-                        confidence = 0.5
-                except LLMError:
-                    logger.warning("Judge validation failed, skipping")
-
-            # 5. Persist extraction — reuse the pending ID so the client's poll resolves
-            created_at = await _get_created_at(extraction_repo, extraction_id)
-            completed = Extraction(
-                id=extraction_id,
-                user_story_id=story_id,
-                model_used=model,
-                raw_response=raw_response,
-                status="completed",
-                confidence_score=confidence,
-                prompt_config={"validate": validate, "temperature": temperature},
-                created_at=created_at,
-            )
-            await extraction_repo.save(completed)
-
-            # 6. Persist tasks
-            for pt in parsed_tasks:
-                task = Task(
-                    user_story_id=story_id,
-                    title=pt.summary,
-                    description=pt.description,
-                    labels=list(pt.labels),
-                    dependencies=list(pt.dependencies),
+        # 4. Optionally validate via LLM-as-a-Judge
+        confidence: float | None = None
+        if validate and extraction_service._judge_service is not None:
+            try:
+                judge_result = await extraction_service._judge_service.validate(
+                    user_story=getattr(story, "raw_text", str(story)),
+                    tasks=[
+                        {"summary": pt.summary, "description": pt.description}
+                        for pt in parsed_tasks
+                    ],
+                    config=llm_config,
                 )
-                await task_repo.save(task)
+                confidence = judge_result.total_score / 50.0
+                if not judge_result.approved and confidence is not None and confidence > 0.5:
+                    confidence = 0.5
+            except LLMError:
+                logger.warning("Judge validation failed, skipping")
 
-            # 7. Store in vector store for future RAG
-            await _store_rag(vector_store, story, extraction_id, parsed_tasks)
+        # 5. Persist extraction — reuse the pending ID so the client's poll resolves
+        created_at = await _get_created_at(extraction_repo, extraction_id)
+        completed = Extraction(
+            id=extraction_id,
+            user_story_id=story_id,
+            model_used=model,
+            raw_response=raw_response,
+            status="completed",
+            confidence_score=confidence,
+            prompt_config={"validate": validate, "temperature": temperature},
+            created_at=created_at,
+        )
+        await extraction_repo.save(completed)
 
-            logger.info(
-                "Celery extraction %s completed — %d tasks generated",
-                extraction_id,
-                len(parsed_tasks),
+        # 6. Persist tasks
+        for pt in parsed_tasks:
+            task = Task(
+                user_story_id=story_id,
+                title=pt.summary,
+                description=pt.description,
+                labels=list(pt.labels),
+                dependencies=list(pt.dependencies),
             )
+            await task_repo.save(task)
 
-        except (LLMError, ParseError) as exc:
-            logger.error("Celery extraction %s failed: %s", extraction_id, exc)
-            await _mark_failed(extraction_repo, extraction_id, str(exc))
-            raise  # re-raise so the Celery task handler catches it
-        except Exception as exc:
-            logger.exception("Unexpected error in Celery extraction %s", extraction_id)
-            await _mark_failed(extraction_repo, extraction_id, f"Unexpected error: {exc}")
-            raise
+        # 7. Store in vector store for future RAG
+        await _store_rag(vector_store, story, extraction_id, parsed_tasks)
 
 
-# ── Helpers ───────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────
 
 
 async def _mark_failed(
@@ -311,19 +350,17 @@ async def _store_rag(
             user_story_id=str(getattr(story, "id", "")),
         )
     except Exception:
-        logger.warning("RAG store failed in Celery task, extraction already saved")
+        logger.warning("RAG store failed, extraction already saved")
 
 
-async def _mark_extraction_failed_async(
+async def _mark_extraction_failed(
     extraction_id: UUID,
     error_info: str,
 ) -> None:
-    """Standalone helper to mark an extraction as failed (for Celery retry path).
+    """Standalone helper to mark an extraction as failed.
 
-    Creates its own session since the original one may be closed.
+    Creates its own session since the original one may be in a broken state.
     """
-    from storico.infrastructure.database.base import create_session_factory, get_engine
-
     factory = create_session_factory(get_engine())
     async with factory() as session:
         repo = SQLAlchemyExtractionRepository(session)

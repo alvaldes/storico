@@ -1,10 +1,11 @@
-# Stage 1: Builder — install dependencies
+# Stage 1: Builder — install dependencies and build wheel
 FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir -e ".[dev]"
+COPY src/ ./src/
+RUN pip install --no-cache-dir ".[dev]"
 
 # Stage 2: Runtime
 FROM python:3.12-slim AS runtime

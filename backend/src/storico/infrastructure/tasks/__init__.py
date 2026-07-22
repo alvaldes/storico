@@ -1,35 +1,10 @@
-"""Celery application for Storico background tasks.
+"""Background task utilities for Storico.
 
-The worker is started via::
+Replaces the previous Celery-based approach with a simple
+``asyncio.create_task`` pattern.  No Redis, no worker process — just
+an async function that runs in the same event loop as the web server.
 
-    celery -A storico.infrastructure.tasks worker --loglevel=info
+Run the API server normally — background tasks are launched inline::
 
-For Aiven Redis with SSL (``rediss://``), the broker URL is configured
-in ``settings.celery_broker_url`` (env var ``STORICO_CELERY_BROKER_URL``).
+    uvicorn storico.api.app:create_app --factory
 """
-
-from celery import Celery
-
-from storico.config.settings import Settings
-
-settings = Settings.load()
-
-celery_app = Celery(
-    "storico",
-    broker=settings.celery_broker_url,
-    include=["storico.infrastructure.tasks.extraction_task"],
-)
-
-# Optional: configure Celery behaviour
-celery_app.conf.update(
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
-    timezone="UTC",
-    enable_utc=True,
-    task_track_started=True,
-    task_acks_late=True,
-    worker_prefetch_multiplier=1,
-)
-
-__all__ = ["celery_app"]

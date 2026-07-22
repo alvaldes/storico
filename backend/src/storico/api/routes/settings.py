@@ -141,12 +141,12 @@ async def test_llm_connection(
             )
 
     if body.provider == "gemini":
-        api_key = body.api_key or Settings.load().gemini_api_key
-        if not api_key:
+        if not body.api_key:
             return LLMTestResponse(
                 success=False,
-                message="Gemini API key is required. Set it in workspace settings or STORICO_GEMINI_API_KEY.",
+                message="Gemini API key is required. Set it in workspace settings.",
             )
+        api_key = body.api_key
         from storico.infrastructure.llm import GeminiAdapter
 
         adapter = GeminiAdapter(api_key=api_key)
