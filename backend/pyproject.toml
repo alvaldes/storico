@@ -65,6 +65,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+storico = ["**/*.j2"]
+
 [tool.vercel]
 entrypoint = "api.index:app"
 
