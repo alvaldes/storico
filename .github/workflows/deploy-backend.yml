@@ -23,7 +23,8 @@ jobs:
             set -e
             echo "=== Pull latest code ==="
             cd /home/ubuntu/storico
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
             echo "=== Rebuild Docker image ==="
             docker build -t storico-api -f backend/Dockerfile backend/
