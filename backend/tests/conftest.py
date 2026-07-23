@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
+import jwt as pyjwt
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -13,13 +14,24 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from storico.api.app import create_app
+from storico.domain.entities.user import User
 from storico.infrastructure.database.models import Base
+from storico.infrastructure.database.repositories import SQLAlchemyUserRepository
 from storico.infrastructure.database.session import get_session
 
 TEST_DATABASE_URL = "sqlite+aiosqlite://"
 
-# Shared secret used by auth tests — matches the default in Settings.
-AUTH_INTERNAL_TOKEN = "dev-insecure-token-change-in-production"
+
+def make_jwt_headers(user_id: str) -> dict:
+    """Generate JWT Authorization headers for a given user ID.
+
+    Mirrors the proven pattern from ``test_export.py``.
+    """
+    from storico.config.settings import Settings
+
+    secret = Settings.load().auth_jwt_secret
+    token = pyjwt.encode({"sub": user_id}, secret, algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture
@@ -82,3 +94,23 @@ async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, N
     )
     async with factory() as session:
         yield session
+
+
+@pytest_asyncio.fixture
+async def authed_user(db_session: AsyncSession) -> User:
+    """Create and return a user authenticated via JWT for testing."""
+    repo = SQLAlchemyUserRepository(db_session)
+    user = User(email="authed@test.com", name="Authed Test")
+    saved = await repo.save(user)
+    await repo.link_account(saved.id, "google", "g-authed-test")
+    return saved
+
+
+@pytest_asyncio.fixture
+async def authed_client(
+    authed_user: User, async_client: AsyncClient
+) -> AsyncClient:
+    """Return an async client pre-authenticated as ``authed_user`` via JWT."""
+    token = make_jwt_headers(str(authed_user.id))["Authorization"]
+    async_client.headers.update({"Authorization": token})
+    return async_client
