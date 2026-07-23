@@ -14,7 +14,7 @@ class TestListExtractions:
     """GET /api/v1/extractions/"""
 
     async def test_list_extractions_by_story(
-        self, async_client, db_session: AsyncSession
+        self, authed_client, db_session: AsyncSession
     ):
         """Save an extraction via the repository, then GET by user_story_id."""
         story_id = uuid4()
@@ -27,7 +27,7 @@ class TestListExtractions:
         )
         await repo.save(extraction)
 
-        response = await async_client.get(
+        response = await authed_client.get(
             f"/api/v1/extractions/?user_story_id={story_id}"
         )
         assert response.status_code == 200
@@ -38,10 +38,10 @@ class TestListExtractions:
         assert data["items"][0]["user_story_id"] == str(story_id)
         assert data["page"] == 1
 
-    async def test_list_extractions_empty(self, async_client):
+    async def test_list_extractions_empty(self, authed_client):
         """GET with a story_id that has no extractions returns empty."""
         fake_story = str(uuid4())
-        response = await async_client.get(
+        response = await authed_client.get(
             f"/api/v1/extractions/?user_story_id={fake_story}"
         )
         assert response.status_code == 200
@@ -50,7 +50,7 @@ class TestListExtractions:
         assert data["total"] == 0
 
     async def test_list_all_extractions_without_filter(
-        self, async_client, db_session: AsyncSession
+        self, authed_client, db_session: AsyncSession
     ):
         """GET without user_story_id returns all extractions."""
         repo = SQLAlchemyExtractionRepository(db_session)
@@ -63,7 +63,7 @@ class TestListExtractions:
                 )
             )
 
-        response = await async_client.get("/api/v1/extractions/")
+        response = await authed_client.get("/api/v1/extractions/")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 3
@@ -73,7 +73,7 @@ class TestGetExtraction:
     """GET /api/v1/extractions/{extraction_id}"""
 
     async def test_get_extraction(
-        self, async_client, db_session: AsyncSession
+        self, authed_client, db_session: AsyncSession
     ):
         """Save an extraction via the repository, then GET by id."""
         story_id = uuid4()
@@ -88,7 +88,7 @@ class TestGetExtraction:
         )
         saved = await repo.save(extraction)
 
-        response = await async_client.get(
+        response = await authed_client.get(
             f"/api/v1/extractions/{saved.id}"
         )
         assert response.status_code == 200
@@ -101,10 +101,10 @@ class TestGetExtraction:
         assert data["raw_response"] == "1. summary: Task A\ndescription: Desc A"
         assert "created_at" in data
 
-    async def test_get_extraction_not_found(self, async_client):
+    async def test_get_extraction_not_found(self, authed_client):
         """GET with a non-existent UUID returns 404."""
         fake_id = str(uuid4())
-        response = await async_client.get(f"/api/v1/extractions/{fake_id}")
+        response = await authed_client.get(f"/api/v1/extractions/{fake_id}")
         assert response.status_code == 404
         data = response.json()
         assert data["type"] == "entity_not_found"

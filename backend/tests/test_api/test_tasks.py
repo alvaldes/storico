@@ -6,7 +6,7 @@ from uuid import uuid4
 class TestCreateTask:
     """POST /api/v1/tasks/"""
 
-    async def test_create_task(self, async_client):
+    async def test_create_task(self, authed_client):
         """POST with valid data returns 201 and a TaskResponse body."""
         story_id = uuid4()
         payload = {
@@ -16,7 +16,7 @@ class TestCreateTask:
             "status": "backlog",
             "priority": "high",
         }
-        response = await async_client.post("/api/v1/tasks/", json=payload)
+        response = await authed_client.post("/api/v1/tasks/", json=payload)
         assert response.status_code == 201
 
         data = response.json()
@@ -31,7 +31,7 @@ class TestCreateTask:
         assert "created_at" in data
         assert "updated_at" in data
 
-    async def test_create_task_with_labels(self, async_client):
+    async def test_create_task_with_labels(self, authed_client):
         """POST with labels and dependencies returns them in the response."""
         story_id = uuid4()
         payload = {
@@ -41,7 +41,7 @@ class TestCreateTask:
             "labels": ["backend", "api"],
             "dependencies": ["US-001"],
         }
-        response = await async_client.post("/api/v1/tasks/", json=payload)
+        response = await authed_client.post("/api/v1/tasks/", json=payload)
         assert response.status_code == 201
 
         data = response.json()
@@ -52,9 +52,9 @@ class TestCreateTask:
 class TestListTasks:
     """GET /api/v1/tasks/"""
 
-    async def test_list_tasks(self, async_client):
+    async def test_list_tasks(self, authed_client):
         """POST one task, GET returns it in the items list."""
-        await async_client.post(
+        await authed_client.post(
             "/api/v1/tasks/",
             json={
                 "user_story_id": str(uuid4()),
@@ -62,7 +62,7 @@ class TestListTasks:
             },
         )
 
-        response = await async_client.get("/api/v1/tasks/")
+        response = await authed_client.get("/api/v1/tasks/")
         assert response.status_code == 200
 
         data = response.json()
@@ -70,26 +70,26 @@ class TestListTasks:
         assert len(data["items"]) == 1
         assert data["items"][0]["title"] == "Task one"
 
-    async def test_list_tasks_empty(self, async_client):
+    async def test_list_tasks_empty(self, authed_client):
         """GET with no tasks returns empty list."""
-        response = await async_client.get("/api/v1/tasks/")
+        response = await authed_client.get("/api/v1/tasks/")
         assert response.status_code == 200
         assert response.json()["items"] == []
         assert response.json()["total"] == 0
 
-    async def test_list_tasks_by_story(self, async_client):
+    async def test_list_tasks_by_story(self, authed_client):
         """GET ?user_story_id= filters tasks by user story."""
         story_a = uuid4()
         story_b = uuid4()
 
-        await async_client.post(
+        await authed_client.post(
             "/api/v1/tasks/",
             json={
                 "user_story_id": str(story_a),
                 "title": "Story A task",
             },
         )
-        await async_client.post(
+        await authed_client.post(
             "/api/v1/tasks/",
             json={
                 "user_story_id": str(story_b),
@@ -97,7 +97,7 @@ class TestListTasks:
             },
         )
 
-        response = await async_client.get(
+        response = await authed_client.get(
             f"/api/v1/tasks/?user_story_id={story_b}"
         )
         assert response.status_code == 200
@@ -109,9 +109,9 @@ class TestListTasks:
 class TestGetTask:
     """GET /api/v1/tasks/{task_id}"""
 
-    async def test_get_task(self, async_client):
+    async def test_get_task(self, authed_client):
         """POST then GET by id returns the task."""
-        create_resp = await async_client.post(
+        create_resp = await authed_client.post(
             "/api/v1/tasks/",
             json={
                 "user_story_id": str(uuid4()),
@@ -120,15 +120,15 @@ class TestGetTask:
         )
         task_id = create_resp.json()["id"]
 
-        response = await async_client.get(f"/api/v1/tasks/{task_id}")
+        response = await authed_client.get(f"/api/v1/tasks/{task_id}")
         assert response.status_code == 200
         assert response.json()["id"] == task_id
         assert response.json()["title"] == "Target task"
 
-    async def test_get_task_not_found(self, async_client):
+    async def test_get_task_not_found(self, authed_client):
         """GET with a non-existent UUID returns 404."""
         fake_id = str(uuid4())
-        response = await async_client.get(f"/api/v1/tasks/{fake_id}")
+        response = await authed_client.get(f"/api/v1/tasks/{fake_id}")
         assert response.status_code == 404
         assert response.json()["type"] == "entity_not_found"
 
@@ -136,9 +136,9 @@ class TestGetTask:
 class TestUpdateTask:
     """PUT /api/v1/tasks/{task_id}"""
 
-    async def test_update_task(self, async_client):
+    async def test_update_task(self, authed_client):
         """POST then PUT updates the task fields."""
-        create_resp = await async_client.post(
+        create_resp = await authed_client.post(
             "/api/v1/tasks/",
             json={
                 "user_story_id": str(uuid4()),
@@ -150,7 +150,7 @@ class TestUpdateTask:
         )
         task_id = create_resp.json()["id"]
 
-        response = await async_client.put(
+        response = await authed_client.put(
             f"/api/v1/tasks/{task_id}",
             json={
                 "title": "After",
@@ -168,9 +168,9 @@ class TestUpdateTask:
         assert data["priority"] == "high"
         assert data["id"] == task_id
 
-    async def test_update_task_labels(self, async_client):
+    async def test_update_task_labels(self, authed_client):
         """POST with labels, PUT with different labels, verify updated."""
-        create_resp = await async_client.post(
+        create_resp = await authed_client.post(
             "/api/v1/tasks/",
             json={
                 "user_story_id": str(uuid4()),
@@ -181,7 +181,7 @@ class TestUpdateTask:
         task_id = create_resp.json()["id"]
 
         # Update labels
-        response = await async_client.put(
+        response = await authed_client.put(
             f"/api/v1/tasks/{task_id}",
             json={"labels": ["frontend", "ui"]},
         )
@@ -192,9 +192,9 @@ class TestUpdateTask:
 class TestDeleteTask:
     """DELETE /api/v1/tasks/{task_id}"""
 
-    async def test_delete_task(self, async_client):
+    async def test_delete_task(self, authed_client):
         """POST then DELETE returns 204."""
-        create_resp = await async_client.post(
+        create_resp = await authed_client.post(
             "/api/v1/tasks/",
             json={
                 "user_story_id": str(uuid4()),
@@ -203,16 +203,16 @@ class TestDeleteTask:
         )
         task_id = create_resp.json()["id"]
 
-        response = await async_client.delete(f"/api/v1/tasks/{task_id}")
+        response = await authed_client.delete(f"/api/v1/tasks/{task_id}")
         assert response.status_code == 204
 
         # Verify it's gone
-        get_resp = await async_client.get(f"/api/v1/tasks/{task_id}")
+        get_resp = await authed_client.get(f"/api/v1/tasks/{task_id}")
         assert get_resp.status_code == 404
 
-    async def test_delete_task_not_found(self, async_client):
+    async def test_delete_task_not_found(self, authed_client):
         """DELETE on a non-existent UUID returns 404."""
         fake_id = str(uuid4())
-        response = await async_client.delete(f"/api/v1/tasks/{fake_id}")
+        response = await authed_client.delete(f"/api/v1/tasks/{fake_id}")
         assert response.status_code == 404
         assert response.json()["type"] == "entity_not_found"
