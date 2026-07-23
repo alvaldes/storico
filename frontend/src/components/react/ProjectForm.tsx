@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Field, FieldLabel, FieldDescription, FieldError } from '@/components/ui/field';
+import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from '@/components/ui/input-group';
 import { Loader2 } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { createProjectSchema } from '@/schemas';
@@ -115,28 +115,34 @@ export function ProjectForm({
                 className="flex-1"
               />
             </div>
-            <FieldDescription>A short, descriptive name for your project.</FieldDescription>
-            <div className="flex justify-between text-xs">
-              <FieldError>{nameError}</FieldError>
+            <div className="flex items-center text-xs">
+              <div className="flex-1">
+                <FieldError>{nameError}</FieldError>
+              </div>
               <span className="text-muted-foreground">{name.length}/{NAME_MAX}</span>
             </div>
+            <FieldDescription>A short, descriptive name for your project.</FieldDescription>
           </Field>
 
           <Field>
             <FieldLabel htmlFor="description">{t.projects.description_label}</FieldLabel>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => { setDescription(e.target.value); clearError('description'); }}
-              placeholder={t.projects.description_placeholder}
-              maxLength={DESC_MAX}
-              rows={3}
-            />
+            <InputGroup>
+              <InputGroupTextarea
+                id="description"
+                value={description}
+                onChange={(e) => { setDescription(e.target.value); clearError('description'); }}
+                placeholder={t.projects.description_placeholder}
+                maxLength={DESC_MAX}
+                rows={3}
+              />
+              <InputGroupAddon align="block-end">
+                <div className="flex w-full items-center">
+                  <FieldError>{descError}</FieldError>
+                  <InputGroupText className="ml-auto">{description.length}/{DESC_MAX}</InputGroupText>
+                </div>
+              </InputGroupAddon>
+            </InputGroup>
             <FieldDescription>Optional. Describe the project's purpose, goals, or any relevant context.</FieldDescription>
-            <div className="flex justify-between text-xs">
-              <FieldError>{descError}</FieldError>
-              <span className="text-muted-foreground">{description.length}/{DESC_MAX}</span>
-            </div>
           </Field>
 
           <DialogFooter>

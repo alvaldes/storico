@@ -293,8 +293,10 @@ export function StoryForm({
                     aria-invalid={!!errors.actor}
                   />
                 </InputGroup>
-                <div className="flex justify-between text-xs">
-                  <FieldError>{errors.actor}</FieldError>
+                <div className="flex items-center text-xs">
+                  <div className="flex-1">
+                    <FieldError>{errors.actor}</FieldError>
+                  </div>
                   <span className="text-muted-foreground">{actor.length}/{ACTOR_MAX}</span>
                 </div>
               </Field>
@@ -315,8 +317,10 @@ export function StoryForm({
                     aria-invalid={!!errors.feature}
                   />
                 </InputGroup>
-                <div className="flex justify-between text-xs">
-                  <FieldError>{errors.feature}</FieldError>
+                <div className="flex items-center text-xs">
+                  <div className="flex-1">
+                    <FieldError>{errors.feature}</FieldError>
+                  </div>
                   <span className="text-muted-foreground">{feature.length}/{FEATURE_MAX}</span>
                 </div>
               </Field>
@@ -337,8 +341,10 @@ export function StoryForm({
                     aria-invalid={!!errors.benefit}
                   />
                 </InputGroup>
-                <div className="flex justify-between text-xs">
-                  <FieldError>{errors.benefit}</FieldError>
+                <div className="flex items-center text-xs">
+                  <div className="flex-1">
+                    <FieldError>{errors.benefit}</FieldError>
+                  </div>
                   <span className="text-muted-foreground">{benefit.length}/{BENEFIT_MAX}</span>
                 </div>
               </Field>
@@ -378,11 +384,13 @@ export function StoryForm({
                   aria-invalid={!!errors.fullText}
                   className="min-h-[100px] resize-y"
                 />
-                <FieldDescription>{"Write a complete user story in the format: As a(n) [role], I want [feature], so that [benefit]."}</FieldDescription>
-                <div className="flex justify-between text-xs">
-                  <FieldError>{errors.fullText}</FieldError>
+                <div className="flex items-center text-xs">
+                  <div className="flex-1">
+                    <FieldError>{errors.fullText}</FieldError>
+                  </div>
                   <span className="text-muted-foreground">{fullText.length}/{RAW_TEXT_MAX}</span>
                 </div>
+                <FieldDescription>{"Write a complete user story in the format: As a(n) [role], I want [feature], so that [benefit]."}</FieldDescription>
               </Field>
 
               {/* Keyword validation — always visible */}

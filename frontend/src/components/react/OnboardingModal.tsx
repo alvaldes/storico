@@ -171,13 +171,13 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                     className="flex-1"
                   />
                 </div>
+                <p className="text-xs text-muted-foreground text-right">
+                  {name.length}/100
+                </p>
                 <FieldDescription>
                   {t.onboarding.step1_name_hint ??
                     "You can change this later in workspace settings. Max 100 characters."}
                 </FieldDescription>
-                <p className="text-xs text-muted-foreground text-right">
-                  {name.length}/100
-                </p>
               </Field>
             </div>
             <WorkspaceSetupIllustration className="h-28 w-auto mx-auto" />
