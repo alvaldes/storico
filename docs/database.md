@@ -191,7 +191,7 @@ Index: `user_story_id`
 |-----|------------|-------|
 | `0001` | Schema inicial (users, projects, stories, tasks, extractions) | 2026-07-05 |
 | `0002` | Add status + error_info to extractions | 2026-07-06 |
-| `3fefad99b84d` | Add avatar_url, CASCADE fixes | 2026-07-09 |
+| `0003` | Add avatar_url, CASCADE fixes | 2026-07-09 |
 | `0004` | Account linking (user_accounts) | 2026-07-11 |
 | `0005` | User preferences (JSONB) | 2026-07-11 |
 | `0006` | Add status to user_stories | 2026-07-13 |
