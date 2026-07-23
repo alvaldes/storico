@@ -48,19 +48,24 @@ async def _create_user(db_session: AsyncSession, email: str = "test@example.com"
 async def _create_story(db_session: AsyncSession):
     """Create a user story in the test database.
 
-    Uses repository directly to avoid API call overhead.
+    Uses repository directly to avoid API call overhead. Seeds a
+    Workspace via the shared helper so the Project round-trips through
+    the same Workspace↔ORM mapping as production code.
     """
-    from uuid import uuid4
-
     from storico.domain.entities.project import Project
     from storico.domain.entities.user_story import UserStory
     from storico.infrastructure.database.repositories import (
         SQLAlchemyProjectRepository,
     )
 
+    from tests._helpers import create_workspace
+
+    # Seed a workspace so the Project has a valid workspace_id FK.
+    ws = await create_workspace(db_session)
+
     # Create a project first
     project_repo = SQLAlchemyProjectRepository(db_session)
-    project = Project(name="Test Project", owner_id=uuid4())
+    project = Project(name="Test Project", workspace_id=ws.id)
     project = await project_repo.save(project)
 
     # Create a user story

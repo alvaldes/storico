@@ -2,17 +2,23 @@
 
 from uuid import uuid4
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests._helpers import create_workspace
+
 
 class TestCreateProject:
     """POST /api/v1/projects/"""
 
-    async def test_create_project(self, async_client):
+    async def test_create_project(
+        self, async_client, db_session: AsyncSession
+    ):
         """POST with valid data returns 201 and a ProjectResponse body."""
-        owner_id = uuid4()
+        ws = await create_workspace(db_session)
         payload = {
             "name": "My Project",
             "description": "A test project",
-            "owner_id": str(owner_id),
+            "workspace_id": str(ws.id),
         }
         response = await async_client.post("/api/v1/projects/", json=payload)
         assert response.status_code == 201
@@ -20,7 +26,7 @@ class TestCreateProject:
         data = response.json()
         assert data["name"] == "My Project"
         assert data["description"] == "A test project"
-        assert data["owner_id"] == str(owner_id)
+        assert data["workspace_id"] == str(ws.id)
         assert "id" in data
         assert "created_at" in data
         assert "updated_at" in data
@@ -29,11 +35,14 @@ class TestCreateProject:
 class TestListProjects:
     """GET /api/v1/projects/"""
 
-    async def test_list_projects(self, async_client):
+    async def test_list_projects(
+        self, async_client, db_session: AsyncSession
+    ):
         """POST one project, GET returns it in the items list."""
+        ws = await create_workspace(db_session)
         await async_client.post(
             "/api/v1/projects/",
-            json={"name": "Project A", "owner_id": str(uuid4())},
+            json={"name": "Project A", "workspace_id": str(ws.id)},
         )
 
         response = await async_client.get("/api/v1/projects/")
@@ -61,12 +70,14 @@ class TestListProjects:
 class TestGetProject:
     """GET /api/v1/projects/{project_id}"""
 
-    async def test_get_project(self, async_client):
+    async def test_get_project(
+        self, async_client, db_session: AsyncSession
+    ):
         """POST then GET by id returns the project."""
-        owner_id = uuid4()
+        ws = await create_workspace(db_session)
         create_resp = await async_client.post(
             "/api/v1/projects/",
-            json={"name": "Target", "owner_id": str(owner_id)},
+            json={"name": "Target", "workspace_id": str(ws.id)},
         )
         project_id = create_resp.json()["id"]
 
@@ -76,7 +87,7 @@ class TestGetProject:
         data = response.json()
         assert data["id"] == project_id
         assert data["name"] == "Target"
-        assert data["owner_id"] == str(owner_id)
+        assert data["workspace_id"] == str(ws.id)
 
     async def test_get_project_not_found(self, async_client):
         """GET with a non-existent UUID returns 404."""
@@ -92,11 +103,18 @@ class TestGetProject:
 class TestUpdateProject:
     """PUT /api/v1/projects/{project_id}"""
 
-    async def test_update_project(self, async_client):
+    async def test_update_project(
+        self, async_client, db_session: AsyncSession
+    ):
         """POST then PUT updates the project fields."""
+        ws = await create_workspace(db_session)
         create_resp = await async_client.post(
             "/api/v1/projects/",
-            json={"name": "Before", "description": "Old desc", "owner_id": str(uuid4())},
+            json={
+                "name": "Before",
+                "description": "Old desc",
+                "workspace_id": str(ws.id),
+            },
         )
         project_id = create_resp.json()["id"]
 
@@ -127,11 +145,14 @@ class TestUpdateProject:
 class TestDeleteProject:
     """DELETE /api/v1/projects/{project_id}"""
 
-    async def test_delete_project(self, async_client):
+    async def test_delete_project(
+        self, async_client, db_session: AsyncSession
+    ):
         """POST then DELETE returns 204."""
+        ws = await create_workspace(db_session)
         create_resp = await async_client.post(
             "/api/v1/projects/",
-            json={"name": "To Delete", "owner_id": str(uuid4())},
+            json={"name": "To Delete", "workspace_id": str(ws.id)},
         )
         project_id = create_resp.json()["id"]
 
