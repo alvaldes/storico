@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from uuid_utils.compat import uuid7
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,5 +28,5 @@ class WorkspaceLLMConfig:
     max_tokens: int | None = None
     base_url: str | None = None
     api_key: str | None = None
-    id: UUID = field(default_factory=uuid4)
+    id: UUID = field(default_factory=uuid7)
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))

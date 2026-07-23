@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from uuid_utils.compat import uuid7
 
 from storico.infrastructure.database.models.base import Base
 
@@ -16,7 +18,7 @@ class ExtractionModel(Base):
 
     __tablename__ = "extractions"
 
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
     user_story_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("user_stories.id", ondelete="CASCADE"), nullable=False
     )

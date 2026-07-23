@@ -31,6 +31,9 @@ dependencies = [
     "asyncpg>=0.30.0",
     "alembic>=1.13.0",
 
+    # Identifiers — UUIDv7 (RFC 9562) for time-ordered sequenced PK inserts
+    "uuid-utils>=0.10.0",
+
     # LLM
     "ollama>=0.3.0",
     "google-genai>=1.0.0",

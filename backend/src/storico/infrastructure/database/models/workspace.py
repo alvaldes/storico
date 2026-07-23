@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import DateTime, ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from uuid_utils.compat import uuid7
 
 from storico.infrastructure.database.models.base import Base
 
@@ -16,7 +18,7 @@ class WorkspaceModel(Base):
 
     __tablename__ = "workspaces"
 
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     icon: Mapped[str | None] = mapped_column(String(100), nullable=True, default=None)

@@ -9,7 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum, auto
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from uuid_utils.compat import uuid7
 
 
 class WorkspaceRole(StrEnum):
@@ -26,5 +28,5 @@ class WorkspaceMember:
     workspace_id: UUID
     user_id: UUID
     role: WorkspaceRole
-    id: UUID = field(default_factory=uuid4)
+    id: UUID = field(default_factory=uuid7)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
