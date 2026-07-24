@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import (
 from storico.config.settings import Settings
 
 _engine: AsyncEngine | None = None
+_factory: "async_sessionmaker[AsyncSession] | None" = None
 
 
 def _normalize_db_url(url: str) -> str:
@@ -67,10 +68,37 @@ def get_engine(db_url: str | None = None) -> AsyncEngine:
     return _engine
 
 
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Return the module-level session factory, creating it lazily if needed.
+
+    Caching the factory at module level avoids building a new
+    ``async_sessionmaker`` on every request — that allocation has small
+    but measurable cost per request in higher-concurrency deployments.
+    Binding to the singleton engine via ``get_engine`` keeps the same
+    pool semantics callers already had.
+    """
+    global _factory
+    if _factory is None:
+        _factory = async_sessionmaker(
+            bind=get_engine(),
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+    return _factory
+
+
 def create_session_factory(
     engine: AsyncEngine | None = None,
 ) -> async_sessionmaker[AsyncSession]:
-    """Create a new session factory bound to the given or default engine."""
+    """Create a NEW session factory bound to the given or default engine.
+
+    Note: callers that want the cached singleton should prefer
+    ``get_session_factory``. This function is kept for callers that need
+    a factory bound to a different engine (e.g. tests with a dedicated
+    in-memory engine, or background tasks that explicitly pass ``engine``).
+    The singleton ``get_session_factory`` returns is independent from any
+    factory returned here.
+    """
     return async_sessionmaker(
         bind=engine or get_engine(),
         class_=AsyncSession,
@@ -79,8 +107,15 @@ def create_session_factory(
 
 
 def dispose_engine() -> None:
-    """Dispose the module-level engine and reset it to None."""
-    global _engine
+    """Dispose the module-level engine and factory and reset both to None.
+
+    Resets the session-factory singleton too so the next request does
+    not bind to a disposed engine. Idempotent — safe to call when the
+    engine is already None (e.g. during teardown of a process that never
+    opened a DB connection).
+    """
+    global _engine, _factory
     if _engine is not None:
         _engine.sync_engine.dispose()
         _engine = None
+    _factory = None

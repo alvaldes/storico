@@ -6,11 +6,16 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from storico.infrastructure.database.base import create_session_factory, get_engine
+from storico.infrastructure.database.base import get_session_factory
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency — yields an async session and closes it on teardown.
+
+    Uses the module-level session-factory singleton (``get_session_factory``)
+    so the factory itself is allocated once per process instead of once per
+    request. Each call still yields its own short-lived ``AsyncSession`` from
+    the shared factory — connection pool semantics are unchanged.
 
     Usage::
 
@@ -22,7 +27,6 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         async def list_items(session: AsyncSession = Depends(get_session)):
             ...
     """
-    engine = get_engine()
-    factory = create_session_factory(engine)
+    factory = get_session_factory()
     async with factory() as session:
         yield session
