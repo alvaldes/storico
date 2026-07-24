@@ -57,10 +57,11 @@ def get_engine(db_url: str | None = None) -> AsyncEngine:
         _engine = create_async_engine(
             url,
             echo=False,
-            pool_size=1,
-            max_overflow=2,
+            pool_size=10,
+            max_overflow=20,
             pool_timeout=10,
-            pool_pre_ping=True,  # verify connections before use (Neon drops idle conns)
+            pool_pre_ping=True,  # verify connections before use (Neon drops idle conns) — see P1.1
+            pool_recycle=1800,  # 30 min — recycle connections before Supabase/Neon idle drops them
             connect_args={"timeout": 10},
         )
     return _engine
