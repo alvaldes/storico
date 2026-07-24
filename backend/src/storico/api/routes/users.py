@@ -1,5 +1,6 @@
 """User API routes."""
 
+import asyncio
 from dataclasses import replace
 from typing import Annotated
 
@@ -47,8 +48,26 @@ async def get_me(
     ws_repo: WorkspaceRepoDep,
     member_repo: MemberRepoDep,
 ) -> UserProfileResponse:
-    """Get the currently authenticated user's profile with workspace memberships."""
-    accounts = await repo.find_accounts(current_user.id)
+    """Get the currently authenticated user's profile with workspace memberships.
+
+    Runs the three downstream repository queries concurrently via
+    ``asyncio.gather`` so the total wall time is governed by the slowest
+    query rather than by their sum. ``asyncio`` schedules the coroutines
+    on the same event loop SQLAlchemy is bound to; no extra thread or
+    process is introduced.
+
+    All three queries hit the same per-request ``AsyncSession`` bound via
+    FastAPI dependencies. SQLAlchemy's async extension supports
+    concurrent submits on a single async session, but execution within
+    the DB remains serialized by the connection — for two cheap indexed
+    lookups + a small join, the win is the eliminated idle time between
+    round-trips, not parallel DB work.
+    """
+    accounts, memberships, workspaces_raw = await asyncio.gather(
+        repo.find_accounts(current_user.id),
+        member_repo.list_by_user(current_user.id),
+        ws_repo.list_by_user(current_user.id),
+    )
     first = accounts[0] if accounts else None
 
     user = UserResponse(
@@ -62,9 +81,6 @@ async def get_me(
         created_at=current_user.created_at,
     )
 
-    # Fetch workspace memberships with roles
-    memberships = await member_repo.list_by_user(current_user.id)
-    workspaces_raw = await ws_repo.list_by_user(current_user.id)
     role_map = {m.workspace_id: m.role for m in memberships}
 
     workspaces = [
