@@ -7,7 +7,11 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import EntityNotFound, Project
+from storico.domain.entities.user_story import UserStory
 from storico.infrastructure.database.repositories import SQLAlchemyProjectRepository
+from storico.infrastructure.database.repositories.user_story_repository import (
+    SQLAlchemyUserStoryRepository,
+)
 from tests._helpers import create_workspace
 
 
@@ -17,6 +21,77 @@ async def workspace_id(db_session: AsyncSession) -> UUID:
     ws = await create_workspace(db_session)
     return ws.id
 
+
+@pytest.mark.asyncio
+async def test_list_by_workspace_with_counts_folds_stories(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """list_by_workspace_with_counts returns (project, story_count) pairs.
+
+    Guards the P0.1 perf fix: one LEFT OUTER JOIN + GROUP BY round-trip
+    instead of N+1 (list_by_workspace + count_stories per project).
+    Verifies the count is 0 for projects with no stories and correct for
+    projects with several, so a future regression that drops the LEFT
+    OUTER JOIN is caught.
+    """
+    project_repo = SQLAlchemyProjectRepository(db_session)
+    story_repo = SQLAlchemyUserStoryRepository(db_session)
+
+    p_empty = Project(name="Empty", workspace_id=workspace_id)
+    p_with_two = Project(name="WithTwo", workspace_id=workspace_id)
+    await project_repo.save(p_empty)
+    await project_repo.save(p_with_two)
+
+    for _ in range(2):
+        await story_repo.save(
+            UserStory(
+                project_id=p_with_two.id,
+                actor="user",
+                feature="do thing",
+                benefit="value",
+                raw_text="As a user, I want to do a thing so that I get value.",
+            )
+        )
+
+    pairs = await project_repo.list_by_workspace_with_counts(workspace_id)
+    by_name = {pwc.project.name: pwc.story_count for pwc in pairs}
+
+    assert by_name == {"Empty": 0, "WithTwo": 2}
+
+
+@pytest.mark.asyncio
+async def test_find_by_id_with_count_returns_pair_when_found(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """find_by_id_with_count returns a ProjectWithCount (project, count)."""
+    project_repo = SQLAlchemyProjectRepository(db_session)
+    story_repo = SQLAlchemyUserStoryRepository(db_session)
+
+    project = Project(name="Solo", workspace_id=workspace_id)
+    await project_repo.save(project)
+    await story_repo.save(
+        UserStory(
+            project_id=project.id,
+            actor="user",
+            feature="feature",
+            benefit="benefit",
+            raw_text="As a user, I want a feature so that benefit.",
+        )
+    )
+
+    pwc = await project_repo.find_by_id_with_count(project.id)
+    assert pwc is not None
+    assert pwc.project.id == project.id
+    assert pwc.story_count == 1
+
+
+@pytest.mark.asyncio
+async def test_find_by_id_with_count_returns_none_when_missing(
+    db_session: AsyncSession,
+) -> None:
+    """find_by_id_with_count returns None for a non-existent project."""
+    repo = SQLAlchemyProjectRepository(db_session)
+    assert await repo.find_by_id_with_count(uuid4()) is None
 
 @pytest.mark.asyncio
 async def test_save_and_find_by_id(

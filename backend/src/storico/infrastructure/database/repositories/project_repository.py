@@ -9,7 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from storico.domain.entities import EntityNotFound, Project, RepositoryError
+from storico.domain.entities import EntityNotFound, Project, ProjectWithCount, RepositoryError
 from storico.domain.ports import ProjectRepository
 from storico.infrastructure.database.models import ProjectModel, UserStoryModel, WorkspaceModel
 
@@ -40,12 +40,63 @@ class SQLAlchemyProjectRepository(ProjectRepository):
         result = await self._session.get(ProjectModel, project_id)
         return self._to_domain(result) if result else None
 
+    async def find_by_id_with_count(
+        self, project_id: UUID
+    ) -> ProjectWithCount | None:
+        """Fetch a single project plus its user-story count in one round-trip.
+
+        Uses a LEFT OUTER JOIN + GROUP BY on ``ProjectModel.id`` so the
+        caller gets ``(project, story_count)`` without a second
+        ``count_stories`` query. Left outer join keeps projects that have
+        no user stories yet (count == 0).
+        """
+        stmt = (
+            select(ProjectModel, func.count(UserStoryModel.id).label("story_count"))
+            .outerjoin(UserStoryModel, UserStoryModel.project_id == ProjectModel.id)
+            .where(ProjectModel.id == project_id)
+            .group_by(ProjectModel.id)
+        )
+        result = await self._session.execute(stmt)
+        row = result.first()
+        if row is None:
+            return None
+        model, story_count = row
+        return ProjectWithCount(project=self._to_domain(model), story_count=story_count)
+
     async def list_by_workspace(self, workspace_id: UUID) -> list[Project]:
         stmt = select(ProjectModel).where(
             ProjectModel.workspace_id == workspace_id
         )
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
+
+    async def list_by_workspace_with_counts(
+        self, workspace_id: UUID
+    ) -> list[ProjectWithCount]:
+        """List all projects in a workspace with their story counts.
+
+        Replaces the N+1 pattern where ``list_by_workspace`` is followed
+        by a ``count_stories`` call per project. The LEFT OUTER JOIN +
+        GROUP BY folds it into a single round-trip — important against a
+        remote Supabase/Neon pool where each round-trip costs ~5-50ms of
+        network latency.
+
+        Returns items in the same order ``list_by_workspace`` would
+        (no extra ``ORDER BY`` is added).
+        """
+        stmt = (
+            select(
+                ProjectModel, func.count(UserStoryModel.id).label("story_count")
+            )
+            .outerjoin(UserStoryModel, UserStoryModel.project_id == ProjectModel.id)
+            .where(ProjectModel.workspace_id == workspace_id)
+            .group_by(ProjectModel.id)
+        )
+        result = await self._session.execute(stmt)
+        return [
+            ProjectWithCount(project=self._to_domain(model), story_count=story_count)
+            for model, story_count in result.all()
+        ]
 
     async def list(self) -> list[Project]:
         result = await self._session.execute(select(ProjectModel))

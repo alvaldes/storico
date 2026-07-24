@@ -15,7 +15,7 @@ from storico.domain.entities.exceptions import (
     RepositoryError,
 )
 from storico.domain.entities.extraction import Extraction
-from storico.domain.entities.project import Project
+from storico.domain.entities.project import Project, ProjectWithCount
 from storico.domain.entities.task import Task
 from storico.domain.entities.user import User
 from storico.domain.entities.user_account import UserAccount
@@ -45,6 +45,7 @@ __all__ = [
     "UserAccount",
     "UserPreferences",
     "Project",
+    "ProjectWithCount",
     "UserStory",
     "UserStoryStatus",
     "Task",

@@ -126,25 +126,31 @@ async def list_projects(
     ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
     repo: ProjectRepoDep = None,  # type: ignore[assignment]
 ) -> PaginatedResponse[ProjectResponse]:
-    """List all projects in the workspace. Workspace member access."""
+    """List all projects in the workspace. Workspace member access.
+
+    Uses ``list_by_workspace_with_counts`` so the per-project story count
+    is folded into a single JOIN+GROUP_BY round-trip — keeps the static
+    offset-based pagination schema intact while removing the N+1
+    ``count_stories`` loop. See domain/entities/project.py:ProjectWithCount.
+    """
     workspace, _ = ctx
-    all_projects = await repo.list_by_workspace(workspace.id)
+    all_projects = await repo.list_by_workspace_with_counts(workspace.id)
     total = len(all_projects)
     start = (params.page - 1) * params.size
     items: list[ProjectResponse] = []
-    for p in all_projects[start : start + params.size]:
-        story_count = await repo.count_stories(p.id)
+    for pwc in all_projects[start : start + params.size]:
+        project = pwc.project
         items.append(
             ProjectResponse(
-                id=p.id,
-                name=p.name,
-                description=p.description,
-                icon=p.icon,
-                workspace_id=p.workspace_id,
-                created_by=p.created_by,
-                created_at=p.created_at,
-                updated_at=p.updated_at,
-                story_count=story_count,
+                id=project.id,
+                name=project.name,
+                description=project.description,
+                icon=project.icon,
+                workspace_id=project.workspace_id,
+                created_by=project.created_by,
+                created_at=project.created_at,
+                updated_at=project.updated_at,
+                story_count=pwc.story_count,
             )
         )
     return PaginatedResponse(

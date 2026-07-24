@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from storico.domain.entities.project import Project
+from storico.domain.entities.project import Project, ProjectWithCount
 
 
 class ProjectRepository(ABC):
@@ -20,8 +20,26 @@ class ProjectRepository(ABC):
         ...
 
     @abstractmethod
+    async def find_by_id_with_count(
+        self, project_id: UUID
+    ) -> ProjectWithCount | None:
+        """Find a project and the count of its user stories in one query."""
+        ...
+
+    @abstractmethod
     async def list_by_workspace(self, workspace_id: UUID) -> list[Project]:
         """Return all projects scoped to a workspace."""
+        ...
+
+    @abstractmethod
+    async def list_by_workspace_with_counts(
+        self, workspace_id: UUID
+    ) -> list[ProjectWithCount]:
+        """Return all projects in a workspace with their story counts.
+
+        Folds the per-project story count into a single JOIN+GROUP_BY query
+        so the caller avoids one extra round-trip per project (N+1).
+        """
         ...
 
     @abstractmethod
