@@ -29,13 +29,12 @@ import {
 } from "@/components/ui/sidebar"
 import { useTranslations, type Locale } from "@/i18n/utils"
 import { useUIStore } from "@/stores/uiStore"
+import { useAuthStore } from "@/stores/authStore"
 
 export function NavUser({
-  user,
   locale,
   currentPath,
 }: {
-  user: { name: string; email: string; image?: string } | null
   locale: Locale
   currentPath: string
 }) {
@@ -43,6 +42,11 @@ export function NavUser({
   const t = useTranslations(locale)
   const { theme, toggleTheme } = useUIStore()
   const L = (path: string) => `/${locale}${path}`
+  const user = useAuthStore((s) => s.user)
+
+  const displayName = user?.name ?? ""
+  const displayEmail = user?.email ?? ""
+  const displayImage = user?.avatar_url
 
   const otherLocale = locale === "en" ? "es" : "en"
   const otherPath =
@@ -51,8 +55,8 @@ export function NavUser({
       : currentPath.replace(/^\/(en|es)/, `/${otherLocale}`) ||
         `/${otherLocale}`
 
-  const initials = user?.name
-    ? user.name
+  const initials = displayName
+    ? displayName
         .split(" ")
         .map((n) => n[0])
         .join("")
@@ -90,15 +94,15 @@ export function NavUser({
             }
           >
             <Avatar className="h-8 w-8 rounded-lg">
-              <AvatarImage src={user.image ?? ""} alt={user.name} />
+              <AvatarImage src={displayImage ?? ""} alt={displayName} />
               <AvatarFallback className="rounded-lg">
                 {initials}
               </AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">{user.name}</span>
+              <span className="truncate font-medium">{displayName}</span>
               <span className="truncate text-xs text-sidebar-foreground/60">
-                {user.email}
+                {displayEmail}
               </span>
             </div>
             <ChevronsUpDown className="ml-auto size-4" />
@@ -113,15 +117,15 @@ export function NavUser({
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                   <Avatar className="h-8 w-8 rounded-lg">
-                    <AvatarImage src={user.image ?? ""} alt={user.name} />
+                    <AvatarImage src={displayImage ?? ""} alt={displayName} />
                     <AvatarFallback className="rounded-lg">
                       {initials}
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">{user.name}</span>
+                    <span className="truncate font-medium">{displayName}</span>
                     <span className="truncate text-xs text-muted-foreground">
-                      {user.email}
+                      {displayEmail}
                     </span>
                   </div>
                 </div>

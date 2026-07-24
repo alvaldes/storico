@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { OnboardingModal } from '@/components/react/OnboardingModal';
 import { useAuthStore } from '@/stores/authStore';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
 
 // Mock the completeOnboarding API call
 vi.mock('@/lib/user-api', () => ({
@@ -16,7 +17,18 @@ describe('OnboardingModal', () => {
       user: { id: '1', email: 'test@test.com', name: 'Test' },
       loading: false,
       isFirstLogin: true,
-      workspaceName: 'Auto Workspace',
+    });
+
+    // The modal now seeds its step-1 input from workspaceStore.currentWorkspace.name
+    useWorkspaceStore.setState({
+      currentWorkspace: {
+        id: 'ws-1',
+        name: 'Auto Workspace',
+        slug: 'auto-workspace',
+        role: 'owner',
+        createdAt: '2026-01-01T00:00:00Z',
+      } as any,
+      workspaces: [],
     });
   });
 

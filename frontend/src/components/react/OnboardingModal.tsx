@@ -22,6 +22,7 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { useAuthStore } from "@/stores/authStore"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useUIStore } from "@/stores/uiStore"
 import { ProviderIcon } from "@/components/ui/provider-icon";
 import { IconPicker, IconTrigger } from "@/components/ui/icon-picker";
@@ -35,15 +36,19 @@ interface OnboardingModalProps {
 export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
   const t = useTranslations(locale);
 
-  const { workspaceName, setOnboardingDone, setWorkspaceName } = useAuthStore();
+  const { setOnboardingDone } = useAuthStore();
+  const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
+  const currentWorkspaceName = useWorkspaceStore(
+    (s) => s.currentWorkspace?.name ?? "",
+  );
   const [step, setStep] = useState(1);
-  const [name, setName] = useState(workspaceName || "");
+  const [name, setName] = useState(currentWorkspaceName ?? "");
   const [workspaceIcon, setWorkspaceIcon] = useState("building-2");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [provider, setProvider] = useState("ollama");
   const [open, setOpen] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const originalName = useRef(workspaceName || "");
+  const originalName = useRef(currentWorkspaceName ?? "");
 
   const { theme: rawTheme } = useUIStore();
   const resolvedTheme: "light" | "dark" =
@@ -114,7 +119,8 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
         hasIcon ? workspaceIcon : undefined,
       );
       if (shouldRename) {
-        setWorkspaceName(name.trim());
+        // Refresh workspaceStore so TeamSwitcher shows the new name + icon in place.
+        fetchWorkspaces();
       }
     } catch {
       // Silently fail — the user can still continue

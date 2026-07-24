@@ -19,7 +19,6 @@ describe('Dashboard', () => {
       user: { id: '1', email: 'test@test.com', name: 'Test' },
       loading: false,
       isFirstLogin: false,
-      workspaceName: 'Test Workspace',
     });
 
     // Mock store actions to avoid real API calls

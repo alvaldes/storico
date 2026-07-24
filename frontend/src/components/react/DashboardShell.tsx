@@ -31,19 +31,9 @@ export function DashboardShell({
   sidebarDefaultOpen = true,
   children,
 }: DashboardShellProps) {
-  const user = userJson ? (JSON.parse(userJson) as Record<string, unknown>) : null
-  const parsedUser = user
-    ? {
-        name: (user.name as string) ?? "",
-        email: (user.email as string) ?? "",
-        image: (user.image as string) ?? undefined,
-      }
-    : null
-
   // Populate auth store from serialised session (used by SettingsPage, etc.)
   const setUser = useAuthStore((s) => s.setUser)
   const setIsFirstLogin = useAuthStore((s) => s.setIsFirstLogin)
-  const setWorkspaceName = useAuthStore((s) => s.setWorkspaceName)
   React.useEffect(() => {
     if (userJson) {
       try {
@@ -58,11 +48,14 @@ export function DashboardShell({
         setUser(baseUser)
         fetchFullUserProfile()
           .then((profile) => {
-            setUser({ ...baseUser, authProvider: profile.user.authProvider })
+            setUser({
+              id: profile.user.id,
+              email: profile.user.email,
+              name: profile.user.name,
+              avatar_url: profile.user.avatarUrl,
+              authProvider: profile.user.authProvider,
+            })
             setIsFirstLogin(profile.user.isFirstLogin)
-            if (profile.workspaces.length > 0) {
-              setWorkspaceName(profile.workspaces[0].name)
-            }
           })
           .catch(() => {})
       } catch {
@@ -71,7 +64,7 @@ export function DashboardShell({
     } else {
       setUser(null)
     }
-  }, [userJson, setUser, setIsFirstLogin, setWorkspaceName])
+  }, [userJson, setUser, setIsFirstLogin])
 
   return (
     <SidebarProvider
@@ -81,7 +74,6 @@ export function DashboardShell({
       <AppSidebar
         locale={locale}
         currentPath={currentPath}
-        user={parsedUser}
       />
       <SidebarInset className="max-h-dvh min-w-0">
         <DashboardHeader

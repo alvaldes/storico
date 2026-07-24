@@ -8,7 +8,6 @@ describe('authStore', () => {
       user: null,
       loading: true,
       isFirstLogin: false,
-      workspaceName: '',
     });
   });
 
@@ -42,7 +41,6 @@ describe('authStore', () => {
         user: { id: '1', email: 'test@test.com', name: 'Test' },
         loading: false,
         isFirstLogin: true,
-        workspaceName: 'My Workspace',
       });
 
       // Act
@@ -53,7 +51,6 @@ describe('authStore', () => {
       expect(state.isFirstLogin).toBe(false);
       expect(state.user).toEqual({ id: '1', email: 'test@test.com', name: 'Test' });
       expect(state.loading).toBe(false);
-      expect(state.workspaceName).toBe('My Workspace');
     });
   });
 });

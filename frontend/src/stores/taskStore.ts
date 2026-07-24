@@ -30,7 +30,7 @@ interface TaskState {
   /** Start an asynchronous extraction and begin polling for completion. */
   extractTasks: (storyId: string, workspaceId: string) => Promise<void>;
   /** Poll extraction status until completion or failure. */
-  pollExtraction: (storyId: string, extractionId: string) => Promise<void>;
+  pollExtraction: (storyId: string, workspaceId: string, extractionId: string) => Promise<void>;
   fetchTasksForWorkspace: (workspaceId: string) => Promise<void>;
   setTasks: (storyId: string, tasks: Task[]) => void;
   /**
@@ -115,7 +115,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       }));
 
       // Start polling in the background
-      get().pollExtraction(storyId, result.extractionId);
+      get().pollExtraction(storyId, workspaceId, result.extractionId);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Extraction failed to start';
       const errorCode = categorizeExtractionError(err);
@@ -128,13 +128,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
   },
 
-  pollExtraction: async (storyId: string, extractionId: string) => {
+  pollExtraction: async (storyId: string, workspaceId: string, extractionId: string) => {
     try {
       const status = await api.getExtractionStatus(extractionId);
 
       if (status.status === 'completed') {
         // Fetch the tasks
         await get().fetchTasks(storyId);
+        // Refresh the workspace-wide cache so KanbanBoard / ExportPanel reflect newly-created tasks.
+        if (workspaceId) {
+          try { await get().fetchTasksForWorkspace(workspaceId); } catch { /* workspaceTasks is best-effort; per-story fetch already succeeded */ }
+        }
         set((state) => ({
           extractions: {
             ...state.extractions,
@@ -159,7 +163,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           // Check that the extraction hasn't been reset in the meantime
           const current = get().extractions[storyId];
           if (current && current.extractionId === extractionId && current.status === 'pending') {
-            get().pollExtraction(storyId, extractionId);
+            get().pollExtraction(storyId, workspaceId, extractionId);
           }
         }, 2000);
       }

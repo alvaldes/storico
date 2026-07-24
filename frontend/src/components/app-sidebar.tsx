@@ -28,7 +28,6 @@ import {
 export interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   locale: Locale
   currentPath: string
-  user: { name: string; email: string; image?: string } | null
 }
 
 function stripLocale(path: string): string {
@@ -38,7 +37,6 @@ function stripLocale(path: string): string {
 export function AppSidebar({
   locale,
   currentPath,
-  user,
   ...props
 }: AppSidebarProps) {
   const t = useTranslations(locale)
@@ -152,7 +150,6 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarFooter>
         <NavUser
-          user={user}
           locale={locale}
           currentPath={currentPath}
         />
