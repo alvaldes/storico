@@ -1,5 +1,6 @@
 """Storico FastAPI application factory."""
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -52,19 +53,24 @@ from storico.domain.entities import (
 )
 from storico.infrastructure.database.base import dispose_engine, get_engine
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """FastAPI lifespan — initializes engine on startup and disposes on shutdown."""
     get_engine()
 
-    # Recover any extractions that were left pending after a server crash
+    # Recover any extractions that were left pending after a server crash.
+    # Non-blocking by design — the API must still start even if recovery
+    # fails — but failures must be visible in the logs so the operator can
+    # investigate stuck extractions instead of debugging a silent skip.
     try:
         from storico.infrastructure.tasks.extraction_task import recover_stuck_extractions
 
         await recover_stuck_extractions()
     except Exception:
-        pass  # non-blocking — the API should still start
+        logger.exception("recover_stuck_extractions failed")
 
     yield
     dispose_engine()
