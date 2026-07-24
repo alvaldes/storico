@@ -1,5 +1,6 @@
 """Application configuration via pydantic-settings."""
 
+from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,5 +48,39 @@ class Settings(BaseSettings):
 
     @classmethod
     def load(cls) -> "Settings":
-        """Convenience factory — loads settings from env / .env file."""
-        return cls()
+        """Convenience factory — loads settings from env / .env file.
+
+        Cached via the module-level ``get_settings`` lru_cache so repeated
+        calls during a request lifecycle do not re-parse the ``.env`` file
+        and re-instantiate pydantic-settings on every cold path (e.g. the
+        ``get_current_user`` JWT decode path was hitting this per request).
+        Kept as the legacy entrypoint for existing call sites and tests.
+        """
+        return get_settings()
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Return the process-lifetime cached ``Settings`` instance.
+
+    Wrapping ``Settings()`` in ``lru_cache(maxsize=1)`` lets us skip the
+    cost of re-reading ``.env`` and re-validating via pydantic-settings on
+    every call — the previous ``Settings.load()`` did that on each
+    invocation, which surfaced in hot paths such as auth/JWT (one per
+    request) and engine setup.
+
+    The cache is process-local and not shared across worker processes.
+    Tests that need a fresh settings instance should call
+    ``_reset_settings_cache()`` to clear the lru_cache.
+    """
+    return Settings()
+
+
+def _reset_settings_cache() -> None:
+    """Clear the ``get_settings`` lru_cache — for tests only.
+
+    Production code should never call this; settings are immutable for
+    the process lifetime. Tests use it to avoid cross-test pollution when
+    they patch env vars or override ``Settings`` values.
+    """
+    get_settings.cache_clear()

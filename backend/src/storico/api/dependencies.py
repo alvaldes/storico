@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException, Path, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.application.extraction import ExtractFromStoryUseCase
+from storico.config.settings import get_settings
 from storico.domain.entities import User
 from storico.domain.entities.workspace import Workspace
 from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
@@ -75,9 +76,7 @@ async def get_current_user(
     Extracts and verifies a JWT from the ``Authorization: Bearer <token>``
     header, then looks up the user identified by the ``sub`` claim.
     """
-    from storico.config.settings import Settings  # late import to avoid circular
-
-    settings = Settings.load()
+    settings = get_settings()
 
     # Extract Bearer token
     auth_header = request.headers.get("Authorization")
@@ -138,9 +137,7 @@ def get_llm_port(provider: str = "ollama", api_key: str | None = None) -> LLMPor
         return GeminiAdapter(api_key=api_key)
 
     # Default to Ollama
-    from storico.config.settings import Settings  # late import
-
-    return OllamaAdapter(base_url=Settings.load().ollama_host)
+    return OllamaAdapter(base_url=get_settings().ollama_host)
 
 
 def get_prompt_manager() -> PromptManager:
@@ -155,9 +152,7 @@ def get_task_parser() -> TaskParser:
 
 def get_embedding_service() -> EmbeddingService:
     """Factory for the embedding service (Ollama-based)."""
-    from storico.config.settings import Settings  # late import to avoid circular
-
-    settings = Settings.load()
+    settings = get_settings()
     return EmbeddingService(
         base_url=settings.ollama_host,
         model=settings.embedding_model,
@@ -171,10 +166,8 @@ def get_vector_store(
 
     Returns None if Qdrant is not configured (graceful degradation).
     """
-    from storico.config.settings import Settings  # late import to avoid circular
-
     try:
-        settings = Settings.load()
+        settings = get_settings()
         return QdrantAdapter(
             embedding_service=embedding_service,
             qdrant_url=settings.qdrant_url,
@@ -194,13 +187,12 @@ def get_extract_use_case(
     vector_store: VectorStorePort | None = Depends(get_vector_store),
 ) -> ExtractFromStoryUseCase:
     """Factory for ``ExtractFromStoryUseCase`` with all dependencies wired."""
-    from storico.config.settings import Settings  # late import to avoid circular
 
     extraction_repo = SQLAlchemyExtractionRepository(session)
     task_repo = SQLAlchemyTaskRepository(session)
     story_repo = SQLAlchemyUserStoryRepository(session)
 
-    settings = Settings.load()
+    settings = get_settings()
     rag_config = RAGConfig(
         max_examples=settings.rag_max_examples,
         similarity_threshold=settings.rag_similarity_threshold,
