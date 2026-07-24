@@ -32,6 +32,7 @@ from storico.infrastructure.database.repositories.workspace_repository import (
     SQLAlchemyWorkspaceRepository,
 )
 from storico.infrastructure.database.session import get_session
+from storico.infrastructure.cache.user_cache import get_cached_user, set_cached_user
 from storico.infrastructure.llm import GeminiAdapter, OllamaAdapter, PromptManager, TaskParser
 from storico.infrastructure.vector import EmbeddingService, QdrantAdapter
 
@@ -100,14 +101,23 @@ async def get_current_user(
             detail="Invalid or missing authentication token",
         )
 
-    # Look up user
-    try:
-        user = await repo.find_by_id(UUID(user_id))
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing authentication token",
-        )
+    # Look up user — check in-process cache first (TTL 30s) to skip the
+    # DB round-trip on repeated requests from the same user. The cache is
+    # process-local and per-user_id; correctness always falls back to the
+    # repository lookup on miss/expiry. Endpoints that mutate the user
+    # (PATCH /users/me/onboarding) call invalidate_user() so subsequent
+    # calls re-read from the DB.
+    user = get_cached_user(user_id)
+    if user is None:
+        try:
+            user = await repo.find_by_id(UUID(user_id))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing authentication token",
+            )
+        if user is not None:
+            set_cached_user(user_id, user)
 
     if user is None:
         raise HTTPException(

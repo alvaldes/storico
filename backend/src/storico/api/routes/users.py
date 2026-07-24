@@ -14,6 +14,7 @@ from storico.api.schemas.user import (
 )
 from storico.application.workspaces.rename_workspace import RenameWorkspaceUseCase
 from storico.domain.entities import User
+from storico.infrastructure.cache.user_cache import invalidate_user
 from storico.infrastructure.database.repositories import SQLAlchemyUserRepository
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
@@ -102,6 +103,10 @@ async def complete_onboarding(
     """
     updated = replace(current_user, is_first_login=False)
     await repo.save(updated)
+    # Invalidate the per-user auth cache so the next ``get_current_user``
+    # re-reads the updated ``is_first_login`` from the DB instead of
+    # returning the stale cached user (30s TTL otherwise).
+    invalidate_user(current_user.id)
 
     if payload.workspace_name or payload.workspace_icon:
         # When only the icon is provided, keep the current workspace name.

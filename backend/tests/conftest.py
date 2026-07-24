@@ -15,11 +15,25 @@ from sqlalchemy.ext.asyncio import (
 
 from storico.api.app import create_app
 from storico.domain.entities.user import User
+from storico.infrastructure.cache.user_cache import _reset_user_cache
 from storico.infrastructure.database.models import Base
 from storico.infrastructure.database.repositories import SQLAlchemyUserRepository
 from storico.infrastructure.database.session import get_session
 
 TEST_DATABASE_URL = "sqlite+aiosqlite://"
+
+
+@pytest.fixture(autouse=True)
+def _reset_cached_user() -> None:
+    """Wipe the in-process authenticated-user cache before each test.
+
+    The ``get_current_user`` dependency caches the authenticated user for
+    30s to skip the ``find_by_id`` round-trip on repeated requests. Many
+    tests authenticate as the same ``authed_user`` via the JWT fixture; a
+    cached entry from test N must not satisfy test N+1 (which may have
+    mutated or deleted the user). Per-test reset keeps suites isolated.
+    """
+    _reset_user_cache()
 
 
 def make_jwt_headers(user_id: str) -> dict:
