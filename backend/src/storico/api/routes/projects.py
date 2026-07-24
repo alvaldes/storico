@@ -78,17 +78,22 @@ async def _verify_project_belongs_to_workspace(
     project_id: UUID,
     workspace_id: UUID,
     repo: SQLAlchemyProjectRepository,
-) -> Project:
-    """Find a project and verify it belongs to the given workspace.
+) -> tuple[Project, int]:
+    """Find a project + its story count and verify workspace membership.
+
+    Uses ``find_by_id_with_count`` so a single JOIN+GROUP_BY round-trip
+    returns both the project and its story count, eliminating the extra
+    ``count_stories`` query ``get_project`` and ``update_project`` used
+    to fire after ``find_by_id``.
 
     Raises ``EntityNotFound`` (404) if the project does not exist or
-    does not belong to the workspace.
+    does not belong to the workspace. Returns ``(project, story_count)``
+    on success so callers do not need another query.
     """
-    project = await repo.find_by_id(project_id)
-    if project is None or project.workspace_id != workspace_id:
+    pair = await repo.find_by_id_with_count(project_id)
+    if pair is None or pair.project.workspace_id != workspace_id:
         raise EntityNotFound("Project", str(project_id))
-    return project
-
+    return pair.project, pair.story_count
 
 @projects_router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_project(
@@ -167,12 +172,17 @@ async def get_project(
     ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
     repo: ProjectRepoDep = None,  # type: ignore[assignment]
 ) -> ProjectResponse:
-    """Get a project by its ID. Workspace member access."""
+    """Get a project by its ID. Workspace member access.
+
+    Uses ``find_by_id_with_count`` (LEFT OUTER JOIN + GROUP BY) so the
+    project and its story count come from a single round-trip, replacing
+    the previous find_by_id + count_stories pattern (2 round-trips).
+    The JSON schema of the response is unchanged.
+    """
     workspace, _ = ctx
-    project = await _verify_project_belongs_to_workspace(
+    project, story_count = await _verify_project_belongs_to_workspace(
         project_id, workspace.id, repo
     )
-    story_count = await repo.count_stories(project_id)
     return ProjectResponse(
         id=project.id,
         name=project.name,
@@ -193,9 +203,17 @@ async def update_project(
     ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
     repo: ProjectRepoDep = None,  # type: ignore[assignment]
 ) -> ProjectResponse:
-    """Update an existing project. Workspace member access."""
+    """Update an existing project. Workspace member access.
+
+    ``save`` does not return the story count, so after persisting the
+    update we re-fetch via ``find_by_id_with_count`` (one round-trip).
+    Together with the membership check up front, this replaces the old
+    find_by_id + save + count_stories pattern (3 round-trips) with
+    membership_check(save already persists) + find_with_count = 2.
+    Response schema is unchanged.
+    """
     workspace, _ = ctx
-    existing = await _verify_project_belongs_to_workspace(
+    existing, _ = await _verify_project_belongs_to_workspace(
         project_id, workspace.id, repo
     )
 
@@ -209,7 +227,8 @@ async def update_project(
 
     updated = replace(existing, **kwargs)
     result = await repo.save(updated)
-    story_count = await repo.count_stories(project_id)
+    pair = await repo.find_by_id_with_count(result.id)
+    story_count = pair.story_count if pair is not None else 0
     return ProjectResponse(
         id=result.id,
         name=result.name,
@@ -232,7 +251,11 @@ async def delete_project(
     ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
     repo: ProjectRepoDep = None,  # type: ignore[assignment]
 ) -> None:
-    """Delete a project by its ID. Workspace member access."""
+    """Delete a project by its ID. Workspace member access.
+
+    Does not need the story count, so the membership-only path is used
+    (the helper still returns the count, which we discard here).
+    """
     workspace, _ = ctx
     await _verify_project_belongs_to_workspace(project_id, workspace.id, repo)
     await repo.delete(project_id)
