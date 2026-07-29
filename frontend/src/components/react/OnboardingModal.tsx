@@ -27,6 +27,7 @@ import { useUIStore } from "@/stores/uiStore"
 import { ProviderIcon } from "@/components/ui/provider-icon";
 import { IconPicker, IconTrigger } from "@/components/ui/icon-picker";
 import { completeOnboarding } from "@/lib/user-api";
+import { upsertLLMConfig } from "@/lib/llm-config-api";
 import { useTranslations, type Locale } from "@/i18n/utils";
 
 interface OnboardingModalProps {
@@ -38,6 +39,9 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
 
   const { setOnboardingDone } = useAuthStore();
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
+  const currentWorkspaceId = useWorkspaceStore(
+    (s) => s.currentWorkspace?.id,
+  );
   const currentWorkspaceName = useWorkspaceStore(
     (s) => s.currentWorkspace?.name ?? "",
   );
@@ -121,6 +125,16 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
       if (shouldRename) {
         // Refresh workspaceStore so TeamSwitcher shows the new name + icon in place.
         fetchWorkspaces();
+      }
+
+      // Persist the LLM provider chosen during onboarding so the settings
+      // page reflects it immediately instead of showing default / stale data.
+      const wsId = currentWorkspaceId ?? useWorkspaceStore.getState().currentWorkspace?.id;
+      if (wsId) {
+        upsertLLMConfig(wsId, { provider }).catch(() => {
+          // Silently fail — the user already has onboarding done and defaults
+          // are reasonable; they can adjust provider in workspace settings.
+        });
       }
     } catch {
       // Silently fail — the user can still continue
