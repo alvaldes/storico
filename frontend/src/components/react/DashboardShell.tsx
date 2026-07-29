@@ -9,6 +9,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { type Locale } from "@/i18n/utils"
 import { useAuthStore, type AuthUser } from "@/stores/authStore"
 import { fetchFullUserProfile } from "@/lib/user-api"
+import { OnboardingModal } from "@/components/react/OnboardingModal"
 
 interface DashboardShellProps {
   locale: Locale
@@ -66,11 +67,14 @@ export function DashboardShell({
     }
   }, [userJson, setUser, setIsFirstLogin])
 
+  const isFirstLogin = useAuthStore((s) => s.isFirstLogin);
+
   return (
     <SidebarProvider
       defaultOpen={sidebarDefaultOpen}
       className="max-h-svh"
     >
+      {isFirstLogin && <OnboardingModal locale={locale} />}
       <AppSidebar
         locale={locale}
         currentPath={currentPath}
