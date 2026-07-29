@@ -1,6 +1,5 @@
 """User API routes."""
 
-import asyncio
 from dataclasses import replace
 from typing import Annotated
 
@@ -50,24 +49,21 @@ async def get_me(
 ) -> UserProfileResponse:
     """Get the currently authenticated user's profile with workspace memberships.
 
-    Runs the three downstream repository queries concurrently via
-    ``asyncio.gather`` so the total wall time is governed by the slowest
-    query rather than by their sum. ``asyncio`` schedules the coroutines
-    on the same event loop SQLAlchemy is bound to; no extra thread or
-    process is introduced.
+    Runs the three downstream repository queries **sequentially**. Previous
+    versions used ``asyncio.gather`` for concurrency, but SQLAlchemy async
+    sessions provisioning connections with ``pool_pre_ping`` race when the
+    three queries fire simultaneously on separate sessions, causing:
+    ``InvalidRequestError: concurrent operations are not permitted``
+    (https://sqlalche.me/e/20/isce).
 
-    All three queries hit the same per-request ``AsyncSession`` bound via
-    FastAPI dependencies. SQLAlchemy's async extension supports
-    concurrent submits on a single async session, but execution within
-    the DB remains serialized by the connection — for two cheap indexed
-    lookups + a small join, the win is the eliminated idle time between
-    round-trips, not parallel DB work.
+    Each query pays a ~700ms round-trip to the remote Supabase pooler, so
+    the total wall time is roughly 3 × RTT regardless of concurrency.
+    Future work: use a single session for all three queries, or cache the
+    response (the user profile changes infrequently).
     """
-    accounts, memberships, workspaces_raw = await asyncio.gather(
-        repo.find_accounts(current_user.id),
-        member_repo.list_by_user(current_user.id),
-        ws_repo.list_by_user(current_user.id),
-    )
+    accounts = await repo.find_accounts(current_user.id)
+    memberships = await member_repo.list_by_user(current_user.id)
+    workspaces_raw = await ws_repo.list_by_user(current_user.id)
     first = accounts[0] if accounts else None
 
     user = UserResponse(

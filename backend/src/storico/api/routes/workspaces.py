@@ -125,19 +125,13 @@ async def create_workspace(
 async def list_workspaces(
     current_user: User = Depends(get_current_user),
     ws_repo: WsRepoDep = None,  # type: ignore[assignment]
-    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
 ) -> WorkspaceListResponse:
     """List all workspaces the authenticated user is a member of."""
-    members = await member_repo.list_by_user(current_user.id)
-    workspaces: list[WorkspaceResponse] = []
-    for member in members:
-        workspace = await ws_repo.find_by_id(member.workspace_id)
-        if workspace is None:
-            continue
-        member_count = await ws_repo.count_members(workspace.id)
-        workspaces.append(
-            _workspace_to_response(workspace, member.role.value, member_count)
-        )
+    results = await ws_repo.list_by_user_with_counts(current_user.id)
+    workspaces = [
+        _workspace_to_response(r.workspace, r.role, r.member_count)
+        for r in results
+    ]
     return WorkspaceListResponse(workspaces=workspaces)
 
 
@@ -208,8 +202,19 @@ async def list_members(
     """List all members of a workspace. Admin only."""
     workspace, _ = ctx
     members = await member_repo.list_by_workspace(workspace.id)
+    user_ids = [m.user_id for m in members]
+    users = await user_repo.find_by_ids(user_ids)
+    user_map = {u.id: u for u in users}
     enriched = [
-        await _enrich_member(member, user_repo) for member in members
+        MemberResponse(
+            user_id=m.user_id,
+            name=user_map[m.user_id].name if m.user_id in user_map else "Unknown",
+            email=user_map[m.user_id].email if m.user_id in user_map else "unknown@unknown.com",
+            avatar_url=user_map[m.user_id].avatar_url if m.user_id in user_map else None,
+            role=m.role.value,
+            created_at=m.created_at,
+        )
+        for m in members
     ]
     return MemberListResponse(members=enriched)
 

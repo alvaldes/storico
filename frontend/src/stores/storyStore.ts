@@ -2,6 +2,14 @@ import { create } from 'zustand';
 import type { UserStory } from '@/types/story';
 import type { CreateStoryParams, UpdateStoryParams } from '@/schemas';
 import * as api from '@/lib/stories-api';
+import { createInflightTracker } from '@/stores/_inflight';
+
+// Dedupe of inflight fetchStories calls. StoriesList and Dashboard can call
+// fetchStories(projectId) at the same time when mounting concurrently. Key is
+// derived from projectId (or 'all'); distinct projectIds go through distinct
+// slots — that is correct, they are different queries. Slot is freed on settle
+// so changing the filter and coming back still triggers a fresh fetch.
+const storiesInflight = createInflightTracker<string>();
 
 interface StoryState {
   stories: UserStory[];
@@ -32,7 +40,10 @@ export const useStoryStore = create<StoryState>((set, get) => ({
   fetchStories: async (projectId?: string, workspaceId?: string) => {
     set({ loading: true, stories: [], error: null });
     try {
-      const response = await api.listStories(projectId, 1, 100, workspaceId);
+      const inflightKey = `stories:${projectId ?? 'all'}`;
+      const response = await storiesInflight.run(inflightKey, () =>
+        api.listStories(projectId, 1, 100, workspaceId),
+      );
       set({ stories: response.items, loading: false });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch stories';

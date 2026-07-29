@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from storico.domain.entities.workspace import Workspace
+from storico.domain.entities.workspace import Workspace, WorkspaceWithRoleAndCount
 
 
 class WorkspaceRepository(ABC):
@@ -24,6 +24,16 @@ class WorkspaceRepository(ABC):
     @abstractmethod
     async def list_by_user(self, user_id: UUID) -> list[Workspace]:
         """Return all workspaces a user belongs to."""
+        ...
+
+    @abstractmethod
+    async def list_by_user_with_counts(self, user_id: UUID) -> list[WorkspaceWithRoleAndCount]:
+        """Return all workspaces a user belongs to, with their role and total
+        member count per workspace.
+
+        Replaces ``list_by_user`` + per-workspace ``find_by_id`` +
+        ``count_members`` with a single JOIN + GROUP BY query.
+        """
         ...
 
     @abstractmethod

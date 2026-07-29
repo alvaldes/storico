@@ -21,7 +21,7 @@ from storico.domain.entities.user import User
 from storico.domain.entities.user_account import UserAccount
 from storico.domain.entities.user_preferences import UserPreferences
 from storico.domain.entities.user_story import UserStory, UserStoryStatus
-from storico.domain.entities.workspace import Workspace
+from storico.domain.entities.workspace import Workspace, WorkspaceWithRoleAndCount
 from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
 from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
 from storico.domain.entities.workspace_prompt import WorkspacePrompt
@@ -51,6 +51,7 @@ __all__ = [
     "Task",
     "Extraction",
     "Workspace",
+    "WorkspaceWithRoleAndCount",
     "WorkspaceMember",
     "WorkspaceRole",
     "WorkspaceLLMConfig",

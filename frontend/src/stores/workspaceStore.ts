@@ -4,6 +4,14 @@ import type { Workspace } from '@/types/workspace';
 import type { CreateWorkspaceParams, UpdateWorkspaceParams } from '@/schemas';
 import * as api from '@/lib/workspace-api';
 import { useProjectStore } from '@/stores/projectStore';
+import { createInflightTracker } from '@/stores/_inflight';
+
+// Dedupe of inflight fetchWorkspaces calls. Astro View Transitions may remount
+// the sidebar while a prior fetch is still inflight; without this, two
+// /workspaces requests fire in parallel. Slot is freed on settle so explicit
+// refresh (OnboardingModal after rename, MemberManagement after member changes)
+// still issues a fresh request.
+const workspacesInflight = createInflightTracker<string>();
 
 interface WorkspaceState {
   workspaces: Workspace[];
@@ -38,7 +46,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       fetchWorkspaces: async () => {
         set({ loading: true, error: null });
         try {
-          const response = await api.listWorkspaces();
+          const response = await workspacesInflight.run('workspaces', () =>
+            api.listWorkspaces(),
+          );
           const workspaces = response.workspaces;
           set((state) => {
             // Auto-select the first workspace if none is currently selected.

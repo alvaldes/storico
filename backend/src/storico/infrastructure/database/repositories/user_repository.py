@@ -44,6 +44,11 @@ class SQLAlchemyUserRepository(UserRepository):
         result = await self._session.get(UserModel, user_id)
         return self._to_domain(result) if result else None
 
+    async def find_by_ids(self, user_ids: list[UUID]) -> list[User]:
+        stmt = select(UserModel).where(UserModel.id.in_(user_ids))
+        result = await self._session.execute(stmt)
+        return [self._to_domain(row) for row in result.scalars()]
+
     async def find_by_auth(self, provider: str, provider_id: str) -> User | None:
         stmt = (
             select(UserModel)

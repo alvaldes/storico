@@ -8,8 +8,10 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from storico.domain.entities import EntityNotFound, RepositoryError, Workspace
+from storico.domain.entities.workspace import WorkspaceWithRoleAndCount
 from storico.domain.ports import WorkspaceRepository
 from storico.infrastructure.database.models import WorkspaceMemberModel, WorkspaceModel
 
@@ -48,6 +50,29 @@ class SQLAlchemyWorkspaceRepository(WorkspaceRepository):
         )
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
+
+    async def list_by_user_with_counts(self, user_id: UUID) -> list[WorkspaceWithRoleAndCount]:
+        MemberCountAlias = aliased(WorkspaceMemberModel, name="member_count")
+        stmt = (
+            select(
+                WorkspaceModel,
+                WorkspaceMemberModel.role,
+                func.count(MemberCountAlias.id).label("member_count"),
+            )
+            .join(WorkspaceMemberModel, WorkspaceMemberModel.workspace_id == WorkspaceModel.id)
+            .outerjoin(MemberCountAlias, MemberCountAlias.workspace_id == WorkspaceModel.id)
+            .where(WorkspaceMemberModel.user_id == user_id)
+            .group_by(WorkspaceModel.id, WorkspaceMemberModel.role)
+        )
+        result = await self._session.execute(stmt)
+        return [
+            WorkspaceWithRoleAndCount(
+                workspace=self._to_domain(model),
+                role=role,
+                member_count=member_count,
+            )
+            for model, role, member_count in result
+        ]
 
     async def find_by_slug(self, slug: str) -> Workspace | None:
         stmt = select(WorkspaceModel).where(WorkspaceModel.slug == slug)

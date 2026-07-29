@@ -3,6 +3,14 @@ import type { Project } from '@/types/project';
 import type { CreateProjectParams, UpdateProjectParams } from '@/schemas';
 import * as api from '@/lib/projects-api';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { createInflightTracker } from '@/stores/_inflight';
+
+// Dedupe of inflight fetchProjects calls. Multiple components mounting
+// simultaneously (sidebar, Dashboard, ProjectsList) all call fetchProjects()
+// before the first network request resolves. The tracker makes concurrent
+// callers share a single underlying promise. The slot is freed on settle,
+// so explicit refresh (e.g. after createProject) still triggers a new fetch.
+const projectsInflight = createInflightTracker<string>();
 
 interface ProjectState {
   projects: Project[];
@@ -36,7 +44,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
     set({ loading: true, error: null });
     try {
-      const response = await api.listProjects(ws.id, 1, 100);
+      const response = await projectsInflight.run(
+        `projects:${ws.id}`,
+        () => api.listProjects(ws.id, 1, 100),
+      );
       set({ projects: response.items, loading: false });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch projects';

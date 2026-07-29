@@ -23,6 +23,11 @@ class UserRepository(ABC):
         ...
 
     @abstractmethod
+    async def find_by_ids(self, user_ids: list[UUID]) -> list[User]:
+        """Batch fetch users by IDs."""
+        ...
+
+    @abstractmethod
     async def find_by_auth(self, provider: str, provider_id: str) -> User | None:
         """Find a user by their OAuth provider and provider-specific user ID
         via a JOIN on user_accounts."""
