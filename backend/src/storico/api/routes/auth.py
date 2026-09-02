@@ -18,6 +18,9 @@ from storico.infrastructure.database.repositories import SQLAlchemyUserRepositor
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
 )
+from storico.infrastructure.database.repositories.workspace_prompt_repository import (
+    SQLAlchemyWorkspacePromptRepository,
+)
 from storico.infrastructure.database.repositories.workspace_repository import (
     SQLAlchemyWorkspaceRepository,
 )
@@ -36,6 +39,10 @@ MemberRepoDep = Annotated[
     SQLAlchemyWorkspaceMemberRepository,
     Depends(get_repository(SQLAlchemyWorkspaceMemberRepository)),
 ]
+PromptRepoDep = Annotated[
+    SQLAlchemyWorkspacePromptRepository,
+    Depends(get_repository(SQLAlchemyWorkspacePromptRepository)),
+]
 
 
 @router.post("/sync", response_model=UserResponse)
@@ -44,6 +51,7 @@ async def sync_user(
     repo: UserRepoDep,
     ws_repo: WorkspaceRepoDep,
     member_repo: MemberRepoDep,
+    prompt_repo: PromptRepoDep,
 ) -> UserResponse:
     """Sync a user from OAuth login — 3-step linking flow.
 
@@ -113,7 +121,9 @@ async def sync_user(
     await repo.link_account(saved.id, payload.auth_provider, payload.auth_provider_id)
 
     # Create personal workspace named after the user
-    use_case = CreateWorkspaceUseCase(ws_repo=ws_repo, member_repo=member_repo)
+    use_case = CreateWorkspaceUseCase(
+        ws_repo=ws_repo, member_repo=member_repo, prompt_repo=prompt_repo
+    )
     await use_case.execute(
         name=f"{saved.name}'s Workspace"[:100],
         user_id=saved.id,

@@ -38,6 +38,9 @@ from storico.infrastructure.database.repositories import SQLAlchemyUserRepositor
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
 )
+from storico.infrastructure.database.repositories.workspace_prompt_repository import (
+    SQLAlchemyWorkspacePromptRepository,
+)
 from storico.infrastructure.database.repositories.workspace_repository import (
     SQLAlchemyWorkspaceRepository,
 )
@@ -54,6 +57,11 @@ WsRepoDep = Annotated[
 MemberRepoDep = Annotated[
     SQLAlchemyWorkspaceMemberRepository,
     Depends(get_repository(SQLAlchemyWorkspaceMemberRepository)),
+]
+
+PromptRepoDep = Annotated[
+    SQLAlchemyWorkspacePromptRepository,
+    Depends(get_repository(SQLAlchemyWorkspacePromptRepository)),
 ]
 
 UserRepoDep = Annotated[
@@ -105,13 +113,14 @@ async def create_workspace(
     current_user: User = Depends(get_current_user),
     ws_repo: WsRepoDep = None,  # type: ignore[assignment]
     member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    prompt_repo: PromptRepoDep = None,  # type: ignore[assignment]
 ) -> WorkspaceResponse:
     """Create a new workspace.
 
     The authenticated user becomes both admin and owner of the newly
     created workspace.
     """
-    use_case = CreateWorkspaceUseCase(ws_repo, member_repo)
+    use_case = CreateWorkspaceUseCase(ws_repo, member_repo, prompt_repo)
     workspace = await use_case.execute(
         name=body.name,
         user_id=current_user.id,

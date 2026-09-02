@@ -39,12 +39,21 @@ class LLMPort(ABC):
     """Port for LLM interaction — send prompts and receive raw text responses."""
 
     @abstractmethod
-    async def generate(self, prompt: str, config: LLMConfig) -> str:
+    async def generate(
+        self,
+        prompt: str,
+        config: LLMConfig,
+        system_prompt: str | None = None,
+    ) -> str:
         """Send a prompt to the LLM and return the raw response text.
 
         Args:
-            prompt: The full prompt (system + instruction + user story) to send.
+            prompt: The instruction/user content to send.
             config: Configuration for the LLM request.
+            system_prompt: Optional system message. Each adapter delivers it
+                using its provider-native mechanism (e.g. ``system_instruction``
+                for Gemini, a ``system`` message for Ollama). If ``None``, no
+                system message is sent.
 
         Returns:
             Raw text response from the LLM.

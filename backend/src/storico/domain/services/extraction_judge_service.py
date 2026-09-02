@@ -44,6 +44,7 @@ class LLMJudgeService:
         user_story: str,
         tasks: list[dict],
         config: LLMConfig,
+        system_prompt: str | None = None,
     ) -> JudgeResult:
         """Evaluate generated tasks against the original user story.
 
@@ -51,6 +52,8 @@ class LLMJudgeService:
             user_story: The original user story text.
             tasks: List of task dicts with ``summary`` and ``description`` keys.
             config: LLM configuration for the judge model.
+            system_prompt: Workspace system prompt, passed to the LLM port
+                just like for extraction (``None`` sends no system message).
 
         Returns:
             ``JudgeResult`` with approval status, total score, and per-criteria breakdown.
@@ -64,7 +67,11 @@ class LLMJudgeService:
         )
 
         try:
-            raw_response = await self._llm.generate(judge_prompt, config)
+            raw_response = await self._llm.generate(
+                judge_prompt,
+                config,
+                system_prompt=system_prompt,
+            )
         except LLMError:
             raise
         except Exception as exc:

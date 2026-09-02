@@ -27,6 +27,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from storico.application.prompts.resolve_workspace_prompt import resolve_workspace_prompt
 from storico.domain.entities import Extraction, Task
 from storico.domain.entities.exceptions import LLMError, ParseError
 from storico.domain.ports import LLMConfig, VectorStorePort
@@ -37,6 +38,9 @@ from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserStoryRepository,
+)
+from storico.infrastructure.database.repositories.workspace_prompt_repository import (
+    SQLAlchemyWorkspacePromptRepository,
 )
 from storico.infrastructure.llm import GeminiAdapter, OllamaAdapter, PromptManager, TaskParser
 from storico.infrastructure.vector import EmbeddingService, QdrantAdapter
@@ -49,6 +53,7 @@ logger = logging.getLogger(__name__)
 async def run_background_extraction(
     extraction_id: UUID,
     story_id: UUID,
+    workspace_id: UUID,
     model: str,
     temperature: float | None = None,
     validate: bool = False,
@@ -63,9 +68,16 @@ async def run_background_extraction(
     record is expected to already exist with ``status="pending"`` — this
     function updates it to ``completed`` or ``failed``.
 
+    The prompt configuration is always resolved from the workspace's
+    ``workspace_prompts`` row (seeding the shared defaults on first read),
+    so the extraction never uses a system prompt other than the
+    workspace-configured one.
+
     Args:
         extraction_id: ID of the pending extraction record.
         story_id: ID of the user story to extract from.
+        workspace_id: ID of the workspace the extraction belongs to (used to
+            resolve the workspace prompt config).
         model: LLM model name (e.g. ``gemini-2.0-flash``, ``llama3.2``).
         temperature: Generation temperature (default: 0.1).
         validate: Whether to run LLM-as-a-Judge validation.
@@ -81,6 +93,7 @@ async def run_background_extraction(
             await _run_extraction(
                 extraction_id=extraction_id,
                 story_id=story_id,
+                workspace_id=workspace_id,
                 model=model,
                 temperature=temperature,
                 validate=validate,
@@ -162,6 +175,7 @@ async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
 async def _run_extraction(
     extraction_id: UUID,
     story_id: UUID,
+    workspace_id: UUID,
     model: str,
     temperature: float | None,
     validate: bool,
@@ -172,8 +186,9 @@ async def _run_extraction(
     """Core extraction — loads story, calls LLM, persists results.
 
     Creates a fresh database session and all required dependencies,
-    then runs the full pipeline: load story → LLM call → parse →
-    optional judge → persist tasks → store in vector store.
+    then runs the full pipeline: load story → resolve workspace prompts →
+    LLM call → parse → optional judge → persist tasks → store in vector
+    store.
     """
     from storico.config.settings import Settings  # late import to avoid circular
 
@@ -199,6 +214,16 @@ async def _run_extraction(
 
         prompt_manager = PromptManager()
         task_parser = TaskParser()
+
+        # Resolve the workspace prompt config — seeds the shared defaults
+        # when the workspace has no row yet. Extraction always uses the
+        # workspace system prompt, never a hardcoded one.
+        prompt_repo = SQLAlchemyWorkspacePromptRepository(session)
+        ws_prompt = await resolve_workspace_prompt(
+            workspace_id, prompt_repo, prompt_manager
+        )
+        system_prompt = ws_prompt.system_prompt
+        instruction_template = ws_prompt.instruction_template
 
         embedding_service = EmbeddingService(
             base_url=settings.ollama_host,
@@ -243,10 +268,16 @@ async def _run_extraction(
             timeout=120,
         )
 
-        # 3. Run extraction (prompt → LLM → parse) — no persistence yet
-        parsed_tasks, raw_response = await extraction_service.extract(story, llm_config)
+        # 3. Run extraction (prompt → LLM → parse) — no persistence yet.
+        #    System prompt and instruction come from the workspace config.
+        parsed_tasks, raw_response = await extraction_service.extract(
+            story,
+            llm_config,
+            system_prompt=system_prompt,
+            instruction_template=instruction_template,
+        )
 
-        # 4. Optionally validate via LLM-as-a-Judge
+        # 4. Optionally validate via LLM-as-a-Judge — same system prompt
         confidence: float | None = None
         if validate and extraction_service._judge_service is not None:
             try:
@@ -257,6 +288,7 @@ async def _run_extraction(
                         for pt in parsed_tasks
                     ],
                     config=llm_config,
+                    system_prompt=system_prompt,
                 )
                 confidence = judge_result.total_score / 50.0
                 if not judge_result.approved and confidence is not None and confidence > 0.5:
@@ -273,7 +305,11 @@ async def _run_extraction(
             raw_response=raw_response,
             status="completed",
             confidence_score=confidence,
-            prompt_config={"validate": validate, "temperature": temperature},
+            prompt_config={
+                "validate": validate,
+                "temperature": temperature,
+                "system_prompt": system_prompt,
+            },
             created_at=created_at,
         )
         await extraction_repo.save(completed)

@@ -207,6 +207,7 @@ async def extract_tasks(
         run_background_extraction(
             extraction_id=extraction_id,
             story_id=body.user_story_id,
+            workspace_id=workspace.id,
             model=model,
             temperature=body.temperature,
             validate=body.run_validation,

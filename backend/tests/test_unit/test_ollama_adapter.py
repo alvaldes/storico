@@ -11,6 +11,7 @@ from httpx import ConnectError
 from storico.domain.entities import LLMConnectionError, LLMModelNotFoundError, LLMResponseError
 from storico.domain.ports import LLMConfig
 from storico.infrastructure.llm.ollama_adapter import OllamaAdapter
+from storico.infrastructure.llm.prompt_manager import SYSTEM_PROMPT_TASK_GENERATION
 
 
 class TestOllamaAdapter:
@@ -143,14 +144,35 @@ class TestOllamaAdapter:
     async def test_build_payload(self) -> None:
         """Payload structure matches Ollama /api/chat format."""
         adapter = OllamaAdapter(base_url=self.base_url)
-        payload = adapter._build_payload("Test prompt", self.config)
+        payload = adapter._build_payload(
+            "Test prompt", self.config, system_prompt="System role"
+        )
         assert payload["model"] == "llama3.2"
         assert len(payload["messages"]) == 2
         assert payload["messages"][0]["role"] == "system"
+        assert payload["messages"][0]["content"] == "System role"
         assert payload["messages"][1]["role"] == "user"
         assert payload["messages"][1]["content"] == "Test prompt"
         assert payload["options"]["temperature"] == 0.1
         assert payload["options"]["num_predict"] == 2048
+
+    @pytest.mark.asyncio
+    async def test_build_payload_uses_passed_system_prompt(self) -> None:
+        """System message content is the system_prompt passed by the caller."""
+        adapter = OllamaAdapter(base_url=self.base_url)
+        payload = adapter._build_payload(
+            "Prompt", self.config, system_prompt=SYSTEM_PROMPT_TASK_GENERATION
+        )
+        assert payload["messages"][0]["content"] == SYSTEM_PROMPT_TASK_GENERATION
+
+    @pytest.mark.asyncio
+    async def test_build_payload_without_system_prompt(self) -> None:
+        """No system message when system_prompt is None."""
+        adapter = OllamaAdapter(base_url=self.base_url)
+        payload = adapter._build_payload("Prompt", self.config)
+        assert len(payload["messages"]) == 1
+        assert payload["messages"][0]["role"] == "user"
+        assert payload["messages"][0]["content"] == "Prompt"
 
     @pytest.mark.asyncio
     async def test_build_payload_custom_model(self) -> None:

@@ -4,9 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, TemplateNotFound
+from jinja2 import Environment, FileSystemLoader, Template, TemplateNotFound
 
 from storico.domain.entities import PromptTemplateNotFound
+
+# Shared system prompt for task generation. All LLM adapters (Ollama, Gemini)
+# must send exactly this string as the system message so every model performs
+# the extraction with the same expert role.
+SYSTEM_PROMPT_TASK_GENERATION = (
+    "You are an expert software development lead who excels at "
+    "breaking down user stories into clear, actionable development tasks."
+)
 
 
 class PromptManager:
@@ -53,10 +61,59 @@ class PromptManager:
         Returns:
             The system prompt string describing the LLM's role.
         """
-        return (
-            "You are an expert software development lead who excels at "
-            "breaking down user stories into clear, actionable development tasks."
-        )
+        return SYSTEM_PROMPT_TASK_GENERATION
+
+    def get_template_source(self, template_name: str) -> str:
+        """Return the raw source text of a prompt template.
+
+        Used to seed the ``workspace_prompts.instruction_template`` column
+        with the default instruction (``task_generation.j2``) so the file
+        remains the single source of truth.
+
+        Args:
+            template_name: Name of the template file (e.g. ``task_generation.j2``).
+
+        Returns:
+            The template source as a string.
+
+        Raises:
+            PromptTemplateNotFound: If the template file does not exist.
+        """
+        try:
+            source, _, _ = self._env.loader.get_source(  # type: ignore[union-attr]
+                self._env, template_name
+            )
+            return source
+        except TemplateNotFound as e:
+            raise PromptTemplateNotFound(template_name) from e
+
+    def render_instruction(
+        self,
+        instruction_template: str | None,
+        **kwargs: object,
+    ) -> str:
+        """Render the task-generation instruction prompt.
+
+        When ``instruction_template`` is provided (e.g. a workspace override
+        stored in ``workspace_prompts``), it is rendered with Jinja2 so its
+        ``{{user_story}}``/``{{examples}}`` placeholders interpolate. When it
+        is ``None``, falls back to rendering the ``task_generation.j2`` file.
+
+        Args:
+            instruction_template: Inline Jinja2 template text, or ``None`` to
+                use the default ``task_generation.j2``.
+            **kwargs: Variables to pass to the template.
+
+        Returns:
+            Rendered instruction prompt string.
+
+        Raises:
+            PromptTemplateNotFound: If the default template file is missing
+                and no inline template was provided.
+        """
+        if instruction_template is None:
+            return self.render("task_generation.j2", **kwargs)
+        return Template(instruction_template).render(**kwargs)
 
     def render_judge_prompt(
         self,

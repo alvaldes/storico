@@ -3,7 +3,7 @@
 import pytest
 
 from storico.domain.entities import PromptTemplateNotFound
-from storico.infrastructure.llm.prompt_manager import PromptManager
+from storico.infrastructure.llm.prompt_manager import SYSTEM_PROMPT_TASK_GENERATION, PromptManager
 
 
 class TestPromptManager:
@@ -43,6 +43,46 @@ class TestPromptManager:
         result = self.manager.render_system_prompt()
         assert "software development lead" in result
         assert "actionable development tasks" in result
+
+    def test_render_system_prompt_matches_shared_constant(self) -> None:
+        """render_system_prompt() returns the shared SYSTEM_PROMPT_TASK_GENERATION constant."""
+        assert self.manager.render_system_prompt() == SYSTEM_PROMPT_TASK_GENERATION
+
+    # ── Template source and inline instruction rendering ───────────
+
+    def test_get_template_source_returns_raw_jinja(self) -> None:
+        """Raw template source keeps its {{user_story}} placeholder intact."""
+        source = self.manager.get_template_source("task_generation.j2")
+        assert "{{user_story}}" in source
+        assert "summary:" in source
+
+    def test_get_template_source_unknown_template_raises(self) -> None:
+        """Missing template raises PromptTemplateNotFound."""
+        with pytest.raises(PromptTemplateNotFound):
+            self.manager.get_template_source("missing.j2")
+
+    def test_render_instruction_falls_back_to_j2_file(self) -> None:
+        """None falls back to rendering the task_generation.j2 file."""
+        result = self.manager.render_instruction(None, user_story="Story")
+        assert "Story" in result
+        assert "EXACTLY this format" in result
+
+    def test_render_instruction_renders_db_template(self) -> None:
+        """A DB template is rendered with Jinja2, interpolating placeholders."""
+        result = self.manager.render_instruction(
+            "Break down: {{user_story}}",
+            user_story="As a user, I want X",
+        )
+        assert result == "Break down: As a user, I want X"
+
+    def test_render_instruction_with_examples_kwarg(self) -> None:
+        """DB template renders optional examples kwarg."""
+        result = self.manager.render_instruction(
+            "Story: {{user_story}}\nExamples:\n{{examples}}",
+            user_story="S",
+            examples="ex",
+        )
+        assert "Examples:\nex" in result
 
     # ── Judge prompt ────────────────────────────────────────────────
 

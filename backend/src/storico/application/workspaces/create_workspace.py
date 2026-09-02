@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from storico.application.prompts.resolve_workspace_prompt import resolve_workspace_prompt
 from storico.application.workspaces.slug import generate_slug
 from storico.domain.entities import DuplicateEntity, Workspace, WorkspaceMember, WorkspaceRole
-from storico.domain.ports import WorkspaceMemberRepository, WorkspaceRepository
+from storico.domain.ports import (
+    WorkspaceMemberRepository,
+    WorkspacePromptRepository,
+    WorkspaceRepository,
+)
 
 
 class CreateWorkspaceUseCase:
@@ -15,7 +20,8 @@ class CreateWorkspaceUseCase:
 
     The creator is automatically added as an admin member of the newly
     created workspace. Slug generation and uniqueness validation happen
-    before persistence.
+    before persistence. The workspace prompt config is seeded with the
+    shared defaults so extraction always reads a populated row.
 
     Note: The workspace and member are persisted in two sequential repo
     calls, each managing its own transaction. A future improvement could
@@ -26,9 +32,11 @@ class CreateWorkspaceUseCase:
         self,
         ws_repo: WorkspaceRepository,
         member_repo: WorkspaceMemberRepository,
+        prompt_repo: WorkspacePromptRepository,
     ) -> None:
         self._ws_repo = ws_repo
         self._member_repo = member_repo
+        self._prompt_repo = prompt_repo
 
     async def execute(
         self,
@@ -74,5 +82,9 @@ class CreateWorkspaceUseCase:
             role=WorkspaceRole.ADMIN,
         )
         await self._member_repo.add(member)
+
+        # Seed the workspace prompt config with the shared defaults so
+        # extraction always reads a populated row.
+        await resolve_workspace_prompt(workspace.id, self._prompt_repo)
 
         return saved

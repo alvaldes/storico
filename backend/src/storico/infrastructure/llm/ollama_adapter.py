@@ -35,12 +35,19 @@ class OllamaAdapter(LLMPort):
         self._base_url = base_url.rstrip("/")
         self._client = client or AsyncClient(timeout=Timeout(120.0))
 
-    async def generate(self, prompt: str, config: LLMConfig) -> str:
+    async def generate(
+        self,
+        prompt: str,
+        config: LLMConfig,
+        system_prompt: str | None = None,
+    ) -> str:
         """Send a prompt to the Ollama model and return the raw response.
 
         Args:
-            prompt: The full prompt text to send.
+            prompt: The instruction/user content to send.
             config: LLM configuration (model, temperature, max_tokens, timeout).
+            system_prompt: Optional system message. If ``None``, no system
+                message is included in the request.
 
         Returns:
             Raw text response from the model.
@@ -50,7 +57,7 @@ class OllamaAdapter(LLMPort):
             LLMModelNotFoundError: If the requested model is not available.
             LLMResponseError: If the response is invalid or unparseable.
         """
-        payload = self._build_payload(prompt, config)
+        payload = self._build_payload(prompt, config, system_prompt)
         last_exception: Exception | None = None
 
         for attempt in range(3):
@@ -85,18 +92,25 @@ class OllamaAdapter(LLMPort):
             f"Failed to connect to Ollama at {self._base_url} after 3 attempts"
         ) from last_exception
 
-    def _build_payload(self, prompt: str, config: LLMConfig) -> dict[str, Any]:
-        """Build the Ollama API request payload."""
+    def _build_payload(
+        self,
+        prompt: str,
+        config: LLMConfig,
+        system_prompt: str | None = None,
+    ) -> dict[str, Any]:
+        """Build the Ollama API request payload.
+
+        The system message is included only when ``system_prompt`` is
+        provided — extraction passes the workspace-configured prompt, while
+        calls without one (e.g. health check "Hello") send only the user
+        message.
+        """
+        messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
+        if system_prompt:
+            messages.insert(0, {"role": "system", "content": system_prompt})
         return {
             "model": config.model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are an expert software development lead who excels at "
-                    "breaking down user stories into clear, actionable development tasks.",
-                },
-                {"role": "user", "content": prompt},
-            ],
+            "messages": messages,
             "options": {
                 "temperature": config.temperature,
                 "num_predict": config.max_tokens,

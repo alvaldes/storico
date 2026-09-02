@@ -45,8 +45,31 @@ def _normalize_db_url(url: str) -> str:
             new_netloc = f"{parsed.username}:{auth}@{new_netloc}"
         else:
             new_netloc = f"{parsed.username}@{new_netloc}"
-    new = urlunparse(("postgresql+asyncpg", new_netloc, parsed.path,
-                       parsed.params, new_query, parsed.fragment))
+    new = urlunparse(
+        ("postgresql+asyncpg", new_netloc, parsed.path, parsed.params, new_query, parsed.fragment)
+    )
+    return new
+
+
+def _add_statement_cache_size(url: str) -> str:
+    """Append prepared_statement_cache_size=0 to the DB URL for pgbouncer compatibility.
+
+    SQLAlchemy's asyncpg dialect looks for 'prepared_statement_cache_size' in
+    URL query parameters and coerces it to int before passing to asyncpg.connect().
+    This disables prepared statement caching at the driver level, which works
+    around pgbouncer pool_mode=transaction/statement not forwarding statement
+    handles across connection resets.
+    See: https://sqlalche.me/e/20/dbapi
+    """
+    from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
+
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query, keep_blank_values=True)
+    # SQLAlchemy's asyncpg dialect expects 'prepared_statement_cache_size' (not
+    # 'statement_cache_size') and coerces it to int via util.coerce_kw_type.
+    qs["prepared_statement_cache_size"] = ["0"]
+    new_query = urlencode(qs, doseq=True)
+    new = urlunparse(parsed._replace(query=new_query))
     return new
 
 
@@ -55,13 +78,15 @@ def get_engine(db_url: str | None = None) -> AsyncEngine:
     global _engine
     if _engine is None:
         url = _normalize_db_url(db_url or Settings.load().database_url)
+        url = _add_statement_cache_size(url)
         _engine = create_async_engine(
             url,
             echo=False,
             pool_size=10,
             max_overflow=20,
             pool_timeout=10,
-            pool_pre_ping=False,  # Supabase pooler + asyncio.gather race (https://sqlalche.me/e/20/isce). pool_recycle=1800 handles idle drops.
+            # Supabase pooler + asyncio.gather race (https://sqlalche.me/e/20/isce). pool_recycle=1800 handles idle drops.
+            pool_pre_ping=False,
             pool_recycle=1800,  # 30 min — recycle connections before Supabase/Neon idle drops them
             connect_args={"timeout": 10},
         )

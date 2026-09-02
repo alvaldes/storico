@@ -19,6 +19,7 @@ from storico.api.schemas.workspace_llm_config import (
     ModelInfo,
 )
 from storico.api.schemas.workspace_prompt import PromptRequest, PromptResponse
+from storico.application.prompts.resolve_workspace_prompt import build_default_prompt
 from storico.config.settings import Settings
 from storico.domain.entities.workspace import Workspace
 from storico.domain.entities.workspace_member import WorkspaceRole
@@ -88,35 +89,14 @@ async def resolve_prompt(
 ) -> PromptResponse:
     """Resolve workspace prompts with read-time fallback to global defaults.
 
-    If no workspace-specific prompts exist, returns the hardcoded defaults
-    from the thesis extraction pipeline.
+    If no workspace-specific prompts exist, returns the shared defaults
+    (``SYSTEM_PROMPT_TASK_GENERATION`` constant + ``task_generation.j2``
+    source) without persisting — the seed-on-read happens at extraction
+    time. Defaults are single-sourced, never duplicated as string literals.
     """
     ws_prompt = await prompt_repo.get(workspace_id)
     if ws_prompt is None:
-        return PromptResponse(
-            system_prompt=(
-                "You are an expert software development lead who excels at "
-                "breaking down user stories into clear, actionable development "
-                "tasks."
-            ),
-            instruction_template=(
-                "Break this user story into smaller development tasks to help "
-                "the developers implement it efficiently. You can divide this "
-                "user story into as many tasks as needed, depending on its "
-                "complexity. Each task must be unique, actionable, and "
-                "non-overlapping.\n\n"
-                "Use EXACTLY this format — each numbered task starts on its "
-                "own line with `N. summary:` followed by the summary text, "
-                "then a new line with `description:` and the description "
-                "text:\n\n"
-                "1. summary: Set up database schema for transactions\n"
-                "description: Create the necessary database tables and "
-                "indexes...\n\n"
-                "CRITICAL: Use ONLY plain text. Do NOT use markdown.\n\n"
-                "User story:\n{{user_story}}"
-            ),
-            few_shot_examples=None,
-        )
+        ws_prompt = build_default_prompt(workspace_id)
     return PromptResponse(
         system_prompt=ws_prompt.system_prompt,
         instruction_template=ws_prompt.instruction_template,

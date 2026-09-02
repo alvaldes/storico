@@ -37,9 +37,12 @@ class ExtractionService:
     """Orchestrates the full extraction pipeline.
 
     Flow:
-        1. Render system + task-generation prompts from the user story.
+        1. Render the instruction prompt from the workspace-configured
+           template (system prompt and instruction template are resolved
+           upstream, never chosen by the service).
         2. Optionally inject RAG examples from past extractions.
-        3. Call the LLM via ``LLMPort``.
+        3. Call the LLM via ``LLMPort`` with the system prompt delivered
+           separately.
         4. Parse the raw response into ``ParsedTask`` objects.
         5. Persist the ``Extraction`` (completed or failed) + ``Task`` entities.
         6. Optionally validate results via ``LLMJudgeService``.
@@ -71,12 +74,22 @@ class ExtractionService:
         self,
         user_story: object,
         config: LLMConfig,
+        system_prompt: str | None = None,
+        instruction_template: str | None = None,
     ) -> tuple[list[ParsedTask], str]:
         """Run the extraction pipeline (prompt → LLM → parse) without persistence.
+
+        The system prompt and instruction template are resolved upstream
+        (workspace prompt config) and passed in — the service never decides
+        which prompts to use, it only renders and sends them.
 
         Args:
             user_story: A domain entity with a ``raw_text`` attribute.
             config: LLM configuration to use for generation.
+            system_prompt: Workspace system prompt. Passed separately to the
+                LLM port (``None`` sends no system message).
+            instruction_template: Workspace instruction template (Jinja2
+                text). ``None`` falls back to ``task_generation.j2``.
 
         Returns:
             Tuple of (parsed_tasks, raw_response).
@@ -85,8 +98,6 @@ class ExtractionService:
             LLMError: If the LLM call fails.
             ParseError: If the response cannot be parsed.
         """
-        # 1. Render prompts
-        system_prompt = self._prompt_manager.render_system_prompt()
         raw_text = getattr(user_story, "raw_text", str(user_story))
 
         # RAG: search for similar past extractions
@@ -97,15 +108,18 @@ class ExtractionService:
         if examples:
             prompt_kwargs["examples"] = self._format_examples(examples)
 
-        instruction_prompt = self._prompt_manager.render(
-            "task_generation.j2",
+        instruction_prompt = self._prompt_manager.render_instruction(
+            instruction_template,
             **prompt_kwargs,
         )
-        full_prompt = f"{system_prompt}\n\n{instruction_prompt}"
 
         # 2. Call LLM
         try:
-            raw_response = await self._llm.generate(full_prompt, config)
+            raw_response = await self._llm.generate(
+                instruction_prompt,
+                config,
+                system_prompt=system_prompt,
+            )
         except LLMError:
             raise
         except Exception as exc:
@@ -147,6 +161,8 @@ class ExtractionService:
         user_story: object,
         config: LLMConfig,
         prompt_config: dict | None = None,
+        system_prompt: str | None = None,
+        instruction_template: str | None = None,
     ) -> Extraction:
         """Run the full extraction pipeline and persist results.
 
@@ -157,6 +173,10 @@ class ExtractionService:
             user_story: Domain entity with ``raw_text``, ``id`` attributes.
             config: LLM configuration.
             prompt_config: Optional metadata about the prompts used.
+            system_prompt: Workspace system prompt, forwarded to ``extract``
+                and the judge service.
+            instruction_template: Workspace instruction template (Jinja2
+                text), forwarded to ``extract``.
 
         Returns:
             The persisted ``Extraction`` entity.
@@ -164,7 +184,12 @@ class ExtractionService:
         story_id = getattr(user_story, "id", None)
 
         try:
-            parsed_tasks, raw_response = await self.extract(user_story, config)
+            parsed_tasks, raw_response = await self.extract(
+                user_story,
+                config,
+                system_prompt=system_prompt,
+                instruction_template=instruction_template,
+            )
 
             # Determine confidence from optional judge
             confidence: float | None = None
@@ -177,6 +202,7 @@ class ExtractionService:
                             for pt in parsed_tasks
                         ],
                         config=config,
+                        system_prompt=system_prompt,
                     )
                     confidence = judge_result.total_score / 50.0
                     if not judge_result.approved and confidence is not None and confidence > 0.5:

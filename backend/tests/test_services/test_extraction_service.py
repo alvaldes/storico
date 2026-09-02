@@ -55,8 +55,8 @@ class TestExtractionService:
     async def test_extract_success(self, setup) -> None:
         """Happy path: LLM returns valid response, tasks parsed."""
         deps = setup
-        deps["prompt_manager"].render_system_prompt.return_value = "System prompt"
-        deps["prompt_manager"].render.return_value = "Instruction prompt"
+        deps["prompt_manager"].render_instruction.return_value = "System prompt"
+        deps["prompt_manager"].render_instruction.return_value = "Instruction prompt"
         deps["llm_port"].generate.return_value = "1. summary: Task one\ndescription: Desc"
         deps["task_parser"].parse.return_value = [
             ParsedTask(summary="Task one", description="Desc", labels=(), dependencies=()),
@@ -73,10 +73,9 @@ class TestExtractionService:
 
     @pytest.mark.asyncio
     async def test_extract_calls_prompt_manager(self, setup) -> None:
-        """extract() calls render_system_prompt and render with correct args."""
+        """extract() calls render_instruction with the workspace template."""
         deps = setup
-        deps["prompt_manager"].render_system_prompt.return_value = "System"
-        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
 
@@ -86,18 +85,16 @@ class TestExtractionService:
 
         await deps["service"].extract(mock_story, LLMConfig(model="test"))
 
-        deps["prompt_manager"].render_system_prompt.assert_called_once()
-        deps["prompt_manager"].render.assert_called_once_with(
-            "task_generation.j2",
+        deps["prompt_manager"].render_instruction.assert_called_once_with(
+            None,
             user_story="As a user, I want X",
         )
 
     @pytest.mark.asyncio
-    async def test_extract_calls_llm_with_combined_prompt(self, setup) -> None:
-        """LLM receives system + instruction combined."""
+    async def test_extract_calls_llm_with_separate_system_prompt(self, setup) -> None:
+        """LLM receives the instruction as prompt and system_prompt separately."""
         deps = setup
-        deps["prompt_manager"].render_system_prompt.return_value = "SYSTEM"
-        deps["prompt_manager"].render.return_value = "INSTRUCTION"
+        deps["prompt_manager"].render_instruction.return_value = "INSTRUCTION"
         deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
 
@@ -105,13 +102,39 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        await deps["service"].extract(mock_story, LLMConfig(model="test"))
+        await deps["service"].extract(
+            mock_story, LLMConfig(model="test"), system_prompt="SYSTEM"
+        )
 
-        # Verify the combined prompt was sent
-        call_args = deps["llm_port"].generate.call_args[0]
-        combined = call_args[0]
-        assert "SYSTEM" in combined
-        assert "INSTRUCTION" in combined
+        # Verify the system prompt is passed separately, not concatenated
+        deps["llm_port"].generate.assert_called_once_with(
+            "INSTRUCTION",
+            LLMConfig(model="test"),
+            system_prompt="SYSTEM",
+        )
+
+    @pytest.mark.asyncio
+    async def test_extract_forwards_instruction_template(self, setup) -> None:
+        """A DB instruction template is forwarded to render_instruction."""
+        deps = setup
+        deps["prompt_manager"].render_instruction.return_value = "Custom instruction"
+        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
+
+        mock_story = MagicMock()
+        mock_story.id = uuid4()
+        mock_story.raw_text = "Story"
+
+        await deps["service"].extract(
+            mock_story,
+            LLMConfig(model="test"),
+            instruction_template="Custom: {{user_story}}",
+        )
+
+        deps["prompt_manager"].render_instruction.assert_called_once_with(
+            "Custom: {{user_story}}",
+            user_story="Story",
+        )
 
     # ── extract() — error handling ─────────────────────────────────
 
@@ -119,8 +142,8 @@ class TestExtractionService:
     async def test_extract_llm_error_propagates(self, setup) -> None:
         """LLM errors propagate through extract()."""
         deps = setup
-        deps["prompt_manager"].render_system_prompt.return_value = "System"
-        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["prompt_manager"].render_instruction.return_value = "System"
+        deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.side_effect = LLMConnectionError("Cannot connect")
 
         mock_story = MagicMock()
@@ -134,8 +157,8 @@ class TestExtractionService:
     async def test_extract_parse_error_propagates(self, setup) -> None:
         """Parse errors propagate through extract()."""
         deps = setup
-        deps["prompt_manager"].render_system_prompt.return_value = "System"
-        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["prompt_manager"].render_instruction.return_value = "System"
+        deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.return_value = "garbage output"
         deps["task_parser"].parse.side_effect = ParseError("Could not parse")
 
@@ -157,8 +180,8 @@ class TestExtractionService:
         mock_story.id = story_id
         mock_story.raw_text = "As a user, I want X"
 
-        deps["prompt_manager"].render_system_prompt.return_value = "System"
-        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["prompt_manager"].render_instruction.return_value = "System"
+        deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.return_value = "1. summary: Task one\ndescription: Desc"
         deps["task_parser"].parse.return_value = [
             ParsedTask(summary="Task one", description="Desc", labels=(), dependencies=()),
@@ -183,8 +206,8 @@ class TestExtractionService:
         mock_story.id = story_id
         mock_story.raw_text = "Story"
 
-        deps["prompt_manager"].render_system_prompt.return_value = "S"
-        deps["prompt_manager"].render.return_value = "I"
+        deps["prompt_manager"].render_instruction.return_value = "S"
+        deps["prompt_manager"].render_instruction.return_value = "I"
         deps["llm_port"].generate.return_value = "1. summary: T1\ndescription: D1\n2. summary: T2\ndescription: D2"
         deps["task_parser"].parse.return_value = [
             ParsedTask(summary="T1", description="D1"),
@@ -207,8 +230,8 @@ class TestExtractionService:
         mock_story.id = story_id
         mock_story.raw_text = "As a user, I want X"
 
-        deps["prompt_manager"].render_system_prompt.return_value = "System"
-        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["prompt_manager"].render_instruction.return_value = "System"
+        deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.side_effect = LLMConnectionError("Cannot connect")
         deps["extraction_repo"].save.side_effect = lambda e: e
 
@@ -224,8 +247,8 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Test"
 
-        deps["prompt_manager"].render_system_prompt.return_value = "System"
-        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["prompt_manager"].render_instruction.return_value = "System"
+        deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.return_value = "garbage output"
         deps["task_parser"].parse.side_effect = ParseError("Could not parse")
         deps["extraction_repo"].save.side_effect = lambda e: e
@@ -241,8 +264,8 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        deps["prompt_manager"].render_system_prompt.return_value = "S"
-        deps["prompt_manager"].render.return_value = "I"
+        deps["prompt_manager"].render_instruction.return_value = "S"
+        deps["prompt_manager"].render_instruction.return_value = "I"
         deps["llm_port"].generate.side_effect = LLMConnectionError("Fail")
         deps["extraction_repo"].save.side_effect = lambda e: e
 
@@ -261,8 +284,8 @@ class TestExtractionService:
         mock_story.id = story_id
         mock_story.raw_text = "Story"
 
-        deps["prompt_manager"].render_system_prompt.return_value = "S"
-        deps["prompt_manager"].render.return_value = "I"
+        deps["prompt_manager"].render_instruction.return_value = "S"
+        deps["prompt_manager"].render_instruction.return_value = "I"
         deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
         deps["extraction_repo"].save.side_effect = lambda e: e
@@ -284,8 +307,8 @@ class TestExtractionService:
         mock_story.id = story_id
         mock_story.raw_text = "Story"
 
-        deps["prompt_manager"].render_system_prompt.return_value = "S"
-        deps["prompt_manager"].render.return_value = "I"
+        deps["prompt_manager"].render_instruction.return_value = "S"
+        deps["prompt_manager"].render_instruction.return_value = "I"
         deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
         deps["extraction_repo"].save.side_effect = lambda e: e
@@ -334,8 +357,8 @@ class TestExtractionService:
     async def test_extract_without_vector_store(self, setup) -> None:
         """VectorStorePort=None — existing behavior preserved, no RAG call."""
         deps = setup
-        deps["prompt_manager"].render_system_prompt.return_value = "System"
-        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["prompt_manager"].render_instruction.return_value = "System"
+        deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
 
@@ -362,8 +385,8 @@ class TestExtractionService:
             )
         ]
         deps["vector_store"].search_similar.return_value = mock_examples
-        deps["prompt_manager"].render_system_prompt.return_value = "System"
-        deps["prompt_manager"].render.return_value = "Instruction with examples"
+        deps["prompt_manager"].render_instruction.return_value = "System"
+        deps["prompt_manager"].render_instruction.return_value = "Instruction with examples"
         deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
 
@@ -377,7 +400,7 @@ class TestExtractionService:
         deps["vector_store"].search_similar.assert_called_once()
 
         # Verify prompt was rendered with examples kwarg
-        call_kwargs = deps["prompt_manager"].render.call_args[1]
+        call_kwargs = deps["prompt_manager"].render_instruction.call_args[1]
         assert "examples" in call_kwargs
         assert "Previous story" in call_kwargs["examples"]
 
@@ -386,8 +409,8 @@ class TestExtractionService:
         """VectorStorePort raises, extraction proceeds without examples."""
         deps = setup_with_rag
         deps["vector_store"].search_similar.side_effect = RuntimeError("RAG down")
-        deps["prompt_manager"].render_system_prompt.return_value = "System"
-        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["prompt_manager"].render_instruction.return_value = "System"
+        deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
 
@@ -398,7 +421,7 @@ class TestExtractionService:
         result_tasks, raw = await deps["service"].extract(mock_story, LLMConfig(model="test"))
         assert len(result_tasks) == 1
         # Should render WITHOUT examples kwarg
-        call_kwargs = deps["prompt_manager"].render.call_args[1]
+        call_kwargs = deps["prompt_manager"].render_instruction.call_args[1]
         assert "examples" not in call_kwargs
 
     @pytest.mark.asyncio
@@ -411,8 +434,8 @@ class TestExtractionService:
         mock_story.raw_text = "As a user, I want X"
 
         deps["vector_store"].search_similar.return_value = []
-        deps["prompt_manager"].render_system_prompt.return_value = "System"
-        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["prompt_manager"].render_instruction.return_value = "System"
+        deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.return_value = "1. summary: Task one\ndescription: Desc"
         deps["task_parser"].parse.return_value = [
             ParsedTask(summary="Task one", description="Desc"),
@@ -443,8 +466,8 @@ class TestExtractionService:
 
         deps["vector_store"].search_similar.return_value = []
         deps["vector_store"].store_extraction.side_effect = RuntimeError("Store failed")
-        deps["prompt_manager"].render_system_prompt.return_value = "System"
-        deps["prompt_manager"].render.return_value = "Instruction"
+        deps["prompt_manager"].render_instruction.return_value = "System"
+        deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
         deps["extraction_repo"].save.side_effect = lambda e: e

@@ -84,11 +84,17 @@ class TestCompleteOnboarding:
         from storico.infrastructure.database.repositories.workspace_member_repository import (
             SQLAlchemyWorkspaceMemberRepository,
         )
+        from storico.infrastructure.database.repositories.workspace_prompt_repository import (
+            SQLAlchemyWorkspacePromptRepository,
+        )
 
         ws_repo = SQLAlchemyWorkspaceRepository(db_session)
         member_repo = SQLAlchemyWorkspaceMemberRepository(db_session)
+        prompt_repo = SQLAlchemyWorkspacePromptRepository(db_session)
 
-        use_case = CreateWorkspaceUseCase(ws_repo=ws_repo, member_repo=member_repo)
+        use_case = CreateWorkspaceUseCase(
+            ws_repo=ws_repo, member_repo=member_repo, prompt_repo=prompt_repo
+        )
         await use_case.execute(name=f"{authed_user.name}'s Workspace", user_id=authed_user.id)
 
         response = await authed_client.patch(

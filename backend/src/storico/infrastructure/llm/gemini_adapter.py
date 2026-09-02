@@ -28,12 +28,20 @@ class GeminiAdapter(LLMPort):
         """
         self._client = genai.Client(api_key=api_key) if api_key else genai.Client()
 
-    async def generate(self, prompt: str, config: LLMConfig) -> str:
+    async def generate(
+        self,
+        prompt: str,
+        config: LLMConfig,
+        system_prompt: str | None = None,
+    ) -> str:
         """Send a prompt to a Gemini model and return the raw response.
 
         Args:
-            prompt: The full prompt text to send.
+            prompt: The instruction/user content to send.
             config: LLM configuration (model, temperature, max_tokens).
+            system_prompt: Optional system prompt delivered via
+                ``system_instruction``. If ``None``, no system instruction
+                is set.
 
         Returns:
             Raw text response from the model.
@@ -42,14 +50,18 @@ class GeminiAdapter(LLMPort):
             LLMConnectionError: If the Gemini API cannot be reached.
             LLMResponseError: If the response is invalid or unprocessable.
         """
+        gen_config: dict[str, Any] = {
+            "temperature": config.temperature,
+            "max_output_tokens": config.max_tokens,
+        }
+        if system_prompt:
+            gen_config["system_instruction"] = system_prompt
+
         try:
             response = self._client.models.generate_content(
                 model=config.model,
                 contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    temperature=config.temperature,
-                    max_output_tokens=config.max_tokens,
-                ),
+                config=genai_types.GenerateContentConfig(**gen_config),
             )
         except Exception as e:
             raise LLMConnectionError(f"Gemini API call failed: {e}") from e
