@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useUIStore } from "@/stores/uiStore";
 import {
   Bot,
@@ -26,6 +26,7 @@ import {
   ComboboxList,
   ComboboxItem,
   ComboboxEmpty,
+  ComboboxValue,
 } from "@/components/ui/combobox";
 import {
   Card,
@@ -124,15 +125,6 @@ export function WorkspaceSettings({
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
-
-  const searchTerm = llmConfig.model?.toLowerCase() ?? "";
-  const filteredModels = useMemo(
-    () =>
-      searchTerm
-        ? availableModels.filter((m) => m.name.toLowerCase().includes(searchTerm))
-        : availableModels,
-    [availableModels, searchTerm],
-  );
 
   /* ── Workspace Info State ── */
   const [wsName, setWsName] = useState("");
@@ -551,17 +543,12 @@ export function WorkspaceSettings({
                   <FieldLabel htmlFor="llm-model">{t.settings?.llm_ollama_model ?? "Model"}</FieldLabel>
                   <div className="flex items-start gap-2">
                     <div className="flex-1">
-                      {/* key=provider forces remount when switching; controlled inputValue avoids React warning */}
                       <Combobox
                         key={`model-${llmConfig.provider}`}
-                        inputValue={llmConfig.model ?? ""}
                         onValueChange={(val) => {
                           if (val !== null && val !== undefined) {
                             setLlmConfig((prev) => ({ ...prev, model: String(val) }));
                           }
-                        }}
-                        onInputValueChange={(inputVal) => {
-                          setLlmConfig((prev) => ({ ...prev, model: inputVal }));
                         }}
                       >
                         <ComboboxInput
@@ -577,9 +564,17 @@ export function WorkspaceSettings({
                                   : (t.settings?.llm_anthropic_model_placeholder ?? "claude-3-haiku")
                           }
                         />
+                        {/* Show the display name (m.name) instead of the id in the input */}
+                        <ComboboxValue>
+                          {(props) => {
+                            const value = props?.value;
+                            const model = availableModels.find((m) => m.id === value);
+                            return model?.name ?? value ?? "";
+                          }}
+                        </ComboboxValue>
                         <ComboboxContent>
                           <ComboboxList>
-                            {filteredModels.map((m) => (
+                            {availableModels.map((m) => (
                               <ComboboxItem key={m.id} value={m.id}>
                                 {m.name}
                               </ComboboxItem>
@@ -589,7 +584,7 @@ export function WorkspaceSettings({
                             <ComboboxEmpty>
                               {t.workspace?.llmModelsLoading ?? "Loading models..."}
                             </ComboboxEmpty>
-                          ) : filteredModels.length === 0 ? (
+                          ) : availableModels.length === 0 ? (
                             <ComboboxEmpty>
                               {modelsError
                                 ? modelsError

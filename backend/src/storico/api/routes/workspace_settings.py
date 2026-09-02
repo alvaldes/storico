@@ -282,7 +282,10 @@ async def fetch_gemini_models(api_key: str) -> list[ModelInfo]:
         resp.raise_for_status()
         data = resp.json()
     return [
-        ModelInfo(id=m["name"], name=m.get("displayName", m["name"]))
+        ModelInfo(
+            id=m["name"].removeprefix("models/"),
+            name=m.get("displayName", m["name"])
+        )
         for m in data.get("models", [])
         if "generateContent" in m.get("supportedGenerationMethods", [])
     ]
