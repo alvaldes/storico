@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # Qdrant (vector store)
     qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: str | None = None
 
     # Ollama — fallback default; users configure their LLM host per workspace in DB
     ollama_host: str = "http://localhost:11434"

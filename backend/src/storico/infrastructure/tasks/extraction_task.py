@@ -233,6 +233,7 @@ async def _run_extraction(
             vector_store: VectorStorePort | None = QdrantAdapter(
                 embedding_service=embedding_service,
                 qdrant_url=settings.qdrant_url,
+                qdrant_api_key=settings.qdrant_api_key,
                 collection_name=settings.qdrant_collection,
                 vector_size=settings.embedding_dimensions,
             )

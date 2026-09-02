@@ -33,12 +33,14 @@ class QdrantAdapter(VectorStorePort):
         self,
         embedding_service: EmbeddingService,
         qdrant_url: str = "http://localhost:6333",
+        qdrant_api_key: str | None = None,
         collection_name: str = "storico_extractions",
         vector_size: int = 768,
         distance: qdrant_models.Distance = qdrant_models.Distance.COSINE,
     ) -> None:
         self._embedding_service = embedding_service
         self._qdrant_url = qdrant_url
+        self._qdrant_api_key = qdrant_api_key
         self._collection_name = collection_name
         self._vector_size = vector_size
         self._distance = distance
@@ -53,7 +55,11 @@ class QdrantAdapter(VectorStorePort):
             return self._client
 
         try:
-            self._client = QdrantClient(url=self._qdrant_url, timeout=10.0)
+            self._client = QdrantClient(
+                url=self._qdrant_url,
+                api_key=self._qdrant_api_key,
+                timeout=10.0,
+            )
             # Check if collection exists, create if not
             collections = self._client.get_collections()
             existing = {c.name for c in collections.collections}
