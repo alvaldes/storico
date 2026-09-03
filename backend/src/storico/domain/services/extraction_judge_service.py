@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from storico.domain.entities.exceptions import LLMError
 from storico.domain.ports import LLMConfig, LLMPort
 from storico.infrastructure.llm.prompt_manager import PromptManager
+
+logger = logging.getLogger(__name__)
 
 
 class JudgeResult:
@@ -75,6 +78,10 @@ class LLMJudgeService:
         except LLMError:
             raise
         except Exception as exc:
+            logger.error(
+                "Judge LLM call failed unexpectedly",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
             raise LLMError(f"Judge LLM call failed: {exc}") from exc
 
         return self._parse_judge_response(raw_response)

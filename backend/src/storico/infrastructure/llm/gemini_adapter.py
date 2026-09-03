@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from google import genai
@@ -9,6 +10,8 @@ from google.genai import types as genai_types
 
 from storico.domain.entities import LLMConnectionError, LLMResponseError
 from storico.domain.ports import LLMConfig, LLMPort
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiAdapter(LLMPort):
@@ -64,9 +67,21 @@ class GeminiAdapter(LLMPort):
                 config=genai_types.GenerateContentConfig(**gen_config),
             )
         except Exception as e:
+            logger.error(
+                "Gemini API call failed",
+                extra={
+                    "model": config.model,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+            )
             raise LLMConnectionError(f"Gemini API call failed: {e}") from e
 
         if response.text is None:
+            logger.warning(
+                "Gemini returned empty response",
+                extra={"model": config.model},
+            )
             raise LLMResponseError("Gemini returned an empty response")
 
         return response.text

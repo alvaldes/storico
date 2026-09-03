@@ -237,8 +237,15 @@ async def _run_extraction(
                 collection_name=settings.qdrant_collection,
                 vector_size=settings.embedding_dimensions,
             )
-        except Exception:
-            logger.warning("Qdrant unavailable, RAG disabled")
+        except Exception as exc:
+            logger.warning(
+                "Qdrant vector store unavailable, RAG disabled for this extraction",
+                extra={
+                    "extraction_id": str(extraction_id),
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            )
             vector_store = None
 
         extraction_service = ExtractionService(
@@ -294,8 +301,15 @@ async def _run_extraction(
                 confidence = judge_result.total_score / 50.0
                 if not judge_result.approved and confidence is not None and confidence > 0.5:
                     confidence = 0.5
-            except LLMError:
-                logger.warning("Judge validation failed, skipping")
+            except LLMError as exc:
+                logger.warning(
+                    "LLM judge validation failed, skipping confidence scoring",
+                    extra={
+                        "extraction_id": str(extraction_id),
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                    },
+                )
 
         # 5. Persist extraction — reuse the pending ID so the client's poll resolves
         created_at = await _get_created_at(extraction_repo, extraction_id)
@@ -372,6 +386,7 @@ async def _store_rag(
 ) -> None:
     """Store extraction result in vector store for future RAG searches."""
     if vector_store is None:
+        logger.debug("RAG store skipped: no vector store available")
         return
     try:
         tasks_summary = "\n".join(
@@ -386,8 +401,15 @@ async def _store_rag(
             confidence_score=None,
             user_story_id=str(getattr(story, "id", "")),
         )
-    except Exception:
-        logger.warning("RAG store failed, extraction already saved")
+    except Exception as exc:
+        logger.warning(
+            "RAG store failed, extraction already saved in database",
+            extra={
+                "extraction_id": str(extraction_id),
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            },
+        )
 
 
 async def _mark_extraction_failed(

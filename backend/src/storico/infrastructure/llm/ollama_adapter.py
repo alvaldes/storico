@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
@@ -9,6 +10,8 @@ from httpx import AsyncClient, ConnectError, Timeout, TimeoutException
 
 from storico.domain.entities import LLMConnectionError, LLMModelNotFoundError, LLMResponseError
 from storico.domain.ports import LLMConfig, LLMPort
+
+logger = logging.getLogger(__name__)
 
 
 class OllamaAdapter(LLMPort):
@@ -69,6 +72,17 @@ class OllamaAdapter(LLMPort):
                 )
             except (ConnectError, TimeoutException) as e:
                 last_exception = e
+                logger.warning(
+                    "Ollama connection attempt failed, will retry",
+                    extra={
+                        "attempt": attempt + 1,
+                        "max_attempts": 3,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                        "base_url": self._base_url,
+                        "model": config.model,
+                    },
+                )
                 if attempt < 2:
                     wait = 2**attempt  # 1, 2, 4 seconds
                     import asyncio
@@ -76,18 +90,35 @@ class OllamaAdapter(LLMPort):
                     await asyncio.sleep(wait)
                 continue
             except httpx.HTTPError as e:
+                logger.error(
+                    "Ollama HTTP error",
+                    extra={"error": str(e), "error_type": type(e).__name__},
+                )
                 raise LLMResponseError(f"HTTP error from Ollama: {e}") from e
 
             if response.status_code == 404:
                 raise LLMModelNotFoundError(config.model)
 
             if response.status_code != 200:
+                logger.error(
+                    "Ollama returned error status",
+                    extra={"status_code": response.status_code, "response_text": response.text},
+                )
                 raise LLMResponseError(
                     f"Ollama returned status {response.status_code}: {response.text}"
                 )
 
             return self._parse_response(response.json())
 
+        logger.error(
+            "All Ollama connection attempts exhausted",
+            extra={
+                "max_attempts": 3,
+                "base_url": self._base_url,
+                "model": config.model,
+                "last_error": str(last_exception) if last_exception else None,
+            },
+        )
         raise LLMConnectionError(
             f"Failed to connect to Ollama at {self._base_url} after 3 attempts"
         ) from last_exception

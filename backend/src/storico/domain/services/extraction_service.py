@@ -133,6 +133,7 @@ class ExtractionService:
     async def _fetch_rag_examples(self, text: str) -> list[ExtractionExample]:
         """Search for similar past extractions. Returns empty list on failure."""
         if self._vector_store is None:
+            logger.debug("RAG disabled: no vector store configured")
             return []
         try:
             return await self._vector_store.search_similar(
@@ -140,8 +141,11 @@ class ExtractionService:
                 limit=self._rag_config.max_examples,
                 threshold=self._rag_config.similarity_threshold,
             )
-        except Exception:
-            logger.warning("RAG search failed, proceeding without examples")
+        except Exception as exc:
+            logger.warning(
+                "RAG search failed, proceeding without examples",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
             return []
 
     def _format_examples(self, examples: list[ExtractionExample]) -> str:
@@ -207,12 +211,17 @@ class ExtractionService:
                     confidence = judge_result.total_score / 50.0
                     if not judge_result.approved and confidence is not None and confidence > 0.5:
                         confidence = 0.5
-                except LLMError:
-                    # Judge failure should not break extraction
-                    pass
+                except LLMError as exc:
+                    # Judge failure should not break extraction, but log it explicitly
+                    logger.warning(
+                        "LLM judge validation failed, skipping confidence scoring",
+                        extra={"error": str(exc), "error_type": type(exc).__name__},
+                    )
 
             # 4. Persist Extraction (completed)
             effective_prompt_config = prompt_config or {}
+            if story_id is None:
+                raise LLMError("User story ID is required for extraction persistence")
             extraction = Extraction(
                 user_story_id=story_id,
                 model_used=config.model,
@@ -226,7 +235,7 @@ class ExtractionService:
             # 5. Persist Task entities
             for pt in parsed_tasks:
                 task = Task(
-                    user_story_id=story_id or extraction.user_story_id,
+                    user_story_id=story_id,
                     title=pt.summary,
                     description=pt.description,
                     labels=list(pt.labels),
@@ -241,6 +250,12 @@ class ExtractionService:
 
         except (LLMError, ParseError) as exc:
             # Persist failed extraction with error info
+            if story_id is None:
+                logger.error(
+                    "Cannot persist failed extraction: user_story_id is None",
+                    extra={"error": str(exc)},
+                )
+                raise
             extraction = Extraction(
                 user_story_id=story_id,
                 model_used=config.model,
@@ -259,6 +274,7 @@ class ExtractionService:
     ) -> None:
         """Store extraction in vector store for future RAG searches."""
         if self._vector_store is None:
+            logger.debug("RAG store skipped: no vector store configured")
             return
         try:
             tasks_summary = "\n".join(
@@ -273,5 +289,8 @@ class ExtractionService:
                 confidence_score=extraction.confidence_score,
                 user_story_id=str(getattr(user_story, "id", "")),
             )
-        except Exception:
-            logger.warning("RAG store failed, extraction already saved")
+        except Exception as exc:
+            logger.warning(
+                "RAG store failed, extraction already saved in database",
+                extra={"error": str(exc), "error_type": type(exc).__name__, "extraction_id": str(extraction.id)},
+            )

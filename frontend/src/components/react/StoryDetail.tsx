@@ -55,6 +55,45 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [parentProject, setParentProject] = useState<{ id: string; name: string } | null>(null);
   const [resolvingProject, setResolvingProject] = useState(false);
+  // Track previous extraction status to detect failure transitions during polling
+  const [prevExtractionStatus, setPrevExtractionStatus] = useState<string | null>(null);
+
+  // Map backend error messages (English) to translated user-facing messages
+  const getExtractionErrorMessage = (error: string | null | undefined): string => {
+    if (!error) return t.stories.extractionFailed;
+    const lower = error.toLowerCase();
+    // Timeout patterns
+    if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('too long')) {
+      return t.stories.extractionTimeout;
+    }
+    // Auth patterns
+    if (lower.includes('unauthorized') || lower.includes('session expired') || lower.includes('not signed in') || lower.includes('authentication') || lower.includes('401') || lower.includes('403')) {
+      return t.stories.extractionUnauthorized;
+    }
+    // Model not found / unavailable
+    if (lower.includes('model not found') || lower.includes('model') && lower.includes('not available') || lower.includes('model') && lower.includes('not found')) {
+      return t.stories.extractionFailed;
+    }
+    // Connection / Ollama / network errors
+    if (lower.includes('connection') || lower.includes('connect') || lower.includes('ollama') || lower.includes('refused') || lower.includes('econnrefused') || lower.includes('network') || lower.includes('fetch') || lower.includes('failed to connect')) {
+      return t.stories.extractionFailed;
+    }
+    // LLM response / parsing errors
+    if (lower.includes('llmresponseerror') || lower.includes('parse') || lower.includes('parsing') || lower.includes('invalid response') || lower.includes('unprocessable')) {
+      return t.stories.extractionFailed;
+    }
+    // LLM connection errors
+    if (lower.includes('llmconnectionerror') || lower.includes('llm error') || lower.includes('gemini') || lower.includes('generation failed')) {
+      return t.stories.extractionFailed;
+    }
+    // Judge validation errors
+    if (lower.includes('judge') || lower.includes('validation') || lower.includes('scoring')) {
+      return t.stories.extractionFailed;
+    }
+    // For any other backend error, show the generic translated message
+    // (backend errors are technical; we don't want to expose raw English errors to users)
+    return t.stories.extractionFailed;
+  };
 
   const story = stories.find((s) => s.id === storyId);
   const storyTasks = tasks[storyId] ?? [];
@@ -76,6 +115,17 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       resetExtraction(storyId);
     };
   }, [storyId, resetExtraction]);
+
+  // Show toast when extraction fails during polling (status transitions to 'failed')
+  useEffect(() => {
+    if (extraction && extraction.status === 'failed' && prevExtractionStatus === 'pending') {
+      const errorMsg = getExtractionErrorMessage(extraction.error);
+      toast.error(errorMsg);
+    }
+    if (extraction) {
+      setPrevExtractionStatus(extraction.status);
+    }
+  }, [extraction?.status, extraction?.error, prevExtractionStatus, t]);
 
   // Resolve parent project for contextual back link
   useEffect(() => {
@@ -373,6 +423,14 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
                 <p className="text-sm text-muted-foreground">Extracting tasks...</p>
                 <p className="text-xs text-muted-foreground mt-1 opacity-60">
                   This can take up to a minute
+                </p>
+              </>
+            ) : extraction?.status === 'failed' ? (
+              <>
+                <AlertCircle className="mb-3 h-8 w-8 text-destructive" />
+                <p className="text-sm text-destructive">{getExtractionErrorMessage(extraction.error)}</p>
+                <p className="text-xs text-muted-foreground mt-1 opacity-60">
+                  {getExtractionErrorMessage(extraction.error)}
                 </p>
               </>
             ) : (
