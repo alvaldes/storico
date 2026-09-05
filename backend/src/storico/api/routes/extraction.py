@@ -33,6 +33,8 @@ from storico.api.schemas.extraction import (
     ExtractionResponse,
 )
 from storico.domain.entities import EntityNotFound, Extraction, User, Workspace, WorkspaceRole
+from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.entities.user_story import UserStoryStatus
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
@@ -192,7 +194,8 @@ async def extract_tasks(
         user_story_id=body.user_story_id,
         model_used=model,
         raw_response="",
-        status="pending",
+        status=ExtractionStatus.PENDING,
+        user_story_status=UserStoryStatus.PENDING_EXTRACTION,
         prompt_config={
             "validate": body.run_validation,
             "temperature": body.temperature,
@@ -220,9 +223,9 @@ async def extract_tasks(
     # 3. Respond immediately — no tasks yet, client will poll
     return ExtractResponse(
         extraction_id=extraction_id,
-        status="pending",
-        tasks=[],
-        model_used=model,
+        status=ExtractionStatus.PENDING,
+        user_story_id=body.user_story_id,
+        message="Extraction started. Poll GET /extractions/{extraction_id} for progress.",
     )
 
 
@@ -250,6 +253,7 @@ async def extraction_status(
         user_story_id=extraction.user_story_id,
         model_used=extraction.model_used,
         status=extraction.status,
+        user_story_status=extraction.user_story_status,
         error_info=extraction.error_info,
         prompt_config=extraction.prompt_config,
         raw_response=extraction.raw_response,

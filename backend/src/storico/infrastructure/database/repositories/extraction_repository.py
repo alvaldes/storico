@@ -9,6 +9,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import EntityNotFound, Extraction, RepositoryError
+from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import ExtractionRepository
 from storico.infrastructure.database.models import ExtractionModel, ProjectModel, UserStoryModel
 
@@ -68,7 +70,8 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
             user_story_id=model.user_story_id,
             model_used=model.model_used,
             raw_response=model.raw_response,
-            status=model.status,
+            status=ExtractionStatus(model.status),
+            user_story_status=UserStoryStatus(model.user_story_status),
             error_info=model.error_info,
             prompt_config=model.prompt_config,
             confidence_score=model.confidence_score,
@@ -82,7 +85,8 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
             "id": extraction.id,
             "user_story_id": extraction.user_story_id,
             "model_used": extraction.model_used,
-            "status": extraction.status,
+            "status": extraction.status.value,
+            "user_story_status": extraction.user_story_status.value,
             "error_info": extraction.error_info,
             "raw_response": extraction.raw_response,
             "prompt_config": extraction.prompt_config,

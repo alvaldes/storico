@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from storico.api.dependencies import get_current_user, get_repository
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
@@ -15,6 +15,11 @@ from storico.api.schemas.task import (
     UpdateTaskRequest,
 )
 from storico.domain.entities import EntityNotFound, Task, User
+from storico.domain.entities.task import TaskStatus
+from storico.domain.validators.state_machine import (
+    VALID_TASK_TRANSITIONS,
+    validate_task_transition,
+)
 from storico.infrastructure.database.repositories import SQLAlchemyTaskRepository
 
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
@@ -142,6 +147,20 @@ async def update_task(
     existing = await repo.find_by_id(task_id)
     if existing is None:
         raise EntityNotFound("Task", str(task_id))
+
+    # Validate status transition if status is being updated
+    if body.status is not None and not validate_task_transition(existing.status, body.status):
+        allowed = VALID_TASK_TRANSITIONS.get(existing.status, set())
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "detail": "Invalid state transition",
+                "error_code": "INVALID_STATE_TRANSITION",
+                "current_state": existing.status.value,
+                "attempted_state": body.status.value,
+                "allowed_transitions": [s.value for s in allowed],
+            },
+        )
 
     kwargs: dict = {"updated_at": datetime.now(UTC)}
     if body.title is not None:

@@ -30,6 +30,8 @@ from uuid import UUID
 from storico.application.prompts.resolve_workspace_prompt import resolve_workspace_prompt
 from storico.domain.entities import Extraction, Task
 from storico.domain.entities.exceptions import LLMError, ParseError
+from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, VectorStorePort
 from storico.domain.services.extraction_judge_service import LLMJudgeService
 from storico.domain.services.extraction_service import ExtractionService, RAGConfig
@@ -150,14 +152,15 @@ async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
 
         recovered = 0
         for ext in all_extractions:
-            if ext.status == "pending" and ext.created_at and ext.created_at < deadline:
+            if ext.status == ExtractionStatus.PENDING and ext.created_at and ext.created_at < deadline:
                 await repo.save(
                     Extraction(
                         id=ext.id,
                         user_story_id=ext.user_story_id,
                         model_used=ext.model_used or "",
                         raw_response=ext.raw_response or "",
-                        status="failed",
+                        status=ExtractionStatus.FAILED,
+                        user_story_status=UserStoryStatus.FAILED_EXTRACTION,
                         error_info="Server restarted while extraction was pending",
                         prompt_config=ext.prompt_config,
                         created_at=ext.created_at,
@@ -318,7 +321,8 @@ async def _run_extraction(
             user_story_id=story_id,
             model_used=model,
             raw_response=raw_response,
-            status="completed",
+            status=ExtractionStatus.COMPLETED,
+            user_story_status=UserStoryStatus.EXTRACTED,
             confidence_score=confidence,
             prompt_config={
                 "validate": validate,
@@ -361,7 +365,8 @@ async def _mark_failed(
         user_story_id=pending.user_story_id,
         model_used=pending.model_used,
         raw_response=pending.raw_response,
-        status="failed",
+        status=ExtractionStatus.FAILED,
+        user_story_status=UserStoryStatus.FAILED_EXTRACTION,
         error_info=error_info,
         prompt_config=pending.prompt_config,
         created_at=pending.created_at,
@@ -423,4 +428,18 @@ async def _mark_extraction_failed(
     factory = create_session_factory(get_engine())
     async with factory() as session:
         repo = SQLAlchemyExtractionRepository(session)
-        await _mark_failed(repo, extraction_id, error_info)
+        pending = await repo.find_by_id(extraction_id)
+        if pending is None:
+            return
+        failed = Extraction(
+            id=extraction_id,
+            user_story_id=pending.user_story_id,
+            model_used=pending.model_used,
+            raw_response=pending.raw_response,
+            status=ExtractionStatus.FAILED,
+            user_story_status=UserStoryStatus.FAILED_EXTRACTION,
+            error_info=error_info,
+            prompt_config=pending.prompt_config,
+            created_at=pending.created_at,
+        )
+        await repo.save(failed)

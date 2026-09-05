@@ -43,4 +43,4 @@ class UserStoryResponse(BaseModel):
     benefit: str
     raw_text: str
     created_at: datetime
-    status: UserStoryStatus = UserStoryStatus.PENDING
+    status: UserStoryStatus = UserStoryStatus.PENDING_EXTRACTION

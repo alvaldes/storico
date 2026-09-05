@@ -8,6 +8,8 @@ from dataclasses import dataclass
 
 from storico.domain.entities import Extraction, ParseError, Task
 from storico.domain.entities.exceptions import LLMError
+from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import (
     ExtractionExample,
     ExtractionRepository,
@@ -226,7 +228,8 @@ class ExtractionService:
                 user_story_id=story_id,
                 model_used=config.model,
                 raw_response=raw_response,
-                status="completed",
+                status=ExtractionStatus.COMPLETED,
+                user_story_status=UserStoryStatus.EXTRACTED,
                 prompt_config=effective_prompt_config,
                 confidence_score=confidence,
             )
@@ -260,7 +263,8 @@ class ExtractionService:
                 user_story_id=story_id,
                 model_used=config.model,
                 raw_response="",
-                status="failed",
+                status=ExtractionStatus.FAILED,
+                user_story_status=UserStoryStatus.FAILED_EXTRACTION,
                 error_info=str(exc),
                 prompt_config=prompt_config,
             )

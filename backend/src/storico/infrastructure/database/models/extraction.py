@@ -5,11 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, String, Text, Uuid
+from sqlalchemy import DateTime, Float, ForeignKey, Index, JSON, String, Text, Uuid
+from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from uuid_utils.compat import uuid7
 
+from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.entities.user_story import UserStoryStatus
 from storico.infrastructure.database.models.base import Base
 
 
@@ -23,8 +26,25 @@ class ExtractionModel(Base):
         Uuid, ForeignKey("user_stories.id", ondelete="CASCADE"), nullable=False
     )
     model_used: Mapped[str] = mapped_column(String(100), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending"
+    status: Mapped[ExtractionStatus] = mapped_column(
+        PGEnum(
+            ExtractionStatus,
+            name="extraction_status_new",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+        default=ExtractionStatus.PENDING,
+    )
+    user_story_status: Mapped[UserStoryStatus] = mapped_column(
+        PGEnum(
+            UserStoryStatus,
+            name="user_story_status_new",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+        default=UserStoryStatus.PENDING_EXTRACTION,
     )
     error_info: Mapped[str | None] = mapped_column(
         Text, nullable=True, default=None

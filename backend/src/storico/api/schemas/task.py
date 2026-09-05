@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from storico.domain.entities.task import TaskStatus
+
 
 class CreateTaskRequest(BaseModel):
     """Request body for creating a new task."""
@@ -14,7 +16,7 @@ class CreateTaskRequest(BaseModel):
     user_story_id: UUID
     title: str
     description: str = ""
-    status: str = Field(default="backlog")
+    status: TaskStatus = Field(default=TaskStatus.BACKLOG)
     priority: str = Field(default="medium")
     labels: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
@@ -27,7 +29,7 @@ class UpdateTaskRequest(BaseModel):
 
     title: str | None = None
     description: str | None = None
-    status: str | None = None
+    status: TaskStatus | None = None
     priority: str | None = None
     labels: list[str] | None = None
     dependencies: list[str] | None = None
@@ -42,7 +44,7 @@ class TaskResponse(BaseModel):
     user_story_id: UUID
     title: str
     description: str
-    status: str
+    status: TaskStatus
     priority: str
     labels: list[str]
     dependencies: list[str]

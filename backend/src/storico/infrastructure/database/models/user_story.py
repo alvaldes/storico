@@ -6,10 +6,12 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text, Uuid
+from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from uuid_utils.compat import uuid7
 
+from storico.domain.entities.user_story import UserStoryStatus
 from storico.infrastructure.database.models.base import Base
 
 
@@ -29,8 +31,15 @@ class UserStoryModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending"
+    status: Mapped[UserStoryStatus] = mapped_column(
+        PGEnum(
+            UserStoryStatus,
+            name="user_story_status_new",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+        default=UserStoryStatus.PENDING_EXTRACTION,
     )
 
     __table_args__ = (

@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import EntityNotFound, RepositoryError, Task
+from storico.domain.entities.task import TaskStatus
 from storico.domain.ports import TaskRepository
 from storico.infrastructure.database.models import ProjectModel, TaskModel, UserStoryModel
 
@@ -71,7 +72,7 @@ class SQLAlchemyTaskRepository(TaskRepository):
             user_story_id=model.user_story_id,
             title=model.title,
             description=model.description,
-            status=model.status,
+            status=TaskStatus(model.status),
             priority=model.priority,
             labels=model.labels.get("items", []) if model.labels else [],
             dependencies=model.dependencies.get("items", []) if model.dependencies else [],
@@ -87,7 +88,7 @@ class SQLAlchemyTaskRepository(TaskRepository):
             "user_story_id": task.user_story_id,
             "title": task.title,
             "description": task.description,
-            "status": task.status,
+            "status": task.status.value,
             "priority": task.priority,
             "labels": {"items": task.labels} if task.labels else None,
             "dependencies": {"items": task.dependencies} if task.dependencies else None,
