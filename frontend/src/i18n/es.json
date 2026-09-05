@@ -159,6 +159,10 @@
     "delete_confirm_title": "¿Eliminar historia de usuario?",
     "delete_confirm_description": "Esto eliminará permanentemente la historia de usuario y sus tareas generadas. Esta acción no se puede deshacer.",
     "create_disabled_hint": "Selecciona un proyecto primero para crear una nueva historia de usuario.",
+    "status_pending_extraction": "Extracción Pendiente",
+    "status_extracting": "Extrayendo",
+    "status_extracted": "Extraído",
+    "status_failed_extraction": "Extracción Fallida",
     "status_pending": "Pendiente",
     "status_processing": "Procesando",
     "status_completed": "Completada",
@@ -208,7 +212,11 @@
     "empty_column": "Sin tareas aún",
     "total_tasks": "{count} tareas",
     "error_load": "Error al cargar tareas",
-    "no_workspace": "Selecciona un workspace para ver el tablero Kanban."
+    "no_workspace": "Selecciona un workspace para ver el tablero Kanban.",
+    "invalid_drop_title": "Movimiento Inválido",
+    "invalid_drop": "No se puede mover la tarea de {from} a {to}. Permitidos: {allowed}",
+    "backend_invalid_transition": "El servidor rechazó mover de {from} a {to}. Permitidos: {allowed}",
+    "invalid_drop": "No se puede mover la tarea de {from} a {to}. Permitidos: {allowed}"
   },
   "taskEditor": {
     "title": "Editar Tarea",
@@ -217,6 +225,8 @@
     "title_placeholder": "Título de la tarea",
     "description_label": "Descripción",
     "description_placeholder": "Descripción de la tarea",
+    "status_label": "Estado",
+    "invalid_transition": "Transición inválida",
     "labels_label": "Etiquetas",
     "labels_placeholder": "Agrega una etiqueta y presiona Enter",
     "labels_duplicate": "La etiqueta ya existe",

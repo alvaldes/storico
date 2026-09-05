@@ -1,4 +1,6 @@
-import type { Task } from '@/types/task';
+import type { Task, TaskStatus } from '@/types/task';
+import type { UserStory, UserStoryStatus } from '@/types/story';
+import type { ExtractionResponse, ExtractResponse, ExtractRequest, ExtractionTask, ExtractionUserStory } from '@/types/extraction';
 
 const BASE_URL = '';  // Proxy through Astro (same-origin)
 
@@ -6,12 +8,20 @@ export interface ApiError {
   status: number;
   message: string;
   detail?: string;
+  error_code?: string;
+  current_state?: string;
+  attempted_state?: string;
+  allowed_transitions?: string[];
 }
 
 export class ApiRequestError extends Error {
   status: number;
   statusText: string;
   detail: unknown;
+  errorCode?: string;
+  currentState?: string;
+  attemptedState?: string;
+  allowedTransitions?: string[];
 
   constructor(status: number, statusText: string, detail: unknown) {
     const message = buildErrorMessage(status, statusText, detail);
@@ -20,6 +30,25 @@ export class ApiRequestError extends Error {
     this.status = status;
     this.statusText = statusText;
     this.detail = detail;
+
+    // Extract structured error fields for INVALID_STATE_TRANSITION
+    if (typeof detail === 'object' && detail !== null) {
+      const d = detail as Record<string, unknown>;
+      this.errorCode = d.error_code as string | undefined;
+      this.currentState = d.current_state as string | undefined;
+      this.attemptedState = d.attempted_state as string | undefined;
+      this.allowedTransitions = d.allowed_transitions as string[] | undefined;
+    }
+  }
+
+  /** Check if this is an INVALID_STATE_TRANSITION error. */
+  isInvalidStateTransition(): boolean {
+    return this.errorCode === 'INVALID_STATE_TRANSITION';
+  }
+
+  /** Get allowed transitions from the error (if available). */
+  getAllowedTransitions(): TaskStatus[] {
+    return (this.allowedTransitions as TaskStatus[]) ?? [];
   }
 }
 
@@ -70,7 +99,7 @@ class ApiClient {
       let detail: unknown;
       try {
         const errorBody = await response.json();
-        detail = errorBody.detail ?? errorBody.message;
+        detail = errorBody.detail ?? errorBody.message ?? errorBody;
       } catch {
         // response body is not JSON
       }
@@ -115,8 +144,52 @@ class ApiClient {
     return resp.items.map(mapTaskResponse);
   }
 
-  async updateTaskStatus(taskId: string, status: string): Promise<void> {
+  async updateTaskStatus(taskId: string, status: TaskStatus): Promise<void> {
     await this.put(`/api/v1/tasks/${taskId}`, { status });
+  }
+
+  async updateTask(taskId: string, fields: Partial<Task>): Promise<void> {
+    await this.put(`/api/v1/tasks/${taskId}`, fields);
+  }
+
+  // ── Story methods ──
+
+  async listStories(params: { project_id?: string; workspace_id?: string; page?: number; size?: number }): Promise<{ items: StoryResponseRaw[]; total: number; page: number; size: number }> {
+    const query = new URLSearchParams();
+    if (params.project_id) query.set('project_id', params.project_id);
+    if (params.workspace_id) query.set('workspace_id', params.workspace_id);
+    if (params.page) query.set('page', String(params.page));
+    if (params.size) query.set('size', String(params.size));
+    return this.get(`/api/v1/stories/?${query.toString()}`);
+  }
+
+  async getStory(id: string): Promise<UserStory> {
+    const raw = await this.get<StoryResponseRaw>(`/api/v1/stories/${id}`);
+    return mapStoryResponse(raw);
+  }
+
+  async createStory(data: { project_id: string; actor: string; feature: string; benefit: string; raw_text: string }): Promise<UserStory> {
+    const raw = await this.post<StoryResponseRaw>('/api/v1/stories/', data);
+    return mapStoryResponse(raw);
+  }
+
+  async updateStory(id: string, data: Partial<{ actor: string; feature: string; benefit: string; raw_text: string }>): Promise<UserStory> {
+    const raw = await this.put<StoryResponseRaw>(`/api/v1/stories/${id}`, data);
+    return mapStoryResponse(raw);
+  }
+
+  async deleteStory(id: string): Promise<void> {
+    await this.delete(`/api/v1/stories/${id}`);
+  }
+
+  // ── Extraction methods ──
+
+  async startExtraction(data: ExtractRequest): Promise<ExtractResponse> {
+    return this.post(`/api/v1/workspaces/${data.user_story_id}/extract/`, data);
+  }
+
+  async getExtractionStatus(extractionId: string): Promise<ExtractionResponse> {
+    return this.get(`/api/v1/extractions/${extractionId}`);
   }
 }
 
@@ -143,10 +216,34 @@ function mapTaskResponse(raw: TaskResponseRaw): Task {
     description: raw.description,
     labels: raw.labels,
     dependencies: raw.dependencies,
-    status: raw.status,
+    status: raw.status as TaskStatus,
     priority: raw.priority,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
+  };
+}
+
+interface StoryResponseRaw {
+  id: string;
+  project_id: string;
+  actor: string;
+  feature: string;
+  benefit: string;
+  raw_text: string;
+  created_at: string;
+  status: string;
+}
+
+function mapStoryResponse(raw: StoryResponseRaw): UserStory {
+  return {
+    id: raw.id,
+    projectId: raw.project_id,
+    actor: raw.actor,
+    feature: raw.feature,
+    benefit: raw.benefit,
+    rawText: raw.raw_text,
+    createdAt: raw.created_at,
+    status: raw.status as UserStoryStatus,
   };
 }
 

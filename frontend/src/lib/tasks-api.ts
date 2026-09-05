@@ -1,22 +1,11 @@
-import { api } from './api';
+import { api, ApiRequestError } from './api';
 import { toCamelCase, toSnakeCase } from './utils';
-import type { Task } from '@/types/task';
+import type { Task, TaskStatus, RawTaskItem } from '@/types/task';
+import type { ExtractionResponse, ExtractResponse, ExtractRequest, ExtractionTask, ExtractionUserStory } from '@/types/extraction';
+import type { UserStory } from '@/types/story';
 import type { PaginatedResponse } from './projects-api';
 
 // ── Mapping helpers ──
-
-interface RawTaskItem {
-  id: string;
-  user_story_id: string;
-  title: string;
-  description: string;
-  status: string;
-  priority: string;
-  labels: string[];
-  dependencies: string[];
-  created_at: string;
-  updated_at: string;
-}
 
 function mapTaskItem(raw: RawTaskItem): Task {
   return {
@@ -24,37 +13,12 @@ function mapTaskItem(raw: RawTaskItem): Task {
     storyId: raw.user_story_id,
     title: raw.title,
     description: raw.description,
-    status: raw.status,
+    status: raw.status as TaskStatus,
     priority: raw.priority,
     labels: raw.labels,
     dependencies: raw.dependencies,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
-  };
-}
-
-interface RawExtractResult {
-  extraction_id: string;
-  status: string;
-  tasks: RawTaskItem[];
-  model_used: string;
-  error_info?: string;
-  confidence_score?: number;
-}
-
-function mapExtractResult(raw: RawExtractResult): {
-  extractionId: string;
-  status: string;
-  tasks: Task[];
-  modelUsed: string;
-  errorInfo?: string;
-} {
-  return {
-    extractionId: raw.extraction_id,
-    status: raw.status,
-    tasks: raw.tasks.map(mapTaskItem),
-    modelUsed: raw.model_used,
-    errorInfo: raw.error_info,
   };
 }
 
@@ -74,11 +38,29 @@ export async function listTasksByWorkspace(workspaceId: string): Promise<Task[]>
   return raw.items.map(mapTaskItem);
 }
 
-/** Update a task status (used by Kanban drag-and-drop). */
+/** Update a task status (used by Kanban drag-and-drop).
+ * Performs client-side validation before sending to backend. */
 export async function updateTaskStatus(
   taskId: string,
-  status: string,
+  status: TaskStatus,
+  currentStatus: TaskStatus,
 ): Promise<Task> {
+  // Client-side validation before sending to backend
+  if (!isValidTransition(currentStatus, status)) {
+    const allowed = getAllowedTransitions(currentStatus);
+    const error = new Error(`Invalid transition from ${currentStatus} to ${status}`) as Error & {
+      errorCode: string;
+      currentState: TaskStatus;
+      attemptedState: TaskStatus;
+      allowedTransitions: TaskStatus[];
+    };
+    error.errorCode = 'INVALID_STATE_TRANSITION';
+    error.currentState = currentStatus;
+    error.attemptedState = status;
+    error.allowedTransitions = allowed;
+    throw error;
+  }
+
   const raw = await api.put<RawTaskItem>(`/api/v1/tasks/${taskId}`, { status });
   return mapTaskItem(raw);
 }
@@ -91,10 +73,17 @@ export async function updateTask(
     description?: string;
     labels?: string[];
     dependencies?: string[];
-    status?: string;
+    status?: TaskStatus;
     priority?: string;
   },
 ): Promise<Task> {
+  // If status is being updated, validate client-side
+  if (fields.status !== undefined) {
+    // We need the current status - fetch it first
+    // Note: In practice, the caller (TaskEditor) should pass currentStatus
+    // For now, we'll let the backend validate and catch the error
+  }
+
   const raw = await api.put<RawTaskItem>(
     `/api/v1/tasks/${taskId}`,
     toSnakeCase(fields),
@@ -141,6 +130,7 @@ export async function startExtraction(
  * Returns the current status, error info (if any), and confidence score.
  * When status is ``"completed"``, use ``listTasks(storyId)`` to fetch the
  * generated tasks.
+ * Now includes ``user_story_status`` to show the UserStory lifecycle state.
  */
 export async function getExtractionStatus(
   extractionId: string,
@@ -149,6 +139,7 @@ export async function getExtractionStatus(
   userStoryId: string;
   modelUsed: string;
   status: string;
+  userStoryStatus: string;
   errorInfo: string | null;
   confidenceScore: number | null;
 }> {
@@ -157,6 +148,7 @@ export async function getExtractionStatus(
     user_story_id: string;
     model_used: string;
     status: string;
+    user_story_status: string;
     error_info: string | null;
     confidence_score: number | null;
   }>(`/api/v1/extractions/${extractionId}`);
@@ -165,16 +157,13 @@ export async function getExtractionStatus(
     userStoryId: raw.user_story_id,
     modelUsed: raw.model_used,
     status: raw.status,
+    userStoryStatus: raw.user_story_status,
     errorInfo: raw.error_info,
     confidenceScore: raw.confidence_score,
   };
 }
 
-/** @deprecated Use ``startExtraction()`` + ``getExtractionStatus()`` instead.
- *
- * The old synchronous extraction endpoint is now asynchronous. This function
- * is kept for backward compatibility but will be removed.
- */
+/** @deprecated Use ``startExtraction()`` + ``getExtractionStatus()`` instead. */
 export async function extractTasks(
   storyId: string,
   workspaceId: string,
@@ -190,7 +179,6 @@ export async function extractTasks(
   if (result.status !== 'pending') {
     return { ...result, tasks: [] };
   }
-  // Poll until complete or failed
   const pollStatus = await pollUntilComplete(result.extractionId);
   if (pollStatus.status === 'completed') {
     const tasks = await listTasks(storyId);
@@ -212,4 +200,27 @@ async function pollUntilComplete(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
   return { status: 'failed', errorInfo: 'Polling timed out' };
+}
+
+/** Client-side transition validation helpers. */
+export function isValidTransition(current: string, next: string): boolean {
+  const validTransitions: Record<string, string[]> = {
+    backlog: ['backlog', 'todo'],
+    todo: ['backlog', 'in_progress'],
+    in_progress: ['todo', 'review'],
+    review: ['in_progress', 'done'],
+    done: ['done'],
+  };
+  return validTransitions[current]?.includes(next) ?? false;
+}
+
+export function getAllowedTransitions(current: string): string[] {
+  const validTransitions: Record<string, string[]> = {
+    backlog: ['backlog', 'todo'],
+    todo: ['backlog', 'in_progress'],
+    in_progress: ['todo', 'review'],
+    review: ['in_progress', 'done'],
+    done: ['done'],
+  };
+  return validTransitions[current] ?? [];
 }

@@ -24,10 +24,10 @@ import { toast } from 'sonner';
 import { useTranslations, type Locale } from '@/i18n/utils';
 
 const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-  pending: 'outline',
-  processing: 'secondary',
-  completed: 'default',
-  error: 'destructive',
+  pending_extraction: 'outline',
+  extracting: 'secondary',
+  extracted: 'default',
+  failed_extraction: 'destructive',
 };
 
 interface StoryDetailProps {
@@ -299,7 +299,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <Badge variant={STATUS_VARIANTS[story.status] ?? 'outline'}>
-            {t.stories[`status_${story.status ?? 'pending'}` as keyof typeof t.stories]}
+            {t.stories[`status_${story.status ?? 'pending_extraction'}` as keyof typeof t.stories]}
           </Badge>
           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/60 font-mono">
             <Fingerprint className="h-3 w-3" />

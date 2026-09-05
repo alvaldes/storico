@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,8 @@ import { Loader2, X } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import { toast } from 'sonner';
-import type { Task } from '@/types/task';
+import type { Task, TaskStatus } from '@/types/task';
+import { getAllowedTaskTransitions, VALID_TASK_TRANSITIONS, TASK_STATUS_LABELS, TASK_STATUSES } from '@/types/task';
 
 interface TaskEditorProps {
   task: Task;
@@ -44,6 +45,7 @@ export function TaskEditor({
   const [description, setDescription] = useState(task.description);
   const [labels, setLabels] = useState<string[]>(task.labels);
   const [dependencies, setDependencies] = useState<string[]>(task.dependencies);
+  const [status, setStatus] = useState<TaskStatus>(task.status);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -60,6 +62,7 @@ export function TaskEditor({
       setDescription(task.description);
       setLabels(task.labels);
       setDependencies(task.dependencies);
+      setStatus(task.status);
       setSaving(false);
       setErrors({});
       setLabelInput('');
@@ -134,11 +137,27 @@ export function TaskEditor({
     }
   };
 
+  /* ── Status validation ── */
+
+  // Get allowed transitions for current task status
+  const allowedTransitions = useMemo(
+    () => getAllowedTaskTransitions(task.status),
+    [task.status]
+  );
+
+  const isValidStatus = useCallback(
+    (newStatus: TaskStatus) => allowedTransitions.includes(newStatus),
+    [allowedTransitions]
+  );
+
   /* ── Save ── */
 
   const handleSave = async () => {
     const localErrors: Record<string, string> = {};
     if (!title.trim()) localErrors.title = 'Required';
+    if (!isValidStatus(status)) {
+      localErrors.status = `Invalid transition from ${task.status} to ${status}`;
+    }
     if (Object.keys(localErrors).length > 0) {
       setErrors(localErrors);
       return;
@@ -154,6 +173,7 @@ export function TaskEditor({
         description,
         labels,
         dependencies,
+        status,
       });
       setSaving(false);
       toast.success(t.taskEditor.saved);
@@ -199,6 +219,30 @@ export function TaskEditor({
               placeholder={t.taskEditor.description_placeholder}
               rows={3}
             />
+          </Field>
+
+          {/* Status */}
+          <Field>
+            <FieldLabel htmlFor="te-status">{t.taskEditor.status_label}</FieldLabel>
+            <select
+              id="te-status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as TaskStatus)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-invalid={!!errors.status}
+            >
+              {TASK_STATUSES.map((s) => (
+                <option
+                  key={s}
+                  value={s}
+                  disabled={!isValidStatus(s)}
+                  className={isValidStatus(s) ? '' : 'text-muted-foreground/50'}
+                >
+                  {isValidStatus(s) ? '✓ ' : '✗ '} {t(TASK_STATUS_LABELS[s])} {isValidStatus(s) ? '' : ` (${t('taskEditor.invalid_transition')})`}
+                </option>
+              ))}
+            </select>
+            <FieldError>{errors.status}</FieldError>
           </Field>
 
           {/* Labels */}
@@ -272,4 +316,8 @@ export function TaskEditor({
       </DialogContent>
     </Dialog>
   );
+}
+
+function normalizeTag(tag: string): string {
+  return tag.trim().toLowerCase();
 }

@@ -1,6 +1,6 @@
 import { api } from './api';
 import { toCamelCase, toSnakeCase } from './utils';
-import type { UserStory } from '@/types/story';
+import type { UserStory, UserStoryStatus } from '@/types/story';
 import type { CreateStoryParams, UpdateStoryParams } from '@/schemas';
 import type { PaginatedResponse } from './projects-api';
 
@@ -37,7 +37,7 @@ export async function getStory(id: string): Promise<UserStory> {
   return toCamelCase<UserStory>(raw);
 }
 
-/** Update a user story. */
+/** Update an existing user story. */
 export async function updateStory(
   id: string,
   params: UpdateStoryParams,
@@ -49,7 +49,7 @@ export async function updateStory(
   return toCamelCase<UserStory>(raw);
 }
 
-/** Delete a user story. */
+/** Delete a user story by its ID. */
 export async function deleteStory(id: string): Promise<void> {
   await api.delete(`/api/v1/stories/${id}`);
 }

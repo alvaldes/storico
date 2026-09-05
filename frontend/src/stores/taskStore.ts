@@ -1,6 +1,8 @@
 import { create } from 'zustand';
-import type { Task } from '@/types/task';
+import type { Task, TaskStatus } from '@/types/task';
+import type { UserStory, UserStoryStatus } from '@/types/story';
 import * as api from '@/lib/tasks-api';
+import type { ApiRequestError } from '@/lib/api';
 
 // ── Types ──
 
@@ -10,14 +12,13 @@ export type ExtractionErrorCode = 'unauthorized' | 'network' | 'server' | null;
 export interface ExtractionState {
   extractionId: string | null;
   status: ExtractionStatus;
+  userStoryStatus: UserStoryStatus | null;
   error: string | null;
   /** Categorized failure cause so consumers can react specifically (e.g. 401 → re-auth). */
   errorCode: ExtractionErrorCode;
 }
 
-// ── Store ──
-
-interface TaskState {
+export interface TaskState {
   tasks: Record<string, Task[]>;
   workspaceTasks: Task[];
   extractions: Record<string, ExtractionState>;
@@ -25,6 +26,8 @@ interface TaskState {
   error: string | null;
   /** ID of the task currently being PUT-updated, or null when idle. Enables per-task spinners. */
   updatingTaskId: string | null;
+  /** Store allowed transitions per task for client-side validation. */
+  allowedTransitions: Record<string, TaskStatus[]>;
 
   fetchTasks: (storyId: string) => Promise<void>;
   /** Start an asynchronous extraction and begin polling for completion. */
@@ -41,21 +44,20 @@ interface TaskState {
    * - On failure, rolls back to the previous snapshot and re-throws so the caller can toast.
    */
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>;
-  updateTaskStatus: (taskId: string, status: string) => Promise<void>;
+  updateTaskStatus: (taskId: string, status: TaskStatus) => Promise<void>;
   resetExtraction: (storyId: string) => void;
+  /** Set allowed transitions for a task (fetched from API or computed client-side). */
+  setAllowedTransitions: (taskId: string, transitions: TaskStatus[]) => void;
 }
 
 const INITIAL_EXTRACTION: ExtractionState = {
   extractionId: null,
   status: 'idle',
+  userStoryStatus: null,
   error: null,
   errorCode: null,
 };
 
-/**
- * Categorize a thrown error from the LLM extraction start call into a stable
- * `errorCode` so consumers can react without parsing message strings.
- */
 function categorizeExtractionError(err: unknown): ExtractionErrorCode {
   if (!err) return 'server';
   // Shapes thrown by `lib/api.ts`: { status?: number; code?: number|string; message?: string }
@@ -76,6 +78,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   loading: false,
   error: null,
   updatingTaskId: null,
+  allowedTransitions: {},
 
   // ── Fetching ──
 
@@ -87,6 +90,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         tasks: { ...state.tasks, [storyId]: items },
         loading: false,
       }));
+      // Store allowed transitions for each task
+      set((state) => {
+        const newTransitions = { ...state.allowedTransitions };
+        for (const task of items) {
+          newTransitions[task.id] = api.getAllowedTransitions(task.status);
+        }
+        return { allowedTransitions: newTransitions };
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch tasks';
       set({ error: message, loading: false });
@@ -100,7 +111,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set((state) => ({
       extractions: {
         ...state.extractions,
-        [storyId]: { extractionId: null, status: 'pending', error: null, errorCode: null },
+        [storyId]: { extractionId: null, status: 'pending', userStoryStatus: null, error: null, errorCode: null },
       },
     }));
 
@@ -110,7 +121,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set((state) => ({
         extractions: {
           ...state.extractions,
-          [storyId]: { extractionId: result.extractionId, status: 'pending', error: null, errorCode: null },
+          [storyId]: { extractionId: result.extractionId, status: 'pending', userStoryStatus: null, error: null, errorCode: null },
         },
       }));
 
@@ -122,7 +133,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set((state) => ({
         extractions: {
           ...state.extractions,
-          [storyId]: { extractionId: null, status: 'failed', error: message, errorCode },
+          [storyId]: { extractionId: null, status: 'failed', userStoryStatus: 'failed_extraction', error: message, errorCode },
         },
       }));
     }
@@ -142,7 +153,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         set((state) => ({
           extractions: {
             ...state.extractions,
-            [storyId]: { extractionId, status: 'completed', error: null, errorCode: null },
+            [storyId]: { extractionId, status: 'completed', userStoryStatus: status.userStoryStatus as UserStoryStatus, error: null, errorCode: null },
           },
         }));
       } else if (status.status === 'failed') {
@@ -152,13 +163,24 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             [storyId]: {
               extractionId,
               status: 'failed',
+              userStoryStatus: status.userStoryStatus as UserStoryStatus,
               error: status.errorInfo ?? 'Extraction failed',
               errorCode: 'server',
             },
           },
         }));
       } else {
-        // Still pending — poll again after a short delay
+        // Still pending — poll again after a short delay, update userStoryStatus
+        set((state) => ({
+          extractions: {
+            ...state.extractions,
+            [storyId]: {
+              ...state.extractions[storyId],
+              userStoryStatus: status.userStoryStatus as UserStoryStatus,
+            },
+          },
+        }));
+
         setTimeout(() => {
           // Check that the extraction hasn't been reset in the meantime
           const current = get().extractions[storyId];
@@ -173,7 +195,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set((state) => ({
         extractions: {
           ...state.extractions,
-          [storyId]: { extractionId, status: 'failed', error: message, errorCode },
+          [storyId]: { extractionId, status: 'failed', userStoryStatus: 'failed_extraction', error: message, errorCode },
         },
       }));
     }
@@ -186,6 +208,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     try {
       const items = await api.listTasksByWorkspace(workspaceId);
       set({ workspaceTasks: items, loading: false });
+      // Store allowed transitions
+      set((state) => {
+        const newTransitions = { ...state.allowedTransitions };
+        for (const task of items) {
+          newTransitions[task.id] = api.getAllowedTransitions(task.status);
+        }
+        return { allowedTransitions: newTransitions };
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch tasks';
       set({ error: message, loading: false });
@@ -208,7 +238,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
    */
   updateTask: async (taskId, updates) => {
     const state = get();
-    // Snapshot prev (first match wins; ids are unique across stories).
+    // Snapshot prev task from `tasks` and `workspaceTasks`.
     let prevTask: Task | null = null;
     for (const storyId of Object.keys(state.tasks)) {
       const found = state.tasks[storyId].find((t) => t.id === taskId);
@@ -281,7 +311,42 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
   },
 
-  updateTaskStatus: async (taskId: string, status: string) => {
+  updateTaskStatus: async (taskId: string, status: TaskStatus) => {
+    const state = get();
+
+    // Find the task to get its current status for validation
+    let currentStatus: TaskStatus | null = null;
+    for (const storyId of Object.keys(state.tasks)) {
+      const found = state.tasks[storyId].find((t) => t.id === taskId);
+      if (found) {
+        currentStatus = found.status;
+        break;
+      }
+    }
+    if (!currentStatus) {
+      const wsFound = state.workspaceTasks.find((t) => t.id === taskId);
+      if (wsFound) currentStatus = wsFound.status;
+    }
+    if (!currentStatus) {
+      throw new Error(`Task ${taskId} not found in store`);
+    }
+
+    // Client-side validation before sending
+    const allowedTransitions = api.getAllowedTransitions(currentStatus);
+    if (!allowedTransitions.includes(status)) {
+      const error = new Error(`Invalid transition from ${currentStatus} to ${status}`) as Error & {
+        errorCode: string;
+        currentState: TaskStatus;
+        attemptedState: TaskStatus;
+        allowedTransitions: TaskStatus[];
+      };
+      error.errorCode = 'INVALID_STATE_TRANSITION';
+      error.currentState = currentStatus;
+      error.attemptedState = status;
+      error.allowedTransitions = allowedTransitions;
+      throw error;
+    }
+
     try {
       await api.updateTaskStatus(taskId, status);
       // Optimistic update
@@ -299,10 +364,34 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           ),
         };
       });
-    } catch {
+    } catch (err) {
+      // Check if it's an INVALID_STATE_TRANSITION from backend
+      if (err instanceof Error && 'errorCode' in err && (err as any).errorCode === 'INVALID_STATE_TRANSITION') {
+        // Update allowed transitions from backend response
+        const apiError = err as any;
+        if (apiError.allowedTransitions) {
+          set((state) => ({
+            allowedTransitions: {
+              ...state.allowedTransitions,
+              [taskId]: apiError.allowedTransitions,
+            },
+          }));
+        }
+      }
       // Revert will be handled by re-fetching
+      throw err;
     }
   },
+
+  // ── Transition management ──
+
+  setAllowedTransitions: (taskId: string, transitions: TaskStatus[]) =>
+    set((state) => ({
+      allowedTransitions: {
+        ...state.allowedTransitions,
+        [taskId]: transitions,
+      },
+    })),
 
   // ── Reset ──
 
@@ -315,3 +404,15 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }));
   },
 }));
+
+export function categorizeExtractionError(err: unknown): 'unauthorized' | 'network' | 'server' {
+  if (!err) return 'server';
+  const anyErr = err as { status?: number; code?: number | string; message?: string };
+  const status = anyErr.status ?? (typeof anyErr.code === 'number' ? anyErr.code : null);
+  if (status === 401 || status === 403) return 'unauthorized';
+  if (err instanceof TypeError) return 'network';
+  if (typeof anyErr.message === 'string' && /network|fetch|Failed to fetch/i.test(anyErr.message)) {
+    return 'network';
+  }
+  return 'server';
+}

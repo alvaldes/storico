@@ -159,6 +159,10 @@
     "delete_confirm_title": "Delete user story?",
     "delete_confirm_description": "This will permanently delete this user story and its generated tasks. This action cannot be undone.",
     "create_disabled_hint": "Select a project first to create a new user story.",
+    "status_pending_extraction": "Pending Extraction",
+    "status_extracting": "Extracting",
+    "status_extracted": "Extracted",
+    "status_failed_extraction": "Failed Extraction",
     "status_pending": "Pending",
     "status_processing": "Processing",
     "status_completed": "Completed",
@@ -208,7 +212,11 @@
     "empty_column": "No tasks yet",
     "total_tasks": "{count} tasks",
     "error_load": "Failed to load tasks",
-    "no_workspace": "Select a workspace to view the Kanban board."
+    "no_workspace": "Select a workspace to view the Kanban board.",
+    "invalid_drop_title": "Invalid Move",
+    "invalid_drop": "Cannot move task from {from} to {to}. Allowed: {allowed}",
+    "backend_invalid_transition": "Server rejected move from {from} to {to}. Allowed: {allowed}",
+    "invalid_drop": "Cannot move task from {from} to {to}. Allowed: {allowed}"
   },
   "taskEditor": {
     "title": "Edit Task",
@@ -217,6 +225,8 @@
     "title_placeholder": "Task title",
     "description_label": "Description",
     "description_placeholder": "Task description",
+    "status_label": "Status",
+    "invalid_transition": "Invalid transition",
     "labels_label": "Labels",
     "labels_placeholder": "Add a label and press Enter",
     "labels_duplicate": "Label already exists",
