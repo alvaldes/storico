@@ -404,15 +404,3 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }));
   },
 }));
-
-export function categorizeExtractionError(err: unknown): 'unauthorized' | 'network' | 'server' {
-  if (!err) return 'server';
-  const anyErr = err as { status?: number; code?: number | string; message?: string };
-  const status = anyErr.status ?? (typeof anyErr.code === 'number' ? anyErr.code : null);
-  if (status === 401 || status === 403) return 'unauthorized';
-  if (err instanceof TypeError) return 'network';
-  if (typeof anyErr.message === 'string' && /network|fetch|Failed to fetch/i.test(anyErr.message)) {
-    return 'network';
-  }
-  return 'server';
-}
