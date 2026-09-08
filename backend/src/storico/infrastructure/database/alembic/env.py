@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from storico.config.settings import Settings
 from storico.infrastructure.database.models import Base
+from storico.infrastructure.database.base import _normalize_db_url
 
 # Alembic Config object, which provides access to the values within the .ini file.
 config = context.config
@@ -19,7 +20,8 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Override sqlalchemy.url with the value from our application settings.
-config.set_main_option("sqlalchemy.url", Settings.load().database_url)
+# Normalize for asyncpg (sslmode -> ssl, strip psycopg2-only params).
+config.set_main_option("sqlalchemy.url", _normalize_db_url(Settings.load().database_url))
 
 # Target metadata for autogenerate support.
 target_metadata = Base.metadata
