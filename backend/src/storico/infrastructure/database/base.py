@@ -85,8 +85,11 @@ def get_engine(db_url: str | None = None) -> AsyncEngine:
             pool_size=10,
             max_overflow=20,
             pool_timeout=10,
-            # Supabase pooler + asyncio.gather race (https://sqlalche.me/e/20/isce). pool_recycle=1800 handles idle drops.
-            pool_pre_ping=False,
+            # Supabase pooler + asyncio.gather race (https://sqlalche.me/e/20/isce).
+            # pool_pre_ping=True validates connections before checkout — prevents
+            # "connection was closed in the middle of operation" when Supabase/Neon
+            # drops idle connections.
+            pool_pre_ping=True,
             pool_recycle=1800,  # 30 min — recycle connections before Supabase/Neon idle drops them
             connect_args={"timeout": 10},
         )

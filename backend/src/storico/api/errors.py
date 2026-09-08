@@ -1,5 +1,6 @@
 """FastAPI exception handlers for domain-level errors."""
 
+import logging
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -16,6 +17,8 @@ from storico.domain.entities import (
     ParseError,
     RepositoryError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def entity_not_found_handler(
@@ -45,6 +48,13 @@ async def repository_error_handler(
     exc: RepositoryError,
 ) -> JSONResponse:
     """Maps ``RepositoryError`` to a 500 JSON response (without leaking internals)."""
+    logger.error(
+        "RepositoryError: %s | path=%s method=%s",
+        exc,
+        request.url.path,
+        request.method,
+        exc_info=exc,
+    )
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error", "type": "repository_error"},
@@ -56,6 +66,12 @@ async def generic_error_handler(
     exc: Exception,  # noqa: BLE001
 ) -> JSONResponse:
     """Catches any unhandled exception and returns a safe 500 response."""
+    logger.exception(
+        "Unhandled exception: %s | path=%s method=%s",
+        exc,
+        request.url.path,
+        request.method,
+    )
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error", "type": "internal_error"},
