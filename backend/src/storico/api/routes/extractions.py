@@ -48,11 +48,13 @@ async def list_extractions(
             user_story_id=e.user_story_id,
             model_used=e.model_used,
             status=e.status,
+            user_story_status=e.user_story_status,
             error_info=e.error_info,
             prompt_config=e.prompt_config,
             raw_response=e.raw_response,
             confidence_score=e.confidence_score,
             created_at=e.created_at,
+            completed_at=None,
         )
         for e in all_extractions[start : start + params.size]
     ]
@@ -79,9 +81,11 @@ async def get_extraction(
         user_story_id=extraction.user_story_id,
         model_used=extraction.model_used,
         status=extraction.status,
+        user_story_status=extraction.user_story_status,
         error_info=extraction.error_info,
         prompt_config=extraction.prompt_config,
         raw_response=extraction.raw_response,
         confidence_score=extraction.confidence_score,
         created_at=extraction.created_at,
+        completed_at=None,
     )

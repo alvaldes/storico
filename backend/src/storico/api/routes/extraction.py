@@ -84,6 +84,7 @@ async def deprecated_extract() -> None:
 extraction_router = APIRouter(
     prefix="/api/v1/workspaces/{workspace_id}/extract",
     tags=["extract"],
+    redirect_slashes=False,
 )
 
 ExtractionRepoDep = Annotated[
@@ -259,4 +260,5 @@ async def extraction_status(
         raw_response=extraction.raw_response,
         confidence_score=extraction.confidence_score,
         created_at=extraction.created_at,
+        completed_at=None,
     )
