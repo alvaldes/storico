@@ -62,6 +62,14 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
         if result.rowcount == 0:
             raise EntityNotFound("UserStory", str(user_story_id))
 
+    async def exists_by_raw_text(self, project_id: UUID, raw_text: str) -> bool:
+        stmt = select(UserStoryModel).where(
+            UserStoryModel.project_id == project_id,
+            UserStoryModel.raw_text == raw_text,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalars().first() is not None
+
     def _to_domain(self, model: UserStoryModel) -> UserStory:
         return UserStory(
             project_id=model.project_id,

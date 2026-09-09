@@ -38,3 +38,8 @@ class UserStoryRepository(ABC):
     async def delete(self, user_story_id: UUID) -> None:
         """Delete a user story by its unique identifier."""
         ...
+
+    @abstractmethod
+    async def exists_by_raw_text(self, project_id: UUID, raw_text: str) -> bool:
+        """Check if a user story with the same raw_text already exists in the project."""
+        ...

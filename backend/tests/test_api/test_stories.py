@@ -92,6 +92,29 @@ class TestCreateStory:
         assert "id" in data
         assert "created_at" in data
 
+    async def test_create_duplicate_story_fails(
+        self, authed_client, db_session: AsyncSession, authed_user: User
+    ):
+        """POST with same raw_text in same project returns 409 conflict."""
+        _, project = await _seed_workspace_and_project(db_session, authed_user)
+        payload = {
+            "project_id": str(project.id),
+            "actor": "user",
+            "feature": "log in",
+            "benefit": "access my account",
+            "raw_text": RAW_TEXT,
+        }
+        # First creation succeeds
+        response1 = await authed_client.post("/api/v1/stories/", json=payload)
+        assert response1.status_code == 201
+
+        # Second creation with same raw_text fails
+        response2 = await authed_client.post("/api/v1/stories/", json=payload)
+        assert response2.status_code == 409
+        data = response2.json()
+        assert data["type"] == "duplicate_entity"
+        assert "raw_text" in data["detail"].lower()
+
 
 class TestListStories:
     """GET /api/v1/stories/"""

@@ -70,6 +70,8 @@ async def _validate_story_workspace_access(
     return story
 
 
+from storico.domain.entities import DuplicateEntity
+
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_story(
     body: CreateUserStoryRequest,
@@ -81,6 +83,7 @@ async def create_story(
     """Create a new user story.
 
     The story's project must belong to a workspace the user is a member of.
+    Duplicate stories (same raw_text) within the same project are not allowed.
     """
     # Validate the user has access to the project's workspace
     project = await project_repo.find_by_id(body.project_id)
@@ -95,6 +98,10 @@ async def create_story(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not a member of this project's workspace",
         )
+
+    # Check for duplicate story in the same project
+    if await repo.exists_by_raw_text(body.project_id, body.raw_text):
+        raise DuplicateEntity("UserStory", "raw_text", body.raw_text)
 
     story = UserStory(
         project_id=body.project_id,
