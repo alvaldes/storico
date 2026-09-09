@@ -189,6 +189,8 @@
     "extraction_pending": "Extracting...",
     "extraction_complete": "Extracted",
     "extraction_retry": "Retry",
+    "extraction_tasks_in_progress": "Extracting tasks...",
+    "extraction_takes_up_to_minute": "This can take up to a minute",
     "signedInRequired": "You must be signed in to create a project"
   },
   "dashboard": {

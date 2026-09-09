@@ -420,9 +420,9 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
             {extraction?.status === 'pending' ? (
               <>
                 <Loader2 className="mb-3 h-8 w-8 text-muted-foreground animate-spin" />
-                <p className="text-sm text-muted-foreground">Extracting tasks...</p>
+                <p className="text-sm text-muted-foreground">{t.stories.extraction_tasks_in_progress}</p>
                 <p className="text-xs text-muted-foreground mt-1 opacity-60">
-                  This can take up to a minute
+                  {t.stories.extraction_takes_up_to_minute}
                 </p>
               </>
             ) : extraction?.status === 'failed' ? (
