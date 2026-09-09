@@ -191,6 +191,8 @@
     "extraction_retry": "Retry",
     "extraction_tasks_in_progress": "Extracting tasks...",
     "extraction_takes_up_to_minute": "This can take up to a minute",
+    "create_error": "Failed to create user story",
+    "create_duplicate_error": "A user story with the same content already exists in this project",
     "signedInRequired": "You must be signed in to create a project"
   },
   "dashboard": {

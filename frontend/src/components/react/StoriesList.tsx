@@ -117,8 +117,16 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
     try {
       await createStory({ projectId: selectedProjectId, ...data });
       toast.success(t.stories.create_toast);
-    } catch {
-      toast.error(t.stories.create_error);
+    } catch (err) {
+      // Extract the detailed error message from the API error
+      // The backend now returns: "User story with the same content already exists in this project. Existing story ID: {id}"
+      const message = err instanceof Error ? err.message : t.stories.create_error;
+      // If it's a duplicate story error, use the specific duplicate message with the backend detail
+      if (message.toLowerCase().includes('already exists') || message.toLowerCase().includes('ya existe')) {
+        toast.error(message);
+      } else {
+        toast.error(t.stories.create_error);
+      }
     }
   };
 
