@@ -34,7 +34,9 @@ interface StoryFormProps {
 /** Simple regex-based validation: does the text look like a standard user story? */
 function validateKeywords(text: string) {
   return {
-    asA: /\bas\s+a(?:\(n\))?\b/i.test(text),
+    // Matches "As a", "As an", "As a(n)" - case insensitive
+    // Pattern: As + space + a/an + optional space + optional (n) + optional space
+    asA: /\bas\s+an?\s*(\(n\))?\s*/i.test(text),
     iWant: /\bI\s+want\b/i.test(text),
     soThat: /\bso\s+that\b/i.test(text),
   };
@@ -42,13 +44,16 @@ function validateKeywords(text: string) {
 
 /** Parse a full user story into actor, feature, benefit. Returns null if it can't parse. */
 function parseUserStory(text: string): { actor: string; feature: string; benefit: string } | null {
-  const regex = /As\s+a(?:\(n\))?\s+(.+?),\s+I\s+want\s+(.+?),\s+so\s+that\s+(.+)/i;
+  // Matches "As a", "As an", "As a(n)" followed by actor, feature, benefit
+  // Pattern: As + space + a/an + optional space + optional (n) + optional space + actor + optional comma + I want + feature + optional comma + so that + benefit
+  const regex = /As\s+an?\s*(\(n\))?\s*(.+?)\s*,?\s*I\s+want\s+(.+?)\s*,?\s*so\s+that\s+(.+)/i;
   const match = text.match(regex);
   if (match) {
+    // match[1] is the optional (n) group, match[2] is actor, match[3] is feature, match[4] is benefit
     return {
-      actor: match[1].trim(),
-      feature: match[2].trim(),
-      benefit: match[3].trim(),
+      actor: match[2].trim(),
+      feature: match[3].trim(),
+      benefit: match[4].trim(),
     };
   }
   return null;
