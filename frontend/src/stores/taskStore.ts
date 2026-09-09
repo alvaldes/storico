@@ -3,6 +3,7 @@ import type { Task, TaskStatus } from '@/types/task';
 import type { UserStory, UserStoryStatus } from '@/types/story';
 import * as api from '@/lib/tasks-api';
 import type { ApiRequestError } from '@/lib/api';
+import { useStoryStore } from '@/stores/storyStore';
 
 // ── Types ──
 
@@ -156,6 +157,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             [storyId]: { extractionId, status: 'completed', userStoryStatus: status.userStoryStatus as UserStoryStatus, error: null, errorCode: null },
           },
         }));
+        // Refresh the story to get updated status from backend
+        try { await useStoryStore.getState().fetchStory(storyId); } catch { /* best effort */ }
       } else if (status.status === 'failed') {
         set((state) => ({
           extractions: {
@@ -169,6 +172,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             },
           },
         }));
+        // Refresh the story to get updated status from backend
+        try { await useStoryStore.getState().fetchStory(storyId); } catch { /* best effort */ }
       } else {
         // Still pending — poll again after a short delay, update userStoryStatus
         set((state) => ({

@@ -38,10 +38,10 @@ import { toast } from 'sonner';
 import { useTranslations, type Locale } from '@/i18n/utils';
 
 const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-  pending: 'outline',
-  processing: 'secondary',
-  completed: 'default',
-  error: 'destructive',
+  pending_extraction: 'outline',
+  extracting: 'secondary',
+  extracted: 'default',
+  failed_extraction: 'destructive',
 };
 
 interface StoriesListProps {
@@ -98,10 +98,14 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
   // Stories from a previous page survive in the Zustand singleton until
   // the async fetch completes. Only show stories that belong to the
   // current project when a filter is active.
+  // Sort by createdAt descending (most recent first)
   const visibleStories = useMemo(
-    () => selectedProjectId
-      ? stories.filter((s) => s.projectId === selectedProjectId)
-      : stories,
+    () => {
+      const filtered = selectedProjectId
+        ? stories.filter((s) => s.projectId === selectedProjectId)
+        : stories;
+      return [...filtered].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    },
     [stories, selectedProjectId],
   );
 
@@ -240,7 +244,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <Badge variant={STATUS_VARIANTS[story.status] ?? 'outline'}>
-                    {t.stories[`status_${story.status ?? 'pending'}` as keyof typeof t.stories]}
+                    {t.stories[`status_${story.status ?? 'pending_extraction'}` as keyof typeof t.stories]}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
                     {new Date(story.createdAt).toLocaleDateString(locale === 'es' ? 'es-MX' : 'en-US', {
