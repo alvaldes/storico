@@ -112,8 +112,11 @@ class TestCreateStory:
         response2 = await authed_client.post("/api/v1/stories/", json=payload)
         assert response2.status_code == 409
         data = response2.json()
-        assert data["type"] == "duplicate_entity"
-        assert "raw_text" in data["detail"].lower()
+        assert "already exists" in data["detail"].lower()
+        assert "existing story id" in data["detail"].lower()
+        # Verify the existing story ID is in the response
+        existing_id = response1.json()["id"]
+        assert existing_id in data["detail"]
 
 
 class TestListStories:

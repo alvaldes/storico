@@ -100,8 +100,15 @@ async def create_story(
         )
 
     # Check for duplicate story in the same project
-    if await repo.exists_by_raw_text(body.project_id, body.raw_text):
-        raise DuplicateEntity("UserStory", "raw_text", body.raw_text)
+    existing_story = await repo.find_by_raw_text(body.project_id, body.raw_text)
+    if existing_story is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"User story with the same content already exists in this project. "
+                f"Existing story ID: {existing_story.id}"
+            ),
+        )
 
     story = UserStory(
         project_id=body.project_id,

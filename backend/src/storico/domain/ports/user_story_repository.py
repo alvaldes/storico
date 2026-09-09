@@ -40,6 +40,9 @@ class UserStoryRepository(ABC):
         ...
 
     @abstractmethod
-    async def exists_by_raw_text(self, project_id: UUID, raw_text: str) -> bool:
-        """Check if a user story with the same raw_text already exists in the project."""
+    async def find_by_raw_text(self, project_id: UUID, raw_text: str) -> UserStory | None:
+        """Find a user story by project_id and raw_text.
+        
+        Returns the existing story if found, None otherwise.
+        """
         ...
