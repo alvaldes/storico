@@ -40,9 +40,13 @@ class UserStoryRepository(ABC):
         ...
 
     @abstractmethod
-    async def find_by_raw_text(self, project_id: UUID, raw_text: str) -> UserStory | None:
-        """Find a user story by project_id and raw_text.
+    async def find_by_parts(
+        self, project_id: UUID, actor: str, feature: str, benefit: str
+    ) -> UserStory | None:
+        """Find a user story by project_id and its parts (actor, feature, benefit).
         
         Returns the existing story if found, None otherwise.
+        This is used for duplicate detection based on the semantic content
+        rather than the raw text format.
         """
         ...

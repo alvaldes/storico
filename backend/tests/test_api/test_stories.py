@@ -95,7 +95,7 @@ class TestCreateStory:
     async def test_create_duplicate_story_fails(
         self, authed_client, db_session: AsyncSession, authed_user: User
     ):
-        """POST with same raw_text in same project returns 409 conflict."""
+        """POST with same actor, feature, benefit in same project returns 409 conflict."""
         _, project = await _seed_workspace_and_project(db_session, authed_user)
         payload = {
             "project_id": str(project.id),
@@ -108,13 +108,44 @@ class TestCreateStory:
         response1 = await authed_client.post("/api/v1/stories/", json=payload)
         assert response1.status_code == 201
 
-        # Second creation with same raw_text fails
+        # Second creation with same actor, feature, benefit fails (even with different raw_text)
         response2 = await authed_client.post("/api/v1/stories/", json=payload)
         assert response2.status_code == 409
         data = response2.json()
         assert "already exists" in data["detail"].lower()
         assert "existing story id" in data["detail"].lower()
         # Verify the existing story ID is in the response
+        existing_id = response1.json()["id"]
+        assert existing_id in data["detail"]
+
+    async def test_create_duplicate_story_with_different_raw_text_fails(
+        self, authed_client, db_session: AsyncSession, authed_user: User
+    ):
+        """POST with same parts but different raw_text format fails."""
+        _, project = await _seed_workspace_and_project(db_session, authed_user)
+        payload1 = {
+            "project_id": str(project.id),
+            "actor": "user",
+            "feature": "log in",
+            "benefit": "access my account",
+            "raw_text": "As a user, I want to log in, so that I can access my account",
+        }
+        # First creation succeeds
+        response1 = await authed_client.post("/api/v1/stories/", json=payload1)
+        assert response1.status_code == 201
+
+        # Second creation with same parts but different raw_text format
+        payload2 = {
+            "project_id": str(project.id),
+            "actor": "user",
+            "feature": "log in",
+            "benefit": "access my account",
+            "raw_text": "As a(n) user, I want to log in, so that I can access my account",
+        }
+        response2 = await authed_client.post("/api/v1/stories/", json=payload2)
+        assert response2.status_code == 409
+        data = response2.json()
+        assert "already exists" in data["detail"].lower()
         existing_id = response1.json()["id"]
         assert existing_id in data["detail"]
 

@@ -62,10 +62,14 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
         if result.rowcount == 0:
             raise EntityNotFound("UserStory", str(user_story_id))
 
-    async def find_by_raw_text(self, project_id: UUID, raw_text: str) -> UserStory | None:
+    async def find_by_parts(
+        self, project_id: UUID, actor: str, feature: str, benefit: str
+    ) -> UserStory | None:
         stmt = select(UserStoryModel).where(
             UserStoryModel.project_id == project_id,
-            UserStoryModel.raw_text == raw_text,
+            UserStoryModel.actor == actor,
+            UserStoryModel.feature == feature,
+            UserStoryModel.benefit == benefit,
         )
         result = await self._session.execute(stmt)
         model = result.scalars().first()

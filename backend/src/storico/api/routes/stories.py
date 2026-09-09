@@ -99,13 +99,15 @@ async def create_story(
             detail="Not a member of this project's workspace",
         )
 
-    # Check for duplicate story in the same project
-    existing_story = await repo.find_by_raw_text(body.project_id, body.raw_text)
+    # Check for duplicate story in the same project (by actor, feature, benefit)
+    existing_story = await repo.find_by_parts(
+        body.project_id, body.actor, body.feature, body.benefit
+    )
     if existing_story is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"User story with the same content already exists in this project. "
+                f"User story with the same actor, feature, and benefit already exists in this project. "
                 f"Existing story ID: {existing_story.id}"
             ),
         )
