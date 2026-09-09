@@ -71,6 +71,7 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
             raw_text=model.raw_text,
             id=model.id,
             created_at=model.created_at,
+            updated_at=model.updated_at,
             status=UserStoryStatus(model.status),
         )
 
@@ -84,5 +85,6 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
             "benefit": user_story.benefit,
             "raw_text": user_story.raw_text,
             "created_at": user_story.created_at,
+            "updated_at": user_story.updated_at,
             "status": user_story.status.value,
         }

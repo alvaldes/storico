@@ -41,6 +41,9 @@ class UserStoryModel(Base):
         nullable=False,
         default=UserStoryStatus.PENDING_EXTRACTION,
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     __table_args__ = (
         Index("ix_user_stories_project_id", "project_id"),

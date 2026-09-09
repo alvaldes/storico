@@ -192,6 +192,10 @@ async def _run_extraction(
     then runs the full pipeline: load story → resolve workspace prompts →
     LLM call → parse → optional judge → persist tasks → store in vector
     store.
+
+    Also manages UserStory entity status transitions:
+    - PENDING_EXTRACTION → EXTRACTING (when background task starts)
+    - EXTRACTING → EXTRACTED (on success) or FAILED_EXTRACTION (on failure)
     """
     from storico.config.settings import Settings  # late import to avoid circular
 
@@ -202,6 +206,27 @@ async def _run_extraction(
         extraction_repo = SQLAlchemyExtractionRepository(session)
         task_repo = SQLAlchemyTaskRepository(session)
         story_repo = SQLAlchemyUserStoryRepository(session)
+
+        # 1. Load user story
+        story = await story_repo.find_by_id(story_id)
+        if story is None:
+            await _mark_failed(extraction_repo, story_repo, extraction_id, "User story not found")
+            return
+
+        # 2. Transition UserStory to EXTRACTING (from PENDING_EXTRACTION)
+        # Only transition if currently in PENDING_EXTRACTION (idempotent for retries)
+        if story.status == UserStoryStatus.PENDING_EXTRACTION:
+            from dataclasses import replace
+            from datetime import UTC, datetime
+
+            updated_story = replace(
+                story,
+                status=UserStoryStatus.EXTRACTING,
+                updated_at=datetime.now(UTC),
+            )
+            await story_repo.save(updated_story)
+            story = updated_story  # use updated story for subsequent operations
+            logger.info("UserStory %s transitioned to EXTRACTING", story_id)
 
         # LLM adapter — API key MUST come from workspace config, not env
         if provider == "gemini":
@@ -265,13 +290,7 @@ async def _run_extraction(
             ),
         )
 
-        # 1. Load user story
-        story = await story_repo.find_by_id(story_id)
-        if story is None:
-            await _mark_failed(extraction_repo, extraction_id, "User story not found")
-            return
-
-        # 2. Build LLM config
+        # 3. Build LLM config
         llm_config = LLMConfig(
             model=model,
             temperature=temperature if temperature is not None else 0.1,
@@ -279,7 +298,7 @@ async def _run_extraction(
             timeout=120,
         )
 
-        # 3. Run extraction (prompt → LLM → parse) — no persistence yet.
+        # 4. Run extraction (prompt → LLM → parse) — no persistence yet.
         #    System prompt and instruction come from the workspace config.
         parsed_tasks, raw_response = await extraction_service.extract(
             story,
@@ -347,19 +366,35 @@ async def _run_extraction(
         # 7. Store in vector store for future RAG
         await _store_rag(vector_store, story, extraction_id, parsed_tasks)
 
+        # 8. Transition UserStory to EXTRACTED (from EXTRACTING)
+        if story.status == UserStoryStatus.EXTRACTING:
+            from dataclasses import replace
+            from datetime import UTC, datetime
+
+            updated_story = replace(
+                story,
+                status=UserStoryStatus.EXTRACTED,
+                updated_at=datetime.now(UTC),
+            )
+            await story_repo.save(updated_story)
+            logger.info("UserStory %s transitioned to EXTRACTED", story_id)
+
 
 # ── Helpers ───────────────────────────────────────────────────────
 
 
 async def _mark_failed(
-    repo: SQLAlchemyExtractionRepository,
+    extraction_repo: SQLAlchemyExtractionRepository,
+    story_repo: SQLAlchemyUserStoryRepository,
     extraction_id: UUID,
     error_info: str,
 ) -> None:
-    """Update a pending extraction record to ``failed`` status."""
-    pending = await repo.find_by_id(extraction_id)
+    """Update a pending extraction record to ``failed`` status and transition UserStory to FAILED_EXTRACTION."""
+    pending = await extraction_repo.find_by_id(extraction_id)
     if pending is None:
         return
+    
+    # Update extraction record
     failed = Extraction(
         id=extraction_id,
         user_story_id=pending.user_story_id,
@@ -371,7 +406,21 @@ async def _mark_failed(
         prompt_config=pending.prompt_config,
         created_at=pending.created_at,
     )
-    await repo.save(failed)
+    await extraction_repo.save(failed)
+    
+    # Transition UserStory to FAILED_EXTRACTION (from EXTRACTING or PENDING_EXTRACTION)
+    story = await story_repo.find_by_id(pending.user_story_id)
+    if story and story.status in (UserStoryStatus.EXTRACTING, UserStoryStatus.PENDING_EXTRACTION):
+        from dataclasses import replace
+        from datetime import UTC, datetime
+        
+        updated_story = replace(
+            story,
+            status=UserStoryStatus.FAILED_EXTRACTION,
+            updated_at=datetime.now(UTC),
+        )
+        await story_repo.save(updated_story)
+        logger.info("UserStory %s transitioned to FAILED_EXTRACTION", pending.user_story_id)
 
 
 async def _get_created_at(
@@ -421,13 +470,14 @@ async def _mark_extraction_failed(
     extraction_id: UUID,
     error_info: str,
 ) -> None:
-    """Standalone helper to mark an extraction as failed.
+    """Standalone helper to mark an extraction as failed and transition UserStory to FAILED_EXTRACTION.
 
     Creates its own session since the original one may be in a broken state.
     """
     factory = create_session_factory(get_engine())
     async with factory() as session:
         repo = SQLAlchemyExtractionRepository(session)
+        story_repo = SQLAlchemyUserStoryRepository(session)
         pending = await repo.find_by_id(extraction_id)
         if pending is None:
             return
@@ -443,3 +493,17 @@ async def _mark_extraction_failed(
             created_at=pending.created_at,
         )
         await repo.save(failed)
+        
+        # Transition UserStory to FAILED_EXTRACTION
+        story = await story_repo.find_by_id(pending.user_story_id)
+        if story and story.status in (UserStoryStatus.EXTRACTING, UserStoryStatus.PENDING_EXTRACTION):
+            from dataclasses import replace
+            from datetime import UTC, datetime
+            
+            updated_story = replace(
+                story,
+                status=UserStoryStatus.FAILED_EXTRACTION,
+                updated_at=datetime.now(UTC),
+            )
+            await story_repo.save(updated_story)
+            logger.info("UserStory %s transitioned to FAILED_EXTRACTION (via recovery)", pending.user_story_id)
