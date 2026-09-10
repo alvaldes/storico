@@ -137,21 +137,56 @@ async def list_stories(
     params: Annotated[PaginationParams, Depends()],
     current_user: User = Depends(get_current_user),
     repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
     project_id: UUID | None = None,
     workspace_id: UUID | None = None,
 ) -> PaginatedResponse[UserStoryResponse]:
     """List user stories with optional filters and pagination.
 
     Filters:
-    - ``project_id``: filter by project.
-    - ``workspace_id``: filter by workspace (requires auth).
+    - ``project_id``: filter by project (requires workspace membership).
+    - ``workspace_id``: filter by workspace (requires workspace membership).
+
+    If neither filter is provided, returns stories from all workspaces
+    the current user is a member of.
     """
+    # Validate workspace access and get authorized workspace IDs
     if workspace_id is not None:
+        # Validate user is a member of the specified workspace
+        member = await member_repo.find_by_workspace_and_user(workspace_id, current_user.id)
+        if member is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not a member of this workspace",
+            )
         all_stories = await repo.list_by_workspace(workspace_id)
     elif project_id is not None:
+        # Validate user has access to the project's workspace
+        project = await project_repo.find_by_id(project_id)
+        if project is None:
+            raise EntityNotFound("Project", str(project_id))
+        member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
+        if member is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not a member of this project's workspace",
+            )
         all_stories = await repo.list_by_project(project_id)
     else:
-        all_stories = await repo.list()
+        # No filter provided: return stories from all workspaces the user is a member of
+        memberships = await member_repo.list_by_user(current_user.id)
+        workspace_ids = [m.workspace_id for m in memberships]
+        if not workspace_ids:
+            all_stories = []
+        else:
+            # Collect stories from all user's workspaces
+            all_stories = []
+            for ws_id in workspace_ids:
+                ws_stories = await repo.list_by_workspace(ws_id)
+                all_stories.extend(ws_stories)
+            # Sort by created_at descending for consistent ordering
+            all_stories.sort(key=lambda s: s.created_at, reverse=True)
 
     total = len(all_stories)
     start = (params.page - 1) * params.size

@@ -20,7 +20,14 @@ from storico.domain.validators.state_machine import (
     VALID_TASK_TRANSITIONS,
     validate_task_transition,
 )
-from storico.infrastructure.database.repositories import SQLAlchemyTaskRepository
+from storico.infrastructure.database.repositories import (
+    SQLAlchemyProjectRepository,
+    SQLAlchemyTaskRepository,
+    SQLAlchemyUserStoryRepository,
+)
+from storico.infrastructure.database.repositories.workspace_member_repository import (
+    SQLAlchemyWorkspaceMemberRepository,
+)
 
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
@@ -28,6 +35,56 @@ TaskRepoDep = Annotated[
     SQLAlchemyTaskRepository,
     Depends(get_repository(SQLAlchemyTaskRepository)),
 ]
+
+StoryRepoDep = Annotated[
+    SQLAlchemyUserStoryRepository,
+    Depends(get_repository(SQLAlchemyUserStoryRepository)),
+]
+
+ProjectRepoDep = Annotated[
+    SQLAlchemyProjectRepository,
+    Depends(get_repository(SQLAlchemyProjectRepository)),
+]
+
+MemberRepoDep = Annotated[
+    SQLAlchemyWorkspaceMemberRepository,
+    Depends(get_repository(SQLAlchemyWorkspaceMemberRepository)),
+]
+
+
+async def _validate_task_workspace_access(
+    task_id: UUID,
+    current_user: User,
+    task_repo: SQLAlchemyTaskRepository,
+    story_repo: SQLAlchemyUserStoryRepository,
+    project_repo: SQLAlchemyProjectRepository,
+    member_repo: SQLAlchemyWorkspaceMemberRepository,
+) -> Task:
+    """Find a task and verify the user has access to its workspace.
+
+    Returns the task if access is granted. Raises 404 or 403 otherwise.
+    """
+    task = await task_repo.find_by_id(task_id)
+    if task is None:
+        raise EntityNotFound("Task", str(task_id))
+
+    story = await story_repo.find_by_id(task.user_story_id)
+    if story is None:
+        raise EntityNotFound("Task", str(task_id))
+
+    project = await project_repo.find_by_id(story.project_id)
+    if project is None:
+        raise EntityNotFound("Task", str(task_id))
+
+    member = await member_repo.find_by_workspace_and_user(
+        project.workspace_id, current_user.id
+    )
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of this workspace",
+        )
+    return task
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
@@ -64,23 +121,62 @@ async def create_task(
 @router.get("/")
 async def list_tasks(
     params: Annotated[PaginationParams, Depends()],
-    current_user: User = Depends(get_current_user),  # noqa: ARG001
+    current_user: User = Depends(get_current_user),
     repo: TaskRepoDep = None,  # type: ignore[assignment]
+    story_repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
     user_story_id: UUID | None = None,
     workspace_id: UUID | None = None,
 ) -> PaginatedResponse[TaskResponse]:
     """List tasks with optional filters and pagination.
 
     Filters:
-    - ``user_story_id``: filter by user story.
-    - ``workspace_id``: filter by workspace (joins through story → project).
+    - ``user_story_id``: filter by user story (requires workspace membership).
+    - ``workspace_id``: filter by workspace (requires workspace membership).
+
+    If neither filter is provided, returns tasks from all workspaces
+    the current user is a member of.
     """
+    # Validate workspace access
     if workspace_id is not None:
+        # Validate user is a member of the specified workspace
+        member = await member_repo.find_by_workspace_and_user(workspace_id, current_user.id)
+        if member is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not a member of this workspace",
+            )
         all_tasks = await repo.list_by_workspace(workspace_id)
     elif user_story_id is not None:
+        # Validate user has access to the user story's workspace
+        story = await story_repo.find_by_id(user_story_id)
+        if story is None:
+            raise EntityNotFound("UserStory", str(user_story_id))
+        project = await project_repo.find_by_id(story.project_id)
+        if project is None:
+            raise EntityNotFound("UserStory", str(user_story_id))
+        member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
+        if member is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not a member of this workspace",
+            )
         all_tasks = await repo.list_by_story(user_story_id)
     else:
-        all_tasks = await repo.list()
+        # No filter provided: return tasks from all workspaces the user is a member of
+        memberships = await member_repo.list_by_user(current_user.id)
+        workspace_ids = [m.workspace_id for m in memberships]
+        if not workspace_ids:
+            all_tasks = []
+        else:
+            # Collect tasks from all user's workspaces
+            all_tasks = []
+            for ws_id in workspace_ids:
+                ws_tasks = await repo.list_by_workspace(ws_id)
+                all_tasks.extend(ws_tasks)
+            # Sort by created_at descending for consistent ordering
+            all_tasks.sort(key=lambda t: t.created_at, reverse=True)
 
     total = len(all_tasks)
     start = (params.page - 1) * params.size
@@ -110,13 +206,19 @@ async def list_tasks(
 @router.get("/{task_id}")
 async def get_task(
     task_id: UUID,
-    current_user: User = Depends(get_current_user),  # noqa: ARG001
+    current_user: User = Depends(get_current_user),
     repo: TaskRepoDep = None,  # type: ignore[assignment]
+    story_repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
 ) -> TaskResponse:
-    """Get a task by its ID."""
-    task = await repo.find_by_id(task_id)
-    if task is None:
-        raise EntityNotFound("Task", str(task_id))
+    """Get a task by its ID.
+
+    The user must be a member of the workspace that owns the task's user story project.
+    """
+    task = await _validate_task_workspace_access(
+        task_id, current_user, repo, story_repo, project_repo, member_repo
+    )
     return TaskResponse(
         id=task.id,
         user_story_id=task.user_story_id,
@@ -135,18 +237,23 @@ async def get_task(
 async def update_task(
     task_id: UUID,
     body: UpdateTaskRequest,
-    current_user: User = Depends(get_current_user),  # noqa: ARG001
+    current_user: User = Depends(get_current_user),
     repo: TaskRepoDep = None,  # type: ignore[assignment]
+    story_repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
 ) -> TaskResponse:
     """Update an existing task.
 
     For ``labels`` and ``dependencies``:
     - ``None`` means keep existing values.
     - ``[]`` means clear the list.
+
+    The user must be a member of the workspace that owns the task's user story project.
     """
-    existing = await repo.find_by_id(task_id)
-    if existing is None:
-        raise EntityNotFound("Task", str(task_id))
+    existing = await _validate_task_workspace_access(
+        task_id, current_user, repo, story_repo, project_repo, member_repo
+    )
 
     # Validate status transition if status is being updated
     if body.status is not None and not validate_task_transition(existing.status, body.status):
@@ -195,8 +302,17 @@ async def update_task(
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(
     task_id: UUID,
-    current_user: User = Depends(get_current_user),  # noqa: ARG001
+    current_user: User = Depends(get_current_user),
     repo: TaskRepoDep = None,  # type: ignore[assignment]
+    story_repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
 ) -> None:
-    """Delete a task by its ID."""
+    """Delete a task by its ID.
+
+    The user must be a member of the workspace that owns the task's user story project.
+    """
+    await _validate_task_workspace_access(
+        task_id, current_user, repo, story_repo, project_repo, member_repo
+    )
     await repo.delete(task_id)

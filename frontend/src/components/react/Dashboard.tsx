@@ -3,6 +3,7 @@ import { FolderKanban, FileText, Sparkles, ChevronRight } from 'lucide-react';
 import { useProjectStore } from '@/stores/projectStore';
 import { useStoryStore } from '@/stores/storyStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useTranslations, type Locale } from '@/i18n/utils';
@@ -11,14 +12,15 @@ export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
   const t = useTranslations(locale);
   const { projects, fetchProjects } = useProjectStore();
   const { stories, fetchStories } = useStoryStore();
+  const { currentWorkspace } = useWorkspaceStore();
   const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       fetchProjects(),
-      fetchStories(),
+      fetchStories(currentWorkspace?.id),
     ]).finally(() => setInitialLoading(false));
-  }, [fetchProjects, fetchStories]);
+  }, [fetchProjects, fetchStories, currentWorkspace?.id]);
 
   const totalProjects = projects.length;
   const totalStories = stories.length;
