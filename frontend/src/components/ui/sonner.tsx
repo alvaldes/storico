@@ -60,11 +60,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
       icons={{
-        success: <CircleCheckIcon className="size-4" />,
-        info: <InfoIcon className="size-4" />,
-        warning: <TriangleAlertIcon className="size-4" />,
-        error: <OctagonXIcon className="size-4" />,
-        loading: <Loader2Icon className="size-4 animate-spin" />,
+        success: <CircleCheckIcon className="size-4 text-emerald-500" />,
+        info: <InfoIcon className="size-4 text-blue-500" />,
+        warning: <TriangleAlertIcon className="size-4 text-amber-500" />,
+        error: <OctagonXIcon className="size-4 text-destructive" />,
+        loading: <Loader2Icon className="size-4 animate-spin text-primary" />,
       }}
       position="top-right"
       offset="80px"
@@ -74,11 +74,17 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-text": "var(--color-popover-foreground)",
           "--normal-border": "var(--color-border)",
           "--border-radius": "var(--radius)",
+          // Error toast custom styles
+          "--error-bg": "var(--color-destructive)",
+          "--error-text": "var(--color-destructive-foreground)",
+          "--error-border": "var(--color-destructive)",
         } as React.CSSProperties
       }
       toastOptions={{
         classNames: {
           toast: "cn-toast",
+          error: "border-destructive/50 shadow-lg shadow-destructive/10",
+          description: "text-destructive-foreground/90",
         },
       }}
       {...props}

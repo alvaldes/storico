@@ -22,6 +22,17 @@ import { shortUUID } from "@/lib/utils";
 import { StoryForm } from "@/components/react/StoryForm";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { useTranslations, type Locale } from "@/i18n/utils";
+import { ApiRequestError } from "@/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,16 +43,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { toast } from "sonner";
-import { useTranslations, type Locale } from "@/i18n/utils";
 
 const STATUS_VARIANTS: Record<
   string,
@@ -221,13 +222,19 @@ export function StoriesList({
       toast.success(t.stories.create_toast);
     } catch (err) {
       // Extract the detailed error message from the API error
-      // The backend now returns: "User story with the same content already exists in this project. Existing story ID: {id}"
+      // Backend returns: "User story with the same actor, feature, and benefit already exists in this project. Existing story ID: {id}"
       const message =
         err instanceof Error ? err.message : t.stories.create_error;
-      // If it's a duplicate story error, show localized message with the existing story ID
+      // Detect duplicate: check status code first (most reliable), then message content
+      const isApiError = err instanceof ApiRequestError;
       const isDuplicate =
+        (isApiError && err.status === 409) ||
         message.toLowerCase().includes("already exists") ||
-        message.toLowerCase().includes("ya existe");
+        message.toLowerCase().includes("ya existe") ||
+        message.toLowerCase().includes("duplicate") ||
+        message.toLowerCase().includes("conflict");
+      
+      // Always show a toast for any error
       if (isDuplicate) {
         // Extract the story ID from the backend message
         const idMatch = message.match(/Existing story ID:\s*([a-f0-9-]+)/i);
@@ -238,8 +245,10 @@ export function StoriesList({
           existingId ? `${localizedMsg}. ID: ${existingId}` : localizedMsg,
         );
       } else {
-        toast.error(t.stories.create_error);
+        toast.error(message || t.stories.create_error);
       }
+      // Re-throw so StoryForm can show ErrorDisplay with full backend details
+      throw err;
     }
   };
 
@@ -254,8 +263,10 @@ export function StoriesList({
       await updateStory(editingStory.id, data);
       setEditingStory(null);
       toast.success(t.stories.updated_toast);
-    } catch {
+    } catch (err) {
       toast.error(t.stories.update_error);
+      // Re-throw so StoryForm can show ErrorDisplay with full backend details
+      throw err;
     }
   };
 
@@ -266,8 +277,10 @@ export function StoriesList({
       await deleteStory(deletingId);
       setDeletingId(null);
       toast.success(t.stories.deleted_toast);
-    } catch {
+    } catch (err) {
       toast.error(t.stories.delete_error);
+      // Re-throw so any parent component can show ErrorDisplay with full backend details
+      throw err;
     } finally {
       setDeleteSaving(false);
     }

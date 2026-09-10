@@ -7,6 +7,7 @@ import { useTranslations, type Locale } from '@/i18n/utils';
 import { Button } from '@/components/ui/button';
 import { Loader2, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 
 interface ExportPanelProps {
   locale?: Locale;
@@ -20,7 +21,7 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
   const [format, setFormat] = useState<'json' | 'markdown'>('json');
   const [downloading, setDownloading] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<Error | null>(null);
 
   // Fetch tasks on mount
   const doFetch = useCallback(async () => {
@@ -44,7 +45,14 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
     try {
       const response = await fetch(url, { credentials: 'include' });
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        let detail: unknown;
+        try {
+          const errorBody = await response.json();
+          detail = errorBody.detail ?? errorBody.message ?? errorBody;
+        } catch {
+          detail = `HTTP ${response.status}`;
+        }
+        throw new Error(detail as string, { cause: { status: response.status, detail } });
       }
 
       const blob = await response.blob();
@@ -63,8 +71,8 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
       URL.revokeObjectURL(a.href);
 
       toast.success(`Tasks exported as ${format.toUpperCase()}`);
-    } catch {
-      setDownloadError(t.exportPage.error_download);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err : new Error(String(err)));
       toast.error(t.exportPage.error_download);
     } finally {
       setDownloading(false);
@@ -151,34 +159,26 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
 
       {/* Task load error — retry */}
       {error && !initialLoad && (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-destructive/40 bg-destructive/5 py-6">
-          <p className="text-sm text-destructive">{t.exportPage.error_fetch}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => workspaceId && fetchTasksForWorkspace(workspaceId)}
-            disabled={loading}
-          >
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {t.common.retry}
-          </Button>
-        </div>
+        <ErrorDisplay
+          friendlyMessage={t.exportPage.error_fetch}
+          rawDetail={error}
+          retryLabel={t.common.retry}
+          onRetry={() => workspaceId && fetchTasksForWorkspace(workspaceId)}
+          locale={locale}
+        />
       )}
 
       {/* Download error — retry */}
       {downloadError && (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-destructive/40 bg-destructive/5 py-6">
-          <p className="text-sm text-destructive">{downloadError}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDownload}
-            disabled={!hasTasks || downloading}
-          >
-            {downloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-            {t.common.retry}
-          </Button>
-        </div>
+        <ErrorDisplay
+          friendlyMessage={downloadError.message}
+          rawDetail={downloadError.cause}
+          status={(downloadError.cause as { status?: number })?.status}
+          retryLabel={t.common.retry}
+          onRetry={handleDownload}
+          onDismiss={() => setDownloadError(null)}
+          locale={locale}
+        />
       )}
     </div>
   );

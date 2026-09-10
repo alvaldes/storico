@@ -14,22 +14,48 @@ export interface ApiError {
   allowed_transitions?: string[];
 }
 
+/** Complete raw backend error response for debugging/display */
+export interface RawBackendError {
+  /** HTTP status code */
+  status: number;
+  /** HTTP status text */
+  statusText: string;
+  /** Raw response body as parsed JSON (or text if not JSON) */
+  rawBody: unknown;
+  /** Extracted detail field (backward compatible) */
+  detail: unknown;
+  /** Structured error fields if present */
+  errorCode?: string;
+  currentState?: string;
+  attemptedState?: string;
+  allowedTransitions?: string[];
+}
+
 export class ApiRequestError extends Error {
   status: number;
   statusText: string;
+  /** Raw backend error response - use this for displaying full details */
+  rawError: RawBackendError;
+  /** Backward compatible: extracted detail field */
   detail: unknown;
   errorCode?: string;
   currentState?: string;
   attemptedState?: string;
   allowedTransitions?: string[];
 
-  constructor(status: number, statusText: string, detail: unknown) {
+  constructor(status: number, statusText: string, detail: unknown, rawBody: unknown) {
     const message = buildErrorMessage(status, statusText, detail);
     super(message);
     this.name = 'ApiRequestError';
     this.status = status;
     this.statusText = statusText;
     this.detail = detail;
+    this.rawError = {
+      status,
+      statusText,
+      rawBody,
+      detail,
+    };
 
     // Extract structured error fields for INVALID_STATE_TRANSITION
     if (typeof detail === 'object' && detail !== null) {
@@ -38,6 +64,10 @@ export class ApiRequestError extends Error {
       this.currentState = d.current_state as string | undefined;
       this.attemptedState = d.attempted_state as string | undefined;
       this.allowedTransitions = d.allowed_transitions as string[] | undefined;
+      this.rawError.errorCode = this.errorCode;
+      this.rawError.currentState = this.currentState;
+      this.rawError.attemptedState = this.attemptedState;
+      this.rawError.allowedTransitions = this.allowedTransitions;
     }
   }
 
@@ -49,6 +79,21 @@ export class ApiRequestError extends Error {
   /** Get allowed transitions from the error (if available). */
   getAllowedTransitions(): TaskStatus[] {
     return (this.allowedTransitions as TaskStatus[]) ?? [];
+  }
+
+  /** Get error info formatted for ErrorDisplay component */
+  toErrorInfo(): {
+    friendlyMessage: string;
+    rawDetail: unknown;
+    status: number;
+    errorCode?: string;
+  } {
+    return {
+      friendlyMessage: this.message,
+      rawDetail: this.rawError.rawBody,
+      status: this.status,
+      errorCode: this.errorCode,
+    };
   }
 }
 
@@ -97,14 +142,23 @@ class ApiClient {
 
     if (!response.ok) {
       let detail: unknown;
+      let rawBody: unknown;
       try {
         const errorBody = await response.json();
+        rawBody = errorBody;
         detail = errorBody.detail ?? errorBody.message ?? errorBody;
       } catch {
-        // response body is not JSON
+        // response body is not JSON - try to get as text
+        try {
+          const text = await response.text();
+          rawBody = text;
+          detail = text;
+        } catch {
+          rawBody = null;
+        }
       }
 
-      throw new ApiRequestError(response.status, response.statusText, detail);
+      throw new ApiRequestError(response.status, response.statusText, detail, rawBody);
     }
 
     // Handle 204 No Content

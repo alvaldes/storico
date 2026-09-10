@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import { KanbanColumn } from '@/components/react/KanbanColumn';
@@ -11,6 +9,8 @@ import { Loader2, AlertCircle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Task, TaskStatus } from '@/types/task';
 import { isValidTaskTransition, getAllowedTaskTransitions, VALID_TASK_TRANSITIONS, TASK_STATUSES, TASK_STATUS_LABELS } from '@/types/task';
+import { ErrorDisplay } from '@/components/react/ErrorDisplay';
+import { ApiRequestError } from '@/lib/api';
 
 const COLUMNS = TASK_STATUSES;
 type ColumnId = TaskStatus;
@@ -46,6 +46,7 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     done: [],
   });
   const [invalidDropToast, setInvalidDropToast] = useState<InvalidDropToast>({ show: false, message: '', allowed: [] });
+  const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
 
   // Pre-compute allowed transitions for each task
   const taskAllowedTransitions = useMemo(() => {
@@ -59,7 +60,19 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   // Fetch tasks on mount
   useEffect(() => {
     if (workspaceId) {
-      fetchTasksForWorkspace(workspaceId).then(() => setInitialLoad(false));
+      fetchTasksForWorkspace(workspaceId)
+        .then(() => {
+          setInitialLoad(false);
+          setLoadError(null);
+        })
+        .catch((err) => {
+          setInitialLoad(false);
+          if (err instanceof ApiRequestError) {
+            setLoadError(err);
+          } else {
+            setLoadError(new ApiRequestError(0, 'Unknown Error', err instanceof Error ? err.message : 'Unknown error', err));
+          }
+        });
     } else {
       setInitialLoad(false);
     }
@@ -192,19 +205,18 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     );
   }
 
-  if (error) {
+  if (loadError) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
-        <p className="text-sm text-muted-foreground">{t.kanban.error_load}</p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-3"
-          onClick={() => workspaceId && fetchTasksForWorkspace(workspaceId)}
-        >
-          {t.common.retry}
-        </Button>
-      </div>
+      <ErrorDisplay
+        friendlyMessage={loadError.message}
+        rawDetail={loadError.rawError.rawBody}
+        status={loadError.status}
+        errorCode={loadError.errorCode}
+        retryLabel={t.common.retry}
+        onRetry={() => workspaceId && fetchTasksForWorkspace(workspaceId)}
+        onDismiss={() => setLoadError(null)}
+        locale={locale}
+      />
     );
   }
 

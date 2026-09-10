@@ -3,6 +3,7 @@ import type { UserStory } from '@/types/story';
 import type { CreateStoryParams, UpdateStoryParams } from '@/schemas';
 import * as api from '@/lib/stories-api';
 import { createInflightTracker } from '@/stores/_inflight';
+import { ApiRequestError } from '@/lib/api';
 
 // Dedupe of inflight fetchStories calls. StoriesList and Dashboard can call
 // fetchStories(projectId) at the same time when mounting concurrently. Key is
@@ -11,11 +12,40 @@ import { createInflightTracker } from '@/stores/_inflight';
 // so changing the filter and coming back still triggers a fresh fetch.
 const storiesInflight = createInflightTracker<string>();
 
+export interface StoryErrorInfo {
+  friendlyMessage: string;
+  rawDetail: unknown;
+  status?: number;
+  errorCode?: string;
+}
+
+function extractStoryErrorInfo(err: unknown): StoryErrorInfo {
+  if (err instanceof ApiRequestError) {
+    return err.toErrorInfo();
+  }
+  if (err instanceof Error) {
+    return {
+      friendlyMessage: err.message,
+      rawDetail: err.message,
+    };
+  }
+  if (typeof err === 'string') {
+    return {
+      friendlyMessage: err,
+      rawDetail: err,
+    };
+  }
+  return {
+    friendlyMessage: 'An error occurred',
+    rawDetail: err,
+  };
+}
+
 interface StoryState {
   stories: UserStory[];
   loading: boolean;
   saving: boolean;
-  error: string | null;
+  error: StoryErrorInfo | null;
 
   /** Fetch stories, optionally filtered by project and/or workspace. */
   fetchStories: (projectId?: string, workspaceId?: string) => Promise<void>;
@@ -46,8 +76,8 @@ export const useStoryStore = create<StoryState>((set, get) => ({
       );
       set({ stories: response.items, loading: false });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch stories';
-      set({ error: message, loading: false });
+      const errorInfo = extractStoryErrorInfo(err);
+      set({ error: errorInfo, loading: false });
     }
   },
 
@@ -65,8 +95,8 @@ export const useStoryStore = create<StoryState>((set, get) => ({
         };
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch story';
-      set({ error: message, loading: false });
+      const errorInfo = extractStoryErrorInfo(err);
+      set({ error: errorInfo, loading: false });
     }
   },
 
@@ -77,8 +107,8 @@ export const useStoryStore = create<StoryState>((set, get) => ({
       set((state) => ({ stories: [...state.stories, story], saving: false }));
       return story;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create story';
-      set({ error: message, saving: false });
+      const errorInfo = extractStoryErrorInfo(err);
+      set({ error: errorInfo, saving: false });
       throw err;
     }
   },
@@ -92,8 +122,8 @@ export const useStoryStore = create<StoryState>((set, get) => ({
         saving: false,
       }));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update story';
-      set({ error: message, saving: false });
+      const errorInfo = extractStoryErrorInfo(err);
+      set({ error: errorInfo, saving: false });
       throw err;
     }
   },
@@ -107,8 +137,8 @@ export const useStoryStore = create<StoryState>((set, get) => ({
         saving: false,
       }));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to delete story';
-      set({ error: message, saving: false });
+      const errorInfo = extractStoryErrorInfo(err);
+      set({ error: errorInfo, saving: false });
       throw err;
     }
   },

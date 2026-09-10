@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Task, TaskStatus } from '@/types/task';
 import type { UserStory, UserStoryStatus } from '@/types/story';
 import * as api from '@/lib/tasks-api';
-import type { ApiRequestError } from '@/lib/api';
+import { ApiRequestError, RawBackendError } from '@/lib/api';
 import { useStoryStore } from '@/stores/storyStore';
 
 // ── Types ──
@@ -10,11 +10,18 @@ import { useStoryStore } from '@/stores/storyStore';
 export type ExtractionStatus = 'idle' | 'pending' | 'completed' | 'failed';
 export type ExtractionErrorCode = 'unauthorized' | 'network' | 'server' | null;
 
+export interface ExtractionErrorInfo {
+  friendlyMessage: string;
+  rawDetail: unknown;
+  status?: number;
+  errorCode?: string;
+}
+
 export interface ExtractionState {
   extractionId: string | null;
   status: ExtractionStatus;
   userStoryStatus: UserStoryStatus | null;
-  error: string | null;
+  error: ExtractionErrorInfo | null;
   /** Categorized failure cause so consumers can react specifically (e.g. 401 → re-auth). */
   errorCode: ExtractionErrorCode;
 }
@@ -70,6 +77,28 @@ function categorizeExtractionError(err: unknown): ExtractionErrorCode {
     return 'network';
   }
   return 'server';
+}
+
+function extractExtractionErrorInfo(err: unknown): ExtractionErrorInfo {
+  if (err instanceof ApiRequestError) {
+    return err.toErrorInfo();
+  }
+  if (err instanceof Error) {
+    return {
+      friendlyMessage: err.message,
+      rawDetail: err.message,
+    };
+  }
+  if (typeof err === 'string') {
+    return {
+      friendlyMessage: err,
+      rawDetail: err,
+    };
+  }
+  return {
+    friendlyMessage: 'Extraction failed',
+    rawDetail: err,
+  };
 }
 
 export const useTaskStore = create<TaskState>((set, get) => ({
@@ -129,12 +158,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       // Start polling in the background
       get().pollExtraction(storyId, workspaceId, result.extractionId);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Extraction failed to start';
+      const errorInfo = extractExtractionErrorInfo(err);
       const errorCode = categorizeExtractionError(err);
       set((state) => ({
         extractions: {
           ...state.extractions,
-          [storyId]: { extractionId: null, status: 'failed', userStoryStatus: 'failed_extraction', error: message, errorCode },
+          [storyId]: { extractionId: null, status: 'failed', userStoryStatus: 'failed_extraction', error: errorInfo, errorCode },
         },
       }));
     }
@@ -160,6 +189,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         // Refresh the story to get updated status from backend
         try { await useStoryStore.getState().fetchStory(storyId); } catch { /* best effort */ }
       } else if (status.status === 'failed') {
+        const errorInfo: ExtractionErrorInfo = {
+          friendlyMessage: status.errorInfo ?? 'Extraction failed',
+          rawDetail: status.errorInfo ?? 'Extraction failed',
+          status: 500,
+          errorCode: 'EXTRACTION_FAILED',
+        };
         set((state) => ({
           extractions: {
             ...state.extractions,
@@ -167,7 +202,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
               extractionId,
               status: 'failed',
               userStoryStatus: status.userStoryStatus as UserStoryStatus,
-              error: status.errorInfo ?? 'Extraction failed',
+              error: errorInfo,
               errorCode: 'server',
             },
           },
@@ -195,12 +230,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         }, 2000);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Polling failed';
+      const errorInfo = extractExtractionErrorInfo(err);
       const errorCode = categorizeExtractionError(err);
       set((state) => ({
         extractions: {
           ...state.extractions,
-          [storyId]: { extractionId, status: 'failed', userStoryStatus: 'failed_extraction', error: message, errorCode },
+          [storyId]: { extractionId, status: 'failed', userStoryStatus: 'failed_extraction', error: errorInfo, errorCode },
         },
       }));
     }

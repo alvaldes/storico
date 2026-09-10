@@ -41,6 +41,13 @@
     "search": "Buscar",
     "retry": "Reintentar"
   },
+  "errorDisplay": {
+    "show_details": "Mostrar detalles del error del backend",
+    "hide_details": "Ocultar detalles del error del backend",
+    "raw_response": "Respuesta cruda del backend",
+    "copy": "Copiar detalles del error",
+    "copied": "¡Copiado!"
+  },
   "landing": {
     "hero_title": "Storico",
     "hero_subtitle": "Automatiza la descomposición de historias de usuario en tareas Kanban estructuradas usando IA.",

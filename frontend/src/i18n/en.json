@@ -41,6 +41,13 @@
     "search": "Search",
     "retry": "Retry"
   },
+  "errorDisplay": {
+    "show_details": "Show backend error details",
+    "hide_details": "Hide backend error details",
+    "raw_response": "Raw backend response",
+    "copy": "Copy error details",
+    "copied": "Copied!"
+  },
   "landing": {
     "hero_title": "Storico",
     "hero_subtitle": "Automate the decomposition of user stories into structured Kanban tasks using AI.",

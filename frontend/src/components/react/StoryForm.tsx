@@ -7,6 +7,8 @@ import { Field, FieldLabel, FieldDescription, FieldError } from '@/components/ui
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupInput } from '@/components/ui/input-group';
 import { Loader2, Check, X, Eye } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
+import { ErrorDisplay } from '@/components/react/ErrorDisplay';
+import { ApiRequestError } from '@/lib/api';
 
 const ACTOR_MAX = 100;
 const FEATURE_MAX = 300;
@@ -83,6 +85,7 @@ export function StoryForm({
   // Shared state
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState<ApiRequestError | null>(null);
 
   /* ── sync local state from initialData when dialog opens ── */
   useEffect(() => {
@@ -93,6 +96,7 @@ export function StoryForm({
       setFullText(initialData?.rawText ?? '');
       setMode('parts');
       setErrors({});
+      setSubmitError(null);
     }
   }, [open, initialData]);
 
@@ -220,6 +224,7 @@ export function StoryForm({
     }
 
     setSaving(true);
+    setSubmitError(null);
     try {
       await onSubmit(submitData);
       onOpenChange(false);
@@ -230,6 +235,12 @@ export function StoryForm({
       setFullText('');
       setMode('parts');
       setErrors({});
+    } catch (err) {
+      if (err instanceof ApiRequestError) {
+        setSubmitError(err);
+      } else {
+        setSubmitError(new ApiRequestError(0, 'Unknown Error', err instanceof Error ? err.message : 'Unknown error', err));
+      }
     } finally {
       setSaving(false);
     }
@@ -452,7 +463,20 @@ export function StoryForm({
             </div>
           )}
 
-          <DialogFooter>
+        {submitError && (
+          <ErrorDisplay
+            friendlyMessage={submitError.message}
+            rawDetail={submitError.rawError.rawBody}
+            status={submitError.status}
+            errorCode={submitError.errorCode}
+            retryLabel={initialData ? t.common.save : t.common.create}
+            onRetry={handleSubmit}
+            onDismiss={() => setSubmitError(null)}
+            locale={locale}
+          />
+        )}
+
+        <DialogFooter>
             <Button
               type="button"
               variant="outline"

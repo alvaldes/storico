@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Dialog,
@@ -20,6 +18,8 @@ import { useTaskStore } from '@/stores/taskStore';
 import { toast } from 'sonner';
 import type { Task, TaskStatus } from '@/types/task';
 import { getAllowedTaskTransitions, VALID_TASK_TRANSITIONS, TASK_STATUS_LABELS, TASK_STATUSES } from '@/types/task';
+import { ErrorDisplay } from '@/components/react/ErrorDisplay';
+import { ApiRequestError } from '@/lib/api';
 
 interface TaskEditorProps {
   task: Task;
@@ -48,6 +48,7 @@ export function TaskEditor({
   const [status, setStatus] = useState<TaskStatus>(task.status);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState<ApiRequestError | null>(null);
 
   // Tag input refs
   const labelInputRef = useRef<HTMLInputElement>(null);
@@ -65,6 +66,7 @@ export function TaskEditor({
       setStatus(task.status);
       setSaving(false);
       setErrors({});
+      setSaveError(null);
       setLabelInput('');
       setDepInput('');
     }
@@ -164,10 +166,11 @@ export function TaskEditor({
     }
 
     setSaving(true);
+    setSaveError(null);
 
     try {
       // Store handles optimistic update + server response + rollback internally.
-      // On failure it re-throws so we can show the toast and keep the dialog open.
+      // On failure it re-throws so we can show the error and keep the dialog open.
       await updateTask(task.id, {
         title: title.trim(),
         description,
@@ -178,10 +181,15 @@ export function TaskEditor({
       setSaving(false);
       toast.success(t.taskEditor.saved);
       onOpenChange(false);
-    } catch {
+    } catch (err) {
       // Store already rolled back the optimistic update.
       setSaving(false);
-      toast.error(t.taskEditor.error_save);
+      if (err instanceof ApiRequestError) {
+        setSaveError(err);
+      } else {
+        // Wrap unknown errors
+        setSaveError(new ApiRequestError(0, 'Unknown Error', err instanceof Error ? err.message : 'Unknown error', err));
+      }
       // Keep dialog open so the user can retry.
     }
   };
@@ -303,6 +311,19 @@ export function TaskEditor({
             <FieldError>{errors.dependencies}</FieldError>
           </Field>
         </div>
+
+        {saveError && (
+          <ErrorDisplay
+            friendlyMessage={saveError.message}
+            rawDetail={saveError.rawError.rawBody}
+            status={saveError.status}
+            errorCode={saveError.errorCode}
+            retryLabel={t.taskEditor.save}
+            onRetry={handleSave}
+            onDismiss={() => setSaveError(null)}
+            locale={locale}
+          />
+        )}
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>

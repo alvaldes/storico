@@ -22,6 +22,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { useTranslations, type Locale } from '@/i18n/utils';
+import { ErrorDisplay } from '@/components/react/ErrorDisplay';
+import type { ExtractionErrorInfo } from '@/stores/taskStore';
 
 const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   pending_extraction: 'outline',
@@ -58,43 +60,6 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   // Track previous extraction status to detect failure transitions during polling
   const [prevExtractionStatus, setPrevExtractionStatus] = useState<string | null>(null);
 
-  // Map backend error messages (English) to translated user-facing messages
-  const getExtractionErrorMessage = (error: string | null | undefined): string => {
-    if (!error) return t.stories.extractionFailed;
-    const lower = error.toLowerCase();
-    // Timeout patterns
-    if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('too long')) {
-      return t.stories.extractionTimeout;
-    }
-    // Auth patterns
-    if (lower.includes('unauthorized') || lower.includes('session expired') || lower.includes('not signed in') || lower.includes('authentication') || lower.includes('401') || lower.includes('403')) {
-      return t.stories.extractionUnauthorized;
-    }
-    // Model not found / unavailable
-    if (lower.includes('model not found') || lower.includes('model') && lower.includes('not available') || lower.includes('model') && lower.includes('not found')) {
-      return t.stories.extractionFailed;
-    }
-    // Connection / Ollama / network errors
-    if (lower.includes('connection') || lower.includes('connect') || lower.includes('ollama') || lower.includes('refused') || lower.includes('econnrefused') || lower.includes('network') || lower.includes('fetch') || lower.includes('failed to connect')) {
-      return t.stories.extractionFailed;
-    }
-    // LLM response / parsing errors
-    if (lower.includes('llmresponseerror') || lower.includes('parse') || lower.includes('parsing') || lower.includes('invalid response') || lower.includes('unprocessable')) {
-      return t.stories.extractionFailed;
-    }
-    // LLM connection errors
-    if (lower.includes('llmconnectionerror') || lower.includes('llm error') || lower.includes('gemini') || lower.includes('generation failed')) {
-      return t.stories.extractionFailed;
-    }
-    // Judge validation errors
-    if (lower.includes('judge') || lower.includes('validation') || lower.includes('scoring')) {
-      return t.stories.extractionFailed;
-    }
-    // For any other backend error, show the generic translated message
-    // (backend errors are technical; we don't want to expose raw English errors to users)
-    return t.stories.extractionFailed;
-  };
-
   const story = stories.find((s) => s.id === storyId);
   const storyTasks = tasks[storyId] ?? [];
   const extraction = extractions[storyId];
@@ -119,7 +84,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   // Show toast when extraction fails during polling (status transitions to 'failed')
   useEffect(() => {
     if (extraction && extraction.status === 'failed' && prevExtractionStatus === 'pending') {
-      const errorMsg = getExtractionErrorMessage(extraction.error);
+      const errorMsg = extraction.error?.friendlyMessage ?? t.stories.extractionFailed;
       toast.error(errorMsg);
     }
     if (extraction) {
@@ -153,8 +118,9 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       await updateStory(storyId, data);
       setEditing(false);
       toast.success(t.stories.updated_toast);
-    } catch {
+    } catch (err) {
       toast.error(t.stories.update_error);
+      throw err;
     }
   };
 
@@ -165,8 +131,9 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       setDeleting(false);
       toast.success(t.stories.deleted_toast);
       window.history.back();
-    } catch {
+    } catch (err) {
       toast.error(t.stories.delete_error);
+      throw err;
     } finally {
       setDeleteSaving(false);
     }
@@ -427,11 +394,15 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
               </>
             ) : extraction?.status === 'failed' ? (
               <>
-                <AlertCircle className="mb-3 h-8 w-8 text-destructive" />
-                <p className="text-sm text-destructive">{getExtractionErrorMessage(extraction.error)}</p>
-                <p className="text-xs text-muted-foreground mt-1 opacity-60">
-                  {getExtractionErrorMessage(extraction.error)}
-                </p>
+                <ErrorDisplay
+                  friendlyMessage={extraction.error?.friendlyMessage ?? t.stories.extractionFailed}
+                  rawDetail={extraction.error?.rawDetail}
+                  status={extraction.error?.status}
+                  errorCode={extraction.error?.errorCode}
+                  retryLabel={t.stories.extraction_retry}
+                  onRetry={handleExtract}
+                  locale={locale}
+                />
               </>
             ) : (
               <>
