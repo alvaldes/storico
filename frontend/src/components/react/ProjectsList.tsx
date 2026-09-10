@@ -57,8 +57,9 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
       setLocalError(null);
       await createProject(data);
       toast.success(t.projects.create_toast);
-    } catch {
+    } catch (err) {
       toast.error(t.projects.create_error);
+      throw err;
     }
   };
 
@@ -69,8 +70,9 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
       await updateProject(editingProject.id, data);
       setEditingProject(null);
       toast.success(t.projects.updated_toast);
-    } catch {
+    } catch (err) {
       toast.error(t.projects.update_error);
+      throw err;
     }
   };
 
@@ -82,8 +84,9 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
       await deleteProject(deletingId);
       setDeletingId(null);
       toast.success(t.projects.deleted_toast);
-    } catch {
+    } catch (err) {
       toast.error(t.projects.delete_error);
+      throw err;
     } finally {
       setDeleteSaving(false);
     }
