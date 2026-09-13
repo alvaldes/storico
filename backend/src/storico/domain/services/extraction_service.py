@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-
 from dataclasses import dataclass
 
 from storico.domain.entities import Extraction, ParseError, Task
@@ -13,6 +12,7 @@ from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import (
     ExtractionExample,
     ExtractionRepository,
+    FewShotExample,
     LLMConfig,
     LLMPort,
     ParsedTask,
@@ -78,6 +78,7 @@ class ExtractionService:
         config: LLMConfig,
         system_prompt: str | None = None,
         instruction_template: str | None = None,
+        few_shot_examples: list[FewShotExample] | None = None,
     ) -> tuple[list[ParsedTask], str]:
         """Run the extraction pipeline (prompt → LLM → parse) without persistence.
 
@@ -92,6 +93,7 @@ class ExtractionService:
                 LLM port (``None`` sends no system message).
             instruction_template: Workspace instruction template (Jinja2
                 text). ``None`` falls back to ``task_generation.j2``.
+            few_shot_examples: Workspace few-shot examples (style reference).
 
         Returns:
             Tuple of (parsed_tasks, raw_response).
@@ -107,11 +109,16 @@ class ExtractionService:
 
         # Render with or without examples
         prompt_kwargs: dict[str, object] = {"user_story": raw_text}
+
+        # RAG examples (historical context) — injected SECOND
         if examples:
             prompt_kwargs["examples"] = self._format_examples(examples)
 
+        # Few-shot examples (style reference) — injected FIRST by the template.
+        # Passed explicitly: the template renders them via {% for ex in few_shot_examples %}.
         instruction_prompt = self._prompt_manager.render_instruction(
             instruction_template,
+            few_shot_examples=few_shot_examples,
             **prompt_kwargs,
         )
 
@@ -169,6 +176,7 @@ class ExtractionService:
         prompt_config: dict | None = None,
         system_prompt: str | None = None,
         instruction_template: str | None = None,
+        few_shot_examples: list[FewShotExample] | None = None,
     ) -> Extraction:
         """Run the full extraction pipeline and persist results.
 
@@ -195,6 +203,7 @@ class ExtractionService:
                 config,
                 system_prompt=system_prompt,
                 instruction_template=instruction_template,
+                few_shot_examples=few_shot_examples,
             )
 
             # Determine confidence from optional judge
@@ -282,8 +291,7 @@ class ExtractionService:
             return
         try:
             tasks_summary = "\n".join(
-                f"{i+1}. {t.summary}: {t.description}"
-                for i, t in enumerate(parsed_tasks)
+                f"{i + 1}. {t.summary}: {t.description}" for i, t in enumerate(parsed_tasks)
             )
             await self._vector_store.store_extraction(
                 extraction_id=str(extraction.id),
@@ -296,5 +304,9 @@ class ExtractionService:
         except Exception as exc:
             logger.warning(
                 "RAG store failed, extraction already saved in database",
-                extra={"error": str(exc), "error_type": type(exc).__name__, "extraction_id": str(extraction.id)},
+                extra={
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                    "extraction_id": str(extraction.id),
+                },
             )

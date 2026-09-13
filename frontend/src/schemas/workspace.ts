@@ -1,7 +1,7 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 export const createWorkspaceSchema = z.object({
-  name: z.string().min(1, { message: 'Workspace name is required' }).max(255),
+  name: z.string().min(1, { message: "Workspace name is required" }).max(255),
   slug: z.string().max(100).optional(),
   icon: z.string().max(100).optional(),
 });
@@ -13,11 +13,11 @@ export const updateWorkspaceSchema = z.object({
 });
 
 export const addMemberSchema = z.object({
-  userId: z.string().uuid({ message: 'Invalid user ID format' }),
+  userId: z.string().uuid({ message: "Invalid user ID format" }),
 });
 
 export const transferOwnershipSchema = z.object({
-  newOwnerId: z.string().uuid({ message: 'Invalid user ID format' }),
+  newOwnerId: z.string().uuid({ message: "Invalid user ID format" }),
 });
 
 export const llmConfigSchema = z.object({
@@ -29,12 +29,26 @@ export const llmConfigSchema = z.object({
   apiKey: z.string().max(500).optional(),
 });
 
+export const fewShotExampleSchema = z.object({
+  userStory: z
+    .string()
+    .min(10, { message: "User Story must be at least 10 characters" }),
+  tasks: z
+    .string()
+    .min(20, { message: "Tasks must be at least 20 characters" }),
+});
+
 export const promptConfigSchema = z.object({
   systemPrompt: z.string().optional(),
   instructionTemplate: z.string().optional(),
-  fewShotExamples: z.array(z.record(z.string(), z.unknown())).optional(),
+  fewShotExamples: z
+    .array(fewShotExampleSchema)
+    .max(3, { message: "Maximum 3 few-shot examples allowed" })
+    .optional()
+    .nullable(),
 });
 
+export type FewShotExample = z.infer<typeof fewShotExampleSchema>;
 export type CreateWorkspaceParams = z.infer<typeof createWorkspaceSchema>;
 export type UpdateWorkspaceParams = z.infer<typeof updateWorkspaceSchema>;
 export type AddMemberParams = z.infer<typeof addMemberSchema>;

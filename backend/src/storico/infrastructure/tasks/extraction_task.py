@@ -252,6 +252,7 @@ async def _run_extraction(
         )
         system_prompt = ws_prompt.system_prompt
         instruction_template = ws_prompt.instruction_template
+        few_shot_examples = ws_prompt.few_shot_examples
 
         embedding_service = EmbeddingService(
             base_url=settings.ollama_host,
@@ -305,6 +306,7 @@ async def _run_extraction(
             llm_config,
             system_prompt=system_prompt,
             instruction_template=instruction_template,
+            few_shot_examples=few_shot_examples,
         )
 
         # 4. Optionally validate via LLM-as-a-Judge — same system prompt

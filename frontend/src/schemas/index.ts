@@ -1,20 +1,20 @@
 export {
   createProjectSchema,
   updateProjectSchema,
-} from './project';
+} from "./project";
 export type {
   CreateProjectParams,
   UpdateProjectParams,
-} from './project';
+} from "./project";
 
 export {
   createStorySchema,
   updateStorySchema,
-} from './story';
+} from "./story";
 export type {
   CreateStoryParams,
   UpdateStoryParams,
-} from './story';
+} from "./story";
 
 export {
   createWorkspaceSchema,
@@ -23,12 +23,14 @@ export {
   transferOwnershipSchema,
   llmConfigSchema,
   promptConfigSchema,
-} from './workspace';
+  fewShotExampleSchema,
+} from "./workspace";
 export type {
+  FewShotExample,
   CreateWorkspaceParams,
   UpdateWorkspaceParams,
   AddMemberParams,
   TransferOwnershipParams,
   LLMConfigParams,
   PromptConfigParams,
-} from './workspace';
+} from "./workspace";

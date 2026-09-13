@@ -12,6 +12,8 @@ from uuid import UUID
 
 from uuid_utils.compat import uuid7
 
+from storico.domain.entities.few_shot import FewShotExample
+
 
 @dataclass(frozen=True, slots=True)
 class WorkspacePrompt:
@@ -25,6 +27,6 @@ class WorkspacePrompt:
     workspace_id: UUID
     system_prompt: str | None = None
     instruction_template: str | None = None
-    few_shot_examples: list[dict] | None = None
+    few_shot_examples: list[FewShotExample] | None = None
     id: UUID = field(default_factory=uuid7)
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
