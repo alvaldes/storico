@@ -274,11 +274,23 @@ describe("FewShotExamplesEditor", () => {
     );
   });
 
-  it("applies locale-specific translations", () => {
-    renderEditor({ locale: "es" });
+      it("applies locale-specific translations", () => {
+        renderEditor({ locale: "es" });
 
-    expect(screen.getByText("Historia de Usuario")).toBeInTheDocument();
-    expect(screen.getByText("Salida de Tareas Esperada")).toBeInTheDocument();
-    expect(screen.getByText("Agregar Ejemplo")).toBeInTheDocument();
-  });
-});
+        expect(screen.getByText("Historia de Usuario")).toBeInTheDocument();
+        expect(screen.getByText("Salida de Tareas Esperada")).toBeInTheDocument();
+        expect(screen.getByText("Agregar Ejemplo")).toBeInTheDocument();
+      });
+
+      it("regression: camelCase round-trip (userStory, not user_story)", () => {
+        const onChange = vi.fn();
+        renderEditor({ onChange });
+        const input = screen.getAllByPlaceholderText(
+          "As a user, I want to log in so that I can access my account",
+        )[0];
+        fireEvent.change(input, { target: { value: "Regression check" } });
+        const call = onChange.mock.calls[0][0][0];
+        expect(call).toHaveProperty("userStory");
+        expect(call).not.toHaveProperty("user_story");
+      });
+    });
