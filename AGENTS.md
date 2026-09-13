@@ -1,7 +1,7 @@
 # Storico — Definición Completa
 
 > **Documento autónomo** — contiene TODO el contexto de la tesis y la definición de la herramienta.
-> **Última actualización**: 2026-07-03 — Actualización frontend: Astro Routing + View Transitions, islas React, Tailwind 4, shadcn, Lucide, tema claro/oscuro
+> **Última actualización**: 2026-09-12 — Resincronizado tras revisión de repo (drift corregido): Python 3.12, Celery→asyncio, Gemini adapter real, workspaces implementados, Vercel en prod, E2E no ejecutable
 >
 > Si estás leyendo esto en un proyecto nuevo, el contexto completo está aquí. No necesitas la tesis original.
 
@@ -110,16 +110,16 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 | **API Client**             | **fetch** nativo                            | ✅ Decidido    | Abstracción intercambiable para migrar a Axios si es necesario            |
 | **Backend API**            | **FastAPI** (Python 3.9+)                   | ✅ De la tesis | Async, tipado fuerte, OpenAPI automático                                  |
 | **Arquitectura**           | **Hexagonal** (Ports & Adapters)            | ✅ De la tesis | Separación dominio / aplicación / infraestructura                         |
-| **Modelos LLM cloud**      | OpenAI (GPT-3.5, GPT-4), Anthropic (Claude) | 🔜 Post-MVP    | A través de API key                                                       |
+| **Modelos LLM cloud**      | Gemini (adapter real) + OpenAI (Post-MVP)   | ✅ MVP / 🔜 Post-MVP | Gemini adapter existe; OpenAI no implementado aún                   |
 | **Modelos LLM local**      | **Ollama** (LLaMA 3.2, Mistral, etc.)       | ✅ MVP         | Prioridad inicial                                                         |
 | **Base de datos relacional** | **PostgreSQL**                              | ✅ Decidido    | Datos de proyectos, user stories, tareas, usuarios                        |
 | **Base de datos vectorial** | **Qdrant**                                 | ✅ Decidido    | Historial de extracciones para contexto de LLM (RAG)                      |
-| **Procesamiento async**    | Celery + Redis                              | ✅ De la tesis | Workers para batch processing                                             |
+| **Procesamiento async**    | `asyncio.create_task` + Redis (broker)      | ✅ En uso   | Workers en proceso, sin Celery                                            |
 | **Autenticación**          | **Auth.js** (OAuth)                          | ✅ Decidido    | Login con Google y GitHub. Registro abierto, sin passwords                 |
-| **Testing**                | pytest                                      | ✅ De la tesis | Unitarias, integración. Sin E2E por ahora (se puede agregar futuro)       |
+| **Testing**                | pytest + E2E (no ejecutable, falta playwright)                                      | ✅ Unitarias / 🔴 E2E | Unitarias OK; E2E existe pero no ejecutable        |
 | **Internacionalización**   | **Astro i18n**                              | ✅ Decidido    | Español e inglés. User stories solo en inglés                             |
 | **Fuentes tipográficas**   | **Google Fonts** (variable fonts)           | ✅ Decidido    | Para identidad visual de Storico                                           |
-| **Contenedores**           | Docker / Docker Compose                     | Asumido        | Desarrollo y producción                                                   |
+| **Contenedores**           | Docker + Vercel (prod)                                    | ✅ Decidido    | Dev: Docker Compose; prod: Vercel                                      |
 
 ### Selección del modelo LLM (de la tesis) ⏳ PENDIENTE
 
@@ -374,7 +374,7 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | 2   | Sistema de prompts multicapa | System prompt ("analista de requisitos ágiles") + instruction prompt + format prompt con few-shot learning (2-3 ejemplos)    |
 | 3   | Editor de prompts           | Personalización de prompts del sistema desde configuración del workspace (solo admins)                                      |
 | 4   | Soporte Ollama               | Conexión con modelos locales vía API de Ollama (LLaMA 3.2, Mistral)                                                          |
-| 5   | Procesamiento batch          | Extracción asíncrona de múltiples user stories vía Celery                                                                    |
+| 5   | Procesamiento batch          | Extracción asíncrona de múltiples user stories vía `asyncio.create_task` (workers en proceso)                                                                    |
 | 6   | Validación LLM-as-a-Judge    | Evaluación automática de calidad (coherencia, granularidad, relevancia)                                                      |
 | 7   | Contexto histórico (RAG)    | Consulta extracciones previas en Qdrant para incluir ejemplos similares en el prompt del LLM                                 |
 | 8   | Refinamiento post-extracción | Deduplicación, validación de dependencias, verificación de coherencia                                                        |
@@ -425,7 +425,7 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | --- | ---------------------- | ------------------- | -------------------------------------------------------------------------------------------- |
 | 29  | Dashboard de proyectos | Astro + React       | Vista general con cards de proyectos y métricas                                              |
 | 30  | Gestor de user stories | Astro + React       | Formulario estructurado + listado con estados                                                |
-| 31  | Kanban board visual    | Astro + React       | Columnas: Backlog → To Do → In Progress → Review → Done. Preview de tareas antes de exportar |
+| 31  | Kanban board visual    | Astro + React       | Columnas: Backlog → To Do → In Progress → Review → Done. **Nota:** el componente usa `@base-ui/react` (25 archivos) y **no tiene `@radix-ui**`. Preview de tareas antes de exportar |
 | 32  | Editor de resultados   | Astro + React       | Revisión/edición manual de tareas: editar título, descripción, etiquetas                     |
 | 33  | Selector de modelo LLM | Astro + React       | Configuración visual (modelo, temperatura, max tokens)                                       |
 | 34  | Toggle de tema         | Astro               | Claro / Oscuro / Auto con persistencia                                                       |
@@ -437,10 +437,10 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | #   | Feature                 | Descripción                                       |
 | --- | ----------------------- | ------------------------------------------------- |
 | 37  | Arquitectura hexagonal  | Separación dominio / aplicación / infraestructura |
-| 38  | Procesamiento asíncrono | Celery + Redis                                    |
+| 38  | Procesamiento asíncrono | `asyncio.create_task` + Redis (broker)                                    |
 | 39  | Logging estructurado    | Correlation IDs para trazabilidad                 |
 | 40  | Dockerización           | Docker Compose para dev                           |
-| 41  | Permisos y workspaces  | V2                                                |
+| 41  | Permisos y workspaces  | **Implementado** (migraciones 0007‑0012) | **Antes se indicaba “V2”.**  Ahora el modelo de workspaces y permisos ya está completo (admin crea workspaces, asigna usuarios a equipos). Los permisos quedan en **V2** solo para futuras extensiones (rate‑limiting, auditoría). |
 | 42  | Rate limiting           | V2                                                |
 
 ---
@@ -892,18 +892,18 @@ Cada ruta es una página **Astro** (`.astro`) que puede incluir cero o más **is
 
 ### De la tesis
 
-- Sommerville, I. (2016). _Software Engineering_ (10th ed.)
-- Hevner, A. R. et al. (2004). _Design Science Research in Information Systems_
-- Cohn, M. (2004). _User Stories Applied: For Agile Software Development_
-- Wake, W. (2003). _INVEST in Good Stories, and SMART Tasks_
-- Standish Group (2020). _CHAOS Report 2020_
-- State of Agile (2021). _17th Annual State of Agile Report_
+- Sommerville, I. (2016). *Software Engineering* (10th ed.)
+- Hevner, A. R. et al. (2004). *Design Science Research in Information Systems*
+- Cohn, M. (2004). *User Stories Applied: For Agile Software Development*
+- Wake, W. (2003). *INVEST in Good Stories, and SMART Tasks*
+- Standish Group (2020). *CHAOS Report 2020*
+- State of Agile (2021). *17th Annual State of Agile Report*
 
 ### Investigaciones relacionadas (de la tesis)
 
-- Rentala (2023) — _User Story Toolkit_: clasificación y generación UML desde user stories
-- Seitlheko (2021) — _SAPMT_: descomposición de épicas con NLP + algoritmo húngaro
-- Wijaya (2025) — _MDL-LLaMA_: fine-tuning de LLaMA-2 para descomposición contextual
+- Rentala (2023) — *User Story Toolkit*: clasificación y generación UML desde user stories
+- Seitlheko (2021) — *SAPMT*: descomposición de épicas con NLP + algoritmo húngaro
+- Wijaya (2025) — *MDL-LLaMA*: fine-tuning de LLaMA-2 para descomposición contextual
 - AutoScrum (2023) — planificación ágil automatizada con GPT-3.5
 - Sanwal (2024) — sistema multi-agente para ciclo ágil completo con LLMs
 - Kumari (2023) — integración de IA en tableros Kanban con NLP y analítica predictiva
