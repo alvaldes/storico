@@ -3,6 +3,7 @@
   "type": "module",
   "version": "0.2.0",
   "private": true,
+  "packageManager": "pnpm@10.15.0",
   "description": "Storico — LLM-powered user story to Kanban task extraction tool",
   "scripts": {
     "dev": "NODE_OPTIONS=\"--dns-result-order=ipv4first\" astro dev",
