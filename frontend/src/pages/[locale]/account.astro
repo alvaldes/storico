@@ -12,5 +12,5 @@ const t = useTranslations(locale);
     <title>{t.app.name} — {t.account.page_title}</title>
   </div>
 
-  <AccountPage client:load locale={locale} />
+  <AccountPage client:only="react" locale={locale} />
 </MainLayout>

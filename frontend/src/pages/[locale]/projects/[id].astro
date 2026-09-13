@@ -16,5 +16,5 @@ const { id } = Astro.params;
     <title>{t.app.name} — {t.nav.stories}</title>
   </div>
 
-  <ProjectDetail client:load locale={locale} projectId={id!} userId={userId} />
+  <ProjectDetail client:only="react" locale={locale} projectId={id!} userId={userId} />
 </MainLayout>

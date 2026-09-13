@@ -57,7 +57,7 @@ const L = (path: string) => localizedPath(path, locale);
       <LangToggle href={langToggleHref} locale={locale} />
 
       <!-- Theme toggle -->
-      <ThemeToggle client:idle />
+      <ThemeToggle client:only="react" />
 
       <!-- GitHub -->
       <a

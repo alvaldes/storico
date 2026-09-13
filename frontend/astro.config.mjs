@@ -28,14 +28,7 @@ export default defineConfig({
   },
   vite: {
     optimizeDeps: {
-      include: [
-        "react",
-        "react-dom",
-        "zustand",
-        "zod",
-        "lucide-react",
-        "use-sync-external-store",
-      ],
+      include: ["react", "react-dom", "zustand", "zod", "lucide-react"],
       exclude: [
         "auth-astro",
         "auth:config",
@@ -44,10 +37,20 @@ export default defineConfig({
       ],
     },
     resolve: {
-      alias: {
-        "use-sync-external-store/shim": "use-sync-external-store",
-        "use-sync-external-store/shim/with-selector": "use-sync-external-store/with-selector",
-      },
+      alias: [
+        {
+          find: /^use-sync-external-store$/,
+          replacement: "react",
+        },
+        {
+          find: /^use-sync-external-store\/shim$/,
+          replacement: "react",
+        },
+        {
+          find: /^use-sync-external-store\/shim\/with-selector$/,
+          replacement: "use-sync-external-store/with-selector",
+        },
+      ],
     },
   },
 });
