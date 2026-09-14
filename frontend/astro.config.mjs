@@ -29,12 +29,7 @@ export default defineConfig({
   vite: {
     optimizeDeps: {
       include: ["react", "react-dom", "zustand", "zod", "lucide-react"],
-      exclude: [
-        "auth-astro",
-        "auth:config",
-        "@base-ui/react",
-        "@base-ui/utils",
-      ],
+      exclude: ["auth-astro", "auth:config"],
     },
   },
 });
