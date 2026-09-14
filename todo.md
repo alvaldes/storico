@@ -1,273 +1,111 @@
-# Storico — Extracción asíncrona con polling
+# Storico — Backlog
 
-> **Contexto**: El botón "Extract" de descomposición de user stories bloquea la UI mientras el LLM responde (30s–2min). Este documento describe la migración de extracción síncrona a asíncrona con polling, y el plan futuro para migrar a Celery.
-
----
-
-## Problema
-
-Hoy `POST /api/v1/workspaces/{workspace_id}/extract/` es **síncrono** — el HTTP request se mantiene abierto todo el tiempo que el LLM tarda en responder. El botón se deshabilita con un spinner y el usuario no tiene visibilidad del progreso.
-
-## Solución elegida (iteración 1)
-
-**Opción 3: asyncio `create_task` + polling**
-
-El POST responde **inmediatamente** con `{ extraction_id, status: "pending" }`, lanza la extracción en background con `asyncio.create_task()`, y el frontend **p**olea `GET /status/{extraction_id}` hasta que el estado cambie a `completed` o `failed`.
+> **Última actualización**: 2026-09-14 — unificado desde `todo.md` y `prod.todo.md` tras la arc de
+> deuda técnica (12 commits, `41cddae..b982c4d` en `origin/main`). Los items ya implementados se
+> eliminaron y quedan listados al final como referencia.
+>
+> Estado verificado contra el código en esa fecha, no contra lo que decían los documentos viejos.
 
 ---
 
-## Plan de implementación
+## 🔴 Bloqueantes de producción
 
-### Fase 1 — Backend: POST asíncrono
+### 1. Extracción en prod con LLM cloud
 
-**Archivos a modificar:**
+**Estado verificado**: `backend/src/storico/infrastructure/llm/` tiene `ollama_adapter.py` y
+`gemini_adapter.py`. **No existe `openai_adapter.py`**, aunque el select del frontend
+(`LLMConfigEditor`) ya ofrece OpenAI / Gemini / Anthropic.
 
-| Archivo | Cambio |
-|---------|--------|
-| `backend/src/storico/api/routes/extraction.py` | El POST ya no llama `await use_case.execute()`. En su lugar: (1) crea un registro `Extraction(status="pending")`, (2) lanza `asyncio.create_task(background_extract(...))`, (3) responde inmediatamente con `{ extraction_id, status: "pending" }` |
-| `backend/src/storico/application/extraction/extract_from_story.py` | Opcional: separar `execute` en dos métodos — `create_pending` y `run_extraction` |
+- **Camino inmediato (cero código nuevo)**: verificar la extracción con **Gemini** en Vercel —
+  el adapter ya existe. Puede desbloquear prod sin construir nada.
+- **Si se quiere OpenAI**: crear `openai_adapter.py` (implementando el port `LLMPort`),
+  agregar `openai` a `pyproject.toml`, `STORICO_OPENAI_API_KEY` / `STORICO_OPENAI_MODEL` en
+  `settings.py`, y el switch en `get_llm_port()` (`dependencies.py`).
+- Parámetros de referencia: `temperature=0.1`, `max_tokens=2048` (vienen de `LLMConfig`).
 
-**Detalle del cambio en `extraction.py`:**
+### 2. Qdrant Cloud + embeddings cloud
 
-```python
-@extraction_router.post("/", status_code=status.HTTP_202_ACCEPTED)
-async def extract_tasks(
-    body: ExtractRequest,
-    ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
-    use_case: ExtractFromStoryUseCase = Depends(get_extract_use_case),
-    extraction_repo: ExtractionRepoDep = None,
-    task_repo: TaskRepoDep = None,
-    story_repo: StoryRepoDep = None,
-    project_repo: ProjectRepoDep = None,
-    llm_config_repo: LLMConfigRepoDep = None,
-) -> ExtractResponse:
-    workspace, _ = ctx
-
-    # 1. Validate story belongs to workspace
-    await _validate_story_belongs_to_workspace(...)
-
-    # 2. Resolve model
-    model = body.model or (await llm_config_repo.get(workspace.id)).model
-
-    # 3. Create pending extraction record
-    extraction = Extraction(
-        user_story_id=body.user_story_id,
-        model_used=model,
-        raw_response="",
-        status="pending",
-    )
-    extraction = await extraction_repo.save(extraction)
-
-    # 4. Launch background extraction
-    asyncio.create_task(
-        _run_extraction_background(
-            extraction_id=extraction.id,
-            use_case=use_case,
-            extraction_repo=extraction_repo,
-        )
-    )
-
-    # 5. Respond immediately
-    return ExtractResponse(
-        extraction_id=extraction.id,
-        status="pending",
-        tasks=[],
-        model_used=model,
-    )
-```
-
-**Lo que cambia en el frontend:**
-
-- `taskStore.ts`: `extracting: boolean` → `extractionStatus: Record<string, 'idle' | 'pending' | 'processing' | 'completed' | 'failed'>`
-- `extractTasks()`: llama al POST, recibe `extraction_id`, guarda el estado como `pending`, inicia polling
-- Nuevo hook/efecto: `useExtractionPolling(extractionId)` que corre cada 2s y actualiza el estado
-- `StoryDetail.tsx`: el botón muestra el estado actual (spinner en pending/processing, check en completed, error en failed)
+- El embedding service usa `nomic-embed-text` vía Ollama — no corre en Vercel.
+- `EmbeddingService` → adapter cloud (`text-embedding-3-small`, 768 dim compatible con el schema),
+  `STORICO_QDRANT_CLOUD_URL` / `STORICO_QDRANT_CLOUD_API_KEY` en settings, colección con
+  `vector_size=768` + Cosine. Free tier: 1GB.
+- **Depende de** tener la extracción funcionando en prod (item 1).
 
 ---
 
-## Migración futura a Celery (Opción 2)
+## 🟡 Importantes
 
-Cuando Celery esté configurado en el MVP (Redis ya está en el stack como broker), migrar de `asyncio.create_task` a Celery:
+### 3. Vercel env audit
 
-**Qué cambia:**
-- `backend/src/storico/infrastructure/tasks/extraction_task.py` — nueva tarea Celery
-- `backend/src/storico/api/routes/extraction.py` — el POST encola la tarea Celery en vez de `create_task`
-- `backend/src/storico/application/extraction/extract_from_story.py` — se mantiene igual (el use case es reutilizable)
-- `docker-compose.yml` — agregar servicio `worker` (Celery)
-- `pyproject.toml` — agregar `celery[redis]`
+Comparar las env vars de ambos proyectos (frontend + backend) contra `.env.example` /
+`backend/.env.example`. Prestar atención a: `STORICO_AUTH_INTERNAL_TOKEN` (mismo valor en
+ambos), `AUTH_SECRET` (mismo en ambos, distinto del dev), `API_URL` del frontend, y
+`STORICO_CORS_ORIGINS` / `STORICO_AUTH_ALLOWED_ORIGINS` → `https://storico.vercel.app`.
 
-**Por qué migrar a Celery:**
-- La extracción survive reinicios del servidor
-- Workers separados no compiten con requests HTTP
-- Cola FIFO con visibilidad (puedes ver cuántas extracciones están en cola)
-- Escalable horizontalmente (múltiples workers)
-- Redis ya está en el stack como dependencia
+### 4. Error monitoring (Sentry)
 
-**Cuándo migrar:** Cuando se configure Celery en el MVP (item #8 de `prod.todo.md`). Hasta entonces, `asyncio.create_task` es suficiente.
+Backend: `sentry-sdk` inicializado en `app.py` (FastAPI integration incluida).
+Frontend: `@sentry/astro` en `astro.config.mjs`. Free tier: 5k events/mes.
 
----
+### 5. Conector Trello
 
-## Frontend — polling
+Hoy sólo existe el valor `'trello'` en el enum `ExportFormat` y en i18n — no hay adapter.
+Reutilizar la lógica probada de `csv2trello/core/` (autenticación, boards/listas/cards):
+crear `ExportPort` + `TrelloAdapter`, endpoint `POST /api/v1/export/trello`, y conectar
+`ExportPanel`.
 
-### taskStore.ts
+### 6. Juicio de expertos (tesis)
 
-```typescript
-interface ExtractionState {
-  extractionId: string | null;
-  status: 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
-  error: string | null;
-}
-
-interface TaskState {
-  tasks: Record<string, Task[]>;
-  extractions: Record<string, ExtractionState>;  // keyed by storyId
-  loading: boolean;
-  error: string | null;
-
-  extractTasks: (storyId: string, workspaceId: string) => Promise<void>;
-  pollExtraction: (storyId: string, extractionId: string) => Promise<void>;
-  fetchTasks: (storyId: string) => Promise<void>;
-  // ...
-}
-```
-
-**Polling logic:**
-
-```typescript
-extractTasks: async (storyId: string, workspaceId: string) => {
-  set((state) => ({
-    extractions: {
-      ...state.extractions,
-      [storyId]: { status: 'pending', error: null },
-    },
-  }));
-
-  try {
-    const result = await api.startExtraction(storyId, workspaceId);
-    // result = { extraction_id, status: "pending" }
-
-    // Start polling
-    get().pollExtraction(storyId, result.extractionId);
-  } catch (err) {
-    set((state) => ({
-      extractions: {
-        ...state.extractions,
-        [storyId]: { status: 'failed', error: err.message },
-      },
-    }));
-  }
-},
-
-pollExtraction: async (storyId: string, extractionId: string) => {
-  const poll = async () => {
-    try {
-      const status = await api.getExtractionStatus(extractionId);
-      if (status === 'completed') {
-        // Fetch tasks
-        await get().fetchTasks(storyId);
-        set((state) => ({
-          extractions: {
-            ...state.extractions,
-            [storyId]: { status: 'completed' },
-          },
-        }));
-      } else if (status === 'failed') {
-        set((state) => ({
-          extractions: {
-            ...state.extractions,
-            [storyId]: { status: 'failed', error: 'Extraction failed' },
-          },
-        }));
-      } else {
-        // Still pending/processing — poll again after delay
-        setTimeout(() => get().pollExtraction(storyId), 2000);
-      }
-    } catch {
-      set((state) => ({
-        extractions: {
-          ...state.extractions,
-          [storyId]: { status: 'failed', error: 'Polling failed' },
-        },
-      }));
-    }
-  };
-```
+Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / TAS / IFI.
+**Depende de**: extracción funcionando en prod (item 1) + exportación (item 5).
 
 ---
 
-## Archivos a modificar
+## 🟤 Bajos / V2
 
-### Backend
-
-| Archivo | Cambio |
-|---------|--------|
-| `backend/src/storico/api/routes/extraction.py` | El POST crea `Extraction(status="pending")`, lanza `asyncio.create_task(background_extract(...))`, responde `202 Accepted` con `extraction_id` y `status: "pending"`. Nueva función `_run_background_extraction()` que ejecuta el use case y actualiza el status. |
-| `backend/src/storico/application/extraction/extract_from_story.py` | Opcional: separar `execute` en `create_pending` + `run_extraction` para reutilización. |
-
-### Frontend
-
-| Archivo | Cambio |
-|---------|--------|
-| `frontend/src/lib/tasks-api.ts` | Nuevo método `startExtraction()` que llama al POST y devuelve `{ extractionId, status }`. Nuevo método `getExtractionStatus(extractionId)` que llama a `GET /api/v1/extractions/{extraction_id}`. |
-| `frontend/src/stores/taskStore.ts` | `extracting: boolean` → `extractions: Record<string, ExtractionState>`. `extractTasks()` llama a `startExtraction()` e inicia polling. Nuevo método `pollExtraction()`. |
-| `frontend/src/components/react/StoryDetail.tsx` | El botón usa `extractions[storyId].status` en vez de `extracting`. Muestra spinner en pending/processing, check en completed, error en failed. |
+- **Dominio propio** — comprar, configurar en Vercel, actualizar OAuth redirects.
+- **Rate limiting** — Vercel WAF (sin código) o `slowapi` (serverless).
+- **Batch asíncrono con Redis** — la extracción *individual* ya es asíncrona
+  (`asyncio.create_task` + polling); esto es el procesamiento de lotes.
+- **Jira + export CSV/XML** — post-evaluación de la tesis.
+- **Dashboard de admin con métricas**.
+- **`@playwright/test` como devDependency** — Chromium ya está instalado; con la dependencia
+  y un backend corriendo, los specs de `e2e/` pasan de excluidos a ejecutables.
+- **`navigate()` de Astro en lugar de `window.location.assign`** — las 5 redirecciones
+  restantes son internas por construcción (`localizedPath` clampea, UUIDs); migrar a SPA nav
+  mejoraría la UX y silenciaría el scanner de open-redirect.
 
 ---
 
-## Estados del botón
+## 🧹 Limpieza menor
 
-| Estado | Botón |
-|--------|-------|
-| `idle` | `[✨ Extract]` — habilitado |
-| `pending` | `[⏳ Queued...]` — deshabilitado, spinner |
-| `processing` | `[⏳ Processing...]` — deshabilitado, spinner |
-| `completed` | `[✅ Extracted]` — deshabilitado, check |
-| `failed` | `[⚠️ Retry]` — habilitado, permite reintentar |
-
----
-
-## Migración futura a Celery (Opción 2)
-
-Cuando Celery esté configurado en el MVP (item #8 de `prod.todo.md`), migrar de `asyncio.create_task` a Celery:
-
-**Qué cambia:**
-
-| Archivo | Cambio |
-|---------|--------|
-| `backend/src/storico/infrastructure/tasks/extraction_task.py` | Nueva tarea Celery `extract_from_story_task` que llama a `ExtractFromStoryUseCase.execute()` |
-| `backend/src/storico/api/routes/extraction.py` | El POST encola `extract_from_story_task.delay(...)` en vez de `asyncio.create_task(...)` |
-| `docker-compose.yml` | Agregar servicio `worker` que corre `celery -A storico.infrastructure.tasks worker` |
-| `pyproject.toml` | Agregar `celery[redis]` |
-| `backend/src/storico/infrastructure/tasks/__init__.py` | Nuevo módulo de tareas Celery |
-| `backend/src/storico/infrastructure/tasks/extraction_task.py` | Definición de la tarea Celery |
-
-**Por qué migrar:**
-- La extracción survive reinicios del servidor
-- Workers separados no compiten con requests HTTP
-- Cola FIFO con visibilidad (puedes ver cuántas extracciones están en cola)
-- Escalable horizontalmente (múltiples workers)
-- Redis ya está en el stack como broker
-
-**Cuándo migrar:** Cuando se configure Celery en el MVP (item #8 de `prod.todo.md`). Hasta entonces, `asyncio.create_task` es suficiente.
+- **Makefile**: `test-backend` apunta a `backend/.venv/bin/pytest` pero ese venv no tiene
+  pytest — los tests corren con el conda env `storico`. Decidir: instalar pytest en `.venv`
+  (portátil) o apuntar al conda (machine-specific).
+- **`StoryForm.tsx:515`**: último `dangerouslySetInnerHTML` del frontend — renderiza
+  `t.stories.story_format_hint` (string i18n estático, seguro por contenido). Mismo patrón
+  ya eliminado en `DeleteAccountDialog` con `renderBoldMarkup()`.
+- **`tasks-api.ts` `updateTask`**: bloque muerto — *"We need the current status - fetch it
+  first"* sin hacer nada. Implementar o eliminar.
 
 ---
 
-## Resumen de cambios
+## ✅ Completado (referencia — estos items se eliminaron del backlog)
 
-```
-Backend:
-  ✅ POST /extract/ → responde 202 Accepted inmediatamente
-  ✅ GET /extractions/{id} → ya existe, devuelve status
-  ✅ asyncio.create_task para background extraction
-  ✅ Extraction(status="pending") se persiste antes de lanzar el background task
-
-Frontend:
-  ✅ taskStore: extracting boolean → extractionStatus state machine
-  ✅ tasks-api: startExtraction() + getExtractionStatus()
-  ✅ StoryDetail: botón con estados idle/pending/processing/completed/failed
-  ✅ Polling cada 2s hasta que status cambie a completed o failed
-
-Futuro (Celery):
-  ⏳ Mover background task a Celery worker
-  ⏳ docker-compose: agregar servicio worker
-  ⏳ pyproject.toml: agregar celery[redis]
+- **Workspaces y permisos** (ex #16): admin crea workspaces, miembros, roles — implementado
+  (migraciones + `MemberManagement`).
+- **Extracción async individual con polling** (ex `todo.md` completo): `asyncio.create_task`
+  en el backend + `pollExtraction` en `taskStore`. La migración a Celery/Redis queda cubierta
+  por "Batch asíncrono" arriba.
+- **Contrato de transiciones de task**: una sola fuente de verdad (`types/task.ts`), no-op
+  válido en BE y FE (antes se impedía guardar sin cambiar el status).
+- **SSR restaurado**: las 14 islas vuelven a `client:load`/`client:idle` con theming
+  hydration-safe (`useThemeHydration` / `useResolvedTheme`); `client:only` eliminado.
+- **Formato normalizado**: `.prettierrc.json` (single quotes, printWidth 100) + 119 archivos;
+  el formatter ya no genera churn.
+- **pnpm como único package manager**: `bun.lockb` y `package-lock.json` eliminados.
+- **`@base-ui` prebundleado**: fin del error `error loading dynamically imported module`.
+- **Seguridad**: XSS de `DeleteAccountDialog` (email interpolado en innerHTML) arreglado;
+  toasts respetan el tema (`data-theme`).
+- **Calidad**: tsc 0 errores, suite FE 67/0, transiciones BE 82 passed, tests de regresión
+  nuevos (KanbanBoard, contract matrix de transiciones).
