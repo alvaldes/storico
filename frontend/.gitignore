@@ -5,3 +5,12 @@ dist/
 .DS_Store
 *.log
 .cache/
+
+# ── Package manager: pnpm only ──────────────────────────────────────
+# packageManager in package.json pins pnpm; Vercel reads it from there.
+# Stray lockfiles from npm/bun/yarn cause ERR_PNPM_LOCKFILE_MISSING_DEPENDENCY
+# on Vercel and Vite cache invalidation locally. Never commit them.
+package-lock.json
+yarn.lock
+bun.lockb
+bun.lock

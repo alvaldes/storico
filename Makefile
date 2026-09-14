@@ -16,6 +16,9 @@ down: ## Stop all services
 	docker compose down
 
 logs: ## Tail logs (optional: make logs <service>)
+	# Intentional word splitting: `make logs api backend` must pass each goal as a
+	# separate service name, so the expansion stays unquoted on purpose.
+	# shellcheck disable=SC2068,SC2145
 	docker compose logs -f $(filter-out $@,$(MAKECMDGOALS))
 
 restart: down up ## Restart all services
@@ -27,7 +30,7 @@ test-backend: ## Run backend tests with pytest
 	cd backend && .venv/bin/pytest -v
 
 test-frontend: ## Run frontend tests (build as smoke test)
-	cd frontend && npm run build
+	cd frontend && pnpm run build
 
 shell-api: ## Open a bash shell in the storico-api container
 	docker compose exec storico-api bash
@@ -42,5 +45,5 @@ clean: ## Stop and remove all volumes (destructive)
 
 setup: ## Install all dependencies and build images
 	cd backend && python -m venv .venv && .venv/bin/pip install -e ".[dev]"
-	cd frontend && npm install
+	cd frontend && pnpm install
 	docker compose build
