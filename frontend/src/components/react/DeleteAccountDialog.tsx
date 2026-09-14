@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -19,6 +19,22 @@ interface DeleteAccountDialogProps {
   locale: Locale;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+/**
+ * Renders i18n strings that use <b>...</b> for emphasis WITHOUT innerHTML:
+ * text segments stay text and only authored segments become <b>. With
+ * `interpolate`, the value replaces the {email} placeholder as plain text
+ * (never markup), so user-controlled data never reaches the HTML layer.
+ */
+function renderBoldMarkup(text: string, interpolate?: string): React.ReactNode {
+  const withValue =
+    interpolate !== undefined && text.includes('{email}')
+      ? text.replace('{email}', interpolate)
+      : text;
+  return withValue.split(/<\/?b>/).map((part, i) =>
+    i % 2 === 1 ? <b key={i}>{part}</b> : part,
+  );
 }
 
 export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccountDialogProps) {
@@ -57,7 +73,7 @@ export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccoun
       clearAuth();
       onOpenChange(false);
       // Redirect to home after successful deletion
-      window.location.href = '/';
+      window.location.assign('/');
     } catch (err) {
       const message = err instanceof Error ? err.message : t.settings.danger_delete_dialog_error;
       setError(message);
@@ -86,11 +102,9 @@ export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccoun
 
           <div className="space-y-5 py-2">
             {/* Description */}
-            <DialogDescription
-              dangerouslySetInnerHTML={{
-                __html: t.settings.danger_delete_dialog_description_1,
-              }}
-            />
+            <DialogDescription>
+              {renderBoldMarkup(t.settings.danger_delete_dialog_description_1)}
+            </DialogDescription>
 
             {/* Warning note */}
             <div
@@ -104,14 +118,12 @@ export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccoun
             {/* Confirmation fields */}
             <FieldGroup>
               <Field>
-                <FieldLabel
-                  dangerouslySetInnerHTML={{
-                    __html: t.settings.danger_delete_dialog_email_label.replace(
-                      '{email}',
-                      user?.email ?? '',
-                    ),
-                  }}
-                />
+                <FieldLabel>
+                  {renderBoldMarkup(
+                    t.settings.danger_delete_dialog_email_label,
+                    user?.email ?? '',
+                  )}
+                </FieldLabel>
                 <Input
                   value={emailInput}
                   onChange={(e) => setEmailInput(e.target.value)}
@@ -121,11 +133,9 @@ export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccoun
                 />
               </Field>
               <Field>
-                <FieldLabel
-                  dangerouslySetInnerHTML={{
-                    __html: t.settings.danger_delete_dialog_verify_label,
-                  }}
-                />
+                <FieldLabel>
+                  {renderBoldMarkup(t.settings.danger_delete_dialog_verify_label)}
+                </FieldLabel>
                 <Input
                   value={verifyInput}
                   onChange={(e) => setVerifyInput(e.target.value)}

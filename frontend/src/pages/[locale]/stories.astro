@@ -17,5 +17,5 @@ const t = useTranslations(locale);
     <p class="text-sm text-muted-foreground">{t.stories.description}</p>
   </div>
 
-  <StoriesList client:only="react" locale={locale} />
+  <StoriesList client:load locale={locale} />
 </MainLayout>

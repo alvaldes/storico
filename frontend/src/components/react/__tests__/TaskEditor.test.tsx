@@ -214,7 +214,7 @@ describe('TaskEditor', () => {
   /* ── Form reset ── */
 
   it('resets form when dialog opens with a different task', async () => {
-    const { rerender } = render(
+    render(
       <TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />,
     );
 

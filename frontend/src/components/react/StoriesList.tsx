@@ -289,7 +289,9 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
               label: opt.label,
             }))}
             value={sortBy}
-            onValueChange={setSortBy}
+            onValueChange={(value) => {
+              if (value !== null) setSortBy(value);
+            }}
           >
             <SelectTrigger className="w-48 flex items-center gap-2">
               <currentSortOption.icon className="h-4 w-4 text-muted-foreground" />
@@ -375,7 +377,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
           {visibleStories.map((story) => (
             <div
               key={story.id}
-              onClick={() => (window.location.href = `/${locale}/stories/${story.id}`)}
+              onClick={() => window.location.assign(`/${locale}/stories/${story.id}`)}
               className="flex items-start justify-between rounded-lg border border-border bg-(--color-surface) p-4 transition-colors hover:bg-(--color-surface-secondary) cursor-pointer"
             >
               <div className="flex-1 min-w-0">

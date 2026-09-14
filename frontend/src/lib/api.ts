@@ -1,12 +1,6 @@
 import type { Task, TaskStatus } from '@/types/task';
 import type { UserStory, UserStoryStatus } from '@/types/story';
-import type {
-  ExtractionResponse,
-  ExtractResponse,
-  ExtractRequest,
-  ExtractionTask,
-  ExtractionUserStory,
-} from '@/types/extraction';
+import type { ExtractionResponse, ExtractResponse, ExtractRequest } from '@/types/extraction';
 
 const BASE_URL = ''; // Proxy through Astro (same-origin)
 

@@ -160,7 +160,7 @@ export function WorkspaceSettings({ locale, workspaceId }: WorkspaceSettingsProp
       // Redirect to dashboard — internal path only (never absolute/protocol-relative)
       const redirectTarget = localizedPath('/dashboard', locale);
       if (redirectTarget.startsWith('/') && !redirectTarget.startsWith('//')) {
-        window.location.href = redirectTarget;
+        window.location.assign(redirectTarget);
       }
     } catch (err) {
       const message =

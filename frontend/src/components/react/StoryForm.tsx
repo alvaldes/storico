@@ -172,8 +172,8 @@ export function StoryForm({
     setErrors({});
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setErrors({});
 
     let submitData: StoryFormData;

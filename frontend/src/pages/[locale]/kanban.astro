@@ -12,5 +12,5 @@ const t = useTranslations(locale);
     <title>{t.app.name} — {t.nav.kanban}</title>
   </div>
 
-  <KanbanBoard client:only="react" locale={locale} />
+  <KanbanBoard client:load locale={locale} />
 </MainLayout>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useUIStore } from '@/stores/uiStore';
+import { useResolvedTheme } from '@/stores/uiStore';
 import {
   Bot,
   FileText,
@@ -52,15 +52,7 @@ interface LLMConfigEditorProps {
 
 export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   const t = locale === 'es' ? es : en;
-  const { theme: rawTheme } = useUIStore();
-  const resolvedTheme: 'light' | 'dark' =
-    rawTheme === 'system'
-      ? typeof window === 'undefined'
-        ? 'light'
-        : window.matchMedia('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light'
-      : rawTheme;
+  const resolvedTheme = useResolvedTheme();
 
   /* ── LLM Config State ── */
   const [llmConfig, setLlmConfig] = useState<WorkspaceLLMConfig>({

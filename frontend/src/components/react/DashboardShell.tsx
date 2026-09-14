@@ -10,6 +10,7 @@ import { type Locale } from '@/i18n/utils';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { fetchFullUserProfile } from '@/lib/user-api';
 import { OnboardingModal } from '@/components/react/OnboardingModal';
+import { useThemeHydration } from '@/stores/uiStore';
 
 interface DashboardShellProps {
   locale: Locale;
@@ -67,6 +68,9 @@ export function DashboardShell({
   }, [userJson, setUser, setIsFirstLogin]);
 
   const isFirstLogin = useAuthStore((s) => s.isFirstLogin);
+
+  // One-time post-hydration theme sync for every authenticated page.
+  useThemeHydration();
 
   return (
     <SidebarProvider defaultOpen={sidebarDefaultOpen} className="max-h-svh">

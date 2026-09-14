@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/select';
 import { useAuthStore } from '@/stores/authStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
-import { useUIStore } from '@/stores/uiStore';
+import { useResolvedTheme } from '@/stores/uiStore';
 import { ProviderIcon } from '@/components/ui/provider-icon';
 import { IconPicker, IconTrigger } from '@/components/ui/icon-picker';
 import { completeOnboarding } from '@/lib/user-api';
@@ -45,15 +45,7 @@ export function OnboardingModal({ locale = 'en' }: OnboardingModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const originalName = useRef(currentWorkspaceName ?? '');
 
-  const { theme: rawTheme } = useUIStore();
-  const resolvedTheme: 'light' | 'dark' =
-    rawTheme === 'system'
-      ? typeof window === 'undefined'
-        ? 'light'
-        : window.matchMedia('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light'
-      : rawTheme;
+  const resolvedTheme = useResolvedTheme();
 
   // Bloquear Escape a nivel DOM antes de que Base UI lo procese.
   // Base UI usa un listener en document para cerrar con Escape, y su

@@ -13,5 +13,5 @@ const t = useTranslations(locale);
     <title>{t.app.name} — {t.workspace?.settingsTitle ?? "Workspace Settings"}</title>
   </div>
 
-  <WorkspaceSettings client:only="react" locale={locale} workspaceId={workspaceId} />
+  <WorkspaceSettings client:load locale={locale} workspaceId={workspaceId} />
 </MainLayout>

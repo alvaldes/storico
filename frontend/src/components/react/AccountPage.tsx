@@ -173,7 +173,7 @@ export function AccountPage({ locale }: AccountPageProps) {
               value={locale}
               onValueChange={(value) => {
                 if (value !== locale) {
-                  window.location.href = localizedPath('/account', value as 'en' | 'es');
+                  window.location.assign(localizedPath('/account', value as 'en' | 'es'));
                 }
               }}
               options={[

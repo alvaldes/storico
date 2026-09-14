@@ -166,7 +166,7 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
           {projects.map((project) => (
             <div
               key={project.id}
-              onClick={() => (window.location.href = `/${locale}/projects/${project.id}`)}
+              onClick={() => window.location.assign(`/${locale}/projects/${project.id}`)}
               className="cursor-pointer flex"
             >
               <Card className="group flex flex-col w-full">

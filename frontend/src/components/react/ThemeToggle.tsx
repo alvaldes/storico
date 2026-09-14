@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
-import { useUIStore } from '@/stores/uiStore';
+import { useThemeHydration, useUIStore } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
 import { useTranslations, type Locale } from '@/i18n/utils';
 
 export function ThemeToggle({ locale = 'en' }: { locale?: Locale }) {
   const t = useTranslations(locale);
   const { theme, toggleTheme } = useUIStore();
+  useThemeHydration();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {

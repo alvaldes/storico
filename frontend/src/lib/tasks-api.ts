@@ -2,15 +2,6 @@ import { api, ApiRequestError } from './api';
 import { toCamelCase, toSnakeCase } from './utils';
 import type { Task, TaskStatus, RawTaskItem } from '@/types/task';
 import { getAllowedTaskTransitions, isValidTaskTransition } from '@/types/task';
-import type {
-  ExtractionResponse,
-  ExtractResponse,
-  ExtractRequest,
-  ExtractionTask,
-  ExtractionUserStory,
-} from '@/types/extraction';
-import type { UserStory } from '@/types/story';
-import type { PaginatedResponse } from './projects-api';
 
 // ── Mapping helpers ──
 

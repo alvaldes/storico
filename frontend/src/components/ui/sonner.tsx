@@ -27,7 +27,7 @@ import {
  * shadcn-friendly fix and removes the need for any inline patches.
  *
  * Theming: this project does not use next-themes; we read the theme from the
- * <html> class (set by ThemeScript + ThemeToggle), matching the existing dark
+ * <html> data-theme attribute (set by ThemeScript + ThemeToggle), matching the existing dark
  * mode implementation. shadcn's own next-themes hook is replaced with a
  * MutationObserver here.
  *
@@ -47,11 +47,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
   useEffect(() => {
     const html = document.documentElement;
     const update = () => {
-      setTheme(html.classList.contains('dark') ? 'dark' : 'light');
+      setTheme(html.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
     };
     update();
     const observer = new MutationObserver(update);
-    observer.observe(html, { attributes: true, attributeFilter: ['class'] });
+    observer.observe(html, { attributes: true, attributeFilter: ['data-theme'] });
     return () => observer.disconnect();
   }, []);
 

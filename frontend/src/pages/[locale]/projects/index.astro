@@ -15,5 +15,5 @@ const userId = session?.user?.id ?? '';
     <title>{t.app.name} — {t.nav.projects}</title>
   </div>
 
-  <ProjectsList client:only="react" locale={locale} userId={userId} />
+  <ProjectsList client:load locale={locale} userId={userId} />
 </MainLayout>

@@ -12,5 +12,5 @@ const t = useTranslations(locale);
     <title>{t.app.name} — {t.nav.export}</title>
   </div>
 
-  <ExportPanel client:only="react" locale={locale} />
+  <ExportPanel client:load locale={locale} />
 </MainLayout>
