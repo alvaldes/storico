@@ -67,3 +67,6 @@ skills-lock.json
 # Stale deployment files
 railway.json
 backend/fly.toml
+
+# Pi harness config (gentle-ai) — local only
+.pi/
