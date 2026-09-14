@@ -43,7 +43,7 @@ export class ApiRequestError extends Error {
   attemptedState?: string;
   allowedTransitions?: string[];
 
-  constructor(status: number, statusText: string, detail: unknown, rawBody: unknown) {
+  constructor(status: number, statusText: string, detail: unknown, rawBody?: unknown) {
     const message = buildErrorMessage(status, statusText, detail);
     super(message);
     this.name = 'ApiRequestError';
@@ -137,7 +137,7 @@ class ApiClient {
     const response = await fetch(url, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
 
     if (!response.ok) {

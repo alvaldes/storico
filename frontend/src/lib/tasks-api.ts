@@ -1,6 +1,7 @@
 import { api, ApiRequestError } from './api';
 import { toCamelCase, toSnakeCase } from './utils';
 import type { Task, TaskStatus, RawTaskItem } from '@/types/task';
+import { getAllowedTaskTransitions, isValidTaskTransition } from '@/types/task';
 import type { ExtractionResponse, ExtractResponse, ExtractRequest, ExtractionTask, ExtractionUserStory } from '@/types/extraction';
 import type { UserStory } from '@/types/story';
 import type { PaginatedResponse } from './projects-api';
@@ -43,11 +44,12 @@ export async function listTasksByWorkspace(workspaceId: string): Promise<Task[]>
 export async function updateTaskStatus(
   taskId: string,
   status: TaskStatus,
-  currentStatus: TaskStatus,
+  currentStatus?: TaskStatus,
 ): Promise<Task> {
-  // Client-side validation before sending to backend
-  if (!isValidTransition(currentStatus, status)) {
-    const allowed = getAllowedTransitions(currentStatus);
+  // Client-side pre-validation when the caller knows the current status.
+  // The backend re-validates (and allows no-ops).
+  if (currentStatus !== undefined && !isValidTaskTransition(currentStatus, status)) {
+    const allowed = getAllowedTaskTransitions(currentStatus);
     const error = new Error(`Invalid transition from ${currentStatus} to ${status}`) as Error & {
       errorCode: string;
       currentState: TaskStatus;
@@ -200,27 +202,4 @@ async function pollUntilComplete(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
   return { status: 'failed', errorInfo: 'Polling timed out' };
-}
-
-/** Client-side transition validation helpers. */
-export function isValidTransition(current: string, next: string): boolean {
-  const validTransitions: Record<string, string[]> = {
-    backlog: ['backlog', 'todo'],
-    todo: ['backlog', 'in_progress'],
-    in_progress: ['todo', 'review'],
-    review: ['in_progress', 'done'],
-    done: ['done'],
-  };
-  return validTransitions[current]?.includes(next) ?? false;
-}
-
-export function getAllowedTransitions(current: string): string[] {
-  const validTransitions: Record<string, string[]> = {
-    backlog: ['backlog', 'todo'],
-    todo: ['backlog', 'in_progress'],
-    in_progress: ['todo', 'review'],
-    review: ['in_progress', 'done'],
-    done: ['done'],
-  };
-  return validTransitions[current] ?? [];
 }

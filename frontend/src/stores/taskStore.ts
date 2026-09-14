@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import type { Task, TaskStatus } from '@/types/task';
+import { getAllowedTaskTransitions, type Task, type TaskStatus } from '@/types/task';
 import type { UserStory, UserStoryStatus } from '@/types/story';
 import * as api from '@/lib/tasks-api';
-import { ApiRequestError, RawBackendError } from '@/lib/api';
+import { ApiRequestError, type RawBackendError } from '@/lib/api';
 import { useStoryStore } from '@/stores/storyStore';
 
 // ── Types ──
@@ -124,7 +124,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set((state) => {
         const newTransitions = { ...state.allowedTransitions };
         for (const task of items) {
-          newTransitions[task.id] = api.getAllowedTransitions(task.status);
+          newTransitions[task.id] = getAllowedTaskTransitions(task.status);
         }
         return { allowedTransitions: newTransitions };
       });
@@ -252,7 +252,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set((state) => {
         const newTransitions = { ...state.allowedTransitions };
         for (const task of items) {
-          newTransitions[task.id] = api.getAllowedTransitions(task.status);
+          newTransitions[task.id] = getAllowedTaskTransitions(task.status);
         }
         return { allowedTransitions: newTransitions };
       });
@@ -372,7 +372,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
 
     // Client-side validation before sending
-    const allowedTransitions = api.getAllowedTransitions(currentStatus);
+    const allowedTransitions = getAllowedTaskTransitions(currentStatus);
     if (!allowedTransitions.includes(status)) {
       const error = new Error(`Invalid transition from ${currentStatus} to ${status}`) as Error & {
         errorCode: string;
@@ -388,7 +388,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
 
     try {
-      await api.updateTaskStatus(taskId, status);
+      await api.updateTaskStatus(taskId, status, currentStatus);
       // Optimistic update
       set((state) => {
         const newTasks = { ...state.tasks };
