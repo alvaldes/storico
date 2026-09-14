@@ -36,21 +36,5 @@ export default defineConfig({
         "@base-ui/utils",
       ],
     },
-    resolve: {
-      alias: [
-        {
-          find: /^use-sync-external-store$/,
-          replacement: "react",
-        },
-        {
-          find: /^use-sync-external-store\/shim$/,
-          replacement: "react",
-        },
-        {
-          find: /^use-sync-external-store\/shim\/with-selector$/,
-          replacement: "use-sync-external-store/with-selector",
-        },
-      ],
-    },
   },
 });
