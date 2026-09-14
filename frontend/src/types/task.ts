@@ -6,15 +6,18 @@ export const TASK_STATUSES: TaskStatus[] = ['backlog', 'todo', 'in_progress', 'r
 
 /** Valid Kanban transitions per column. */
 export const VALID_TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-  backlog: ['backlog', 'todo'],
+  backlog: ['todo'],
   todo: ['backlog', 'in_progress'],
   in_progress: ['todo', 'review'],
   review: ['in_progress', 'done'],
-  done: ['done'],
+  done: [],
 };
 
 /** Check if a transition from current to next status is valid. */
 export function isValidTaskTransition(current: TaskStatus, next: TaskStatus): boolean {
+  // A no-op is not a transition: saving a task without changing its status
+  // must not be rejected, and the backend allows it too.
+  if (current === next) return true;
   return VALID_TASK_TRANSITIONS[current]?.includes(next) ?? false;
 }
 

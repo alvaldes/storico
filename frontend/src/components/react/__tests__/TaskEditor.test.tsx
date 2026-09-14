@@ -146,11 +146,14 @@ describe('TaskEditor', () => {
 
     // store.updateTask called exactly once with the optimistic payload.
     expect(api.updateTask).toHaveBeenCalledTimes(1);
+    // The edit payload carries the form state, including the unchanged
+    // status: a no-op status is valid under the current contract.
     expect(api.updateTask).toHaveBeenCalledWith('task-1', {
       title: 'Updated title',
       description: 'Create the database schema',
       labels: ['db', 'backend'],
       dependencies: ['task-0'],
+      status: 'todo',
     });
 
     // After the PUT resolves, the store applies the server-authoritative Task.

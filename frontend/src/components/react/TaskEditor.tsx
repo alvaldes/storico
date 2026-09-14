@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,7 @@ import { useTranslations, type Locale } from '@/i18n/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import { toast } from 'sonner';
 import type { Task, TaskStatus } from '@/types/task';
-import { getAllowedTaskTransitions, TASK_STATUSES } from '@/types/task';
+import { isValidTaskTransition, TASK_STATUSES } from '@/types/task';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import { ApiRequestError } from '@/lib/api';
 
@@ -141,15 +141,11 @@ export function TaskEditor({
 
   /* ── Status validation ── */
 
-  // Get allowed transitions for current task status
-  const allowedTransitions = useMemo(
-    () => getAllowedTaskTransitions(task.status),
-    [task.status]
-  );
-
+  // Same rule as the backend: a no-op is always valid, real transitions
+  // follow the Kanban flow table.
   const isValidStatus = useCallback(
-    (newStatus: TaskStatus) => allowedTransitions.includes(newStatus),
-    [allowedTransitions]
+    (newStatus: TaskStatus) => isValidTaskTransition(task.status, newStatus),
+    [task.status]
   );
 
   /* ── Save ── */
