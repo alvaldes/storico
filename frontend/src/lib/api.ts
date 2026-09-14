@@ -1,8 +1,14 @@
 import type { Task, TaskStatus } from '@/types/task';
 import type { UserStory, UserStoryStatus } from '@/types/story';
-import type { ExtractionResponse, ExtractResponse, ExtractRequest, ExtractionTask, ExtractionUserStory } from '@/types/extraction';
+import type {
+  ExtractionResponse,
+  ExtractResponse,
+  ExtractRequest,
+  ExtractionTask,
+  ExtractionUserStory,
+} from '@/types/extraction';
 
-const BASE_URL = '';  // Proxy through Astro (same-origin)
+const BASE_URL = ''; // Proxy through Astro (same-origin)
 
 export interface ApiError {
   status: number;
@@ -122,11 +128,7 @@ class ApiClient {
     this.baseUrl = baseUrl;
   }
 
-  private async request<T>(
-    method: string,
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {};
 
@@ -208,7 +210,12 @@ class ApiClient {
 
   // ── Story methods ──
 
-  async listStories(params: { project_id?: string; workspace_id?: string; page?: number; size?: number }): Promise<{ items: StoryResponseRaw[]; total: number; page: number; size: number }> {
+  async listStories(params: {
+    project_id?: string;
+    workspace_id?: string;
+    page?: number;
+    size?: number;
+  }): Promise<{ items: StoryResponseRaw[]; total: number; page: number; size: number }> {
     const query = new URLSearchParams();
     if (params.project_id) query.set('project_id', params.project_id);
     if (params.workspace_id) query.set('workspace_id', params.workspace_id);
@@ -222,12 +229,21 @@ class ApiClient {
     return mapStoryResponse(raw);
   }
 
-  async createStory(data: { project_id: string; actor: string; feature: string; benefit: string; raw_text: string }): Promise<UserStory> {
+  async createStory(data: {
+    project_id: string;
+    actor: string;
+    feature: string;
+    benefit: string;
+    raw_text: string;
+  }): Promise<UserStory> {
     const raw = await this.post<StoryResponseRaw>('/api/v1/stories/', data);
     return mapStoryResponse(raw);
   }
 
-  async updateStory(id: string, data: Partial<{ actor: string; feature: string; benefit: string; raw_text: string }>): Promise<UserStory> {
+  async updateStory(
+    id: string,
+    data: Partial<{ actor: string; feature: string; benefit: string; raw_text: string }>,
+  ): Promise<UserStory> {
     const raw = await this.put<StoryResponseRaw>(`/api/v1/stories/${id}`, data);
     return mapStoryResponse(raw);
   }

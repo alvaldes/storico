@@ -1,9 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldLabel, FieldDescription, FieldError } from '@/components/ui/field';
-import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from '@/components/ui/input-group';
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupText,
+  InputGroupTextarea,
+} from '@/components/ui/input-group';
 import { Loader2 } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { createProjectSchema } from '@/schemas';
@@ -87,27 +99,22 @@ export function ProjectForm({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {title ?? t.projects.create_title}
-          </DialogTitle>
-          <DialogDescription>
-            {t.projects.create_description}
-          </DialogDescription>
+          <DialogTitle>{title ?? t.projects.create_title}</DialogTitle>
+          <DialogDescription>{t.projects.create_description}</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Field>
             <FieldLabel htmlFor="name">{t.projects.name_label}</FieldLabel>
             <div className="flex items-center gap-2">
-              <IconTrigger
-                value={icon}
-                onClick={() => setPickerOpen(true)}
-                locale={locale}
-              />
+              <IconTrigger value={icon} onClick={() => setPickerOpen(true)} locale={locale} />
               <Input
                 id="name"
                 value={name}
-                onChange={(e) => { setName(e.target.value); clearError('name'); }}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  clearError('name');
+                }}
                 placeholder={t.projects.name_placeholder}
                 maxLength={NAME_MAX}
                 required
@@ -119,7 +126,9 @@ export function ProjectForm({
               <div className="flex-1">
                 <FieldError>{nameError}</FieldError>
               </div>
-              <span className="text-muted-foreground">{name.length}/{NAME_MAX}</span>
+              <span className="text-muted-foreground">
+                {name.length}/{NAME_MAX}
+              </span>
             </div>
             <FieldDescription>A short, descriptive name for your project.</FieldDescription>
           </Field>
@@ -130,7 +139,10 @@ export function ProjectForm({
               <InputGroupTextarea
                 id="description"
                 value={description}
-                onChange={(e) => { setDescription(e.target.value); clearError('description'); }}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  clearError('description');
+                }}
                 placeholder={t.projects.description_placeholder}
                 maxLength={DESC_MAX}
                 rows={3}
@@ -138,11 +150,15 @@ export function ProjectForm({
               <InputGroupAddon align="block-end">
                 <div className="flex w-full items-center">
                   <FieldError>{descError}</FieldError>
-                  <InputGroupText className="ml-auto">{description.length}/{DESC_MAX}</InputGroupText>
+                  <InputGroupText className="ml-auto">
+                    {description.length}/{DESC_MAX}
+                  </InputGroupText>
                 </div>
               </InputGroupAddon>
             </InputGroup>
-            <FieldDescription>Optional. Describe the project's purpose, goals, or any relevant context.</FieldDescription>
+            <FieldDescription>
+              Optional. Describe the project's purpose, goals, or any relevant context.
+            </FieldDescription>
           </Field>
 
           <DialogFooter>

@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { Draggable } from '@hello-pangea/dnd';
 import { GripVertical } from 'lucide-react';
@@ -47,7 +47,11 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
               {task.labels.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {task.labels.map((label) => (
-                    <Badge key={label} variant="outline" className="text-[10px] leading-none px-1.5 py-0.5">
+                    <Badge
+                      key={label}
+                      variant="outline"
+                      className="text-[10px] leading-none px-1.5 py-0.5"
+                    >
                       {label}
                     </Badge>
                   ))}

@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
-import { FolderKanban, Plus, MoreHorizontal, Pencil, Trash2, CalendarDays, FileText, LoaderCircle } from 'lucide-react';
+import {
+  FolderKanban,
+  Plus,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  CalendarDays,
+  FileText,
+  LoaderCircle,
+} from 'lucide-react';
 import { IconDisplay } from '@/components/ui/icon-display';
 import { useProjectStore } from '@/stores/projectStore';
 import { ProjectForm } from '@/components/react/ProjectForm';
@@ -31,9 +40,15 @@ interface ProjectsListProps {
 
 export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
   const t = useTranslations(locale);
-  const { projects, loading, error, fetchProjects, createProject, updateProject, deleteProject } = useProjectStore();
+  const { projects, loading, error, fetchProjects, createProject, updateProject, deleteProject } =
+    useProjectStore();
   const [formOpen, setFormOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState<{ id: string; name: string; description: string; icon?: string } | null>(null);
+  const [editingProject, setEditingProject] = useState<{
+    id: string;
+    name: string;
+    description: string;
+    icon?: string;
+  } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -115,9 +130,7 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
           disabled={isRetrying}
         >
           {isRetrying && <LoaderCircle className="animate-spin" />}
-          <span className={isRetrying ? "opacity-50" : ""}>
-            {t.common?.retry ?? 'Retry'}
-          </span>
+          <span className={isRetrying ? 'opacity-50' : ''}>{t.common?.retry ?? 'Retry'}</span>
         </Button>
       </div>
     );
@@ -127,9 +140,7 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">
-            {t.nav.projects}
-          </h1>
+          <h1 className="text-2xl font-semibold text-foreground">{t.nav.projects}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {t.dashboard.description ?? 'Manage your projects'}
           </p>
@@ -143,12 +154,8 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
       {projects.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
           <FolderKanban className="mb-4 h-12 w-12 text-muted-foreground" />
-          <p className="text-lg font-medium text-foreground">
-            {t.dashboard.empty_title}
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t.dashboard.empty_description}
-          </p>
+          <p className="text-lg font-medium text-foreground">{t.dashboard.empty_title}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t.dashboard.empty_description}</p>
           <Button variant="outline" className="mt-4" onClick={() => setFormOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             {t.dashboard.new_project}
@@ -159,20 +166,28 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
           {projects.map((project) => (
             <div
               key={project.id}
-              onClick={() => window.location.href = `/${locale}/projects/${project.id}`}
+              onClick={() => (window.location.href = `/${locale}/projects/${project.id}`)}
               className="cursor-pointer flex"
             >
               <Card className="group flex flex-col w-full">
                 <CardHeader className="flex flex-row items-start justify-between space-y-0">
                   <div className="flex items-center gap-2">
-                    <IconDisplay name={project.icon} className="size-4 shrink-0 text-muted-foreground" fallback={FolderKanban} />
+                    <IconDisplay
+                      name={project.icon}
+                      className="size-4 shrink-0 text-muted-foreground"
+                      fallback={FolderKanban}
+                    />
                     <CardTitle className="text-base">{project.name}</CardTitle>
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger
                         render={
-                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         }
@@ -218,14 +233,17 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
                       <CalendarDays className="h-3.5 w-3.5" />
                       {new Date(project.createdAt).toLocaleDateString(
                         locale === 'es' ? 'es-MX' : 'en-US',
-                        { year: 'numeric', month: 'short', day: 'numeric' }
+                        { year: 'numeric', month: 'short', day: 'numeric' },
                       )}
                     </span>
                     <span className="inline-flex items-center gap-1">
                       <FileText className="h-3.5 w-3.5" />
                       {project.storyCount === 1
                         ? t.projects.story_count.replace('{count}', String(project.storyCount))
-                        : t.projects.story_count_plural.replace('{count}', String(project.storyCount))}
+                        : t.projects.story_count_plural.replace(
+                            '{count}',
+                            String(project.storyCount),
+                          )}
                     </span>
                   </div>
                 </CardContent>
@@ -247,7 +265,9 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
       <ProjectForm
         key={editingProject?.id ?? 'edit'}
         open={editingProject !== null}
-        onOpenChange={(open) => { if (!open) setEditingProject(null); }}
+        onOpenChange={(open) => {
+          if (!open) setEditingProject(null);
+        }}
         onSubmit={handleUpdate}
         locale={locale}
         initialData={editingProject ?? undefined}
@@ -255,25 +275,22 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
       />
 
       {/* Delete confirmation */}
-      <AlertDialog open={deletingId !== null} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
+      <AlertDialog
+        open={deletingId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t.projects.delete_confirm_title}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t.projects.delete_confirm_description}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t.projects.delete_confirm_description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={deleteSaving}
-            >
+            <AlertDialogAction variant="destructive" onClick={handleDelete} disabled={deleteSaving}>
               {deleteSaving && <LoaderCircle className="animate-spin" />}
-              <span className={deleteSaving ? "opacity-50" : ""}>
-                {t.common.delete}
-              </span>
+              <span className={deleteSaving ? 'opacity-50' : ''}>{t.common.delete}</span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

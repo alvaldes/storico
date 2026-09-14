@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { Droppable } from '@hello-pangea/dnd';
 import { KanbanCard } from '@/components/react/KanbanCard';

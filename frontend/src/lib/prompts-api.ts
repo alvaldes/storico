@@ -5,9 +5,7 @@ import type { PromptConfigParams } from '@/schemas';
 
 /** Get the prompt configuration for a workspace (admin only). Falls back to global defaults. */
 export async function getPrompts(wsId: string): Promise<WorkspacePrompt> {
-  const raw = await api.get<Record<string, unknown>>(
-    `/api/v1/workspaces/${wsId}/settings/prompts`,
-  );
+  const raw = await api.get<Record<string, unknown>>(`/api/v1/workspaces/${wsId}/settings/prompts`);
   return toCamelCase<WorkspacePrompt>(raw);
 }
 

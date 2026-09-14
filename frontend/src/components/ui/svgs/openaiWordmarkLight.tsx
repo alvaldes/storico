@@ -1,4 +1,4 @@
-import type { SVGProps } from "react";
+import type { SVGProps } from 'react';
 
 const OpenaiWordmarkLight = (props: SVGProps<SVGSVGElement>) => (
   <svg {...props} viewBox="0 0 1180 320">

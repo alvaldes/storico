@@ -5,10 +5,7 @@ import type { CreateWorkspaceParams, UpdateWorkspaceParams } from '@/schemas';
 
 /** Create a new workspace. */
 export async function createWorkspace(params: CreateWorkspaceParams): Promise<Workspace> {
-  const raw = await api.post<Record<string, unknown>>(
-    '/api/v1/workspaces/',
-    toSnakeCase(params),
-  );
+  const raw = await api.post<Record<string, unknown>>('/api/v1/workspaces/', toSnakeCase(params));
   return toCamelCase<Workspace>(raw);
 }
 
@@ -49,22 +46,12 @@ export async function listMembers(wsId: string): Promise<{ members: WorkspaceMem
 
 /** Add a member to a workspace by email (admin only). */
 export async function addMember(wsId: string, email: string): Promise<void> {
-  await api.post(
-    `/api/v1/workspaces/${wsId}/members`,
-    toSnakeCase({ userEmail: email }),
-  );
+  await api.post(`/api/v1/workspaces/${wsId}/members`, toSnakeCase({ userEmail: email }));
 }
 
 /** Update a member's role (admin only). */
-export async function updateMemberRole(
-  wsId: string,
-  userId: string,
-  role: string,
-): Promise<void> {
-  await api.put(
-    `/api/v1/workspaces/${wsId}/members/${userId}`,
-    toSnakeCase({ role }),
-  );
+export async function updateMemberRole(wsId: string, userId: string, role: string): Promise<void> {
+  await api.put(`/api/v1/workspaces/${wsId}/members/${userId}`, toSnakeCase({ role }));
 }
 
 /** Remove a member from a workspace (admin only). */
@@ -74,8 +61,5 @@ export async function removeMember(wsId: string, userId: string): Promise<void> 
 
 /** Transfer workspace ownership to another admin. */
 export async function transferOwnership(wsId: string, newOwnerId: string): Promise<void> {
-  await api.post(
-    `/api/v1/workspaces/${wsId}/transfer`,
-    toSnakeCase({ newOwnerId }),
-  );
+  await api.post(`/api/v1/workspaces/${wsId}/transfer`, toSnakeCase({ newOwnerId }));
 }

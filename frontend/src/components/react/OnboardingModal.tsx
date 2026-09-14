@@ -1,67 +1,58 @@
-"use client";
+'use client';
 
-import { useState, useRef, useEffect } from "react";
-import { Sparkles, Puzzle, Layers, LoaderCircle } from "lucide-react";
-import { WorkspaceSetupIllustration } from "@/components/illustrations/WorkspaceSetupIllustration";
-import { ModelConfigIllustration } from "@/components/illustrations/ModelConfigIllustration";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
-import { Progress } from "@/components/ui/progress";
+import { useState, useRef, useEffect } from 'react';
+import { Sparkles, Puzzle, Layers, LoaderCircle } from 'lucide-react';
+import { WorkspaceSetupIllustration } from '@/components/illustrations/WorkspaceSetupIllustration';
+import { ModelConfigIllustration } from '@/components/illustrations/ModelConfigIllustration';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Field, FieldLabel, FieldDescription } from '@/components/ui/field';
+import { Progress } from '@/components/ui/progress';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from "@/components/ui/select";
-import { useAuthStore } from "@/stores/authStore"
-import { useWorkspaceStore } from "@/stores/workspaceStore"
-import { useUIStore } from "@/stores/uiStore"
-import { ProviderIcon } from "@/components/ui/provider-icon";
-import { IconPicker, IconTrigger } from "@/components/ui/icon-picker";
-import { completeOnboarding } from "@/lib/user-api";
-import { upsertLLMConfig } from "@/lib/llm-config-api";
-import { useTranslations, type Locale } from "@/i18n/utils";
+} from '@/components/ui/select';
+import { useAuthStore } from '@/stores/authStore';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useUIStore } from '@/stores/uiStore';
+import { ProviderIcon } from '@/components/ui/provider-icon';
+import { IconPicker, IconTrigger } from '@/components/ui/icon-picker';
+import { completeOnboarding } from '@/lib/user-api';
+import { upsertLLMConfig } from '@/lib/llm-config-api';
+import { useTranslations, type Locale } from '@/i18n/utils';
 
 interface OnboardingModalProps {
   locale?: Locale;
 }
 
-export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
+export function OnboardingModal({ locale = 'en' }: OnboardingModalProps) {
   const t = useTranslations(locale);
 
   const { setOnboardingDone } = useAuthStore();
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
-  const currentWorkspaceId = useWorkspaceStore(
-    (s) => s.currentWorkspace?.id,
-  );
-  const currentWorkspaceName = useWorkspaceStore(
-    (s) => s.currentWorkspace?.name ?? "",
-  );
+  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
+  const currentWorkspaceName = useWorkspaceStore((s) => s.currentWorkspace?.name ?? '');
   const [step, setStep] = useState(1);
-  const [name, setName] = useState(currentWorkspaceName ?? "");
-  const [workspaceIcon, setWorkspaceIcon] = useState("building-2");
+  const [name, setName] = useState(currentWorkspaceName ?? '');
+  const [workspaceIcon, setWorkspaceIcon] = useState('building-2');
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [provider, setProvider] = useState("ollama");
+  const [provider, setProvider] = useState('ollama');
   const [open, setOpen] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const originalName = useRef(currentWorkspaceName ?? "");
+  const originalName = useRef(currentWorkspaceName ?? '');
 
   const { theme: rawTheme } = useUIStore();
-  const resolvedTheme: "light" | "dark" =
-    rawTheme === "system"
-      ? typeof window !== "undefined"
-        ? window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light"
-        : "light"
+  const resolvedTheme: 'light' | 'dark' =
+    rawTheme === 'system'
+      ? typeof window === 'undefined'
+        ? 'light'
+        : window.matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light'
       : rawTheme;
 
   // Bloquear Escape a nivel DOM antes de que Base UI lo procese.
@@ -70,14 +61,13 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         e.preventDefault();
         e.stopImmediatePropagation();
       }
     };
-    document.addEventListener("keydown", handler, { capture: true });
-    return () =>
-      document.removeEventListener("keydown", handler, { capture: true });
+    document.addEventListener('keydown', handler, { capture: true });
+    return () => document.removeEventListener('keydown', handler, { capture: true });
   }, [open]);
 
   // Focus management: al cambiar de step, mover el foco al elemento
@@ -87,11 +77,11 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
     // después del render condicional.
     const raf = requestAnimationFrame(() => {
       if (step === 1) {
-        document.getElementById("workspace-name")?.focus();
+        document.getElementById('workspace-name')?.focus();
       } else if (step === 2) {
-        document.getElementById("onboarding-next")?.focus();
+        document.getElementById('onboarding-next')?.focus();
       } else if (step === 3) {
-        document.getElementById("llm-provider-trigger")?.focus();
+        document.getElementById('llm-provider-trigger')?.focus();
       }
     });
     return () => cancelAnimationFrame(raf);
@@ -114,9 +104,8 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
   const handleComplete = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
-    const shouldRename =
-      name.trim() !== originalName.current.trim() && name.trim().length > 0;
-    const hasIcon = workspaceIcon !== "building-2";
+    const shouldRename = name.trim() !== originalName.current.trim() && name.trim().length > 0;
+    const hasIcon = workspaceIcon !== 'building-2';
     try {
       await completeOnboarding(
         shouldRename ? name.trim() : undefined,
@@ -160,7 +149,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
         <div className="space-y-1">
           <Progress value={(step / 3) * 100} />
           <p className="text-center text-xs text-muted-foreground">
-            {t.onboarding.step.replace("{step}", String(step))}
+            {t.onboarding.step.replace('{step}', String(step))}
           </p>
         </div>
 
@@ -172,9 +161,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 {t.onboarding.step1_description}
               </DialogDescription>
               <Field>
-                <FieldLabel htmlFor="workspace-name">
-                  {t.onboarding.step1_title}
-                </FieldLabel>
+                <FieldLabel htmlFor="workspace-name">{t.onboarding.step1_title}</FieldLabel>
                 <div className="flex items-center gap-2">
                   <IconTrigger
                     value={workspaceIcon}
@@ -191,12 +178,10 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                     className="flex-1"
                   />
                 </div>
-                <p className="text-xs text-muted-foreground text-right">
-                  {name.length}/100
-                </p>
+                <p className="text-xs text-muted-foreground text-right">{name.length}/100</p>
                 <FieldDescription>
                   {t.onboarding.step1_name_hint ??
-                    "You can change this later in workspace settings. Max 100 characters."}
+                    'You can change this later in workspace settings. Max 100 characters.'}
                 </FieldDescription>
               </Field>
             </div>
@@ -216,12 +201,8 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
               <div className="flex gap-3 rounded-lg border bg-(--color-surface) p-3">
                 <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <div>
-                  <p className="text-sm font-medium">
-                    {t.onboarding.step2_card1_title}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t.onboarding.step2_card1_desc}
-                  </p>
+                  <p className="text-sm font-medium">{t.onboarding.step2_card1_title}</p>
+                  <p className="text-xs text-muted-foreground">{t.onboarding.step2_card1_desc}</p>
                 </div>
               </div>
 
@@ -229,12 +210,8 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
               <div className="flex gap-3 rounded-lg border bg-(--color-surface) p-3">
                 <Puzzle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <div>
-                  <p className="text-sm font-medium">
-                    {t.onboarding.step2_card2_title}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t.onboarding.step2_card2_desc}
-                  </p>
+                  <p className="text-sm font-medium">{t.onboarding.step2_card2_title}</p>
+                  <p className="text-xs text-muted-foreground">{t.onboarding.step2_card2_desc}</p>
                 </div>
               </div>
 
@@ -242,12 +219,8 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
               <div className="flex gap-3 rounded-lg border bg-(--color-surface) p-3">
                 <Layers className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <div>
-                  <p className="text-sm font-medium">
-                    {t.onboarding.step2_card3_title}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t.onboarding.step2_card3_desc}
-                  </p>
+                  <p className="text-sm font-medium">{t.onboarding.step2_card3_title}</p>
+                  <p className="text-xs text-muted-foreground">{t.onboarding.step2_card3_desc}</p>
                 </div>
               </div>
             </div>
@@ -263,9 +236,7 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
               </DialogDescription>
 
               <Field>
-                <FieldLabel htmlFor="llm-provider-trigger">
-                  {t.onboarding.step3_title}
-                </FieldLabel>
+                <FieldLabel htmlFor="llm-provider-trigger">{t.onboarding.step3_title}</FieldLabel>
                 <Select
                   value={provider}
                   onValueChange={(val) => {
@@ -280,13 +251,13 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                         className="h-4 w-4 shrink-0"
                       />
                       <span>
-                        {provider === "ollama"
-                          ? (t.settings?.llm_provider_ollama ?? "Ollama (Local)")
-                          : provider === "openai"
-                            ? (t.settings?.llm_provider_openai ?? "OpenAI")
-                            : provider === "gemini"
-                              ? (t.settings?.llm_provider_gemini ?? "Gemini")
-                              : (t.settings?.llm_provider_anthropic ?? "Anthropic")}
+                        {provider === 'ollama'
+                          ? (t.settings?.llm_provider_ollama ?? 'Ollama (Local)')
+                          : provider === 'openai'
+                            ? (t.settings?.llm_provider_openai ?? 'OpenAI')
+                            : provider === 'gemini'
+                              ? (t.settings?.llm_provider_gemini ?? 'Gemini')
+                              : (t.settings?.llm_provider_anthropic ?? 'Anthropic')}
                       </span>
                     </div>
                   </SelectTrigger>
@@ -334,37 +305,20 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t pt-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleSkip}
-            disabled={isSubmitting}
-          >
-            {isSubmitting && (
-              <LoaderCircle className="animate-spin" />
-            )}
-            <span className={isSubmitting ? "opacity-50" : ""}>
-              {t.onboarding.skip}
-            </span>
+          <Button variant="ghost" size="sm" onClick={handleSkip} disabled={isSubmitting}>
+            {isSubmitting && <LoaderCircle className="animate-spin" />}
+            <span className={isSubmitting ? 'opacity-50' : ''}>{t.onboarding.skip}</span>
           </Button>
 
           <div className="flex items-center gap-2">
             {step > 1 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setStep(step - 1)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setStep(step - 1)}>
                 {t.onboarding.back}
               </Button>
             )}
 
             {step < 3 ? (
-              <Button
-                id="onboarding-next"
-                size="sm"
-                onClick={() => setStep(step + 1)}
-              >
+              <Button id="onboarding-next" size="sm" onClick={() => setStep(step + 1)}>
                 {t.onboarding.next}
               </Button>
             ) : (
@@ -374,12 +328,8 @@ export function OnboardingModal({ locale = "en" }: OnboardingModalProps) {
                 onClick={handleComplete}
                 disabled={isSubmitting}
               >
-                {isSubmitting && (
-                  <LoaderCircle className="animate-spin" />
-                )}
-                <span className={isSubmitting ? "opacity-50" : ""}>
-                  {t.onboarding.get_started}
-                </span>
+                {isSubmitting && <LoaderCircle className="animate-spin" />}
+                <span className={isSubmitting ? 'opacity-50' : ''}>{t.onboarding.get_started}</span>
               </Button>
             )}
           </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -6,18 +6,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
-import { api } from "@/lib/api";
-import { useAuthStore } from "@/stores/authStore";
-import { useTranslations, type Locale } from "@/i18n/utils";
-import { TriangleAlert, LoaderCircle } from "lucide-react";
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { api } from '@/lib/api';
+import { useAuthStore } from '@/stores/authStore';
+import { useTranslations, type Locale } from '@/i18n/utils';
+import { TriangleAlert, LoaderCircle } from 'lucide-react';
 
 interface DeleteAccountDialogProps {
   locale: Locale;
@@ -25,16 +21,12 @@ interface DeleteAccountDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function DeleteAccountDialog({
-  locale,
-  open,
-  onOpenChange,
-}: DeleteAccountDialogProps) {
+export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccountDialogProps) {
   const t = useTranslations(locale);
   const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clear);
-  const [emailInput, setEmailInput] = useState("");
-  const [verifyInput, setVerifyInput] = useState("");
+  const [emailInput, setEmailInput] = useState('');
+  const [verifyInput, setVerifyInput] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +34,7 @@ export function DeleteAccountDialog({
   const expectedPhrase = t.settings.danger_delete_dialog_verify_phrase;
 
   // Normalize for comparison
-  const normalizedEmail = user?.email?.toLowerCase().trim() ?? "";
+  const normalizedEmail = user?.email?.toLowerCase().trim() ?? '';
   const normalizedEmailInput = emailInput.toLowerCase().trim();
   const normalizedVerifyInput = verifyInput.toLowerCase().trim();
   const normalizedExpectedPhrase = expectedPhrase.toLowerCase().trim();
@@ -61,16 +53,13 @@ export function DeleteAccountDialog({
     setError(null);
 
     try {
-      await api.delete("/api/v1/users/me");
+      await api.delete('/api/v1/users/me');
       clearAuth();
       onOpenChange(false);
       // Redirect to home after successful deletion
-      window.location.href = "/";
+      window.location.href = '/';
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : t.settings.danger_delete_dialog_error;
+      const message = err instanceof Error ? err.message : t.settings.danger_delete_dialog_error;
       setError(message);
     } finally {
       setDeleting(false);
@@ -80,8 +69,8 @@ export function DeleteAccountDialog({
   const handleOpenChange = (open: boolean) => {
     if (!deleting) {
       // Reset state when closing
-      setEmailInput("");
-      setVerifyInput("");
+      setEmailInput('');
+      setVerifyInput('');
       setError(null);
       onOpenChange(open);
     }
@@ -118,8 +107,8 @@ export function DeleteAccountDialog({
                 <FieldLabel
                   dangerouslySetInnerHTML={{
                     __html: t.settings.danger_delete_dialog_email_label.replace(
-                      "{email}",
-                      user?.email ?? "",
+                      '{email}',
+                      user?.email ?? '',
                     ),
                   }}
                 />
@@ -148,9 +137,7 @@ export function DeleteAccountDialog({
             </FieldGroup>
 
             {/* Error message */}
-            {error && (
-              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-            )}
+            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           </div>
 
           <DialogFooter>

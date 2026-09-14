@@ -141,7 +141,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set((state) => ({
       extractions: {
         ...state.extractions,
-        [storyId]: { extractionId: null, status: 'pending', userStoryStatus: null, error: null, errorCode: null },
+        [storyId]: {
+          extractionId: null,
+          status: 'pending',
+          userStoryStatus: null,
+          error: null,
+          errorCode: null,
+        },
       },
     }));
 
@@ -151,7 +157,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set((state) => ({
         extractions: {
           ...state.extractions,
-          [storyId]: { extractionId: result.extractionId, status: 'pending', userStoryStatus: null, error: null, errorCode: null },
+          [storyId]: {
+            extractionId: result.extractionId,
+            status: 'pending',
+            userStoryStatus: null,
+            error: null,
+            errorCode: null,
+          },
         },
       }));
 
@@ -163,7 +175,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set((state) => ({
         extractions: {
           ...state.extractions,
-          [storyId]: { extractionId: null, status: 'failed', userStoryStatus: 'failed_extraction', error: errorInfo, errorCode },
+          [storyId]: {
+            extractionId: null,
+            status: 'failed',
+            userStoryStatus: 'failed_extraction',
+            error: errorInfo,
+            errorCode,
+          },
         },
       }));
     }
@@ -178,16 +196,30 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         await get().fetchTasks(storyId);
         // Refresh the workspace-wide cache so KanbanBoard / ExportPanel reflect newly-created tasks.
         if (workspaceId) {
-          try { await get().fetchTasksForWorkspace(workspaceId); } catch { /* workspaceTasks is best-effort; per-story fetch already succeeded */ }
+          try {
+            await get().fetchTasksForWorkspace(workspaceId);
+          } catch {
+            /* workspaceTasks is best-effort; per-story fetch already succeeded */
+          }
         }
         set((state) => ({
           extractions: {
             ...state.extractions,
-            [storyId]: { extractionId, status: 'completed', userStoryStatus: status.userStoryStatus as UserStoryStatus, error: null, errorCode: null },
+            [storyId]: {
+              extractionId,
+              status: 'completed',
+              userStoryStatus: status.userStoryStatus as UserStoryStatus,
+              error: null,
+              errorCode: null,
+            },
           },
         }));
         // Refresh the story to get updated status from backend
-        try { await useStoryStore.getState().fetchStory(storyId); } catch { /* best effort */ }
+        try {
+          await useStoryStore.getState().fetchStory(storyId);
+        } catch {
+          /* best effort */
+        }
       } else if (status.status === 'failed') {
         const errorInfo: ExtractionErrorInfo = {
           friendlyMessage: status.errorInfo ?? 'Extraction failed',
@@ -208,7 +240,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           },
         }));
         // Refresh the story to get updated status from backend
-        try { await useStoryStore.getState().fetchStory(storyId); } catch { /* best effort */ }
+        try {
+          await useStoryStore.getState().fetchStory(storyId);
+        } catch {
+          /* best effort */
+        }
       } else {
         // Still pending — poll again after a short delay, update userStoryStatus
         set((state) => ({
@@ -235,7 +271,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set((state) => ({
         extractions: {
           ...state.extractions,
-          [storyId]: { extractionId, status: 'failed', userStoryStatus: 'failed_extraction', error: errorInfo, errorCode },
+          [storyId]: {
+            extractionId,
+            status: 'failed',
+            userStoryStatus: 'failed_extraction',
+            error: errorInfo,
+            errorCode,
+          },
         },
       }));
     }
@@ -264,8 +306,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   // ── Mutations ──
 
-  setTasks: (storyId, tasks) =>
-    set((state) => ({ tasks: { ...state.tasks, [storyId]: tasks } })),
+  setTasks: (storyId, tasks) => set((state) => ({ tasks: { ...state.tasks, [storyId]: tasks } })),
 
   /**
    * Optimistic PUT with rollback.
@@ -305,9 +346,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       }
       return {
         tasks: newTasks,
-        workspaceTasks: s.workspaceTasks.map((t) =>
-          t.id === taskId ? { ...t, ...updates } : t,
-        ),
+        workspaceTasks: s.workspaceTasks.map((t) => (t.id === taskId ? { ...t, ...updates } : t)),
         updatingTaskId: taskId,
       };
     });
@@ -399,14 +438,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         }
         return {
           tasks: newTasks,
-          workspaceTasks: state.workspaceTasks.map((t) =>
-            t.id === taskId ? { ...t, status } : t,
-          ),
+          workspaceTasks: state.workspaceTasks.map((t) => (t.id === taskId ? { ...t, status } : t)),
         };
       });
     } catch (err) {
       // Check if it's an INVALID_STATE_TRANSITION from backend
-      if (err instanceof Error && 'errorCode' in err && (err as any).errorCode === 'INVALID_STATE_TRANSITION') {
+      if (
+        err instanceof Error &&
+        'errorCode' in err &&
+        (err as any).errorCode === 'INVALID_STATE_TRANSITION'
+      ) {
         // Update allowed transitions from backend response
         const apiError = err as any;
         if (apiError.allowedTransitions) {

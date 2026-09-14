@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Pencil, Trash2, Sparkles, Loader2, LoaderCircle, FileText, ListTree, Fingerprint, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  ArrowLeft,
+  Pencil,
+  Trash2,
+  Sparkles,
+  Loader2,
+  LoaderCircle,
+  FileText,
+  ListTree,
+  Fingerprint,
+  CheckCircle2,
+  AlertCircle,
+} from 'lucide-react';
 import { shortUUID } from '@/lib/utils';
 import { useProjectStore } from '@/stores/projectStore';
 import { useStoryStore } from '@/stores/storyStore';
@@ -113,7 +125,12 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       .finally(() => setResolvingProject(false));
   }, [story?.projectId, workspaceId]);
 
-  const handleUpdate = async (data: { actor: string; feature: string; benefit: string; rawText: string }) => {
+  const handleUpdate = async (data: {
+    actor: string;
+    feature: string;
+    benefit: string;
+    rawText: string;
+  }) => {
     try {
       await updateStory(storyId, data);
       setEditing(false);
@@ -287,7 +304,12 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
             <Pencil className="mr-2 h-4 w-4" />
             {t.common.edit}
           </Button>
-          <Button variant="outline" size="sm" className="text-destructive" onClick={() => setDeleting(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive"
+            onClick={() => setDeleting(true)}
+          >
             <Trash2 className="mr-2 h-4 w-4" />
             {t.common.delete}
           </Button>
@@ -301,7 +323,8 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
           {t.stories.raw_text_label}
         </div>
         <p className="text-base text-foreground leading-relaxed">
-          {story.rawText || `${t.stories?.keyword_as_a ?? 'As a(n)'} ${story.actor}, ${t.stories?.keyword_i_want ?? 'I want'} ${story.feature}, ${t.stories?.keyword_so_that ?? 'so that'} ${story.benefit}`}
+          {story.rawText ||
+            `${t.stories?.keyword_as_a ?? 'As a(n)'} ${story.actor}, ${t.stories?.keyword_i_want ?? 'I want'} ${story.feature}, ${t.stories?.keyword_so_that ?? 'so that'} ${story.benefit}`}
         </p>
       </div>
 
@@ -337,7 +360,9 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
             onClick={extractButton.enabled ? handleExtract : undefined}
             disabled={!extractButton.enabled}
           >
-            <extractButton.icon className={'mr-2 h-4 w-4' + (extraction?.status === 'pending' ? ' animate-spin' : '')} />
+            <extractButton.icon
+              className={'mr-2 h-4 w-4' + (extraction?.status === 'pending' ? ' animate-spin' : '')}
+            />
             {extractButton.label}
           </Button>
         </div>
@@ -387,7 +412,9 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
             {extraction?.status === 'pending' ? (
               <>
                 <Loader2 className="mb-3 h-8 w-8 text-muted-foreground animate-spin" />
-                <p className="text-sm text-muted-foreground">{t.stories.extraction_tasks_in_progress}</p>
+                <p className="text-sm text-muted-foreground">
+                  {t.stories.extraction_tasks_in_progress}
+                </p>
                 <p className="text-xs text-muted-foreground mt-1 opacity-60">
                   {t.stories.extraction_takes_up_to_minute}
                 </p>
@@ -421,7 +448,12 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
         onOpenChange={setEditing}
         onSubmit={handleUpdate}
         locale={locale}
-        initialData={{ actor: story.actor, feature: story.feature, benefit: story.benefit, rawText: story.rawText }}
+        initialData={{
+          actor: story.actor,
+          feature: story.feature,
+          benefit: story.benefit,
+          rawText: story.rawText,
+        }}
         title={t.common.edit}
       />
 
@@ -430,9 +462,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t.stories.delete_confirm_title}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t.stories.delete_confirm_description}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t.stories.delete_confirm_description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
@@ -442,28 +472,29 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
               disabled={deleteSaving}
             >
               {deleteSaving && <LoaderCircle className="animate-spin" />}
-              <span className={deleteSaving ? "opacity-50" : ""}>
-                {t.common.delete}
-              </span>
+              <span className={deleteSaving ? 'opacity-50' : ''}>{t.common.delete}</span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* Task Editor dialog */}
-      {editingTaskId && (() => {
-        const editingTask = storyTasks.find((t) => t.id === editingTaskId);
-        if (!editingTask) return null;
-        return (
-          <TaskEditor
-            key={editingTask.id}
-            task={editingTask}
-            open={!!editingTaskId}
-            onOpenChange={(open) => { if (!open) setEditingTaskId(null); }}
-            locale={locale}
-          />
-        );
-      })()}
+      {editingTaskId &&
+        (() => {
+          const editingTask = storyTasks.find((t) => t.id === editingTaskId);
+          if (!editingTask) return null;
+          return (
+            <TaskEditor
+              key={editingTask.id}
+              task={editingTask}
+              open={!!editingTaskId}
+              onOpenChange={(open) => {
+                if (!open) setEditingTaskId(null);
+              }}
+              locale={locale}
+            />
+          );
+        })()}
     </div>
   );
 }

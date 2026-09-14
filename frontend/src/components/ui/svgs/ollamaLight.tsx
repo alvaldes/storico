@@ -1,4 +1,4 @@
-import type { SVGProps } from "react";
+import type { SVGProps } from 'react';
 
 const OllamaLight = (props: SVGProps<SVGSVGElement>) => (
   <svg {...props} viewBox="0 0 646 854" fill="none">

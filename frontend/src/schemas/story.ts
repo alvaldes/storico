@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const createStorySchema = z.object({
-    projectId: z.string().uuid(),
+  projectId: z.string().uuid(),
   actor: z.string().min(1, { error: 'Actor is required' }).max(100),
   feature: z.string().min(1, { error: 'Feature is required' }).max(300),
   benefit: z.string().min(1, { error: 'Benefit is required' }).max(300),

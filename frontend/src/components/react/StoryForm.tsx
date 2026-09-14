@@ -1,10 +1,22 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Field, FieldLabel, FieldDescription, FieldError } from '@/components/ui/field';
-import { InputGroup, InputGroupAddon, InputGroupText, InputGroupInput } from '@/components/ui/input-group';
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupText,
+  InputGroupInput,
+} from '@/components/ui/input-group';
 import { Loader2, Check, X, Eye } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
@@ -122,7 +134,8 @@ export function StoryForm({
     return validateKeywords(fullText.trim());
   }, [fullText]);
 
-  const allKeywordsValid = keywordCheck && keywordCheck.asA && keywordCheck.iWant && keywordCheck.soThat;
+  const allKeywordsValid =
+    keywordCheck && keywordCheck.asA && keywordCheck.iWant && keywordCheck.soThat;
 
   const clearError = (field: string) => {
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: '' }));
@@ -171,9 +184,21 @@ export function StoryForm({
       if (!actor.trim()) localErrors.actor = t.stories?.validationRequired ?? 'Required';
       if (!feature.trim()) localErrors.feature = t.stories?.validationRequired ?? 'Required';
       if (!benefit.trim()) localErrors.benefit = t.stories?.validationRequired ?? 'Required';
-      if (actor.length > ACTOR_MAX) localErrors.actor = (t.stories?.validationMaxChars ?? 'Max {count} characters').replace('{count}', String(ACTOR_MAX));
-      if (feature.length > FEATURE_MAX) localErrors.feature = (t.stories?.validationMaxChars ?? 'Max {count} characters').replace('{count}', String(FEATURE_MAX));
-      if (benefit.length > BENEFIT_MAX) localErrors.benefit = (t.stories?.validationMaxChars ?? 'Max {count} characters').replace('{count}', String(BENEFIT_MAX));
+      if (actor.length > ACTOR_MAX)
+        localErrors.actor = (t.stories?.validationMaxChars ?? 'Max {count} characters').replace(
+          '{count}',
+          String(ACTOR_MAX),
+        );
+      if (feature.length > FEATURE_MAX)
+        localErrors.feature = (t.stories?.validationMaxChars ?? 'Max {count} characters').replace(
+          '{count}',
+          String(FEATURE_MAX),
+        );
+      if (benefit.length > BENEFIT_MAX)
+        localErrors.benefit = (t.stories?.validationMaxChars ?? 'Max {count} characters').replace(
+          '{count}',
+          String(BENEFIT_MAX),
+        );
 
       if (Object.keys(localErrors).length > 0) {
         setErrors(localErrors);
@@ -195,7 +220,12 @@ export function StoryForm({
         return;
       }
       if (text.length > RAW_TEXT_MAX) {
-        setErrors({ fullText: (t.stories?.validationMaxChars ?? 'Max {count} characters').replace('{count}', String(RAW_TEXT_MAX)) });
+        setErrors({
+          fullText: (t.stories?.validationMaxChars ?? 'Max {count} characters').replace(
+            '{count}',
+            String(RAW_TEXT_MAX),
+          ),
+        });
         return;
       }
 
@@ -218,7 +248,10 @@ export function StoryForm({
         };
       } else {
         // Fallback — shouldn't happen if keywords pass, but guard anyway
-        setErrors({ fullText: t.stories?.parseError ?? 'Could not parse the user story. Try switching to parts mode.' });
+        setErrors({
+          fullText:
+            t.stories?.parseError ?? 'Could not parse the user story. Try switching to parts mode.',
+        });
         return;
       }
     }
@@ -239,7 +272,14 @@ export function StoryForm({
       if (err instanceof ApiRequestError) {
         setSubmitError(err);
       } else {
-        setSubmitError(new ApiRequestError(0, 'Unknown Error', err instanceof Error ? err.message : 'Unknown error', err));
+        setSubmitError(
+          new ApiRequestError(
+            0,
+            'Unknown Error',
+            err instanceof Error ? err.message : 'Unknown error',
+            err,
+          ),
+        );
       }
     } finally {
       setSaving(false);
@@ -250,12 +290,8 @@ export function StoryForm({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>
-            {title ?? t.stories.create_title}
-          </DialogTitle>
-          <DialogDescription>
-            {t.stories.create_description}
-          </DialogDescription>
+          <DialogTitle>{title ?? t.stories.create_title}</DialogTitle>
+          <DialogDescription>{t.stories.create_description}</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -301,7 +337,10 @@ export function StoryForm({
                   <InputGroupInput
                     id="actor"
                     value={actor}
-                    onChange={(e) => { setActor(e.target.value); clearError('actor'); }}
+                    onChange={(e) => {
+                      setActor(e.target.value);
+                      clearError('actor');
+                    }}
                     placeholder={t.stories.actor_placeholder}
                     maxLength={ACTOR_MAX}
                     required
@@ -313,7 +352,9 @@ export function StoryForm({
                   <div className="flex-1">
                     <FieldError>{errors.actor}</FieldError>
                   </div>
-                  <span className="text-muted-foreground">{actor.length}/{ACTOR_MAX}</span>
+                  <span className="text-muted-foreground">
+                    {actor.length}/{ACTOR_MAX}
+                  </span>
                 </div>
               </Field>
 
@@ -326,7 +367,10 @@ export function StoryForm({
                   <InputGroupInput
                     id="feature"
                     value={feature}
-                    onChange={(e) => { setFeature(e.target.value); clearError('feature'); }}
+                    onChange={(e) => {
+                      setFeature(e.target.value);
+                      clearError('feature');
+                    }}
                     placeholder={t.stories.feature_placeholder}
                     maxLength={FEATURE_MAX}
                     required
@@ -337,7 +381,9 @@ export function StoryForm({
                   <div className="flex-1">
                     <FieldError>{errors.feature}</FieldError>
                   </div>
-                  <span className="text-muted-foreground">{feature.length}/{FEATURE_MAX}</span>
+                  <span className="text-muted-foreground">
+                    {feature.length}/{FEATURE_MAX}
+                  </span>
                 </div>
               </Field>
 
@@ -350,7 +396,10 @@ export function StoryForm({
                   <InputGroupInput
                     id="benefit"
                     value={benefit}
-                    onChange={(e) => { setBenefit(e.target.value); clearError('benefit'); }}
+                    onChange={(e) => {
+                      setBenefit(e.target.value);
+                      clearError('benefit');
+                    }}
                     placeholder={t.stories.benefit_placeholder}
                     maxLength={BENEFIT_MAX}
                     required
@@ -361,7 +410,9 @@ export function StoryForm({
                   <div className="flex-1">
                     <FieldError>{errors.benefit}</FieldError>
                   </div>
-                  <span className="text-muted-foreground">{benefit.length}/{BENEFIT_MAX}</span>
+                  <span className="text-muted-foreground">
+                    {benefit.length}/{BENEFIT_MAX}
+                  </span>
                 </div>
               </Field>
 
@@ -372,13 +423,9 @@ export function StoryForm({
                   {t.stories.preview_label}
                 </div>
                 {livePreview ? (
-                  <p className="text-sm text-foreground leading-relaxed">
-                    {livePreview}
-                  </p>
+                  <p className="text-sm text-foreground leading-relaxed">{livePreview}</p>
                 ) : (
-                  <p className="text-sm text-muted-foreground italic">
-                    {t.stories.preview_empty}
-                  </p>
+                  <p className="text-sm text-muted-foreground italic">{t.stories.preview_empty}</p>
                 )}
               </div>
             </div>
@@ -392,7 +439,10 @@ export function StoryForm({
                 <Textarea
                   id="fullText"
                   value={fullText}
-                  onChange={(e) => { setFullText(e.target.value); clearError('fullText'); }}
+                  onChange={(e) => {
+                    setFullText(e.target.value);
+                    clearError('fullText');
+                  }}
                   placeholder={t.stories.raw_text_placeholder}
                   maxLength={RAW_TEXT_MAX}
                   rows={4}
@@ -404,9 +454,15 @@ export function StoryForm({
                   <div className="flex-1">
                     <FieldError>{errors.fullText}</FieldError>
                   </div>
-                  <span className="text-muted-foreground">{fullText.length}/{RAW_TEXT_MAX}</span>
+                  <span className="text-muted-foreground">
+                    {fullText.length}/{RAW_TEXT_MAX}
+                  </span>
                 </div>
-                <FieldDescription>{"Write a complete user story in the format: As a(n) [role], I want [feature], so that [benefit]."}</FieldDescription>
+                <FieldDescription>
+                  {
+                    'Write a complete user story in the format: As a(n) [role], I want [feature], so that [benefit].'
+                  }
+                </FieldDescription>
               </Field>
 
               {/* Keyword validation — always visible */}
@@ -450,9 +506,7 @@ export function StoryForm({
                     )}
                   </>
                 ) : (
-                  <p className="text-sm text-muted-foreground italic">
-                    {t.stories.keyword_empty}
-                  </p>
+                  <p className="text-sm text-muted-foreground italic">{t.stories.keyword_empty}</p>
                 )}
               </div>
 
@@ -463,20 +517,20 @@ export function StoryForm({
             </div>
           )}
 
-        {submitError && (
-          <ErrorDisplay
-            friendlyMessage={submitError.message}
-            rawDetail={submitError.rawError.rawBody}
-            status={submitError.status}
-            errorCode={submitError.errorCode}
-            retryLabel={initialData ? t.common.save : t.common.create}
-            onRetry={handleSubmit}
-            onDismiss={() => setSubmitError(null)}
-            locale={locale}
-          />
-        )}
+          {submitError && (
+            <ErrorDisplay
+              friendlyMessage={submitError.message}
+              rawDetail={submitError.rawError.rawBody}
+              status={submitError.status}
+              errorCode={submitError.errorCode}
+              retryLabel={initialData ? t.common.save : t.common.create}
+              onRetry={handleSubmit}
+              onDismiss={() => setSubmitError(null)}
+              locale={locale}
+            />
+          )}
 
-        <DialogFooter>
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -505,9 +559,7 @@ function KeywordIndicator({ label, valid }: { label: string; valid: boolean }) {
       ) : (
         <X className="h-4 w-4 text-destructive shrink-0" />
       )}
-      <span className={valid ? 'text-foreground' : 'text-muted-foreground'}>
-        {label}
-      </span>
+      <span className={valid ? 'text-foreground' : 'text-muted-foreground'}>{label}</span>
     </div>
   );
 }

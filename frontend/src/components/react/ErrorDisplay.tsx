@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { ChevronDown, AlertCircle, X, Copy, Check } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { type Locale } from "@/i18n/utils";
+import { useState } from 'react';
+import { ChevronDown, AlertCircle, X, Copy, Check } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { type Locale } from '@/i18n/utils';
 
 export interface BackendError {
   /** Friendly/user-facing message (can be translated) */
@@ -40,7 +40,7 @@ export function ErrorDisplay({
   retryLabel,
   onRetry,
   onDismiss,
-  locale = "en",
+  locale = 'en',
 }: BackendError) {
   return null;
 }
@@ -50,15 +50,15 @@ export function ErrorDisplay({
  */
 function formatRawDetail(detail: unknown): string {
   if (detail === undefined || detail === null) {
-    return "(no detail provided)";
+    return '(no detail provided)';
   }
-  if (typeof detail === "string") {
+  if (typeof detail === 'string') {
     return detail;
   }
   if (Array.isArray(detail)) {
-    return detail.map((item) => formatRawDetail(item)).join("\n\n---\n\n");
+    return detail.map((item) => formatRawDetail(item)).join('\n\n---\n\n');
   }
-  if (typeof detail === "object") {
+  if (typeof detail === 'object') {
     try {
       return JSON.stringify(detail, null, 2);
     } catch {
@@ -86,7 +86,7 @@ export function extractErrorInfo(err: unknown): {
   errorCode?: string;
 } {
   // ApiRequestError from our api.ts
-  if (err && typeof err === "object" && "detail" in err && "status" in err) {
+  if (err && typeof err === 'object' && 'detail' in err && 'status' in err) {
     const apiErr = err as {
       detail: unknown;
       status: number;
@@ -110,7 +110,7 @@ export function extractErrorInfo(err: unknown): {
   }
 
   // String
-  if (typeof err === "string") {
+  if (typeof err === 'string') {
     return {
       friendlyMessage: err,
       rawDetail: err,
@@ -119,7 +119,7 @@ export function extractErrorInfo(err: unknown): {
 
   // Unknown shape
   return {
-    friendlyMessage: "An unknown error occurred",
+    friendlyMessage: 'An unknown error occurred',
     rawDetail: err,
   };
 }

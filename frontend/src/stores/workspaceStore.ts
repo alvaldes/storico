@@ -46,28 +46,23 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       fetchWorkspaces: async () => {
         set({ loading: true, error: null });
         try {
-          const response = await workspacesInflight.run('workspaces', () =>
-            api.listWorkspaces(),
-          );
+          const response = await workspacesInflight.run('workspaces', () => api.listWorkspaces());
           const workspaces = response.workspaces;
           set((state) => {
             // Auto-select the first workspace if none is currently selected.
             // Hydrate from persisted workspace.id if the workspace still exists.
             const persisted = state.currentWorkspace;
-            const match =
-              persisted && workspaces.find((w) => w.id === persisted.id);
+            const match = persisted && workspaces.find((w) => w.id === persisted.id);
             return {
               workspaces,
-      loading: true,
-              currentWorkspace:
-                match ?? (workspaces.length > 0 ? workspaces[0] : null),
+              loading: true,
+              currentWorkspace: match ?? (workspaces.length > 0 ? workspaces[0] : null),
             };
           });
           // Fetch projects for the (possibly auto-selected) workspace
           useProjectStore.getState().fetchProjects();
         } catch (err) {
-          const message =
-            err instanceof Error ? err.message : 'Failed to fetch workspaces';
+          const message = err instanceof Error ? err.message : 'Failed to fetch workspaces';
           set({ error: message, loading: false });
         }
       },
@@ -89,8 +84,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           useProjectStore.getState().fetchProjects();
           return workspace;
         } catch (err) {
-          const message =
-            err instanceof Error ? err.message : 'Failed to create workspace';
+          const message = err instanceof Error ? err.message : 'Failed to create workspace';
           set({ error: message, saving: false });
           throw err;
         }
@@ -101,18 +95,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         try {
           const updated = await api.updateWorkspace(id, params);
           set((state) => {
-            const workspaces = state.workspaces.map((w) =>
-              w.id === id ? updated : w,
-            );
+            const workspaces = state.workspaces.map((w) => (w.id === id ? updated : w));
             const currentWorkspace =
-              state.currentWorkspace?.id === id
-                ? updated
-                : state.currentWorkspace;
+              state.currentWorkspace?.id === id ? updated : state.currentWorkspace;
             return { workspaces, currentWorkspace, saving: false };
           });
         } catch (err) {
-          const message =
-            err instanceof Error ? err.message : 'Failed to update workspace';
+          const message = err instanceof Error ? err.message : 'Failed to update workspace';
           set({ error: message, saving: false });
           throw err;
         }
@@ -133,8 +122,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             return { workspaces, currentWorkspace, saving: false };
           });
         } catch (err) {
-          const message =
-            err instanceof Error ? err.message : 'Failed to delete workspace';
+          const message = err instanceof Error ? err.message : 'Failed to delete workspace';
           set({ error: message, saving: false });
           throw err;
         }

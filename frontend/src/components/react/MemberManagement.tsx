@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { UserAvatar } from "@/components/react/UserAvatar";
+import { useState, useEffect, useCallback } from 'react';
+import { UserAvatar } from '@/components/react/UserAvatar';
 import {
   LoaderCircle,
   UserPlus,
@@ -12,27 +12,22 @@ import {
   Check,
   X,
   MoreHorizontal,
-} from "lucide-react";
-import { toast } from "sonner";
+} from 'lucide-react';
+import { toast } from 'sonner';
 import {
   listMembers,
   addMember,
   updateMemberRole,
   removeMember,
   transferOwnership,
-} from "@/lib/workspace-api";
-import { useWorkspaceStore } from "@/stores/workspaceStore";
-import { useAuthStore } from "@/stores/authStore";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Field,
-  FieldLabel,
-  FieldDescription,
-  FieldError,
-} from "@/components/ui/field";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+} from '@/lib/workspace-api';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useAuthStore } from '@/stores/authStore';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Field, FieldLabel, FieldDescription, FieldError } from '@/components/ui/field';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import {
   Dialog,
   DialogTrigger,
@@ -42,7 +37,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogClose,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -53,16 +48,11 @@ import {
   AlertDialogFooter,
   AlertDialogAction,
   AlertDialogCancel,
-} from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
-import type { WorkspaceMember } from "@/types/workspace";
-import en from "@/i18n/en.json";
-import es from "@/i18n/es.json";
+} from '@/components/ui/alert-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
+import type { WorkspaceMember } from '@/types/workspace';
+import en from '@/i18n/en.json';
+import es from '@/i18n/es.json';
 
 /* ── Props ─────────────────────────────────────────────────── */
 
@@ -75,20 +65,17 @@ interface MemberManagementProps {
 
 function formatDate(dateStr: string, locale: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString(locale === "es" ? "es-MX" : "en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
+  return date.toLocaleDateString(locale === 'es' ? 'es-MX' : 'en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
   });
 }
 
 /* ── MemberManagement Component ────────────────────────────── */
 
-export function MemberManagement({
-  locale,
-  workspaceId,
-}: MemberManagementProps) {
-  const t = locale === "es" ? es : en;
+export function MemberManagement({ locale, workspaceId }: MemberManagementProps) {
+  const t = locale === 'es' ? es : en;
 
   /* ── Stores ── */
   const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace);
@@ -101,19 +88,17 @@ export function MemberManagement({
 
   /* Add member dialog */
   const [addOpen, setAddOpen] = useState(false);
-  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState('');
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
   /* Remove member confirmation */
-  const [removeTarget, setRemoveTarget] = useState<WorkspaceMember | null>(
-    null,
-  );
+  const [removeTarget, setRemoveTarget] = useState<WorkspaceMember | null>(null);
   const [removeSaving, setRemoveSaving] = useState(false);
 
   /* Transfer ownership */
   const [transferOpen, setTransferOpen] = useState(false);
-  const [transferTargetId, setTransferTargetId] = useState("");
+  const [transferTargetId, setTransferTargetId] = useState('');
   const [transferSaving, setTransferSaving] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
 
@@ -121,11 +106,11 @@ export function MemberManagement({
   const [changingRole, setChangingRole] = useState<string | null>(null);
 
   /* ── Derived ── */
-  const ownerId = currentWorkspace?.ownerId ?? "";
-  const isAdmin = currentWorkspace?.role === "admin";
+  const ownerId = currentWorkspace?.ownerId ?? '';
+  const isAdmin = currentWorkspace?.role === 'admin';
   const isOwner = currentUser?.id === ownerId;
 
-  const adminMembers = members.filter((m) => m.role === "admin");
+  const adminMembers = members.filter((m) => m.role === 'admin');
   const nonOwnerAdmins = adminMembers.filter((m) => m.userId !== ownerId);
 
   /* ── Fetch Members ── */
@@ -137,7 +122,7 @@ export function MemberManagement({
       setMembers(data.members);
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : (t.members?.failedToLoad ?? "Failed to load members");
+        err instanceof Error ? err.message : (t.members?.failedToLoad ?? 'Failed to load members');
       setError(message);
     } finally {
       setLoading(false);
@@ -151,20 +136,20 @@ export function MemberManagement({
   /* ── Add Member ── */
   const handleAddMember = async () => {
     if (!newUserEmail.trim()) {
-      setAddError(t.members?.emailRequired ?? "Email is required");
+      setAddError(t.members?.emailRequired ?? 'Email is required');
       return;
     }
     setAddSaving(true);
     setAddError(null);
     try {
       await addMember(workspaceId, newUserEmail.trim());
-      toast.success(t.members?.addedToast ?? "Member added");
+      toast.success(t.members?.addedToast ?? 'Member added');
       setAddOpen(false);
-      setNewUserEmail("");
+      setNewUserEmail('');
       loadMembers();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : (t.members?.failedToAdd ?? "Failed to add member");
+        err instanceof Error ? err.message : (t.members?.failedToAdd ?? 'Failed to add member');
       setAddError(message);
     } finally {
       setAddSaving(false);
@@ -177,14 +162,16 @@ export function MemberManagement({
     try {
       await updateMemberRole(workspaceId, userId, newRole);
       toast.success(
-        newRole === "admin"
-          ? (t.members?.promotedToast ?? "Member promoted to admin")
-          : (t.members?.demotedToast ?? "Admin demoted to member"),
+        newRole === 'admin'
+          ? (t.members?.promotedToast ?? 'Member promoted to admin')
+          : (t.members?.demotedToast ?? 'Admin demoted to member'),
       );
       loadMembers();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : (t.members?.failedRoleChange ?? "Failed to change role");
+        err instanceof Error
+          ? err.message
+          : (t.members?.failedRoleChange ?? 'Failed to change role');
       toast.error(message);
     } finally {
       setChangingRole(null);
@@ -197,12 +184,14 @@ export function MemberManagement({
     setRemoveSaving(true);
     try {
       await removeMember(workspaceId, removeTarget.userId);
-      toast.success(t.members?.removedToast ?? "Member removed");
+      toast.success(t.members?.removedToast ?? 'Member removed');
       setRemoveTarget(null);
       loadMembers();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : (t.members?.failedToRemove ?? "Failed to remove member");
+        err instanceof Error
+          ? err.message
+          : (t.members?.failedToRemove ?? 'Failed to remove member');
       toast.error(message);
     } finally {
       setRemoveSaving(false);
@@ -212,22 +201,24 @@ export function MemberManagement({
   /* ── Transfer Ownership ── */
   const handleTransferOwnership = async () => {
     if (!transferTargetId) {
-      setTransferError(t.members?.selectOwnerError ?? "Select a new owner");
+      setTransferError(t.members?.selectOwnerError ?? 'Select a new owner');
       return;
     }
     setTransferSaving(true);
     setTransferError(null);
     try {
       await transferOwnership(workspaceId, transferTargetId);
-      toast.success(t.members?.transferredToast ?? "Ownership transferred");
+      toast.success(t.members?.transferredToast ?? 'Ownership transferred');
       setTransferOpen(false);
-      setTransferTargetId("");
+      setTransferTargetId('');
       loadMembers();
       // Refresh workspace info — updates ownerId and current user's role in the store
       useWorkspaceStore.getState().fetchWorkspaces();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : (t.members?.failedToTransfer ?? "Failed to transfer ownership");
+        err instanceof Error
+          ? err.message
+          : (t.members?.failedToTransfer ?? 'Failed to transfer ownership');
       setTransferError(message);
     } finally {
       setTransferSaving(false);
@@ -242,7 +233,7 @@ export function MemberManagement({
     return (
       <div className="flex items-center gap-2 py-4 text-sm text-(--color-text-secondary)">
         <LoaderCircle className="h-4 w-4 animate-spin" />
-        {t.members?.loading ?? "Loading members..."}
+        {t.members?.loading ?? 'Loading members...'}
       </div>
     );
   }
@@ -253,15 +244,13 @@ export function MemberManagement({
       <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
         <TriangleAlert className="h-5 w-5 shrink-0 text-red-500" />
         <div>
-          <p className="text-sm font-medium text-red-800 dark:text-red-200">
-            {error}
-          </p>
+          <p className="text-sm font-medium text-red-800 dark:text-red-200">{error}</p>
           <button
             type="button"
             onClick={loadMembers}
             className="mt-1 text-sm text-red-600 underline hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
           >
-            {t.members?.tryAgain ?? "Try again"}
+            {t.members?.tryAgain ?? 'Try again'}
           </button>
         </div>
       </div>
@@ -277,25 +266,31 @@ export function MemberManagement({
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium text-(--color-text)">
             {members.length === 1
-              ? (t.members?.count ?? "{count} member").replace("{count}", String(members.length))
-              : (t.members?.countPlural ?? "{count} members").replace("{count}", String(members.length))}
+              ? (t.members?.count ?? '{count} member').replace('{count}', String(members.length))
+              : (t.members?.countPlural ?? '{count} members').replace(
+                  '{count}',
+                  String(members.length),
+                )}
           </p>
           {isAdmin && (
             <Dialog open={addOpen} onOpenChange={setAddOpen}>
               <DialogTrigger render={<Button variant="outline" size="sm" />}>
                 <UserPlus className="h-4 w-4" />
-                {t.members?.addTitle ?? "Add Member"}
+                {t.members?.addTitle ?? 'Add Member'}
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>{t.members?.addTitle ?? "Add Member"}</DialogTitle>
+                  <DialogTitle>{t.members?.addTitle ?? 'Add Member'}</DialogTitle>
                   <DialogDescription>
-                    {t.members?.addDescription ?? "Enter the user ID (UUID) of the person you want to add"}
+                    {t.members?.addDescription ??
+                      'Enter the user ID (UUID) of the person you want to add'}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-2">
                   <Field>
-                    <FieldLabel htmlFor="new-user-email">{t.members?.emailLabel ?? "Email"}</FieldLabel>
+                    <FieldLabel htmlFor="new-user-email">
+                      {t.members?.emailLabel ?? 'Email'}
+                    </FieldLabel>
                     <Input
                       id="new-user-email"
                       type="email"
@@ -304,17 +299,18 @@ export function MemberManagement({
                         setNewUserEmail(e.target.value);
                         setAddError(null);
                       }}
-                      placeholder={t.members?.emailPlaceholder ?? "user@example.com"}
+                      placeholder={t.members?.emailPlaceholder ?? 'user@example.com'}
                     />
                     <FieldDescription>
-                      {t.members?.emailDescription ?? "Enter the email of the user you want to add to this workspace."}
+                      {t.members?.emailDescription ??
+                        'Enter the email of the user you want to add to this workspace.'}
                     </FieldDescription>
                     <FieldError>{addError}</FieldError>
                   </Field>
                 </div>
                 <DialogFooter>
                   <DialogClose render={<Button variant="outline" />}>
-                    {t.common?.cancel ?? "Cancel"}
+                    {t.common?.cancel ?? 'Cancel'}
                   </DialogClose>
                   <Button onClick={handleAddMember} disabled={addSaving}>
                     {addSaving ? (
@@ -322,7 +318,7 @@ export function MemberManagement({
                     ) : (
                       <UserPlus className="h-4 w-4" />
                     )}
-                    {t.members?.addButton ?? "Add"}
+                    {t.members?.addButton ?? 'Add'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -336,10 +332,7 @@ export function MemberManagement({
             const isOwner = member.userId === ownerId;
             const isSelf = member.userId === currentUser?.id;
             const canManage = isAdmin && !isOwner;
-            const isLastAdmin =
-              isSelf &&
-              member.role === "admin" &&
-              adminMembers.length <= 1;
+            const isLastAdmin = isSelf && member.role === 'admin' && adminMembers.length <= 1;
 
             return (
               <div
@@ -355,33 +348,29 @@ export function MemberManagement({
                     <span className="truncate text-sm font-medium text-(--color-text)">
                       {member.name}
                     </span>
-                    {isOwner && (
-                      <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-                    )}
+                    {isOwner && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
                     {isSelf && (
                       <span className="text-xs text-(--color-text-tertiary)">
-                        {t.members?.you ?? "(you)"}
+                        {t.members?.you ?? '(you)'}
                       </span>
                     )}
                   </div>
-                  <p className="truncate text-xs text-(--color-text-secondary)">
-                    {member.email}
-                  </p>
+                  <p className="truncate text-xs text-(--color-text-secondary)">{member.email}</p>
                 </div>
 
                 {/* Role badge */}
                 {isOwner ? (
-                  <Badge variant="default">{t.members?.owner ?? "Owner"}</Badge>
+                  <Badge variant="default">{t.members?.owner ?? 'Owner'}</Badge>
                 ) : (
-                  <Badge
-                    variant={member.role === "admin" ? "default" : "secondary"}
-                  >
-                    {member.role === "admin" ? (
+                  <Badge variant={member.role === 'admin' ? 'default' : 'secondary'}>
+                    {member.role === 'admin' ? (
                       <ShieldCheck className="mr-1 h-3 w-3" />
                     ) : (
                       <Shield className="mr-1 h-3 w-3" />
                     )}
-                    {member.role === "admin" ? (t.members?.admin ?? "Admin") : (t.members?.memberRole ?? "Member")}
+                    {member.role === 'admin'
+                      ? (t.members?.admin ?? 'Admin')
+                      : (t.members?.memberRole ?? 'Member')}
                   </Badge>
                 )}
 
@@ -395,29 +384,31 @@ export function MemberManagement({
                   <div className="flex items-center gap-1">
                     {/* Role change — admins can change others, not themselves */}
                     {!isSelf && (
-                    <Select
-                      value={member.role}
-                      onValueChange={(val) => {
-                        if (val === null) return;
-                        handleRoleChange(member.userId, val);
-                      }}
-                      disabled={changingRole === member.userId}
-                    >
-                      <SelectTrigger size="sm" className="h-7 min-w-[7rem]">
-                        {changingRole === member.userId && (
-                          <LoaderCircle className="h-3.5 w-3.5 animate-spin shrink-0" />
-                        )}
-                        <span className={changingRole === member.userId ? "opacity-50" : ""}>
-                          {member.role === "admin"
-                            ? (t.members?.admin ?? "Admin")
-                            : (t.members?.memberRole ?? "Member")}
-                        </span>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">{t.members?.admin ?? "Admin"}</SelectItem>
-                        <SelectItem value="member">{t.members?.memberRole ?? "Member"}</SelectItem>
-                      </SelectContent>
-                    </Select>
+                      <Select
+                        value={member.role}
+                        onValueChange={(val) => {
+                          if (val === null) return;
+                          handleRoleChange(member.userId, val);
+                        }}
+                        disabled={changingRole === member.userId}
+                      >
+                        <SelectTrigger size="sm" className="h-7 min-w-[7rem]">
+                          {changingRole === member.userId && (
+                            <LoaderCircle className="h-3.5 w-3.5 animate-spin shrink-0" />
+                          )}
+                          <span className={changingRole === member.userId ? 'opacity-50' : ''}>
+                            {member.role === 'admin'
+                              ? (t.members?.admin ?? 'Admin')
+                              : (t.members?.memberRole ?? 'Member')}
+                          </span>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="admin">{t.members?.admin ?? 'Admin'}</SelectItem>
+                          <SelectItem value="member">
+                            {t.members?.memberRole ?? 'Member'}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     )}
 
                     {/* Remove button */}
@@ -441,15 +432,21 @@ export function MemberManagement({
                       </AlertDialogTrigger>
                       <AlertDialogContent size="sm">
                         <AlertDialogHeader>
-                          <AlertDialogTitle>{t.members?.removeTitle ?? "Remove member?"}</AlertDialogTitle>
+                          <AlertDialogTitle>
+                            {t.members?.removeTitle ?? 'Remove member?'}
+                          </AlertDialogTitle>
                           <AlertDialogDescription>
                             {isLastAdmin
-                              ? (t.members?.removeLastAdminWarning ?? "You are the last admin. Removing yourself will leave this workspace without administrators.")
-                              : (t.members?.removeDescription ?? "Are you sure you want to remove {name} from this workspace?").replace("{name}", member.name)}
+                              ? (t.members?.removeLastAdminWarning ??
+                                'You are the last admin. Removing yourself will leave this workspace without administrators.')
+                              : (
+                                  t.members?.removeDescription ??
+                                  'Are you sure you want to remove {name} from this workspace?'
+                                ).replace('{name}', member.name)}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>{t.common?.cancel ?? "Cancel"}</AlertDialogCancel>
+                          <AlertDialogCancel>{t.common?.cancel ?? 'Cancel'}</AlertDialogCancel>
                           <AlertDialogAction
                             variant="destructive"
                             onClick={handleRemoveMember}
@@ -460,7 +457,7 @@ export function MemberManagement({
                             ) : (
                               <Trash2 className="h-4 w-4" />
                             )}
-                            {t.members?.removeButton ?? "Remove"}
+                            {t.members?.removeButton ?? 'Remove'}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -476,122 +473,119 @@ export function MemberManagement({
       {/* ── Ownership Section (owner only) ── */}
       {isOwner && (
         <>
-        <Separator />
+          <Separator />
 
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-sm font-medium text-(--color-text)">
-              {t.members?.ownershipTitle ?? "Workspace Ownership"}
-            </h3>
-            <p className="text-xs text-(--color-text-secondary)">
-              {t.members?.ownershipDescription ?? "The workspace owner has full control over the workspace and cannot be removed. Ownership can be transferred to another admin."}
-            </p>
-          </div>
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium text-(--color-text)">
+                {t.members?.ownershipTitle ?? 'Workspace Ownership'}
+              </h3>
+              <p className="text-xs text-(--color-text-secondary)">
+                {t.members?.ownershipDescription ??
+                  'The workspace owner has full control over the workspace and cannot be removed. Ownership can be transferred to another admin.'}
+              </p>
+            </div>
 
-          {/* Current owner */}
-          {ownerMember && (
-            <div className="flex items-center gap-3 rounded-lg border border-(--color-border) bg-(--color-surface-secondary)/30 px-4 py-3">
-              <UserAvatar
-                src={ownerMember.avatarUrl}
-                name={ownerMember.name}
-                size="md"
-                className="ring-amber-300"
-                fallbackClass="bg-amber-500/10 text-amber-600"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-medium text-(--color-text)">
-                    {ownerMember.name}
-                  </span>
+            {/* Current owner */}
+            {ownerMember && (
+              <div className="flex items-center gap-3 rounded-lg border border-(--color-border) bg-(--color-surface-secondary)/30 px-4 py-3">
+                <UserAvatar
+                  src={ownerMember.avatarUrl}
+                  name={ownerMember.name}
+                  size="md"
+                  className="ring-amber-300"
+                  fallbackClass="bg-amber-500/10 text-amber-600"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium text-(--color-text)">
+                      {ownerMember.name}
+                    </span>
                     <Badge variant="default" className="bg-amber-500/15 text-amber-600">
                       <Crown className="mr-1 h-3 w-3" />
-                      {t.members?.owner ?? "Owner"}
+                      {t.members?.owner ?? 'Owner'}
                     </Badge>
-                </div>
-                <p className="text-xs text-(--color-text-secondary)">
-                  {ownerMember.email}
-                </p>
-              </div>
-
-              <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
-                <DialogTrigger render={<Button variant="outline" size="sm" />}>
-                  <Send className="h-4 w-4" />
-                  {t.members?.transferButton ?? "Transfer"}
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>{t.members?.transferTitle ?? "Transfer Ownership"}</DialogTitle>
-                    <DialogDescription>
-                      {t.members?.transferDescription ?? "Select an admin to become the new workspace owner. You will become a regular admin."}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-2">
-                    <Field>
-                      <FieldLabel htmlFor="new-owner">{t.members?.newOwnerLabel ?? "New Owner"}</FieldLabel>
-                      <Select
-                        value={transferTargetId}
-                        onValueChange={(val) => {
-                          if (val === null) return;
-                          setTransferTargetId(val);
-                          setTransferError(null);
-                        }}
-                      >
-                        <SelectTrigger
-                          id="new-owner"
-                          className="w-full"
-                        >
-                          <span className={transferTargetId ? "" : "text-muted-foreground"}>
-                            {transferTargetId
-                              ? nonOwnerAdmins.find((a) => a.userId === transferTargetId)
-                                ?.name ?? transferTargetId
-                              : (t.members?.selectAdminPlaceholder ?? "Select an admin...")}
-                          </span>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {nonOwnerAdmins.map((admin) => (
-                            <SelectItem
-                              key={admin.userId}
-                              value={admin.userId}
-                            >
-                              {admin.name} ({admin.email})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FieldError>{transferError}</FieldError>
-                    </Field>
-                    {transferTargetId && (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
-                        <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
-                          ⚠️ {t.members?.transferWarning ?? "This action cannot be undone"}
-                        </p>
-                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                          {t.members?.transferWarningDesc ?? "The new owner will have full control over this workspace, including the ability to remove you."}
-                        </p>
-                      </div>
-                    )}
                   </div>
-                  <DialogFooter>
-                    <DialogClose render={<Button variant="outline" />}>
-                      {t.common?.cancel ?? "Cancel"}
-                    </DialogClose>
-                    <Button
-                      onClick={handleTransferOwnership}
-                      disabled={!transferTargetId || transferSaving}
-                    >
-                      {transferSaving ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4" />
+                  <p className="text-xs text-(--color-text-secondary)">{ownerMember.email}</p>
+                </div>
+
+                <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+                  <DialogTrigger render={<Button variant="outline" size="sm" />}>
+                    <Send className="h-4 w-4" />
+                    {t.members?.transferButton ?? 'Transfer'}
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>{t.members?.transferTitle ?? 'Transfer Ownership'}</DialogTitle>
+                      <DialogDescription>
+                        {t.members?.transferDescription ??
+                          'Select an admin to become the new workspace owner. You will become a regular admin.'}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <Field>
+                        <FieldLabel htmlFor="new-owner">
+                          {t.members?.newOwnerLabel ?? 'New Owner'}
+                        </FieldLabel>
+                        <Select
+                          value={transferTargetId}
+                          onValueChange={(val) => {
+                            if (val === null) return;
+                            setTransferTargetId(val);
+                            setTransferError(null);
+                          }}
+                        >
+                          <SelectTrigger id="new-owner" className="w-full">
+                            <span className={transferTargetId ? '' : 'text-muted-foreground'}>
+                              {transferTargetId
+                                ? (nonOwnerAdmins.find((a) => a.userId === transferTargetId)
+                                    ?.name ?? transferTargetId)
+                                : (t.members?.selectAdminPlaceholder ?? 'Select an admin...')}
+                            </span>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {nonOwnerAdmins.map((admin) => (
+                              <SelectItem key={admin.userId} value={admin.userId}>
+                                {admin.name} ({admin.email})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FieldError>{transferError}</FieldError>
+                      </Field>
+                      {transferTargetId && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+                          <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+                            ⚠️ {t.members?.transferWarning ?? 'This action cannot be undone'}
+                          </p>
+                          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                            {t.members?.transferWarningDesc ??
+                              'The new owner will have full control over this workspace, including the ability to remove you.'}
+                          </p>
+                        </div>
                       )}
-                      {t.members?.transferTitle ?? "Transfer Ownership"}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-          )}
-        </div>
+                    </div>
+                    <DialogFooter>
+                      <DialogClose render={<Button variant="outline" />}>
+                        {t.common?.cancel ?? 'Cancel'}
+                      </DialogClose>
+                      <Button
+                        onClick={handleTransferOwnership}
+                        disabled={!transferTargetId || transferSaving}
+                      >
+                        {transferSaving ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                        {t.members?.transferTitle ?? 'Transfer Ownership'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>

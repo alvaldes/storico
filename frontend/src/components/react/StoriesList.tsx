@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from 'react';
 import {
   FileText,
   Fingerprint,
@@ -9,22 +9,18 @@ import {
   LoaderCircle,
   ArrowUp,
   ArrowDown,
-} from "lucide-react";
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
-import { useStoryStore } from "@/stores/storyStore";
-import { useProjectStore } from "@/stores/projectStore";
-import type { UserStory } from "@/types/story";
-import { shortUUID } from "@/lib/utils";
-import { StoryForm } from "@/components/react/StoryForm";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
-import { useTranslations, type Locale } from "@/i18n/utils";
-import { ApiRequestError } from "@/lib/api";
+} from 'lucide-react';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { useStoryStore } from '@/stores/storyStore';
+import { useProjectStore } from '@/stores/projectStore';
+import type { UserStory } from '@/types/story';
+import { shortUUID } from '@/lib/utils';
+import { StoryForm } from '@/components/react/StoryForm';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+import { useTranslations, type Locale } from '@/i18n/utils';
+import { ApiRequestError } from '@/lib/api';
 import {
   Select,
   SelectContent,
@@ -32,7 +28,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,16 +38,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from '@/components/ui/alert-dialog';
 
-const STATUS_VARIANTS: Record<
-  string,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  pending_extraction: "outline",
-  extracting: "secondary",
-  extracted: "default",
-  failed_extraction: "destructive",
+const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
+  pending_extraction: 'outline',
+  extracting: 'secondary',
+  extracted: 'default',
+  failed_extraction: 'destructive',
 };
 
 interface StoriesListProps {
@@ -59,54 +52,42 @@ interface StoriesListProps {
   projectId?: string;
 }
 
-export function StoriesList({
-  locale = "en",
-  projectId: initialProjectId,
-}: StoriesListProps) {
+export function StoriesList({ locale = 'en', projectId: initialProjectId }: StoriesListProps) {
   const t = useTranslations(locale);
   const { projects, fetchProjects } = useProjectStore();
-  const {
-    stories,
-    loading,
-    fetchStories,
-    createStory,
-    updateStory,
-    deleteStory,
-  } = useStoryStore();
-  const [selectedProjectId, setSelectedProjectId] = useState<
-    string | undefined
-  >(initialProjectId);
+  const { stories, loading, fetchStories, createStory, updateStory, deleteStory } = useStoryStore();
+  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(initialProjectId);
   const [formOpen, setFormOpen] = useState(false);
   const [editingStory, setEditingStory] = useState<UserStory | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
-  const [sortBy, setSortBy] = useState<string>("createdAt_desc");
+  const [sortBy, setSortBy] = useState<string>('createdAt_desc');
 
   // Sort options with labels and icons
   const sortOptions = useMemo(
     () => [
       {
-        value: "createdAt_desc",
+        value: 'createdAt_desc',
         label: t.stories.sort_created_desc,
         icon: ArrowDown,
       },
       {
-        value: "createdAt_asc",
+        value: 'createdAt_asc',
         label: t.stories.sort_created_asc,
         icon: ArrowUp,
       },
       {
-        value: "status_desc",
+        value: 'status_desc',
         label: t.stories.sort_status_desc,
         icon: ArrowDown,
       },
-      { value: "status_asc", label: t.stories.sort_status_asc, icon: ArrowUp },
+      { value: 'status_asc', label: t.stories.sort_status_asc, icon: ArrowUp },
       {
-        value: "actor_desc",
+        value: 'actor_desc',
         label: t.stories.sort_actor_desc,
         icon: ArrowDown,
       },
-      { value: "actor_asc", label: t.stories.sort_actor_asc, icon: ArrowUp },
+      { value: 'actor_asc', label: t.stories.sort_actor_asc, icon: ArrowUp },
     ],
     [t],
   );
@@ -120,7 +101,7 @@ export function StoriesList({
   // Build items array for the Base Select (supports null as a native value)
   const projectItems: { label: string; value: string | null }[] = useMemo(
     () => [
-      { label: t.stories?.allProjects ?? "All projects", value: null },
+      { label: t.stories?.allProjects ?? 'All projects', value: null },
       ...projects.map((p) => ({ label: p.name, value: p.id })),
     ],
     [projects],
@@ -140,10 +121,7 @@ export function StoriesList({
   );
 
   const createDialogTitle = selectedProjectName
-    ? t.stories.create_title_with_project.replace(
-        "{projectName}",
-        selectedProjectName,
-      )
+    ? t.stories.create_title_with_project.replace('{projectName}', selectedProjectName)
     : t.stories.create_title;
 
   // Sync selectedProjectId when the prop changes (e.g. Astro View Transitions)
@@ -165,17 +143,15 @@ export function StoriesList({
       : stories;
     const sorted = [...filtered];
     switch (sortBy) {
-      case "createdAt_asc":
+      case 'createdAt_asc':
         return sorted.sort(
-          (a, b) =>
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
         );
-      case "createdAt_desc":
+      case 'createdAt_desc':
         return sorted.sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
         );
-      case "status_asc":
+      case 'status_asc':
         return sorted.sort((a, b) => {
           const statusOrder: Record<string, number> = {
             pending_extraction: 0,
@@ -185,7 +161,7 @@ export function StoriesList({
           };
           return (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
         });
-      case "status_desc":
+      case 'status_desc':
         return sorted.sort((a, b) => {
           const statusOrder: Record<string, number> = {
             pending_extraction: 0,
@@ -195,14 +171,13 @@ export function StoriesList({
           };
           return (statusOrder[b.status] ?? 99) - (statusOrder[a.status] ?? 99);
         });
-      case "actor_asc":
+      case 'actor_asc':
         return sorted.sort((a, b) => a.actor.localeCompare(b.actor));
-      case "actor_desc":
+      case 'actor_desc':
         return sorted.sort((a, b) => b.actor.localeCompare(a.actor));
       default:
         return sorted.sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
         );
     }
   }, [stories, selectedProjectId, sortBy]);
@@ -214,7 +189,7 @@ export function StoriesList({
     rawText: string;
   }) => {
     if (!selectedProjectId) {
-      toast.error(t.stories?.selectProjectFirst ?? "Select a project first");
+      toast.error(t.stories?.selectProjectFirst ?? 'Select a project first');
       return;
     }
     try {
@@ -223,27 +198,24 @@ export function StoriesList({
     } catch (err) {
       // Extract the detailed error message from the API error
       // Backend returns: "User story with the same actor, feature, and benefit already exists in this project. Existing story ID: {id}"
-      const message =
-        err instanceof Error ? err.message : t.stories.create_error;
+      const message = err instanceof Error ? err.message : t.stories.create_error;
       // Detect duplicate: check status code first (most reliable), then message content
       const isApiError = err instanceof ApiRequestError;
       const isDuplicate =
         (isApiError && err.status === 409) ||
-        message.toLowerCase().includes("already exists") ||
-        message.toLowerCase().includes("ya existe") ||
-        message.toLowerCase().includes("duplicate") ||
-        message.toLowerCase().includes("conflict");
-      
+        message.toLowerCase().includes('already exists') ||
+        message.toLowerCase().includes('ya existe') ||
+        message.toLowerCase().includes('duplicate') ||
+        message.toLowerCase().includes('conflict');
+
       // Always show a toast for any error
       if (isDuplicate) {
         // Extract the story ID from the backend message
         const idMatch = message.match(/Existing story ID:\s*([a-f0-9-]+)/i);
-        const existingId = idMatch ? idMatch[1] : "";
+        const existingId = idMatch ? idMatch[1] : '';
         // Use localized message and append the ID
         const localizedMsg = t.stories.create_duplicate_error;
-        toast.error(
-          existingId ? `${localizedMsg}. ID: ${existingId}` : localizedMsg,
-        );
+        toast.error(existingId ? `${localizedMsg}. ID: ${existingId}` : localizedMsg);
       } else {
         toast.error(message || t.stories.create_error);
       }
@@ -303,7 +275,7 @@ export function StoriesList({
               <SelectContent>
                 <SelectGroup>
                   {projectItems.map((item) => (
-                    <SelectItem key={item.value ?? "_all"} value={item.value}>
+                    <SelectItem key={item.value ?? '_all'} value={item.value}>
                       {item.label}
                     </SelectItem>
                   ))}
@@ -370,12 +342,8 @@ export function StoriesList({
       ) : visibleStories.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
           <FileText className="mb-4 h-12 w-12 text-muted-foreground" />
-          <p className="text-lg font-medium text-foreground">
-            {t.stories.empty_title}
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t.stories.empty_description}
-          </p>
+          <p className="text-lg font-medium text-foreground">{t.stories.empty_title}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t.stories.empty_description}</p>
           <div className="flex items-center gap-2 mt-4">
             <Button
               variant="outline"
@@ -407,27 +375,25 @@ export function StoriesList({
           {visibleStories.map((story) => (
             <div
               key={story.id}
-              onClick={() =>
-                (window.location.href = `/${locale}/stories/${story.id}`)
-              }
+              onClick={() => (window.location.href = `/${locale}/stories/${story.id}`)}
               className="flex items-start justify-between rounded-lg border border-border bg-(--color-surface) p-4 transition-colors hover:bg-(--color-surface-secondary) cursor-pointer"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <Badge variant={STATUS_VARIANTS[story.status] ?? "outline"}>
+                  <Badge variant={STATUS_VARIANTS[story.status] ?? 'outline'}>
                     {
                       t.stories[
-                        `status_${story.status ?? "pending_extraction"}` as keyof typeof t.stories
+                        `status_${story.status ?? 'pending_extraction'}` as keyof typeof t.stories
                       ]
                     }
                   </Badge>
                   <span className="text-xs text-muted-foreground">
                     {new Date(story.createdAt).toLocaleDateString(
-                      locale === "es" ? "es-MX" : "en-US",
+                      locale === 'es' ? 'es-MX' : 'en-US',
                       {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
                       },
                     )}
                   </span>
@@ -437,11 +403,11 @@ export function StoriesList({
                   </span>
                 </div>
                 <p className="text-sm font-medium text-foreground">
-                  {t.stories?.keyword_as_a ?? "As a(n)"}{" "}
-                  <span className="text-primary">{story.actor}</span>,{" "}
-                  {t.stories?.keyword_i_want ?? "I want"}{" "}
-                  <span className="text-primary">{story.feature}</span>,{" "}
-                  {t.stories?.keyword_so_that ?? "so that"}{" "}
+                  {t.stories?.keyword_as_a ?? 'As a(n)'}{' '}
+                  <span className="text-primary">{story.actor}</span>,{' '}
+                  {t.stories?.keyword_i_want ?? 'I want'}{' '}
+                  <span className="text-primary">{story.feature}</span>,{' '}
+                  {t.stories?.keyword_so_that ?? 'so that'}{' '}
                   <span className="text-primary">{story.benefit}</span>
                 </p>
               </div>
@@ -486,7 +452,7 @@ export function StoriesList({
 
       {/* Edit dialog */}
       <StoryForm
-        key={editingStory?.id ?? "edit-none"}
+        key={editingStory?.id ?? 'edit-none'}
         open={editingStory !== null}
         onOpenChange={(open) => {
           if (!open) setEditingStory(null);
@@ -511,12 +477,8 @@ export function StoriesList({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t.stories.delete_confirm_title}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t.stories.delete_confirm_description}
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t.stories.delete_confirm_title}</AlertDialogTitle>
+            <AlertDialogDescription>{t.stories.delete_confirm_description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
@@ -526,9 +488,7 @@ export function StoriesList({
               disabled={deleteSaving}
             >
               {deleteSaving && <LoaderCircle className="animate-spin" />}
-              <span className={deleteSaving ? "opacity-50" : ""}>
-                {t.common.delete}
-              </span>
+              <span className={deleteSaving ? 'opacity-50' : ''}>{t.common.delete}</span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

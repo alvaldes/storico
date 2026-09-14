@@ -32,12 +32,7 @@ function normalizeTag(tag: string): string {
   return tag.trim().toLowerCase();
 }
 
-export function TaskEditor({
-  task,
-  open,
-  onOpenChange,
-  locale = 'en',
-}: TaskEditorProps) {
+export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEditorProps) {
   const t = useTranslations(locale);
   const updateTask = useTaskStore((s) => s.updateTask);
 
@@ -145,7 +140,7 @@ export function TaskEditor({
   // follow the Kanban flow table.
   const isValidStatus = useCallback(
     (newStatus: TaskStatus) => isValidTaskTransition(task.status, newStatus),
-    [task.status]
+    [task.status],
   );
 
   /* ── Save ── */
@@ -184,7 +179,14 @@ export function TaskEditor({
         setSaveError(err);
       } else {
         // Wrap unknown errors
-        setSaveError(new ApiRequestError(0, 'Unknown Error', err instanceof Error ? err.message : 'Unknown error', err));
+        setSaveError(
+          new ApiRequestError(
+            0,
+            'Unknown Error',
+            err instanceof Error ? err.message : 'Unknown error',
+            err,
+          ),
+        );
       }
       // Keep dialog open so the user can retry.
     }
@@ -205,7 +207,10 @@ export function TaskEditor({
             <Input
               id="te-title"
               value={title}
-              onChange={(e) => { setTitle(e.target.value); setErrors((prev) => ({ ...prev, title: '' })); }}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setErrors((prev) => ({ ...prev, title: '' }));
+              }}
               placeholder={t.taskEditor.title_placeholder}
               aria-invalid={!!errors.title}
               autoFocus
@@ -242,7 +247,8 @@ export function TaskEditor({
                   disabled={!isValidStatus(s)}
                   className={isValidStatus(s) ? '' : 'text-muted-foreground/50'}
                 >
-                  {isValidStatus(s) ? '✓ ' : '✗ '} {t.kanban.columns[s]} {isValidStatus(s) ? '' : ` (${t.taskEditor.invalid_transition})`}
+                  {isValidStatus(s) ? '✓ ' : '✗ '} {t.kanban.columns[s]}{' '}
+                  {isValidStatus(s) ? '' : ` (${t.taskEditor.invalid_transition})`}
                 </option>
               ))}
             </select>
@@ -270,7 +276,10 @@ export function TaskEditor({
               id="te-labels"
               ref={labelInputRef}
               value={labelInput}
-              onChange={(e) => { setLabelInput(e.target.value); setErrors((prev) => ({ ...prev, labels: '' })); }}
+              onChange={(e) => {
+                setLabelInput(e.target.value);
+                setErrors((prev) => ({ ...prev, labels: '' }));
+              }}
               onKeyDown={handleLabelKeyDown}
               placeholder={t.taskEditor.labels_placeholder}
               aria-invalid={!!errors.labels}
@@ -299,7 +308,10 @@ export function TaskEditor({
               id="te-deps"
               ref={depInputRef}
               value={depInput}
-              onChange={(e) => { setDepInput(e.target.value); setErrors((prev) => ({ ...prev, dependencies: '' })); }}
+              onChange={(e) => {
+                setDepInput(e.target.value);
+                setErrors((prev) => ({ ...prev, dependencies: '' }));
+              }}
               onKeyDown={handleDepKeyDown}
               placeholder={t.taskEditor.dependencies_placeholder}
               aria-invalid={!!errors.dependencies}
@@ -322,7 +334,12 @@ export function TaskEditor({
         )}
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             {t.taskEditor.cancel}
           </Button>
           <Button type="button" onClick={handleSave} disabled={saving}>

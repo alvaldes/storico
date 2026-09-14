@@ -1,11 +1,7 @@
-"use client"
+'use client';
 
-import { useTranslations, type Locale } from "@/i18n/utils"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+import { useTranslations, type Locale } from '@/i18n/utils';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -15,32 +11,26 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-} from "@/components/ui/sidebar"
-import { ChevronRightIcon } from "lucide-react"
+} from '@/components/ui/sidebar';
+import { ChevronRightIcon } from 'lucide-react';
 
 export interface NavItem {
-  title: string
-  url: string
-  icon?: React.ReactNode
-  isActive?: boolean
+  title: string;
+  url: string;
+  icon?: React.ReactNode;
+  isActive?: boolean;
   items?: {
-    title: string
-    url: string
-    isActive?: boolean
-  }[]
+    title: string;
+    url: string;
+    isActive?: boolean;
+  }[];
 }
 
-export function NavMain({
-  items,
-  locale: _locale,
-}: {
-  items: NavItem[]
-  locale: Locale
-}) {
+export function NavMain({ items, locale: _locale }: { items: NavItem[]; locale: Locale }) {
   const t = useTranslations(_locale);
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{t.nav?.navigation ?? "Navigation"}</SidebarGroupLabel>
+      <SidebarGroupLabel>{t.nav?.navigation ?? 'Navigation'}</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) =>
           item.items && item.items.length > 0 ? (
@@ -52,9 +42,7 @@ export function NavMain({
               render={<SidebarMenuItem />}
             >
               <CollapsibleTrigger
-                render={
-                  <SidebarMenuButton isActive={item.isActive} tooltip={item.title} />
-                }
+                render={<SidebarMenuButton isActive={item.isActive} tooltip={item.title} />}
               >
                 {item.icon}
                 <span>{item.title}</span>
@@ -91,5 +79,5 @@ export function NavMain({
         )}
       </SidebarMenu>
     </SidebarGroup>
-  )
+  );
 }

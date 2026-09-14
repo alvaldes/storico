@@ -1,7 +1,8 @@
 /** Extraction job status — for polling compatibility. */
 export type ExtractionStatus = 'pending' | 'completed' | 'failed';
 
-export type UserStoryStatus = 'pending_extraction' | 'extracting' | 'extracted' | 'failed_extraction';
+export type UserStoryStatus =
+  'pending_extraction' | 'extracting' | 'extracted' | 'failed_extraction';
 
 export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
 

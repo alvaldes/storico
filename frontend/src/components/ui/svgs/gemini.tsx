@@ -1,4 +1,4 @@
-import type { SVGProps } from "react";
+import type { SVGProps } from 'react';
 
 export function Gemini(props: SVGProps<SVGSVGElement>) {
   return (
@@ -8,7 +8,14 @@ export function Gemini(props: SVGProps<SVGSVGElement>) {
         fill="url(#geminiGradient)"
       />
       <defs>
-        <linearGradient id="geminiGradient" x1="0" y1="0" x2="16" y2="16" gradientUnits="userSpaceOnUse">
+        <linearGradient
+          id="geminiGradient"
+          x1="0"
+          y1="0"
+          x2="16"
+          y2="16"
+          gradientUnits="userSpaceOnUse"
+        >
           <stop stopColor="#4285F4" />
           <stop offset="1" stopColor="#9B72CB" />
         </linearGradient>

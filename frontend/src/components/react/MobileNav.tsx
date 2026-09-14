@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from 'react';
 import {
   Sheet,
   SheetTrigger,
@@ -8,10 +8,10 @@ import {
   SheetHeader,
   SheetTitle,
   SheetFooter,
-} from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
-import { Menu, X } from "lucide-react";
-import { useTranslations, type Locale } from "@/i18n/utils";
+} from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Menu, X } from 'lucide-react';
+import { useTranslations, type Locale } from '@/i18n/utils';
 
 export interface MobileNavLink {
   href: string;
@@ -41,17 +41,15 @@ export function MobileNav({
 
   // Compute active path from window.location (handles View Transitions client-side nav)
   const [currentPath, setCurrentPath] = useState(() =>
-    typeof window !== "undefined"
-      ? window.location.pathname
-      : (_activePath ?? ""),
+    typeof window === 'undefined' ? (_activePath ?? '') : window.location.pathname,
   );
 
   useEffect(() => {
     function onSwap() {
       setCurrentPath(window.location.pathname);
     }
-    document.addEventListener("astro:after-swap", onSwap);
-    return () => document.removeEventListener("astro:after-swap", onSwap);
+    document.addEventListener('astro:after-swap', onSwap);
+    return () => document.removeEventListener('astro:after-swap', onSwap);
   }, []);
 
   return (
@@ -62,7 +60,7 @@ export function MobileNav({
             variant="ghost"
             size="icon"
             className="lg:hidden"
-            aria-label={t.nav?.toggleMenu ?? "Toggle menu"}
+            aria-label={t.nav?.toggleMenu ?? 'Toggle menu'}
           >
             <Menu className="h-5 w-5" />
           </Button>
@@ -72,7 +70,7 @@ export function MobileNav({
         side="right"
         showCloseButton={false}
         className="rounded-bl-xl rounded-br-xl data-[side=right]:border-0"
-        style={{ top: "3.75rem", bottom: "auto", height: "auto" }}
+        style={{ top: '3.75rem', bottom: 'auto', height: 'auto' }}
       >
         <SheetHeader className="flex flex-row items-center justify-between">
           <SheetTitle>{brandName}</SheetTitle>
@@ -80,7 +78,7 @@ export function MobileNav({
             type="button"
             onClick={() => setOpen(false)}
             className="rounded-md p-1 text-muted-foreground hover:bg-muted transition-colors"
-            aria-label={t.nav?.closeMenu ?? "Close menu"}
+            aria-label={t.nav?.closeMenu ?? 'Close menu'}
           >
             <X className="h-4 w-4" />
           </button>
@@ -90,15 +88,12 @@ export function MobileNav({
           {(() => {
             const grouped: Record<string, MobileNavLink[]> = {};
             for (const link of links) {
-              const cat = link.category || "";
+              const cat = link.category || '';
               if (!grouped[cat]) grouped[cat] = [];
               grouped[cat].push(link);
             }
             return Object.entries(grouped).map(([category, categoryLinks]) => (
-              <div
-                key={category}
-                className="flex flex-col gap-0.5 pb-3 last:pb-0"
-              >
+              <div key={category} className="flex flex-col gap-0.5 pb-3 last:pb-0">
                 {category && (
                   <div>
                     {/* <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"> */}
@@ -116,8 +111,8 @@ export function MobileNav({
                       onClick={() => setOpen(false)}
                       className={`rounded-lg px-3 py-2.5 text-xs font-normal no-underline transition-colors ${
                         isActive
-                          ? "bg-muted text-foreground font-semibold"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          ? 'bg-muted text-foreground font-semibold'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                       }`}
                     >
                       {link.label}

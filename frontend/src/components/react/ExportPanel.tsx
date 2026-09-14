@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useTaskStore } from '@/stores/taskStore';
@@ -32,7 +32,9 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
   }, [workspaceId, fetchTasksForWorkspace]);
 
   // Fetch on mount and when workspace changes
-  useEffect(() => { doFetch(); }, [doFetch]);
+  useEffect(() => {
+    doFetch();
+  }, [doFetch]);
 
   const handleDownload = async () => {
     if (!workspaceId) return;
@@ -138,16 +140,12 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
         {/* Task count */}
         <div className="text-sm text-muted-foreground">
           {hasTasks
-            ? `${workspaceTasks.length} task${workspaceTasks.length !== 1 ? 's' : ''} to export`
+            ? `${workspaceTasks.length} task${workspaceTasks.length === 1 ? '' : 's'} to export`
             : t.exportPage.no_tasks}
         </div>
 
         {/* Download button */}
-        <Button
-          onClick={handleDownload}
-          disabled={!hasTasks || downloading}
-          className="w-full"
-        >
+        <Button onClick={handleDownload} disabled={!hasTasks || downloading} className="w-full">
           {downloading ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (

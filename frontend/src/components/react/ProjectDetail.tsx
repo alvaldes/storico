@@ -70,7 +70,7 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
   if (!project) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <p className="text-destructive">{t.projects?.notFound ?? "Project not found"}</p>
+        <p className="text-destructive">{t.projects?.notFound ?? 'Project not found'}</p>
         <Button variant="outline" className="mt-4" onClick={() => window.history.back()}>
           {t.nav.back_to_home}
         </Button>
@@ -99,7 +99,8 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
               <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
             )}
             <p className="mt-1 text-xs text-muted-foreground">
-              Created {new Date(project.createdAt).toLocaleDateString(locale === 'es' ? 'es-MX' : 'en-US', {
+              Created{' '}
+              {new Date(project.createdAt).toLocaleDateString(locale === 'es' ? 'es-MX' : 'en-US', {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric',
@@ -113,7 +114,12 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
             <Pencil className="mr-2 h-4 w-4" />
             {t.common.edit}
           </Button>
-          <Button variant="outline" size="sm" className="text-destructive" onClick={() => setDeleting(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive"
+            onClick={() => setDeleting(true)}
+          >
             <Trash2 className="mr-2 h-4 w-4" />
             {t.common.delete}
           </Button>
@@ -132,7 +138,11 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
         onOpenChange={setEditing}
         onSubmit={handleUpdate}
         locale={locale}
-        initialData={{ name: project.name, description: project.description, icon: project.icon ?? undefined }}
+        initialData={{
+          name: project.name,
+          description: project.description,
+          icon: project.icon ?? undefined,
+        }}
         title={t.common.edit}
       />
 
@@ -141,9 +151,7 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t.projects.delete_confirm_title}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t.projects.delete_confirm_description}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t.projects.delete_confirm_description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
@@ -153,9 +161,7 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
               disabled={deleteSaving}
             >
               {deleteSaving && <LoaderCircle className="animate-spin" />}
-              <span className={deleteSaving ? "opacity-50" : ""}>
-                {t.common.delete}
-              </span>
+              <span className={deleteSaving ? 'opacity-50' : ''}>{t.common.delete}</span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

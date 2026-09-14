@@ -28,12 +28,7 @@ interface InvalidDropToast {
 export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   const t = useTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
-  const {
-    workspaceTasks,
-    loading,
-    fetchTasksForWorkspace,
-    updateTaskStatus,
-  } = useTaskStore();
+  const { workspaceTasks, loading, fetchTasksForWorkspace, updateTaskStatus } = useTaskStore();
 
   const [initialLoad, setInitialLoad] = useState(true);
   const [localTasks, setLocalTasks] = useState<Record<ColumnId, Task[]>>({
@@ -43,7 +38,11 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     review: [],
     done: [],
   });
-  const [invalidDropToast, setInvalidDropToast] = useState<InvalidDropToast>({ show: false, message: '', allowed: [] });
+  const [invalidDropToast, setInvalidDropToast] = useState<InvalidDropToast>({
+    show: false,
+    message: '',
+    allowed: [],
+  });
   const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
 
   // Fetch tasks on mount
@@ -59,7 +58,14 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
           if (err instanceof ApiRequestError) {
             setLoadError(err);
           } else {
-            setLoadError(new ApiRequestError(0, 'Unknown Error', err instanceof Error ? err.message : 'Unknown error', err));
+            setLoadError(
+              new ApiRequestError(
+                0,
+                'Unknown Error',
+                err instanceof Error ? err.message : 'Unknown error',
+                err,
+              ),
+            );
           }
         });
     } else {
@@ -164,9 +170,15 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
       } catch (err) {
         // Revert optimistic update on error
         setLocalTasks({ ...localTasks });
-        if (err instanceof Error && 'errorCode' in err && (err as any).errorCode === 'INVALID_STATE_TRANSITION') {
+        if (
+          err instanceof Error &&
+          'errorCode' in err &&
+          (err as any).errorCode === 'INVALID_STATE_TRANSITION'
+        ) {
           const apiError = err as any;
-          const allowedLabels = apiError.allowedTransitions.map((s: string) => t.kanban.columns[s as TaskStatus]).join(', ');
+          const allowedLabels = apiError.allowedTransitions
+            .map((s: string) => t.kanban.columns[s as TaskStatus])
+            .join(', ');
           setInvalidDropToast({
             show: true,
             message: t.kanban.backend_invalid_transition
@@ -179,7 +191,7 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
         }
       }
     },
-    [localTasks, updateTaskStatus]
+    [localTasks, updateTaskStatus],
   );
 
   if (initialLoad && loading) {
@@ -193,9 +205,7 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   if (!workspaceId) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
-        <p className="text-sm text-muted-foreground">
-          {t.kanban.no_workspace}
-        </p>
+        <p className="text-sm text-muted-foreground">{t.kanban.no_workspace}</p>
       </div>
     );
   }
@@ -226,7 +236,11 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
               <p className="text-sm font-medium">{t.kanban.invalid_drop_title}</p>
               <p className="mt-1 text-sm text-destructive/90">{invalidDropToast.message}</p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => setInvalidDropToast({ show: false, message: '', allowed: [] })}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setInvalidDropToast({ show: false, message: '', allowed: [] })}
+            >
               ✕
             </Button>
           </div>

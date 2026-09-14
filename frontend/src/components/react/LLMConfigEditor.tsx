@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { useUIStore } from "@/stores/uiStore";
+import { useState, useEffect, useCallback } from 'react';
+import { useUIStore } from '@/stores/uiStore';
 import {
   Bot,
   FileText,
@@ -9,16 +9,12 @@ import {
   RotateCw,
   CircleHelp,
   TriangleAlert,
-} from "lucide-react";
-import { toast } from "sonner";
-import {
-  getLLMConfig,
-  upsertLLMConfig,
-  fetchAvailableModels,
-} from "@/lib/llm-config-api";
-import type { AvailableModel } from "@/lib/llm-config-api";
-import { getPrompts, upsertPrompts } from "@/lib/prompts-api";
-import { Button } from "@/components/ui/button";
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { getLLMConfig, upsertLLMConfig, fetchAvailableModels } from '@/lib/llm-config-api';
+import type { AvailableModel } from '@/lib/llm-config-api';
+import { getPrompts, upsertPrompts } from '@/lib/prompts-api';
+import { Button } from '@/components/ui/button';
 import {
   Combobox,
   ComboboxInput,
@@ -27,7 +23,7 @@ import {
   ComboboxItem,
   ComboboxEmpty,
   ComboboxValue,
-} from "@/components/ui/combobox";
+} from '@/components/ui/combobox';
 import {
   Card,
   CardHeader,
@@ -35,70 +31,57 @@ import {
   CardDescription,
   CardContent,
   CardFooter,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
-import { Textarea } from "@/components/ui/textarea";
-import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { ProviderIcon } from "@/components/ui/provider-icon";
-import { FewShotExamplesEditor } from "@/components/react/FewShotExamplesEditor";
-import type {
-  WorkspaceLLMConfig,
-  WorkspacePrompt,
-  FewShotExample,
-} from "@/types/workspace";
-import { useWorkspaceStore } from "@/stores/workspaceStore";
-import en from "@/i18n/en.json";
-import es from "@/i18n/es.json";
+} from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
+import { Textarea } from '@/components/ui/textarea';
+import { Field, FieldLabel, FieldDescription } from '@/components/ui/field';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { ProviderIcon } from '@/components/ui/provider-icon';
+import { FewShotExamplesEditor } from '@/components/react/FewShotExamplesEditor';
+import type { WorkspaceLLMConfig, WorkspacePrompt, FewShotExample } from '@/types/workspace';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
+import en from '@/i18n/en.json';
+import es from '@/i18n/es.json';
 
 interface LLMConfigEditorProps {
-  locale: "en" | "es";
+  locale: 'en' | 'es';
   workspaceId: string;
 }
 
 export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
-  const t = locale === "es" ? es : en;
+  const t = locale === 'es' ? es : en;
   const { theme: rawTheme } = useUIStore();
-  const resolvedTheme: "light" | "dark" =
-    rawTheme === "system"
-      ? typeof window !== "undefined"
-        ? window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light"
-        : "light"
+  const resolvedTheme: 'light' | 'dark' =
+    rawTheme === 'system'
+      ? typeof window === 'undefined'
+        ? 'light'
+        : window.matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light'
       : rawTheme;
 
   /* ── LLM Config State ── */
   const [llmConfig, setLlmConfig] = useState<WorkspaceLLMConfig>({
-    provider: "ollama",
-    model: "",
+    provider: 'ollama',
+    model: '',
     temperature: 0.1,
     maxTokens: 2048,
-    baseUrl: "http://localhost:11434",
-    apiKey: "",
+    baseUrl: 'http://localhost:11434',
+    apiKey: '',
   });
   const [llmSaving, setLlmSaving] = useState(false);
-  const [llmSaveResult, setLlmSaveResult] = useState<
-    "idle" | "success" | "error"
-  >("idle");
+  const [llmSaveResult, setLlmSaveResult] = useState<'idle' | 'success' | 'error'>('idle');
 
   /* ── Prompt Config State ── */
   const [prompts, setPrompts] = useState<WorkspacePrompt>({
-    systemPrompt: "",
-    instructionTemplate: "",
+    systemPrompt: '',
+    instructionTemplate: '',
     fewShotExamples: [],
   });
   const [promptSaving, setPromptSaving] = useState(false);
-  const [promptSaveResult, setPromptSaveResult] = useState<
-    "idle" | "success" | "error"
-  >("idle");
+  const [promptSaveResult, setPromptSaveResult] = useState<'idle' | 'success' | 'error'>('idle');
 
   /* ── Available Models State ── */
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
@@ -119,7 +102,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
         getLLMConfig(workspaceId).catch((err) => {
           if (
             err instanceof Error &&
-            (err.message.includes("403") || err.message.includes("admin"))
+            (err.message.includes('403') || err.message.includes('admin'))
           ) {
             return null;
           }
@@ -128,7 +111,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
         getPrompts(workspaceId).catch((err) => {
           if (
             err instanceof Error &&
-            (err.message.includes("403") || err.message.includes("admin"))
+            (err.message.includes('403') || err.message.includes('admin'))
           ) {
             return null;
           }
@@ -138,26 +121,24 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
 
       if (llm) {
         setLlmConfig({
-          provider: llm.provider || "ollama",
-          model: llm.model ?? "",
+          provider: llm.provider || 'ollama',
+          model: llm.model ?? '',
           temperature: llm.temperature ?? 0.1,
           maxTokens: llm.maxTokens ?? 2048,
-          baseUrl: llm.baseUrl ?? "http://localhost:11434",
-          apiKey: llm.apiKey ?? "",
+          baseUrl: llm.baseUrl ?? 'http://localhost:11434',
+          apiKey: llm.apiKey ?? '',
         });
       }
       if (promptData) {
         setPrompts({
-          systemPrompt: promptData.systemPrompt ?? "",
-          instructionTemplate: promptData.instructionTemplate ?? "",
+          systemPrompt: promptData.systemPrompt ?? '',
+          instructionTemplate: promptData.instructionTemplate ?? '',
           fewShotExamples: promptData.fewShotExamples ?? [],
         });
       }
     } catch (err) {
       const message =
-        err instanceof Error
-          ? err.message
-          : (t.workspace?.loadError ?? "Failed to load settings");
+        err instanceof Error ? err.message : (t.workspace?.loadError ?? 'Failed to load settings');
       setError(message);
       toast.error(message);
     } finally {
@@ -175,10 +156,10 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     } catch (err) {
       setAvailableModels([]);
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("502") || msg.includes("Failed to fetch")) {
+      if (msg.includes('502') || msg.includes('Failed to fetch')) {
         setModelsError(
           t.workspace?.llmModelsFetchError ??
-            "Could not reach the provider. Check your API key and Base URL.",
+            'Could not reach the provider. Check your API key and Base URL.',
         );
       } else {
         setModelsError(msg);
@@ -202,7 +183,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   /* ── LLM Save Handler ── */
   const handleLLMSave = async () => {
     setLlmSaving(true);
-    setLlmSaveResult("idle");
+    setLlmSaveResult('idle');
     try {
       await upsertLLMConfig(workspaceId, {
         provider: llmConfig.provider,
@@ -212,17 +193,17 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
         baseUrl: llmConfig.baseUrl || undefined,
         apiKey: llmConfig.apiKey || undefined,
       });
-      setLlmSaveResult("success");
-      toast.success(t.settings?.llm_saved ?? "LLM configuration saved");
-      setTimeout(() => setLlmSaveResult("idle"), 3000);
+      setLlmSaveResult('success');
+      toast.success(t.settings?.llm_saved ?? 'LLM configuration saved');
+      setTimeout(() => setLlmSaveResult('idle'), 3000);
     } catch (err) {
-      setLlmSaveResult("error");
+      setLlmSaveResult('error');
       const message =
         err instanceof Error
           ? err.message
-          : (t.workspace?.llmSaveError ?? "Failed to save LLM config");
+          : (t.workspace?.llmSaveError ?? 'Failed to save LLM config');
       toast.error(message);
-      setTimeout(() => setLlmSaveResult("idle"), 3000);
+      setTimeout(() => setLlmSaveResult('idle'), 3000);
     } finally {
       setLlmSaving(false);
     }
@@ -231,27 +212,25 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   /* ── Prompt Save Handler ── */
   const handlePromptSave = async () => {
     setPromptSaving(true);
-    setPromptSaveResult("idle");
+    setPromptSaveResult('idle');
     try {
       await upsertPrompts(workspaceId, {
         systemPrompt: prompts.systemPrompt || undefined,
         instructionTemplate: prompts.instructionTemplate || undefined,
         fewShotExamples:
-          (prompts.fewShotExamples ?? []).length > 0
-            ? prompts.fewShotExamples
-            : undefined,
+          (prompts.fewShotExamples ?? []).length > 0 ? prompts.fewShotExamples : undefined,
       });
-      setPromptSaveResult("success");
-      toast.success(t.workspace?.promptSaved ?? "Prompt configuration saved");
-      setTimeout(() => setPromptSaveResult("idle"), 3000);
+      setPromptSaveResult('success');
+      toast.success(t.workspace?.promptSaved ?? 'Prompt configuration saved');
+      setTimeout(() => setPromptSaveResult('idle'), 3000);
     } catch (err) {
-      setPromptSaveResult("error");
+      setPromptSaveResult('error');
       const message =
         err instanceof Error
           ? err.message
-          : (t.workspace?.promptSaveError ?? "Failed to save prompts");
+          : (t.workspace?.promptSaveError ?? 'Failed to save prompts');
       toast.error(message);
-      setTimeout(() => setPromptSaveResult("idle"), 3000);
+      setTimeout(() => setPromptSaveResult('idle'), 3000);
     } finally {
       setPromptSaving(false);
     }
@@ -270,7 +249,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     return (
       <div className="flex items-center gap-2 py-12 text-sm text-(--color-text-secondary)">
         <LoaderCircle className="h-4 w-4 animate-spin" />
-        {t.workspace?.loading ?? "Loading settings..."}
+        {t.workspace?.loading ?? 'Loading settings...'}
       </div>
     );
   }
@@ -280,15 +259,13 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
       <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
         <TriangleAlert className="h-5 w-5 shrink-0 text-red-500" />
         <div>
-          <p className="text-sm font-medium text-red-800 dark:text-red-200">
-            {error}
-          </p>
+          <p className="text-sm font-medium text-red-800 dark:text-red-200">{error}</p>
           <button
             type="button"
             onClick={loadConfigs}
             className="mt-1 text-sm text-red-600 underline hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
           >
-            {t.workspace?.tryAgain ?? "Try again"}
+            {t.workspace?.tryAgain ?? 'Try again'}
           </button>
         </div>
       </div>
@@ -304,20 +281,18 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
           <CardHeader>
             <div className="flex items-center gap-2">
               <Bot className="h-4 w-4 text-(--color-text-secondary)" />
-              <CardTitle>
-                {t.settings?.llm_title ?? "LLM Configuration"}
-              </CardTitle>
+              <CardTitle>{t.settings?.llm_title ?? 'LLM Configuration'}</CardTitle>
             </div>
             <CardDescription>
               {t.settings?.llm_description ??
-                "Configure the AI model used for task extraction in this workspace"}
+                'Configure the AI model used for task extraction in this workspace'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             {/* Provider */}
             <Field>
               <FieldLabel htmlFor="llm-provider">
-                {t.settings?.llm_provider ?? "Provider"}
+                {t.settings?.llm_provider ?? 'Provider'}
               </FieldLabel>
               <Select
                 value={llmConfig.provider}
@@ -326,9 +301,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                   setLlmConfig((prev) => ({
                     ...prev,
                     provider: val,
-                    model: "",
-                    apiKey: "",
-                    baseUrl: val === "ollama" ? "http://localhost:11434" : "",
+                    model: '',
+                    apiKey: '',
+                    baseUrl: val === 'ollama' ? 'http://localhost:11434' : '',
                   }));
                 }}
               >
@@ -340,14 +315,13 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       className="h-4 w-4 shrink-0"
                     />
                     <span>
-                      {llmConfig.provider === "ollama"
-                        ? (t.settings?.llm_provider_ollama ?? "Ollama (Local)")
-                        : llmConfig.provider === "openai"
-                          ? (t.settings?.llm_provider_openai ?? "OpenAI")
-                          : llmConfig.provider === "gemini"
-                            ? (t.settings?.llm_provider_gemini ?? "Gemini")
-                            : (t.settings?.llm_provider_anthropic ??
-                              "Anthropic")}
+                      {llmConfig.provider === 'ollama'
+                        ? (t.settings?.llm_provider_ollama ?? 'Ollama (Local)')
+                        : llmConfig.provider === 'openai'
+                          ? (t.settings?.llm_provider_openai ?? 'OpenAI')
+                          : llmConfig.provider === 'gemini'
+                            ? (t.settings?.llm_provider_gemini ?? 'Gemini')
+                            : (t.settings?.llm_provider_anthropic ?? 'Anthropic')}
                     </span>
                   </div>
                 </SelectTrigger>
@@ -358,7 +332,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       theme={resolvedTheme}
                       className="mr-2 h-4 w-4 shrink-0"
                     />
-                    {t.settings?.llm_provider_ollama ?? "Ollama (Local)"}
+                    {t.settings?.llm_provider_ollama ?? 'Ollama (Local)'}
                   </SelectItem>
                   <SelectItem value="openai">
                     <ProviderIcon
@@ -366,7 +340,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       theme={resolvedTheme}
                       className="mr-2 h-4 w-4 shrink-0"
                     />
-                    {t.settings?.llm_provider_openai ?? "OpenAI"}
+                    {t.settings?.llm_provider_openai ?? 'OpenAI'}
                   </SelectItem>
                   <SelectItem value="anthropic">
                     <ProviderIcon
@@ -374,7 +348,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       theme={resolvedTheme}
                       className="mr-2 h-4 w-4 shrink-0"
                     />
-                    {t.settings?.llm_provider_anthropic ?? "Anthropic"}
+                    {t.settings?.llm_provider_anthropic ?? 'Anthropic'}
                   </SelectItem>
                   <SelectItem value="gemini">
                     <ProviderIcon
@@ -382,21 +356,18 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       theme={resolvedTheme}
                       className="mr-2 h-4 w-4 shrink-0"
                     />
-                    {t.settings?.llm_provider_gemini ?? "Gemini"}
+                    {t.settings?.llm_provider_gemini ?? 'Gemini'}
                   </SelectItem>
                 </SelectContent>
               </Select>
               <FieldDescription>
-                {t.workspace?.llmProviderDesc ??
-                  "The AI model provider for task extraction."}
+                {t.workspace?.llmProviderDesc ?? 'The AI model provider for task extraction.'}
               </FieldDescription>
             </Field>
 
             {/* Model — Combobox with auto-populated suggestions */}
             <Field>
-              <FieldLabel htmlFor="llm-model">
-                {t.settings?.llm_ollama_model ?? "Model"}
-              </FieldLabel>
+              <FieldLabel htmlFor="llm-model">{t.settings?.llm_ollama_model ?? 'Model'}</FieldLabel>
               <div className="flex items-start gap-2">
                 <div className="flex-1">
                   <Combobox
@@ -412,31 +383,23 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                   >
                     <ComboboxInput
                       id="llm-model"
-                      disabled={
-                        llmConfig.provider !== "ollama" && !llmConfig.apiKey
-                      }
+                      disabled={llmConfig.provider !== 'ollama' && !llmConfig.apiKey}
                       placeholder={
-                        llmConfig.provider === "ollama"
-                          ? (t.settings?.llm_ollama_model_placeholder ??
-                            "llama3.2, mistral")
-                          : llmConfig.provider === "openai"
-                            ? (t.settings?.llm_openai_model_placeholder ??
-                              "gpt-4o-mini")
-                            : llmConfig.provider === "gemini"
-                              ? (t.settings?.llm_gemini_model_placeholder ??
-                                "gemini-2.0-flash")
-                              : (t.settings?.llm_anthropic_model_placeholder ??
-                                "claude-3-haiku")
+                        llmConfig.provider === 'ollama'
+                          ? (t.settings?.llm_ollama_model_placeholder ?? 'llama3.2, mistral')
+                          : llmConfig.provider === 'openai'
+                            ? (t.settings?.llm_openai_model_placeholder ?? 'gpt-4o-mini')
+                            : llmConfig.provider === 'gemini'
+                              ? (t.settings?.llm_gemini_model_placeholder ?? 'gemini-2.0-flash')
+                              : (t.settings?.llm_anthropic_model_placeholder ?? 'claude-3-haiku')
                       }
                     />
                     {/* Show the display name (m.name) instead of the id in the input */}
                     <ComboboxValue>
                       {(props) => {
                         const value = props?.value;
-                        const model = availableModels.find(
-                          (m) => m.id === value,
-                        );
-                        return model?.name ?? value ?? "";
+                        const model = availableModels.find((m) => m.id === value);
+                        return model?.name ?? value ?? '';
                       }}
                     </ComboboxValue>
                     <ComboboxContent>
@@ -449,14 +412,14 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       </ComboboxList>
                       {modelsLoading ? (
                         <ComboboxEmpty>
-                          {t.workspace?.llmModelsLoading ?? "Loading models..."}
+                          {t.workspace?.llmModelsLoading ?? 'Loading models...'}
                         </ComboboxEmpty>
                       ) : availableModels.length === 0 ? (
                         <ComboboxEmpty>
                           {modelsError
                             ? modelsError
                             : (t.workspace?.llmModelsEmpty ??
-                              "No models found. Type a custom name.")}
+                              'No models found. Type a custom name.')}
                         </ComboboxEmpty>
                       ) : null}
                     </ComboboxContent>
@@ -469,19 +432,15 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     size="icon"
                     onClick={loadModels}
                     disabled={
-                      modelsLoading ||
-                      (llmConfig.provider !== "ollama" && !llmConfig.apiKey)
+                      modelsLoading || (llmConfig.provider !== 'ollama' && !llmConfig.apiKey)
                     }
                     title={
-                      llmConfig.provider !== "ollama" && !llmConfig.apiKey
-                        ? (t.workspace?.llmModelsNoApiKey ??
-                          "Add your API key first")
-                        : (t.workspace?.llmRefreshModels ?? "Refresh models")
+                      llmConfig.provider !== 'ollama' && !llmConfig.apiKey
+                        ? (t.workspace?.llmModelsNoApiKey ?? 'Add your API key first')
+                        : (t.workspace?.llmRefreshModels ?? 'Refresh models')
                     }
                   >
-                    <RotateCw
-                      className={`h-4 w-4 ${modelsLoading ? "animate-spin" : ""}`}
-                    />
+                    <RotateCw className={`h-4 w-4 ${modelsLoading ? 'animate-spin' : ''}`} />
                   </Button>
                 </div>
               </div>
@@ -491,15 +450,14 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
                     {modelsError}
                   </span>
-                ) : llmConfig.provider !== "ollama" && !llmConfig.apiKey ? (
+                ) : llmConfig.provider !== 'ollama' && !llmConfig.apiKey ? (
                   <span className="flex items-center gap-1.5 text-(--color-text-tertiary)">
                     <CircleHelp className="h-3.5 w-3.5 shrink-0" />
                     {t.workspace?.llmModelsNoApiKey ??
-                      "Add your API key and save to enable model suggestions."}
+                      'Add your API key and save to enable model suggestions.'}
                   </span>
                 ) : (
-                  (t.workspace?.llmModelDesc ??
-                  "The model name to use for task extraction.")
+                  (t.workspace?.llmModelDesc ?? 'The model name to use for task extraction.')
                 )}
               </FieldDescription>
             </Field>
@@ -507,7 +465,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
             {/* Temperature */}
             <Field>
               <FieldLabel htmlFor="llm-temperature">
-                {t.settings?.llm_temperature ?? "Temperature"}
+                {t.settings?.llm_temperature ?? 'Temperature'}
               </FieldLabel>
               <div className="flex items-center gap-3">
                 <Slider
@@ -530,14 +488,14 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               </div>
               <FieldDescription>
                 {t.workspace?.llmTemperatureDesc ??
-                  "Lower values = more consistent output. Higher values = more creative."}
+                  'Lower values = more consistent output. Higher values = more creative.'}
               </FieldDescription>
             </Field>
 
             {/* Max Tokens */}
             <Field>
               <FieldLabel htmlFor="llm-max-tokens">
-                {t.settings?.llm_max_tokens ?? "Max Tokens"}
+                {t.settings?.llm_max_tokens ?? 'Max Tokens'}
               </FieldLabel>
               <Input
                 id="llm-max-tokens"
@@ -555,21 +513,21 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               />
               <FieldDescription>
                 {t.workspace?.llmMaxTokensDesc ??
-                  "Maximum number of tokens the model can generate per response."}
+                  'Maximum number of tokens the model can generate per response.'}
               </FieldDescription>
             </Field>
 
             {/* ── Provider-specific fields ── */}
-            {llmConfig.provider === "ollama" ? (
+            {llmConfig.provider === 'ollama' ? (
               /* Base URL — required for Ollama */
               <Field>
                 <FieldLabel htmlFor="llm-base-url">
-                  {t.settings?.llm_base_url ?? "Base URL"}
+                  {t.settings?.llm_base_url ?? 'Base URL'}
                 </FieldLabel>
                 <Input
                   id="llm-base-url"
                   type="text"
-                  value={llmConfig.baseUrl ?? ""}
+                  value={llmConfig.baseUrl ?? ''}
                   onChange={(e) =>
                     setLlmConfig((prev) => ({
                       ...prev,
@@ -579,8 +537,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                   placeholder="http://localhost:11434"
                 />
                 <FieldDescription>
-                  {t.workspace?.llmBaseUrlDesc ??
-                    "The URL where your Ollama instance is running."}
+                  {t.workspace?.llmBaseUrlDesc ?? 'The URL where your Ollama instance is running.'}
                 </FieldDescription>
               </Field>
             ) : (
@@ -588,16 +545,16 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                 {/* API Key — required for cloud providers */}
                 <Field>
                   <FieldLabel htmlFor="llm-api-key">
-                    {llmConfig.provider === "openai"
-                      ? (t.settings?.llm_openai_api_key ?? "API Key")
-                      : llmConfig.provider === "gemini"
-                        ? (t.settings?.llm_gemini_api_key ?? "API Key")
-                        : (t.settings?.llm_anthropic_api_key ?? "API Key")}
+                    {llmConfig.provider === 'openai'
+                      ? (t.settings?.llm_openai_api_key ?? 'API Key')
+                      : llmConfig.provider === 'gemini'
+                        ? (t.settings?.llm_gemini_api_key ?? 'API Key')
+                        : (t.settings?.llm_anthropic_api_key ?? 'API Key')}
                   </FieldLabel>
                   <Input
                     id="llm-api-key"
                     type="password"
-                    value={llmConfig.apiKey ?? ""}
+                    value={llmConfig.apiKey ?? ''}
                     onChange={(e) =>
                       setLlmConfig((prev) => ({
                         ...prev,
@@ -605,28 +562,28 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       }))
                     }
                     placeholder={
-                      llmConfig.provider === "openai"
-                        ? "sk-..."
-                        : llmConfig.provider === "gemini"
-                          ? "AIzaSyD-..."
-                          : "sk-ant-..."
+                      llmConfig.provider === 'openai'
+                        ? 'sk-...'
+                        : llmConfig.provider === 'gemini'
+                          ? 'AIzaSyD-...'
+                          : 'sk-ant-...'
                     }
                   />
                   <FieldDescription>
                     {t.workspace?.llmApiKeyDesc ??
-                      "Your API key for this provider. Stored encrypted at rest."}
+                      'Your API key for this provider. Stored encrypted at rest.'}
                   </FieldDescription>
                 </Field>
 
                 {/* Base URL — optional for cloud providers (proxy/custom endpoint) */}
                 <Field>
                   <FieldLabel htmlFor="llm-base-url">
-                    {t.settings?.llm_base_url ?? "Base URL"}
+                    {t.settings?.llm_base_url ?? 'Base URL'}
                   </FieldLabel>
                   <Input
                     id="llm-base-url"
                     type="text"
-                    value={llmConfig.baseUrl ?? ""}
+                    value={llmConfig.baseUrl ?? ''}
                     onChange={(e) =>
                       setLlmConfig((prev) => ({
                         ...prev,
@@ -634,14 +591,14 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       }))
                     }
                     placeholder={
-                      llmConfig.provider === "openai"
-                        ? "https://api.openai.com/v1"
-                        : "https://api.anthropic.com"
+                      llmConfig.provider === 'openai'
+                        ? 'https://api.openai.com/v1'
+                        : 'https://api.anthropic.com'
                     }
                   />
                   <FieldDescription>
                     {t.workspace?.llmBaseUrlCloudDesc ??
-                      "Optional. Leave empty to use the default API endpoint."}
+                      'Optional. Leave empty to use the default API endpoint.'}
                   </FieldDescription>
                 </Field>
               </>
@@ -649,21 +606,17 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
 
             {/* Save Button */}
             <div className="flex items-center gap-3 pt-1">
-              <Button
-                onClick={handleLLMSave}
-                disabled={llmSaving}
-                className="w-full sm:w-auto"
-              >
+              <Button onClick={handleLLMSave} disabled={llmSaving} className="w-full sm:w-auto">
                 {llmSaving ? (
                   <LoaderCircle className="h-4 w-4 animate-spin" />
-                ) : llmSaveResult === "success" ? (
+                ) : llmSaveResult === 'success' ? (
                   <Check className="h-4 w-4" />
-                ) : llmSaveResult === "error" ? (
+                ) : llmSaveResult === 'error' ? (
                   <X className="h-4 w-4" />
                 ) : null}
-                {llmSaveResult === "success"
-                  ? (t.workspace?.llmSaved ?? "Saved")
-                  : (t.settings?.llm_save ?? "Save LLM Configuration")}
+                {llmSaveResult === 'success'
+                  ? (t.workspace?.llmSaved ?? 'Saved')
+                  : (t.settings?.llm_save ?? 'Save LLM Configuration')}
               </Button>
             </div>
           </CardContent>
@@ -674,26 +627,24 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
           <CardHeader>
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-(--color-text-secondary)" />
-              <CardTitle>
-                {t.workspace?.promptTitle ?? "Prompt Configuration"}
-              </CardTitle>
+              <CardTitle>{t.workspace?.promptTitle ?? 'Prompt Configuration'}</CardTitle>
             </div>
             <CardDescription>
               {t.workspace?.promptDescription ??
-                "Customize the prompts used for task extraction in this workspace"}
+                'Customize the prompts used for task extraction in this workspace'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             {/* System Prompt */}
             <Field>
               <FieldLabel htmlFor="system-prompt">
-                {t.workspace?.systemPrompt ?? "System Prompt"}
+                {t.workspace?.systemPrompt ?? 'System Prompt'}
               </FieldLabel>
               <Textarea
                 id="system-prompt"
                 rows={8}
                 className="min-h-[11rem] w-full resize-y"
-                value={prompts.systemPrompt ?? ""}
+                value={prompts.systemPrompt ?? ''}
                 onChange={(e) =>
                   setPrompts((prev) => ({
                     ...prev,
@@ -702,7 +653,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                 }
                 placeholder={
                   t.workspace?.systemPromptPlaceholder ??
-                  "You are an expert software development lead who excels at breaking down user stories into clear, actionable development tasks."
+                  'You are an expert software development lead who excels at breaking down user stories into clear, actionable development tasks.'
                 }
               />
               <FieldDescription>
@@ -714,13 +665,13 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
             {/* Instruction Template */}
             <Field>
               <FieldLabel htmlFor="instruction-template">
-                {t.workspace?.instructionTemplate ?? "Instruction Template"}
+                {t.workspace?.instructionTemplate ?? 'Instruction Template'}
               </FieldLabel>
               <Textarea
                 id="instruction-template"
                 rows={12}
                 className="min-h-[16rem] w-full resize-y"
-                value={prompts.instructionTemplate ?? ""}
+                value={prompts.instructionTemplate ?? ''}
                 onChange={(e) =>
                   setPrompts((prev) => ({
                     ...prev,
@@ -729,12 +680,12 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                 }
                 placeholder={
                   t.workspace?.instructionTemplatePlaceholder ??
-                  "Break this user story into smaller development tasks..."
+                  'Break this user story into smaller development tasks...'
                 }
               />
               <FieldDescription>
                 {t.workspace?.instructionTemplateDesc ??
-                  "The instruction prompt with format guidelines and few-shot examples"}
+                  'The instruction prompt with format guidelines and few-shot examples'}
               </FieldDescription>
             </Field>
 
@@ -757,14 +708,14 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               >
                 {promptSaving ? (
                   <LoaderCircle className="h-4 w-4 animate-spin" />
-                ) : promptSaveResult === "success" ? (
+                ) : promptSaveResult === 'success' ? (
                   <Check className="h-4 w-4" />
-                ) : promptSaveResult === "error" ? (
+                ) : promptSaveResult === 'error' ? (
                   <X className="h-4 w-4" />
                 ) : null}
-                {promptSaveResult === "success"
-                  ? (t.workspace?.llmSaved ?? "Saved")
-                  : (t.workspace?.savePrompts ?? "Save Prompt Configuration")}
+                {promptSaveResult === 'success'
+                  ? (t.workspace?.llmSaved ?? 'Saved')
+                  : (t.workspace?.savePrompts ?? 'Save Prompt Configuration')}
               </Button>
             </div>
           </CardContent>

@@ -1,22 +1,19 @@
-"use client";
+'use client';
 
-import * as React from "react";
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
-import { AutoBreadcrumb } from "@/components/react/AutoBreadcrumb";
-import type { Locale } from "@/i18n/utils";
+import * as React from 'react';
+import { SidebarTrigger } from '@/components/ui/sidebar';
+import { Separator } from '@/components/ui/separator';
+import { AutoBreadcrumb } from '@/components/react/AutoBreadcrumb';
+import type { Locale } from '@/i18n/utils';
 
 interface DashboardHeaderProps {
   locale: Locale;
   currentPath: string;
 }
 
-export function DashboardHeader({
-  locale,
-  currentPath,
-}: DashboardHeaderProps) {
-  const cleanPath = currentPath.replace(/^\/(en|es)/, "") || "/";
-  const segments = cleanPath.split("/").filter(Boolean);
+export function DashboardHeader({ locale, currentPath }: DashboardHeaderProps) {
+  const cleanPath = currentPath.replace(/^\/(en|es)/, '') || '/';
+  const segments = cleanPath.split('/').filter(Boolean);
 
   return (
     <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--color-surface) px-3 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
@@ -25,10 +22,7 @@ export function DashboardHeader({
         <SidebarTrigger className="inline-flex" />
 
         {/* Vertical separator — desktop */}
-        <Separator
-          orientation="vertical"
-          className="hidden sm:block mx-0 my-auto h-4"
-        />
+        <Separator orientation="vertical" className="hidden sm:block mx-0 my-auto h-4" />
 
         {/* Breadcrumb — responsive classes handled by AutoBreadcrumb */}
         <div className="ml-1 min-w-0">

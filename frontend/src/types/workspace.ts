@@ -4,7 +4,7 @@ export interface Workspace {
   slug: string;
   icon?: string | null;
   ownerId: string;
-  role: "admin" | "member";
+  role: 'admin' | 'member';
   memberCount: number;
   createdAt: string;
   updatedAt: string;

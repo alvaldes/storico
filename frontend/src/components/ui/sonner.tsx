@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
-import { Toaster as Sonner, type ToasterProps } from "sonner";
+import { useEffect, useState } from 'react';
+import { Toaster as Sonner, type ToasterProps } from 'sonner';
 import {
   CircleCheckIcon,
   InfoIcon,
   TriangleAlertIcon,
   OctagonXIcon,
   Loader2Icon,
-} from "lucide-react";
+} from 'lucide-react';
 
 /**
  * Toaster component — follows the shadcn/ui pattern (see shadcn/ui docs,
@@ -41,23 +41,23 @@ import {
  * @see https://sonner.emilkowal.ski
  */
 const Toaster = ({ ...props }: ToasterProps) => {
-  const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
 
   // Detect theme from <html> class since we don't use next-themes ThemeProvider.
   useEffect(() => {
     const html = document.documentElement;
     const update = () => {
-      setTheme(html.classList.contains("dark") ? "dark" : "light");
+      setTheme(html.classList.contains('dark') ? 'dark' : 'light');
     };
     update();
     const observer = new MutationObserver(update);
-    observer.observe(html, { attributes: true, attributeFilter: ["class"] });
+    observer.observe(html, { attributes: true, attributeFilter: ['class'] });
     return () => observer.disconnect();
   }, []);
 
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={theme as ToasterProps['theme']}
       className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4 text-emerald-500" />,
@@ -70,21 +70,21 @@ const Toaster = ({ ...props }: ToasterProps) => {
       offset="80px"
       style={
         {
-          "--normal-bg": "var(--color-popover)",
-          "--normal-text": "var(--color-popover-foreground)",
-          "--normal-border": "var(--color-border)",
-          "--border-radius": "var(--radius)",
+          '--normal-bg': 'var(--color-popover)',
+          '--normal-text': 'var(--color-popover-foreground)',
+          '--normal-border': 'var(--color-border)',
+          '--border-radius': 'var(--radius)',
           // Error toast custom styles
-          "--error-bg": "var(--color-destructive)",
-          "--error-text": "var(--color-destructive-foreground)",
-          "--error-border": "var(--color-destructive)",
+          '--error-bg': 'var(--color-destructive)',
+          '--error-text': 'var(--color-destructive-foreground)',
+          '--error-border': 'var(--color-destructive)',
         } as React.CSSProperties
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast",
-          error: "border-destructive/50 shadow-lg shadow-destructive/10",
-          description: "text-destructive-foreground/90",
+          toast: 'cn-toast',
+          error: 'border-destructive/50 shadow-lg shadow-destructive/10',
+          description: 'text-destructive-foreground/90',
         },
       }}
       {...props}

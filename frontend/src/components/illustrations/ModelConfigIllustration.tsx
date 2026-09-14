@@ -1,9 +1,6 @@
-import type { SVGProps } from "react";
+import type { SVGProps } from 'react';
 
-export function ModelConfigIllustration({
-  className,
-  ...props
-}: SVGProps<SVGSVGElement>) {
+export function ModelConfigIllustration({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -17,22 +14,12 @@ export function ModelConfigIllustration({
       <g fill="#090814" transform="translate(516.862 94.287)">
         <path d="M.905 2.299 2.331.801l97.85 93.16-1.425 1.497z" />
         <path d="m100.342 83.857-2.066.125.624 10.178-10.2-.122-.022 2.069 12.42.147ZM12.417.148l-.022 2.069-10.2-.122.624 10.178-2.064.121L0-.006Z" />
-        <circle
-          cx="11.374"
-          cy="11.374"
-          r="11.374"
-          transform="translate(39.173 36.754)"
-        />
+        <circle cx="11.374" cy="11.374" r="11.374" transform="translate(39.173 36.754)" />
       </g>
       <g fill="#090814" transform="translate(128.447 94.287)">
         <path d="M.91 93.96 98.76.8l1.427 1.499L2.336 95.458z" />
         <path d="m0 96.253 12.42-.147-.023-2.069-10.2.122.624-10.178-2.066-.125ZM101.099 0l-.756 12.4-2.066-.125.622-10.178-10.2.122L88.677.15Z" />
-        <circle
-          cx="11.374"
-          cy="11.374"
-          r="11.374"
-          transform="translate(39.176 36.754)"
-        />
+        <circle cx="11.374" cy="11.374" r="11.374" transform="translate(39.176 36.754)" />
       </g>
       <path
         fill="#3f3d56"

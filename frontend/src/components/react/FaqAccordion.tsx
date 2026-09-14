@@ -1,19 +1,19 @@
-"use client"
+'use client';
 
 import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
   AccordionContent,
-} from "@/components/ui/accordion"
+} from '@/components/ui/accordion';
 
 export interface FaqItem {
-  question: string
-  answer: string
+  question: string;
+  answer: string;
 }
 
 interface FaqAccordionProps {
-  items: FaqItem[]
+  items: FaqItem[];
 }
 
 export function FaqAccordion({ items }: FaqAccordionProps) {
@@ -23,17 +23,17 @@ export function FaqAccordion({ items }: FaqAccordionProps) {
         {items.map((item, index) => (
           <AccordionItem
             key={index}
-            className={index === 0 ? "rounded-t-2xl" : index === items.length - 1 ? "rounded-b-2xl" : ""}
+            className={
+              index === 0 ? 'rounded-t-2xl' : index === items.length - 1 ? 'rounded-b-2xl' : ''
+            }
           >
             <AccordionTrigger className="px-6 py-5 md:px-8 md:py-6">
               {item.question}
             </AccordionTrigger>
-            <AccordionContent className="px-6 pb-5 md:px-8 md:pb-6">
-              {item.answer}
-            </AccordionContent>
+            <AccordionContent className="px-6 pb-5 md:px-8 md:pb-6">{item.answer}</AccordionContent>
           </AccordionItem>
         ))}
       </Accordion>
     </div>
-  )
+  );
 }

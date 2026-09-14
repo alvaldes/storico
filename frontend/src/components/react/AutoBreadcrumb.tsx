@@ -1,4 +1,4 @@
-import { useEffect, useState, Fragment, type ReactNode } from "react";
+import { useEffect, useState, Fragment, type ReactNode } from 'react';
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -7,25 +7,25 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
   BreadcrumbEllipsis,
-} from "@/components/ui/breadcrumb";
-import { localizedPath, useTranslations, type Locale } from "@/i18n/utils";
-import { useProjectStore } from "@/stores/projectStore";
-import { useStoryStore } from "@/stores/storyStore";
-import { useWorkspaceStore } from "@/stores/workspaceStore";
-import { getProject } from "@/lib/projects-api";
-import { getStory } from "@/lib/stories-api";
-import { House } from "lucide-react";
-import { shortUUID, UUID_RE } from "@/lib/utils";
+} from '@/components/ui/breadcrumb';
+import { localizedPath, useTranslations, type Locale } from '@/i18n/utils';
+import { useProjectStore } from '@/stores/projectStore';
+import { useStoryStore } from '@/stores/storyStore';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { getProject } from '@/lib/projects-api';
+import { getStory } from '@/lib/stories-api';
+import { House } from 'lucide-react';
+import { shortUUID, UUID_RE } from '@/lib/utils';
 
 // Maps path segments to nav translation keys
 const segmentLabelKey: Record<string, string> = {
-  dashboard: "dashboard",
-  stories: "stories",
-  kanban: "kanban",
-  export: "export",
-  settings: "settings",
-  account: "account",
-  projects: "projects",
+  dashboard: 'dashboard',
+  stories: 'stories',
+  kanban: 'kanban',
+  export: 'export',
+  settings: 'settings',
+  account: 'account',
+  projects: 'projects',
 };
 
 interface BreadcrumbItem {
@@ -43,15 +43,15 @@ function LoadingDots() {
     <span
       className="inline-flex text-muted-foreground/70"
       style={{
-        width: "24px",
-        aspectRatio: "2",
+        width: '24px',
+        aspectRatio: '2',
         background: [
-          "no-repeat radial-gradient(circle closest-side,currentColor 90%,transparent) 0% 50%",
-          "no-repeat radial-gradient(circle closest-side,currentColor 90%,transparent) 50% 50%",
-          "no-repeat radial-gradient(circle closest-side,currentColor 90%,transparent) 100% 50%",
-        ].join(","),
-        backgroundSize: "calc(100%/3) 50%",
-        animation: "loading-dots 1s infinite linear",
+          'no-repeat radial-gradient(circle closest-side,currentColor 90%,transparent) 0% 50%',
+          'no-repeat radial-gradient(circle closest-side,currentColor 90%,transparent) 50% 50%',
+          'no-repeat radial-gradient(circle closest-side,currentColor 90%,transparent) 100% 50%',
+        ].join(','),
+        backgroundSize: 'calc(100%/3) 50%',
+        animation: 'loading-dots 1s infinite linear',
       }}
     />
   );
@@ -60,14 +60,10 @@ function LoadingDots() {
 export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
   const t = useTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
-  const [resolvedLabels, setResolvedLabels] = useState<
-    Record<string, string>
-  >({});
+  const [resolvedLabels, setResolvedLabels] = useState<Record<string, string>>({});
 
   // UUIDs that failed all resolution attempts — fall back to shortUUID
-  const [resolveErrors, setResolveErrors] = useState<
-    Record<string, boolean>
-  >({});
+  const [resolveErrors, setResolveErrors] = useState<Record<string, boolean>>({});
 
   /**
    * When the last URL segment is a story UUID (not a project UUID),
@@ -87,16 +83,14 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
 
     // Skip UUIDs that are workspace IDs (segment right after "workspaces")
     const uuidSegments = segments.filter(
-      (seg, i) => UUID_RE.test(seg) && !(i > 0 && segments[i - 1] === "workspaces"),
+      (seg, i) => UUID_RE.test(seg) && !(i > 0 && segments[i - 1] === 'workspaces'),
     );
     if (uuidSegments.length === 0) return;
 
     // If no workspace context yet, mark all UUIDs as errors so they
     // fall back to shortUUID instead of showing LoadingDots forever
     if (!workspaceId) {
-      setResolveErrors(
-        Object.fromEntries(uuidSegments.map((id) => [id, true])),
-      );
+      setResolveErrors(Object.fromEntries(uuidSegments.map((id) => [id, true])));
       return;
     }
 
@@ -107,7 +101,7 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
       // Detect if the UUID follows "stories" in the path — it's a story ID,
       // not a project ID. Skip the "try as project" guess to avoid a 404.
       const segIndex = segments.indexOf(id);
-      const isStoryId = segIndex > 0 && segments[segIndex - 1] === "stories";
+      const isStoryId = segIndex > 0 && segments[segIndex - 1] === 'stories';
 
       if (isStoryId) {
         // Resolve as story context directly
@@ -179,18 +173,14 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
 
     // Detect story detail page synchronously from URL pattern: /stories/:uuid
     const isStoryDetail =
-      segments.length >= 2 &&
-      segments[segments.length - 2] === "stories" &&
-      UUID_RE.test(lastSeg);
+      segments.length >= 2 && segments[segments.length - 2] === 'stories' && UUID_RE.test(lastSeg);
 
     if (isStoryDetail) {
       return [
         // No "Dashboard" text — the house icon already represents it
         {
           label: storyProject?.projectName ?? <LoadingDots />,
-          href: storyProject
-            ? localizedPath(`/projects/${storyProject.projectId}`, locale)
-            : null,
+          href: storyProject ? localizedPath(`/projects/${storyProject.projectId}`, locale) : null,
         },
         { label: shortUUID(lastSeg), href: null },
       ];
@@ -202,18 +192,15 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
     // — sidebar already shows the workspace context
     return segments
       .filter((seg, i, arr) => {
-        if (seg === "dashboard") return false;
-        if (seg === "workspaces") return false;
+        if (seg === 'dashboard') return false;
+        if (seg === 'workspaces') return false;
         // Skip the segment right after "workspaces" (the workspace ID)
-        if (i > 0 && arr[i - 1] === "workspaces") return false;
+        if (i > 0 && arr[i - 1] === 'workspaces') return false;
         return true;
       })
       .map((seg) => {
         const segIndex = segments.indexOf(seg);
-        const href = localizedPath(
-          "/" + segments.slice(0, segIndex + 1).join("/"),
-          locale,
-        );
+        const href = localizedPath('/' + segments.slice(0, segIndex + 1).join('/'), locale);
         return {
           label: segmentLabel(seg),
           href: segIndex === segments.length - 1 ? null : href,
@@ -230,10 +217,7 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
       <BreadcrumbList>
         {/* House icon — always visible */}
         <BreadcrumbItem>
-          <BreadcrumbLink
-            href={localizedPath("/dashboard", locale)}
-            aria-label={t.nav.dashboard}
-          >
+          <BreadcrumbLink href={localizedPath('/dashboard', locale)} aria-label={t.nav.dashboard}>
             <House className="h-4 w-4" />
           </BreadcrumbLink>
         </BreadcrumbItem>
@@ -245,9 +229,7 @@ export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
               <BreadcrumbSeparator className="hidden md:block" />
               <BreadcrumbItem className="hidden md:block">
                 {item.href ? (
-                  <BreadcrumbLink href={item.href}>
-                    {item.label}
-                  </BreadcrumbLink>
+                  <BreadcrumbLink href={item.href}>{item.label}</BreadcrumbLink>
                 ) : (
                   <BreadcrumbPage>{item.label}</BreadcrumbPage>
                 )}

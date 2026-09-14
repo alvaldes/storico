@@ -2,7 +2,13 @@ import { api, ApiRequestError } from './api';
 import { toCamelCase, toSnakeCase } from './utils';
 import type { Task, TaskStatus, RawTaskItem } from '@/types/task';
 import { getAllowedTaskTransitions, isValidTaskTransition } from '@/types/task';
-import type { ExtractionResponse, ExtractResponse, ExtractRequest, ExtractionTask, ExtractionUserStory } from '@/types/extraction';
+import type {
+  ExtractionResponse,
+  ExtractResponse,
+  ExtractRequest,
+  ExtractionTask,
+  ExtractionUserStory,
+} from '@/types/extraction';
 import type { UserStory } from '@/types/story';
 import type { PaginatedResponse } from './projects-api';
 
@@ -86,10 +92,7 @@ export async function updateTask(
     // For now, we'll let the backend validate and catch the error
   }
 
-  const raw = await api.put<RawTaskItem>(
-    `/api/v1/tasks/${taskId}`,
-    toSnakeCase(fields),
-  );
+  const raw = await api.put<RawTaskItem>(`/api/v1/tasks/${taskId}`, toSnakeCase(fields));
   return mapTaskItem(raw);
 }
 
@@ -134,9 +137,7 @@ export async function startExtraction(
  * generated tasks.
  * Now includes ``user_story_status`` to show the UserStory lifecycle state.
  */
-export async function getExtractionStatus(
-  extractionId: string,
-): Promise<{
+export async function getExtractionStatus(extractionId: string): Promise<{
   id: string;
   userStoryId: string;
   modelUsed: string;
@@ -186,7 +187,12 @@ export async function extractTasks(
     const tasks = await listTasks(storyId);
     return { ...result, status: 'completed', tasks };
   }
-  return { ...result, status: pollStatus.status, tasks: [], errorInfo: pollStatus.errorInfo ?? undefined };
+  return {
+    ...result,
+    status: pollStatus.status,
+    tasks: [],
+    errorInfo: pollStatus.errorInfo ?? undefined,
+  };
 }
 
 async function pollUntilComplete(

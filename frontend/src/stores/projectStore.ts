@@ -44,9 +44,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
     set({ loading: true, error: null });
     try {
-      const response = await projectsInflight.run(
-        `projects:${ws.id}`,
-        () => api.listProjects(ws.id, 1, 100),
+      const response = await projectsInflight.run(`projects:${ws.id}`, () =>
+        api.listProjects(ws.id, 1, 100),
       );
       set({ projects: response.items, loading: false });
     } catch (err) {

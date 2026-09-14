@@ -663,10 +663,10 @@
       "endpoints_title": "Endpoints",
       "endpoint_extract_desc": "Extrae tareas de una historia de usuario.",
       "endpoint_batch_desc": "Procesa múltiples historias de usuario de forma asíncrona.",
-    "endpoint_status_desc": "Verifica el estado de una extracción batch asíncrona.",
-    "aria_openapi": "Documentación de OpenAPI (se abre en nueva pestaña)",
-    "aria_swagger": "Documentación de Swagger (se abre en nueva pestaña)",
-    "footer": "Para esquemas detallados de solicitud/respuesta, inicia el backend y visita",
+      "endpoint_status_desc": "Verifica el estado de una extracción batch asíncrona.",
+      "aria_openapi": "Documentación de OpenAPI (se abre en nueva pestaña)",
+      "aria_swagger": "Documentación de Swagger (se abre en nueva pestaña)",
+      "footer": "Para esquemas detallados de solicitud/respuesta, inicia el backend y visita",
       "footer_end": "para la documentación interactiva de Swagger."
     },
     "status": {

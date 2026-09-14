@@ -1,22 +1,22 @@
-import { create } from 'zustand'
+import { create } from 'zustand';
 
 export interface AuthUser {
-  id: string
-  email: string
-  name: string
-  avatar_url?: string
-  authProvider?: string
+  id: string;
+  email: string;
+  name: string;
+  avatar_url?: string;
+  authProvider?: string;
 }
 
 interface AuthState {
-  user: AuthUser | null
-  loading: boolean
-  isFirstLogin: boolean
-  setUser: (user: AuthUser | null) => void
-  setIsFirstLogin: (flag: boolean) => void
-  setOnboardingDone: () => void
-  setLoading: (loading: boolean) => void
-  clear: () => void
+  user: AuthUser | null;
+  loading: boolean;
+  isFirstLogin: boolean;
+  setUser: (user: AuthUser | null) => void;
+  setIsFirstLogin: (flag: boolean) => void;
+  setOnboardingDone: () => void;
+  setLoading: (loading: boolean) => void;
+  clear: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -28,4 +28,4 @@ export const useAuthStore = create<AuthState>((set) => ({
   setOnboardingDone: () => set({ isFirstLogin: false }),
   setLoading: (loading) => set({ loading }),
   clear: () => set({ user: null, loading: false, isFirstLogin: false }),
-}))
+}));

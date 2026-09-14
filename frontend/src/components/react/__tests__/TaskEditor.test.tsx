@@ -132,9 +132,7 @@ describe('TaskEditor', () => {
     };
     vi.mocked(api.updateTask).mockResolvedValue(serverResponse);
 
-    render(
-      <TaskEditor task={mockTask} open={true} onOpenChange={onOpenChange} locale="en" />,
-    );
+    render(<TaskEditor task={mockTask} open={true} onOpenChange={onOpenChange} locale="en" />);
 
     await screen.findByText('Edit Task');
 
@@ -186,9 +184,7 @@ describe('TaskEditor', () => {
 
     vi.mocked(api.updateTask).mockRejectedValue(new Error('Network error'));
 
-    render(
-      <TaskEditor task={mockTask} open={true} onOpenChange={onOpenChange} locale="en" />,
-    );
+    render(<TaskEditor task={mockTask} open={true} onOpenChange={onOpenChange} locale="en" />);
 
     await screen.findByText('Edit Task');
 
@@ -231,9 +227,7 @@ describe('TaskEditor', () => {
 
     // Rerender with a different task (simulating opening editor for another task)
     const otherTask: Task = { ...mockTask, id: 'task-2', title: 'Other task' };
-    render(
-      <TaskEditor task={otherTask} open={true} onOpenChange={vi.fn()} locale="en" />,
-    );
+    render(<TaskEditor task={otherTask} open={true} onOpenChange={vi.fn()} locale="en" />);
 
     // Title should be reset to the new task's title
     await waitFor(() => {

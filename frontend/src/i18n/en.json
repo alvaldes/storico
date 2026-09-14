@@ -663,10 +663,10 @@
       "endpoints_title": "Endpoints",
       "endpoint_extract_desc": "Extract tasks from a single user story.",
       "endpoint_batch_desc": "Process multiple user stories asynchronously.",
-    "endpoint_status_desc": "Check the status of an async batch extraction.",
-    "aria_openapi": "OpenAPI documentation (opens in new tab)",
-    "aria_swagger": "Swagger documentation (opens in new tab)",
-    "footer": "For detailed request/response schemas, start the backend and visit",
+      "endpoint_status_desc": "Check the status of an async batch extraction.",
+      "aria_openapi": "OpenAPI documentation (opens in new tab)",
+      "aria_swagger": "Swagger documentation (opens in new tab)",
+      "footer": "For detailed request/response schemas, start the backend and visit",
       "footer_end": "for interactive Swagger documentation."
     },
     "status": {

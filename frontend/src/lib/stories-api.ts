@@ -6,10 +6,7 @@ import type { PaginatedResponse } from './projects-api';
 
 /** Create a new user story. */
 export async function createStory(params: CreateStoryParams): Promise<UserStory> {
-  const raw = await api.post<Record<string, unknown>>(
-    '/api/v1/stories/',
-    toSnakeCase(params),
-  );
+  const raw = await api.post<Record<string, unknown>>('/api/v1/stories/', toSnakeCase(params));
   return toCamelCase<UserStory>(raw);
 }
 
@@ -38,14 +35,8 @@ export async function getStory(id: string): Promise<UserStory> {
 }
 
 /** Update an existing user story. */
-export async function updateStory(
-  id: string,
-  params: UpdateStoryParams,
-): Promise<UserStory> {
-  const raw = await api.put<Record<string, unknown>>(
-    `/api/v1/stories/${id}`,
-    toSnakeCase(params),
-  );
+export async function updateStory(id: string, params: UpdateStoryParams): Promise<UserStory> {
+  const raw = await api.put<Record<string, unknown>>(`/api/v1/stories/${id}`, toSnakeCase(params));
   return toCamelCase<UserStory>(raw);
 }
 

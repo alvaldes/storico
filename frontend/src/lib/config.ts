@@ -7,18 +7,18 @@
  */
 
 function required(name: string): string {
-  const value = import.meta.env[name]
+  const value = import.meta.env[name];
   if (!value) {
     throw new Error(
       `Missing required environment variable: ${name}\n` +
         `Check frontend/.env or frontend/.env.example for the list of required variables.`,
-    )
+    );
   }
-  return value
+  return value;
 }
 
 function optional(name: string, fallback: string): string {
-  return import.meta.env[name] || fallback
+  return import.meta.env[name] || fallback;
 }
 
 export const config = {
@@ -38,6 +38,6 @@ export const config = {
     clientId: optional('GOOGLE_CLIENT_ID', ''),
     clientSecret: optional('GOOGLE_CLIENT_SECRET', ''),
   },
-} as const
+} as const;
 
-export type Config = typeof config
+export type Config = typeof config;

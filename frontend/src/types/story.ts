@@ -1,5 +1,6 @@
 /** User story extraction lifecycle status — matches backend UserStoryStatus enum. */
-export type UserStoryStatus = 'pending_extraction' | 'extracting' | 'extracted' | 'failed_extraction';
+export type UserStoryStatus =
+  'pending_extraction' | 'extracting' | 'extracted' | 'failed_extraction';
 
 /** All valid UserStoryStatus values in lifecycle order. */
 export const USER_STORY_STATUSES: UserStoryStatus[] = [
@@ -28,7 +29,7 @@ export const VALID_USER_STORY_TRANSITIONS: Record<UserStoryStatus, UserStoryStat
 /** Check if a UserStoryStatus transition is valid. */
 export function isValidUserStoryTransition(
   current: UserStoryStatus,
-  next: UserStoryStatus
+  next: UserStoryStatus,
 ): boolean {
   return VALID_USER_STORY_TRANSITIONS[current]?.includes(next) ?? false;
 }
