@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, AlertCircle, X, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useTranslations, type Locale } from "@/i18n/utils";
+import { type Locale } from "@/i18n/utils";
 
 export interface BackendError {
   /** Friendly/user-facing message (can be translated) */
@@ -20,6 +20,11 @@ export interface BackendError {
   onRetry?: () => void;
   /** Optional dismiss handler */
   onDismiss?: () => void;
+  /**
+   * Locale for the component's own copy (it called useTranslations before
+   * the placeholder rewrite in 353224f). Callers already pass it.
+   */
+  locale?: Locale;
 }
 
 /**
