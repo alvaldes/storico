@@ -4,15 +4,6 @@ export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
 /** All valid TaskStatus values in Kanban flow order. */
 export const TASK_STATUSES: TaskStatus[] = ['backlog', 'todo', 'in_progress', 'review', 'done'];
 
-/** Human-readable labels for each TaskStatus (i18n keys). */
-export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  backlog: 'kanban.columns.backlog',
-  todo: 'kanban.columns.todo',
-  in_progress: 'kanban.columns.in_progress',
-  review: 'kanban.columns.review',
-  done: 'kanban.columns.done',
-};
-
 /** Valid Kanban transitions per column. */
 export const VALID_TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   backlog: ['backlog', 'todo'],

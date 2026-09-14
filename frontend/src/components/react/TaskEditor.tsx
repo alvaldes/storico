@@ -17,7 +17,7 @@ import { useTranslations, type Locale } from '@/i18n/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import { toast } from 'sonner';
 import type { Task, TaskStatus } from '@/types/task';
-import { getAllowedTaskTransitions, VALID_TASK_TRANSITIONS, TASK_STATUS_LABELS, TASK_STATUSES } from '@/types/task';
+import { getAllowedTaskTransitions, TASK_STATUSES } from '@/types/task';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import { ApiRequestError } from '@/lib/api';
 
@@ -246,7 +246,7 @@ export function TaskEditor({
                   disabled={!isValidStatus(s)}
                   className={isValidStatus(s) ? '' : 'text-muted-foreground/50'}
                 >
-                  {isValidStatus(s) ? '✓ ' : '✗ '} {t(TASK_STATUS_LABELS[s])} {isValidStatus(s) ? '' : ` (${t('taskEditor.invalid_transition')})`}
+                  {isValidStatus(s) ? '✓ ' : '✗ '} {t.kanban.columns[s]} {isValidStatus(s) ? '' : ` (${t.taskEditor.invalid_transition})`}
                 </option>
               ))}
             </select>

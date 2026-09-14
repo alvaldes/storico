@@ -1,14 +1,14 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import { KanbanColumn } from '@/components/react/KanbanColumn';
 import { DndErrorBoundary } from '@/components/react/DndErrorBoundary';
 import { useTaskStore } from '@/stores/taskStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useTranslations, type Locale } from '@/i18n/utils';
-import { Loader2, AlertCircle, Info } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Task, TaskStatus } from '@/types/task';
-import { isValidTaskTransition, getAllowedTaskTransitions, VALID_TASK_TRANSITIONS, TASK_STATUSES, TASK_STATUS_LABELS } from '@/types/task';
+import { getAllowedTaskTransitions, TASK_STATUSES } from '@/types/task';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import { ApiRequestError } from '@/lib/api';
 
@@ -31,10 +31,8 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   const {
     workspaceTasks,
     loading,
-    error,
     fetchTasksForWorkspace,
     updateTaskStatus,
-    allowedTransitions,
   } = useTaskStore();
 
   const [initialLoad, setInitialLoad] = useState(true);
@@ -47,15 +45,6 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   });
   const [invalidDropToast, setInvalidDropToast] = useState<InvalidDropToast>({ show: false, message: '', allowed: [] });
   const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
-
-  // Pre-compute allowed transitions for each task
-  const taskAllowedTransitions = useMemo(() => {
-    const result: Record<string, TaskStatus[]> = {};
-    for (const task of workspaceTasks) {
-      result[task.id] = getAllowedTaskTransitions(task.status);
-    }
-    return result;
-  }, [workspaceTasks]);
 
   // Fetch tasks on mount
   useEffect(() => {
@@ -147,10 +136,13 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
       const allowed = getAllowedTaskTransitions(task.status);
       if (!allowed.includes(destCol)) {
         // Show toast with explanation
-        const allowedLabels = allowed.map((s) => t(TASK_STATUS_LABELS[s])).join(', ');
+        const allowedLabels = allowed.map((s) => t.kanban.columns[s]).join(', ');
         setInvalidDropToast({
           show: true,
-          message: t('kanban.invalid_drop', { from: t(TASK_STATUS_LABELS[task.status]), to: t(TASK_STATUS_LABELS[destCol]), allowed: allowedLabels }),
+          message: t.kanban.invalid_drop
+            .replace('{from}', t.kanban.columns[task.status])
+            .replace('{to}', t.kanban.columns[destCol])
+            .replace('{allowed}', allowedLabels),
           allowed,
         });
         setTimeout(() => setInvalidDropToast({ show: false, message: '', allowed: [] }), 5000);
@@ -174,10 +166,13 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
         setLocalTasks({ ...localTasks });
         if (err instanceof Error && 'errorCode' in err && (err as any).errorCode === 'INVALID_STATE_TRANSITION') {
           const apiError = err as any;
-          const allowedLabels = apiError.allowedTransitions.map((s: string) => t(TASK_STATUS_LABELS[s as TaskStatus])).join(', ');
+          const allowedLabels = apiError.allowedTransitions.map((s: string) => t.kanban.columns[s as TaskStatus]).join(', ');
           setInvalidDropToast({
             show: true,
-            message: t('kanban.backend_invalid_transition', { from: t(TASK_STATUS_LABELS[task.status]), to: t(TASK_STATUS_LABELS[destCol]), allowed: allowedLabels }),
+            message: t.kanban.backend_invalid_transition
+              .replace('{from}', t.kanban.columns[task.status])
+              .replace('{to}', t.kanban.columns[destCol])
+              .replace('{allowed}', allowedLabels),
             allowed: apiError.allowedTransitions,
           });
           setTimeout(() => setInvalidDropToast({ show: false, message: '', allowed: [] }), 5000);
@@ -228,7 +223,7 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
           <div className="flex items-start gap-3 rounded-lg border border-destructive bg-destructive/10 p-4 text-destructive shadow-lg">
             <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-sm font-medium">{t('kanban.invalid_drop_title')}</p>
+              <p className="text-sm font-medium">{t.kanban.invalid_drop_title}</p>
               <p className="mt-1 text-sm text-destructive/90">{invalidDropToast.message}</p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => setInvalidDropToast({ show: false, message: '', allowed: [] })}>
@@ -254,7 +249,7 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
                   <KanbanColumn
                     key={colId}
                     columnId={colId}
-                    title={t(TASK_STATUS_LABELS[colId])}
+                    title={t.kanban.columns[colId]}
                     tasks={localTasks[colId]}
                     locale={locale}
                   />
