@@ -25,9 +25,7 @@ class TestUserStoryStateMachine:
         )
 
     def test_extracting_to_extracted_allowed(self) -> None:
-        assert validate_user_story_transition(
-            UserStoryStatus.EXTRACTING, UserStoryStatus.EXTRACTED
-        )
+        assert validate_user_story_transition(UserStoryStatus.EXTRACTING, UserStoryStatus.EXTRACTED)
 
     def test_extracting_to_failed_extraction_allowed(self) -> None:
         assert validate_user_story_transition(
@@ -37,9 +35,7 @@ class TestUserStoryStateMachine:
     def test_extracted_is_terminal(self) -> None:
         for next_status in UserStoryStatus:
             if next_status != UserStoryStatus.EXTRACTED:
-                assert not validate_user_story_transition(
-                    UserStoryStatus.EXTRACTED, next_status
-                )
+                assert not validate_user_story_transition(UserStoryStatus.EXTRACTED, next_status)
 
     def test_failed_extraction_is_terminal(self) -> None:
         for next_status in UserStoryStatus:
@@ -121,7 +117,6 @@ class TestTaskStateMachine:
     def test_get_allowed_transitions_returns_correct_sets(self) -> None:
         assert get_allowed_task_transitions(TaskStatus.BACKLOG) == {
             TaskStatus.TODO,
-            TaskStatus.BACKLOG,
         }
         assert get_allowed_task_transitions(TaskStatus.TODO) == {
             TaskStatus.IN_PROGRESS,
@@ -141,11 +136,13 @@ class TestTaskStateMachine:
         for status in TaskStatus:
             assert status in VALID_TASK_TRANSITIONS
 
-    def test_self_loop_on_backlog_allowed(self) -> None:
-        """Idempotent transition BACKLOG -> BACKLOG should be allowed."""
-        assert validate_task_transition(TaskStatus.BACKLOG, TaskStatus.BACKLOG)
+    def test_no_op_is_always_allowed(self) -> None:
+        """Staying in the same status is not a transition and is always valid.
 
-    def test_self_loop_on_todo_not_allowed_by_default(self) -> None:
-        """TODO -> TODO not explicitly allowed (would need explicit design decision)."""
-        # Current design doesn't include self-loops except BACKLOG
-        assert not validate_task_transition(TaskStatus.TODO, TaskStatus.TODO)
+        A task edit PUT may echo the current status, so no status may reject
+        its own no-op. The table only encodes real transitions.
+        """
+        for status in TaskStatus:
+            assert validate_task_transition(status, status), (
+                f"No-op {status.value} -> {status.value} must be allowed"
+            )

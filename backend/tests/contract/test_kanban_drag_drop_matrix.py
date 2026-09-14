@@ -22,6 +22,7 @@ from storico.domain.validators.state_machine import validate_task_transition
 @dataclass(frozen=True)
 class KanbanTransition:
     """Single Kanban drag-drop test case."""
+
     from_column: TaskStatus
     to_column: TaskStatus
     expected: Literal["allow", "reject"]
@@ -35,7 +36,7 @@ KANBAN_TEST_MATRIX: list[KanbanTransition] = [
         from_column=TaskStatus.BACKLOG,
         to_column=TaskStatus.BACKLOG,
         expected="allow",
-        description="Idempotent drop on same column",
+        description="No-op: staying in the same column is not a transition",
     ),
     KanbanTransition(
         from_column=TaskStatus.BACKLOG,
@@ -61,7 +62,6 @@ KANBAN_TEST_MATRIX: list[KanbanTransition] = [
         expected="reject",
         description="Cannot complete without any work",
     ),
-
     # TODO (source)
     KanbanTransition(
         from_column=TaskStatus.TODO,
@@ -72,8 +72,8 @@ KANBAN_TEST_MATRIX: list[KanbanTransition] = [
     KanbanTransition(
         from_column=TaskStatus.TODO,
         to_column=TaskStatus.TODO,
-        expected="reject",
-        description="Idempotent drop on same column (not explicitly allowed)",
+        expected="allow",
+        description="No-op: staying in the same column is not a transition",
     ),
     KanbanTransition(
         from_column=TaskStatus.TODO,
@@ -93,7 +93,6 @@ KANBAN_TEST_MATRIX: list[KanbanTransition] = [
         expected="reject",
         description="Cannot complete without IN_PROGRESS and REVIEW",
     ),
-
     # IN_PROGRESS (source)
     KanbanTransition(
         from_column=TaskStatus.IN_PROGRESS,
@@ -110,8 +109,8 @@ KANBAN_TEST_MATRIX: list[KanbanTransition] = [
     KanbanTransition(
         from_column=TaskStatus.IN_PROGRESS,
         to_column=TaskStatus.IN_PROGRESS,
-        expected="reject",
-        description="Idempotent drop on same column (not explicitly allowed)",
+        expected="allow",
+        description="No-op: staying in the same column is not a transition",
     ),
     KanbanTransition(
         from_column=TaskStatus.IN_PROGRESS,
@@ -125,7 +124,6 @@ KANBAN_TEST_MATRIX: list[KanbanTransition] = [
         expected="reject",
         description="Cannot skip REVIEW column",
     ),
-
     # REVIEW (source)
     KanbanTransition(
         from_column=TaskStatus.REVIEW,
@@ -148,8 +146,8 @@ KANBAN_TEST_MATRIX: list[KanbanTransition] = [
     KanbanTransition(
         from_column=TaskStatus.REVIEW,
         to_column=TaskStatus.REVIEW,
-        expected="reject",
-        description="Idempotent drop on same column (not explicitly allowed)",
+        expected="allow",
+        description="No-op: staying in the same column is not a transition",
     ),
     KanbanTransition(
         from_column=TaskStatus.REVIEW,
@@ -157,7 +155,6 @@ KANBAN_TEST_MATRIX: list[KanbanTransition] = [
         expected="allow",
         description="Accept and complete",
     ),
-
     # DONE (source) — all reject (terminal state)
     KanbanTransition(
         from_column=TaskStatus.DONE,
@@ -186,8 +183,8 @@ KANBAN_TEST_MATRIX: list[KanbanTransition] = [
     KanbanTransition(
         from_column=TaskStatus.DONE,
         to_column=TaskStatus.DONE,
-        expected="reject",
-        description="DONE is terminal — cannot move",
+        expected="allow",
+        description="No-op: staying in DONE is not a transition (terminal means no move to another state)",
     ),
 ]
 
@@ -225,41 +222,51 @@ def test_matrix_covers_all_transitions():
             assert (from_col, to_col) in seen, f"Missing: {from_col.value} -> {to_col.value}"
 
 
-def test_allowed_count():
-    """Verify exactly 8 transitions are allowed (per Kanban flow)."""
-    allowed = [c for c in KANBAN_TEST_MATRIX if c.expected == "allow"]
-    assert len(allowed) == 8
-
-    # List of allowed transitions
-    allowed_pairs = [(c.from_column.value, c.to_column.value) for c in allowed]
-    expected_allowed = [
-        ("backlog", "backlog"),   # idempotent
+def test_real_transition_count():
+    """Verify exactly 7 real transitions are allowed (per Kanban flow)."""
+    real = [c for c in KANBAN_TEST_MATRIX if c.from_column != c.to_column and c.expected == "allow"]
+    allowed_pairs = {(c.from_column.value, c.to_column.value) for c in real}
+    expected_real = {
         ("backlog", "todo"),
         ("todo", "backlog"),
         ("todo", "in_progress"),
-        ("in_progress", "todo"),      # rework
+        ("in_progress", "todo"),  # rework
         ("in_progress", "review"),
-        ("review", "in_progress"),    # changes requested
-        ("review", "done"),           # accept
-    ]
-    # Note: BACKLOG->BACKLOG is the only self-loop allowed
-    # Total: 8 allowed (including BACKLOG self-loop)
-    assert len(allowed_pairs) == 8
+        ("review", "in_progress"),  # changes requested
+        ("review", "done"),  # accept
+    }
+    assert allowed_pairs == expected_real
+    assert len(real) == 7
+
+
+def test_no_op_is_allowed_for_every_status():
+    """Staying in the same status is not a transition and is always allowed."""
+    self_loops = [c for c in KANBAN_TEST_MATRIX if c.from_column == c.to_column]
+    assert len(self_loops) == 5
+    for c in self_loops:
+        assert c.expected == "allow", (
+            f"No-op {c.from_column.value} -> {c.to_column.value} must be allowed"
+        )
 
 
 def test_terminal_state_done():
-    """DONE has zero outgoing transitions."""
+    """DONE has no outgoing transition to another state (staying is a no-op)."""
     done_transitions = [c for c in KANBAN_TEST_MATRIX if c.from_column == TaskStatus.DONE]
     for t in done_transitions:
-        assert t.expected == "reject"
+        if t.to_column == TaskStatus.DONE:
+            assert t.expected == "allow"
+        else:
+            assert t.expected == "reject"
 
 
 def test_backlog_cannot_skip_todo():
     """BACKLOG cannot jump to IN_PROGRESS, REVIEW, or DONE."""
     backlog_transitions = [c for c in KANBAN_TEST_MATRIX if c.from_column == TaskStatus.BACKLOG]
-    skip_todo = [c for c in backlog_transitions if c.to_column in (
-        TaskStatus.IN_PROGRESS, TaskStatus.REVIEW, TaskStatus.DONE
-    )]
+    skip_todo = [
+        c
+        for c in backlog_transitions
+        if c.to_column in (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW, TaskStatus.DONE)
+    ]
     for t in skip_todo:
         assert t.expected == "reject"
 
@@ -267,16 +274,18 @@ def test_backlog_cannot_skip_todo():
 def test_todo_cannot_skip_in_progress():
     """TODO cannot jump to REVIEW or DONE."""
     todo_transitions = [c for c in KANBAN_TEST_MATRIX if c.from_column == TaskStatus.TODO]
-    skip_in_progress = [c for c in todo_transitions if c.to_column in (
-        TaskStatus.REVIEW, TaskStatus.DONE
-    )]
+    skip_in_progress = [
+        c for c in todo_transitions if c.to_column in (TaskStatus.REVIEW, TaskStatus.DONE)
+    ]
     for t in skip_in_progress:
         assert t.expected == "reject"
 
 
 def test_in_progress_cannot_skip_review():
     """IN_PROGRESS cannot jump to DONE."""
-    in_progress_transitions = [c for c in KANBAN_TEST_MATRIX if c.from_column == TaskStatus.IN_PROGRESS]
+    in_progress_transitions = [
+        c for c in KANBAN_TEST_MATRIX if c.from_column == TaskStatus.IN_PROGRESS
+    ]
     skip_review = [c for c in in_progress_transitions if c.to_column == TaskStatus.DONE]
     for t in skip_review:
         assert t.expected == "reject"
@@ -285,17 +294,22 @@ def test_in_progress_cannot_skip_review():
 def test_review_cannot_go_backwards():
     """REVIEW cannot go to BACKLOG or TODO."""
     review_transitions = [c for c in KANBAN_TEST_MATRIX if c.from_column == TaskStatus.REVIEW]
-    backwards = [c for c in review_transitions if c.to_column in (
-        TaskStatus.BACKLOG, TaskStatus.TODO
-    )]
+    backwards = [
+        c for c in review_transitions if c.to_column in (TaskStatus.BACKLOG, TaskStatus.TODO)
+    ]
     for t in backwards:
         assert t.expected == "reject"
 
 
 def test_rework_loop_allowed():
     """Rework loop: IN_PROGRESS -> TODO and REVIEW -> IN_PROGRESS are allowed."""
-    rework = [c for c in KANBAN_TEST_MATRIX if c.expected == "allow" and (
-        (c.from_column == TaskStatus.IN_PROGRESS and c.to_column == TaskStatus.TODO) or
-        (c.from_column == TaskStatus.REVIEW and c.to_column == TaskStatus.IN_PROGRESS)
-    )]
+    rework = [
+        c
+        for c in KANBAN_TEST_MATRIX
+        if c.expected == "allow"
+        and (
+            (c.from_column == TaskStatus.IN_PROGRESS and c.to_column == TaskStatus.TODO)
+            or (c.from_column == TaskStatus.REVIEW and c.to_column == TaskStatus.IN_PROGRESS)
+        )
+    ]
     assert len(rework) == 2

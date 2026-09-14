@@ -11,25 +11,24 @@ Covers scenarios S-01 through S-06 from spec:
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID, uuid4
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
+from uuid import uuid4
 
-from storico.domain.entities.user_story import UserStory, UserStoryStatus
-from storico.domain.entities.task import Task, TaskStatus
-from storico.domain.entities.extraction import Extraction, ExtractionStatus
-from storico.domain.validators.state_machine import (
-    validate_user_story_transition,
-    validate_task_transition,
-    VALID_USER_STORY_TRANSITIONS,
-    VALID_TASK_TRANSITIONS,
-)
-from storico.application.services.task_service import TaskService, InvalidStateTransition
+import pytest
+
 from storico.application.extraction.extract_from_story import (
-    ExtractFromStoryUseCase,
-    UserStoryStateService,
     InvalidUserStoryTransition,
+)
+from storico.application.services.task_service import InvalidStateTransition, TaskService
+from storico.domain.entities.extraction import Extraction, ExtractionStatus
+from storico.domain.entities.task import Task, TaskStatus
+from storico.domain.entities.user_story import UserStoryStatus
+from storico.domain.validators.state_machine import (
+    VALID_TASK_TRANSITIONS,
+    VALID_USER_STORY_TRANSITIONS,
+    validate_task_transition,
+    validate_user_story_transition,
 )
 
 
@@ -44,9 +43,7 @@ class TestScenarioS01HappyPathExtraction:
 
     def test_user_story_transition_extracting_to_extracted_allowed(self):
         """UserStory EXTRACTING -> EXTRACTED is valid."""
-        assert validate_user_story_transition(
-            UserStoryStatus.EXTRACTING, UserStoryStatus.EXTRACTED
-        )
+        assert validate_user_story_transition(UserStoryStatus.EXTRACTING, UserStoryStatus.EXTRACTED)
 
     def test_user_story_transition_extracting_to_failed_allowed(self):
         """UserStory EXTRACTING -> FAILED_EXTRACTION is valid."""
@@ -58,9 +55,7 @@ class TestScenarioS01HappyPathExtraction:
         """EXTRACTED has no outgoing transitions."""
         for next_status in UserStoryStatus:
             if next_status != UserStoryStatus.EXTRACTED:
-                assert not validate_user_story_transition(
-                    UserStoryStatus.EXTRACTED, next_status
-                )
+                assert not validate_user_story_transition(UserStoryStatus.EXTRACTED, next_status)
 
     def test_user_story_failed_extraction_is_terminal(self):
         """FAILED_EXTRACTION has no outgoing transitions."""
@@ -92,15 +87,18 @@ class TestScenarioS02FailurePath:
 class TestScenarioS03TaskTransitionValidFlow:
     """S-03: Task Transition Validation — Valid Flow"""
 
-    @pytest.mark.parametrize("current,next_status", [
-        (TaskStatus.BACKLOG, TaskStatus.TODO),
-        (TaskStatus.TODO, TaskStatus.BACKLOG),
-        (TaskStatus.TODO, TaskStatus.IN_PROGRESS),
-        (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW),
-        (TaskStatus.IN_PROGRESS, TaskStatus.TODO),  # rework
-        (TaskStatus.REVIEW, TaskStatus.DONE),  # accept
-        (TaskStatus.REVIEW, TaskStatus.IN_PROGRESS),  # changes requested
-    ])
+    @pytest.mark.parametrize(
+        "current,next_status",
+        [
+            (TaskStatus.BACKLOG, TaskStatus.TODO),
+            (TaskStatus.TODO, TaskStatus.BACKLOG),
+            (TaskStatus.TODO, TaskStatus.IN_PROGRESS),
+            (TaskStatus.IN_PROGRESS, TaskStatus.REVIEW),
+            (TaskStatus.IN_PROGRESS, TaskStatus.TODO),  # rework
+            (TaskStatus.REVIEW, TaskStatus.DONE),  # accept
+            (TaskStatus.REVIEW, TaskStatus.IN_PROGRESS),  # changes requested
+        ],
+    )
     def test_valid_task_transitions(self, current: TaskStatus, next_status: TaskStatus):
         """All Kanban flow transitions are valid."""
         assert validate_task_transition(current, next_status)
@@ -128,6 +126,7 @@ class TestScenarioS03TaskTransitionValidFlow:
         )
 
         import asyncio
+
         result = asyncio.run(service.update_status(task.id, TaskStatus.TODO))
         assert result.status == TaskStatus.TODO
 
@@ -135,20 +134,23 @@ class TestScenarioS03TaskTransitionValidFlow:
 class TestScenarioS04TaskTransitionInvalidJump:
     """S-04: Task Transition Validation — Invalid Jump"""
 
-    @pytest.mark.parametrize("current,next_status", [
-        (TaskStatus.BACKLOG, TaskStatus.IN_PROGRESS),  # skip TODO
-        (TaskStatus.BACKLOG, TaskStatus.REVIEW),
-        (TaskStatus.BACKLOG, TaskStatus.DONE),
-        (TaskStatus.TODO, TaskStatus.REVIEW),
-        (TaskStatus.TODO, TaskStatus.DONE),
-        (TaskStatus.IN_PROGRESS, TaskStatus.DONE),  # skip REVIEW
-        (TaskStatus.REVIEW, TaskStatus.BACKLOG),
-        (TaskStatus.REVIEW, TaskStatus.TODO),
-        (TaskStatus.DONE, TaskStatus.IN_PROGRESS),  # terminal
-        (TaskStatus.DONE, TaskStatus.REVIEW),
-        (TaskStatus.DONE, TaskStatus.TODO),
-        (TaskStatus.DONE, TaskStatus.BACKLOG),
-    ])
+    @pytest.mark.parametrize(
+        "current,next_status",
+        [
+            (TaskStatus.BACKLOG, TaskStatus.IN_PROGRESS),  # skip TODO
+            (TaskStatus.BACKLOG, TaskStatus.REVIEW),
+            (TaskStatus.BACKLOG, TaskStatus.DONE),
+            (TaskStatus.TODO, TaskStatus.REVIEW),
+            (TaskStatus.TODO, TaskStatus.DONE),
+            (TaskStatus.IN_PROGRESS, TaskStatus.DONE),  # skip REVIEW
+            (TaskStatus.REVIEW, TaskStatus.BACKLOG),
+            (TaskStatus.REVIEW, TaskStatus.TODO),
+            (TaskStatus.DONE, TaskStatus.IN_PROGRESS),  # terminal
+            (TaskStatus.DONE, TaskStatus.REVIEW),
+            (TaskStatus.DONE, TaskStatus.TODO),
+            (TaskStatus.DONE, TaskStatus.BACKLOG),
+        ],
+    )
     def test_invalid_task_transitions(self, current: TaskStatus, next_status: TaskStatus):
         """Invalid Kanban jumps are rejected."""
         assert not validate_task_transition(current, next_status)
@@ -167,6 +169,7 @@ class TestScenarioS04TaskTransitionInvalidJump:
         mock_repo.find_by_id.return_value = task
 
         import asyncio
+
         with pytest.raises(InvalidStateTransition) as exc_info:
             asyncio.run(service.update_status(task.id, TaskStatus.IN_PROGRESS))
 
@@ -190,13 +193,18 @@ class TestScenarioS04TaskTransitionInvalidJump:
         mock_repo.find_by_id.return_value = task
 
         import asyncio
+
         with pytest.raises(InvalidStateTransition) as exc_info:
             asyncio.run(service.update_status(task.id, TaskStatus.DONE))
 
         exc = exc_info.value
         assert exc.current_state == TaskStatus.TODO
         assert exc.attempted_state == TaskStatus.DONE
-        assert exc.allowed_transitions == [TaskStatus.IN_PROGRESS, TaskStatus.BACKLOG]
+        # list(set) ordering is hash-randomized, so compare as a set
+        assert set(exc.allowed_transitions) == {
+            TaskStatus.IN_PROGRESS,
+            TaskStatus.BACKLOG,
+        }
 
 
 class TestScenarioS05TaskTransitionReworkLoop:
@@ -214,7 +222,9 @@ class TestScenarioS05TaskTransitionReworkLoop:
         """Full rework cycle: TODO -> IN_PROGRESS -> REVIEW -> IN_PROGRESS -> REVIEW -> DONE"""
         assert validate_task_transition(TaskStatus.TODO, TaskStatus.IN_PROGRESS)
         assert validate_task_transition(TaskStatus.IN_PROGRESS, TaskStatus.REVIEW)
-        assert validate_task_transition(TaskStatus.REVIEW, TaskStatus.IN_PROGRESS)  # changes requested
+        assert validate_task_transition(
+            TaskStatus.REVIEW, TaskStatus.IN_PROGRESS
+        )  # changes requested
         assert validate_task_transition(TaskStatus.IN_PROGRESS, TaskStatus.REVIEW)  # resubmit
         assert validate_task_transition(TaskStatus.REVIEW, TaskStatus.DONE)  # accept
 

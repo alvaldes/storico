@@ -54,7 +54,7 @@ class TaskService:
             raise InvalidStateTransition(
                 current_state=task.status,
                 attempted_state=new_status,
-                allowed_transitions=list(allowed),
+                allowed_transitions=sorted(allowed, key=lambda s: s.value),
             )
 
         # Create updated task (Task is frozen dataclass, so we replace)

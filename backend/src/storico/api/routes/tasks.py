@@ -15,7 +15,6 @@ from storico.api.schemas.task import (
     UpdateTaskRequest,
 )
 from storico.domain.entities import EntityNotFound, Task, User
-from storico.domain.entities.task import TaskStatus
 from storico.domain.validators.state_machine import (
     VALID_TASK_TRANSITIONS,
     validate_task_transition,
@@ -76,9 +75,7 @@ async def _validate_task_workspace_access(
     if project is None:
         raise EntityNotFound("Task", str(task_id))
 
-    member = await member_repo.find_by_workspace_and_user(
-        project.workspace_id, current_user.id
-    )
+    member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
     if member is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -265,7 +262,7 @@ async def update_task(
                 "error_code": "INVALID_STATE_TRANSITION",
                 "current_state": existing.status.value,
                 "attempted_state": body.status.value,
-                "allowed_transitions": [s.value for s in allowed],
+                "allowed_transitions": [s.value for s in sorted(allowed, key=lambda s: s.value)],
             },
         )
 
