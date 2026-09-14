@@ -32,9 +32,7 @@ function renderBoldMarkup(text: string, interpolate?: string): React.ReactNode {
     interpolate !== undefined && text.includes('{email}')
       ? text.replace('{email}', interpolate)
       : text;
-  return withValue.split(/<\/?b>/).map((part, i) =>
-    i % 2 === 1 ? <b key={i}>{part}</b> : part,
-  );
+  return withValue.split(/<\/?b>/).map((part, i) => (i % 2 === 1 ? <b key={i}>{part}</b> : part));
 }
 
 export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccountDialogProps) {
@@ -119,10 +117,7 @@ export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccoun
             <FieldGroup>
               <Field>
                 <FieldLabel>
-                  {renderBoldMarkup(
-                    t.settings.danger_delete_dialog_email_label,
-                    user?.email ?? '',
-                  )}
+                  {renderBoldMarkup(t.settings.danger_delete_dialog_email_label, user?.email ?? '')}
                 </FieldLabel>
                 <Input
                   value={emailInput}
