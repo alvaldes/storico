@@ -144,8 +144,9 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
             : t.exportPage.no_tasks}
         </div>
 
-        {/* Download button */}
-        <Button onClick={handleDownload} disabled={!hasTasks || downloading} className="w-full">
+            {/* Download button — enabled with a workspace selected even when it
+                has no tasks: the backend returns valid empty content. */}
+            <Button onClick={handleDownload} disabled={downloading} className="w-full">
           {downloading ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (

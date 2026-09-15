@@ -24,11 +24,25 @@ const mockTask: Task = {
   updatedAt: '2026-01-01T00:00:00Z',
 };
 
+// Sibling task in the same story — the only valid dependency target.
+const siblingTask: Task = {
+  id: 'task-0',
+  storyId: 'story-1',
+  title: 'Setup repo',
+  description: 'Initialize the repository',
+  status: 'done',
+  priority: 'medium',
+  labels: [],
+  dependencies: [],
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+};
+
 describe('TaskEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useTaskStore.setState({
-      tasks: { 'story-1': [mockTask] },
+      tasks: { 'story-1': [siblingTask, mockTask] },
       workspaceTasks: [],
       extractions: {},
       loading: false,
@@ -79,42 +93,57 @@ describe('TaskEditor', () => {
 
   /* ── Dependency validation ── */
 
-  it('rejects empty dependency', async () => {
-    const user = userEvent.setup();
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
+      it('offers only sibling tasks from the same story as dependencies', async () => {
+        render(
+          <TaskEditor
+            task={{ ...mockTask, dependencies: [] }}
+            open={true}
+            onOpenChange={vi.fn()}
+            locale="en"
+          />,
+        );
 
-    await screen.findByText('Edit Task');
+        await screen.findByText('Edit Task');
 
-    const depInput = screen.getByPlaceholderText('Add a dependency and press Enter');
-    await user.type(depInput, '{Enter}');
+        const depSelect = screen.getByLabelText('Dependencies') as HTMLSelectElement;
+        const values = Array.from(depSelect.options).map((o) => o.value);
 
-    expect(screen.getByText('Dependency cannot be empty')).toBeInTheDocument();
-  });
+        // The sibling is offered by task.id...
+        expect(values).toContain('task-0');
+        // ...and the edited task is never offered as its own dependency.
+        expect(values).not.toContain(mockTask.id);
+      });
 
-  it('rejects self-dependency', async () => {
-    const user = userEvent.setup();
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
+      it('adds a selected sibling dependency by task.id', async () => {
+        const user = userEvent.setup();
+        render(
+          <TaskEditor
+            task={{ ...mockTask, dependencies: [] }}
+            open={true}
+            onOpenChange={vi.fn()}
+            locale="en"
+          />,
+        );
 
-    await screen.findByText('Edit Task');
+        await screen.findByText('Edit Task');
 
-    const depInput = screen.getByPlaceholderText('Add a dependency and press Enter');
-    await user.type(depInput, 'task-1{Enter}');
+        await user.selectOptions(screen.getByLabelText('Dependencies'), 'task-0');
 
-    expect(screen.getByText('A task cannot depend on itself')).toBeInTheDocument();
-  });
+        // The chip renders the sibling's title, not its raw id.
+        expect(screen.getByText('Setup repo')).toBeInTheDocument();
+      });
 
-  it('silently deduplicates duplicate dependency', async () => {
-    const user = userEvent.setup();
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
+      it('does not re-offer a sibling that is already a dependency', async () => {
+        render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
 
-    await screen.findByText('Edit Task');
+        await screen.findByText('Edit Task');
 
-    const depInput = screen.getByPlaceholderText('Add a dependency and press Enter');
-    await user.type(depInput, 'task-0{Enter}');
+        const depSelect = screen.getByLabelText('Dependencies') as HTMLSelectElement;
+        const values = Array.from(depSelect.options).map((o) => o.value);
 
-    expect(screen.queryByText('Dependency cannot be empty')).not.toBeInTheDocument();
-    expect(screen.queryByText('A task cannot depend on itself')).not.toBeInTheDocument();
-  });
+        // task-0 is already a dependency of mockTask, so it is not re-offered.
+        expect(values).not.toContain('task-0');
+      });
 
   /* ── Save / rollback ── */
 

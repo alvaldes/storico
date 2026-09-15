@@ -45,11 +45,17 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState<ApiRequestError | null>(null);
 
+  // Sibling tasks in the same story are the only valid dependency targets.
+  const siblings = useTaskStore((s) => s.tasks[task.storyId] ?? []);
+  const siblingOptions = siblings.filter((s) => s.id !== task.id);
+  const availableSiblings = siblingOptions.filter(
+    (s) => !dependencies.some((d) => normalizeTag(d) === normalizeTag(s.id)),
+  );
+  const siblingLabel = (dep: string) => siblings.find((s) => s.id === dep)?.title ?? dep;
+
   // Tag input refs
   const labelInputRef = useRef<HTMLInputElement>(null);
-  const depInputRef = useRef<HTMLInputElement>(null);
   const [labelInput, setLabelInput] = useState('');
-  const [depInput, setDepInput] = useState('');
 
   // Reset form when task or dialog changes
   useEffect(() => {
@@ -63,7 +69,6 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
       setErrors({});
       setSaveError(null);
       setLabelInput('');
-      setDepInput('');
     }
   }, [open, task]);
 
@@ -104,14 +109,18 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
         setErrors((prev) => ({ ...prev, dependencies: t.taskEditor.dependency_self }));
         return;
       }
+      // Only sibling tasks from the same story are valid dependencies.
+      if (!siblingOptions.some((s) => s.id === dep)) {
+        setErrors((prev) => ({ ...prev, dependencies: t.taskEditor.dependency_same_story }));
+        return;
+      }
       if (dependencies.some((d) => normalizeTag(d) === normalizeTag(dep))) {
         return; // silent dedup
       }
       setDependencies((prev) => [...prev, dep]);
-      setDepInput('');
       setErrors((prev) => ({ ...prev, dependencies: '' }));
     },
-    [dependencies, task.id, t.taskEditor],
+    [dependencies, task.id, siblingOptions, t.taskEditor],
   );
 
   const removeDependency = useCallback((index: number) => {
@@ -124,13 +133,6 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
     if (e.key === 'Enter') {
       e.preventDefault();
       addLabel(labelInput);
-    }
-  };
-
-  const handleDepKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addDependency(depInput);
     }
   };
 
@@ -287,13 +289,13 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
             <FieldError>{errors.labels}</FieldError>
           </Field>
 
-          {/* Dependencies */}
+          {/* Dependencies — multi-select of sibling tasks in the same story (by task.id) */}
           <Field>
             <FieldLabel htmlFor="te-deps">{t.taskEditor.dependencies_label}</FieldLabel>
             <div className="flex flex-wrap gap-1.5 mb-2">
               {dependencies.map((dep, i) => (
                 <Badge key={`${dep}-${i}`} variant="outline" className="gap-1 pr-1">
-                  {dep}
+                  {siblingLabel(dep)}
                   <button
                     type="button"
                     onClick={() => removeDependency(i)}
@@ -304,18 +306,23 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
                 </Badge>
               ))}
             </div>
-            <Input
+            <select
               id="te-deps"
-              ref={depInputRef}
-              value={depInput}
+              value=""
               onChange={(e) => {
-                setDepInput(e.target.value);
-                setErrors((prev) => ({ ...prev, dependencies: '' }));
+                if (e.target.value) addDependency(e.target.value);
               }}
-              onKeyDown={handleDepKeyDown}
-              placeholder={t.taskEditor.dependencies_placeholder}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               aria-invalid={!!errors.dependencies}
-            />
+              disabled={availableSiblings.length === 0}
+            >
+              <option value="">{t.taskEditor.dependencies_placeholder}</option>
+              {availableSiblings.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.title}
+                </option>
+              ))}
+            </select>
             <FieldError>{errors.dependencies}</FieldError>
           </Field>
         </div>
