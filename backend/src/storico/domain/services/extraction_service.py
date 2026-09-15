@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from uuid import UUID
 
 from storico.domain.entities import Extraction, ParseError, Task
 from storico.domain.entities.exceptions import LLMError
@@ -12,7 +13,6 @@ from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import (
     ExtractionExample,
     ExtractionRepository,
-    FewShotExample,
     LLMConfig,
     LLMPort,
     ParsedTask,
@@ -28,11 +28,16 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class RAGConfig:
-    """Configuration for RAG (Retrieval-Augmented Generation) behavior."""
+class FewShotConfig:
+    """Configuration for automatic few-shot retrieval from the vector store.
 
-    max_examples: int = 3
-    similarity_threshold: float = 0.85
+    Replaces the previous global RAG settings and the manual ``few_shot_examples``
+    input. ``limit`` and ``threshold`` are resolved per workspace.
+    """
+
+    enabled: bool = True
+    limit: int = 3
+    threshold: float = 0.85
 
 
 class ExtractionService:
@@ -42,13 +47,14 @@ class ExtractionService:
         1. Render the instruction prompt from the workspace-configured
            template (system prompt and instruction template are resolved
            upstream, never chosen by the service).
-        2. Optionally inject RAG examples from past extractions.
+        2. Optionally retrieve few-shot examples from the vector store,
+           workspace-scoped, when ``few_shot_config.enabled`` is true.
         3. Call the LLM via ``LLMPort`` with the system prompt delivered
            separately.
         4. Parse the raw response into ``ParsedTask`` objects.
         5. Persist the ``Extraction`` (completed or failed) + ``Task`` entities.
         6. Optionally validate results via ``LLMJudgeService``.
-        7. Optionally store extraction in vector store for future RAG.
+        7. Optionally store extraction in vector store for future retrieval.
         8. Return the extraction entity.
     """
 
@@ -61,7 +67,7 @@ class ExtractionService:
         task_repo: TaskRepository,
         judge_service: LLMJudgeService | None = None,
         vector_store: VectorStorePort | None = None,
-        rag_config: RAGConfig | None = None,
+        few_shot_config: FewShotConfig | None = None,
     ) -> None:
         self._llm = llm_port
         self._prompt_manager = prompt_manager
@@ -70,7 +76,7 @@ class ExtractionService:
         self._task_repo = task_repo
         self._judge_service = judge_service
         self._vector_store = vector_store
-        self._rag_config = rag_config or RAGConfig()
+        self._few_shot_config = few_shot_config or FewShotConfig()
 
     async def extract(
         self,
@@ -78,13 +84,19 @@ class ExtractionService:
         config: LLMConfig,
         system_prompt: str | None = None,
         instruction_template: str | None = None,
-        few_shot_examples: list[FewShotExample] | None = None,
+        workspace_id: UUID | None = None,
+        few_shot_config: FewShotConfig | None = None,
     ) -> tuple[list[ParsedTask], str]:
         """Run the extraction pipeline (prompt → LLM → parse) without persistence.
 
         The system prompt and instruction template are resolved upstream
         (workspace prompt config) and passed in — the service never decides
         which prompts to use, it only renders and sends them.
+
+        Few-shot examples are retrieved from the vector store, scoped to
+        ``workspace_id``, when the resolved ``few_shot_config.enabled`` is true.
+        When disabled, a cold start, or a search failure yields no examples, the
+        examples section is omitted (instruction-only prompt).
 
         Args:
             user_story: A domain entity with a ``raw_text`` attribute.
@@ -93,7 +105,10 @@ class ExtractionService:
                 LLM port (``None`` sends no system message).
             instruction_template: Workspace instruction template (Jinja2
                 text). ``None`` falls back to ``task_generation.j2``.
-            few_shot_examples: Workspace few-shot examples (style reference).
+            workspace_id: Workspace the extraction belongs to (for scoped
+                retrieval and storage).
+            few_shot_config: Workspace few-shot retrieval config. ``None``
+                falls back to the service-level default.
 
         Returns:
             Tuple of (parsed_tasks, raw_response).
@@ -104,21 +119,18 @@ class ExtractionService:
         """
         raw_text = getattr(user_story, "raw_text", str(user_story))
 
-        # RAG: search for similar past extractions
-        examples = await self._fetch_rag_examples(raw_text)
+        resolved_config = few_shot_config or self._few_shot_config
+
+        # Retrieve workspace-scoped few-shot examples (best-effort)
+        examples = await self._fetch_rag_examples(raw_text, workspace_id, resolved_config)
 
         # Render with or without examples
         prompt_kwargs: dict[str, object] = {"user_story": raw_text}
-
-        # RAG examples (historical context) — injected SECOND
         if examples:
             prompt_kwargs["examples"] = self._format_examples(examples)
 
-        # Few-shot examples (style reference) — injected FIRST by the template.
-        # Passed explicitly: the template renders them via {% for ex in few_shot_examples %}.
         instruction_prompt = self._prompt_manager.render_instruction(
             instruction_template,
-            few_shot_examples=few_shot_examples,
             **prompt_kwargs,
         )
 
@@ -139,20 +151,33 @@ class ExtractionService:
 
         return parsed_tasks, raw_response
 
-    async def _fetch_rag_examples(self, text: str) -> list[ExtractionExample]:
-        """Search for similar past extractions. Returns empty list on failure."""
+    async def _fetch_rag_examples(
+        self,
+        text: str,
+        workspace_id: UUID | None,
+        few_shot_config: FewShotConfig,
+    ) -> list[ExtractionExample]:
+        """Search for similar past extractions, workspace-scoped and best-effort.
+
+        Returns an empty list when retrieval is disabled, no vector store is
+        configured, or the search fails — extraction never fails on retrieval.
+        """
+        if not few_shot_config.enabled:
+            logger.debug("Few-shot retrieval disabled, skipping search")
+            return []
         if self._vector_store is None:
-            logger.debug("RAG disabled: no vector store configured")
+            logger.debug("Few-shot retrieval disabled: no vector store configured")
             return []
         try:
             return await self._vector_store.search_similar(
                 text=text,
-                limit=self._rag_config.max_examples,
-                threshold=self._rag_config.similarity_threshold,
+                limit=few_shot_config.limit,
+                threshold=few_shot_config.threshold,
+                workspace_id=workspace_id,
             )
         except Exception as exc:
             logger.warning(
-                "RAG search failed, proceeding without examples",
+                "Few-shot retrieval failed, proceeding without examples",
                 extra={"error": str(exc), "error_type": type(exc).__name__},
             )
             return []
@@ -176,7 +201,8 @@ class ExtractionService:
         prompt_config: dict | None = None,
         system_prompt: str | None = None,
         instruction_template: str | None = None,
-        few_shot_examples: list[FewShotExample] | None = None,
+        workspace_id: UUID | None = None,
+        few_shot_config: FewShotConfig | None = None,
     ) -> Extraction:
         """Run the full extraction pipeline and persist results.
 
@@ -191,6 +217,9 @@ class ExtractionService:
                 and the judge service.
             instruction_template: Workspace instruction template (Jinja2
                 text), forwarded to ``extract``.
+            workspace_id: Workspace the extraction belongs to (for scoped
+                retrieval and vector storage).
+            few_shot_config: Workspace few-shot retrieval config.
 
         Returns:
             The persisted ``Extraction`` entity.
@@ -203,7 +232,8 @@ class ExtractionService:
                 config,
                 system_prompt=system_prompt,
                 instruction_template=instruction_template,
-                few_shot_examples=few_shot_examples,
+                workspace_id=workspace_id,
+                few_shot_config=few_shot_config,
             )
 
             # Determine confidence from optional judge
@@ -255,8 +285,8 @@ class ExtractionService:
                 )
                 await self._task_repo.save(task)
 
-            # 6. Store in vector store for future RAG
-            await self._store_rag(user_story, extraction, parsed_tasks)
+            # 6. Store in vector store for future few-shot retrieval
+            await self._store_rag(user_story, extraction, parsed_tasks, workspace_id)
 
             return extraction
 
@@ -284,10 +314,14 @@ class ExtractionService:
         user_story: object,
         extraction: Extraction,
         parsed_tasks: list[ParsedTask],
+        workspace_id: UUID | None,
     ) -> None:
-        """Store extraction in vector store for future RAG searches."""
+        """Store extraction in vector store for future few-shot retrieval."""
         if self._vector_store is None:
-            logger.debug("RAG store skipped: no vector store configured")
+            logger.debug("Vector store skipped: no vector store configured")
+            return
+        if workspace_id is None:
+            logger.debug("Vector store skipped: no workspace_id supplied")
             return
         try:
             tasks_summary = "\n".join(
@@ -298,12 +332,13 @@ class ExtractionService:
                 user_story_text=getattr(user_story, "raw_text", str(user_story)),
                 tasks_summary=tasks_summary,
                 model_used=extraction.model_used,
+                workspace_id=workspace_id,
                 confidence_score=extraction.confidence_score,
                 user_story_id=str(getattr(user_story, "id", "")),
             )
         except Exception as exc:
             logger.warning(
-                "RAG store failed, extraction already saved in database",
+                "Vector store failed, extraction already saved in database",
                 extra={
                     "error": str(exc),
                     "error_type": type(exc).__name__,

@@ -14,11 +14,11 @@ from storico.config.settings import get_settings
 from storico.domain.entities import User
 from storico.domain.entities.workspace import Workspace
 from storico.domain.entities.workspace_member import WorkspaceRole
-from storico.domain.ports import LLMPort, UserRepository, VectorStorePort
+from storico.domain.ports import EmbeddingPort, LLMPort, UserRepository, VectorStorePort
 from storico.domain.ports.workspace_member_repository import WorkspaceMemberRepository
 from storico.domain.ports.workspace_repository import WorkspaceRepository
 from storico.domain.services.extraction_judge_service import LLMJudgeService
-from storico.domain.services.extraction_service import ExtractionService, RAGConfig
+from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.infrastructure.cache.user_cache import get_cached_user, set_cached_user
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
@@ -41,7 +41,7 @@ from storico.infrastructure.llm import (
     PromptManager,
     TaskParser,
 )
-from storico.infrastructure.vector import EmbeddingService, QdrantAdapter
+from storico.infrastructure.vector import QdrantAdapter, get_embedding_port
 
 logger = logging.getLogger(__name__)
 
@@ -177,17 +177,13 @@ def get_task_parser() -> TaskParser:
     return TaskParser()
 
 
-def get_embedding_service() -> EmbeddingService:
-    """Factory for the embedding service (Ollama-based)."""
-    settings = get_settings()
-    return EmbeddingService(
-        base_url=settings.ollama_host,
-        model=settings.embedding_model,
-    )
+def get_embedding_port_() -> EmbeddingPort:
+    """Factory for the active embedding port (Ollama / Google / OpenAI)."""
+    return get_embedding_port(get_settings())
 
 
 def get_vector_store(
-    embedding_service: EmbeddingService = Depends(get_embedding_service),
+    embedding_port: EmbeddingPort = Depends(get_embedding_port_),
 ) -> VectorStorePort | None:
     """Factory for the Qdrant vector store.
 
@@ -196,8 +192,9 @@ def get_vector_store(
     try:
         settings = get_settings()
         return QdrantAdapter(
-            embedding_service=embedding_service,
+            embedding_port=embedding_port,
             qdrant_url=settings.qdrant_url,
+            qdrant_api_key=settings.qdrant_api_key,
             collection_name=settings.qdrant_collection,
             vector_size=settings.embedding_dimensions,
         )
@@ -220,9 +217,10 @@ def get_extract_use_case(
     story_repo = SQLAlchemyUserStoryRepository(session)
 
     settings = get_settings()
-    rag_config = RAGConfig(
-        max_examples=settings.rag_max_examples,
-        similarity_threshold=settings.rag_similarity_threshold,
+    few_shot_config = FewShotConfig(
+        enabled=True,
+        limit=settings.rag_max_examples,
+        threshold=settings.rag_similarity_threshold,
     )
 
     judge_service = LLMJudgeService(
@@ -237,7 +235,7 @@ def get_extract_use_case(
         task_repo=task_repo,
         judge_service=judge_service,
         vector_store=vector_store,
-        rag_config=rag_config,
+        few_shot_config=few_shot_config,
     )
     return ExtractFromStoryUseCase(
         extraction_service=extraction_service,

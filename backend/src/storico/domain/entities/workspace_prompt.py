@@ -20,13 +20,18 @@ class WorkspacePrompt:
     """Prompt configuration scoped to a workspace.
 
     Allows each workspace to define custom system prompts, instruction
-    templates, and few-shot examples that guide the LLM when extracting
-    tasks from user stories.
+    templates, and automatic few-shot retrieval configuration.
     """
 
     workspace_id: UUID
     system_prompt: str | None = None
     instruction_template: str | None = None
+    # Automatic few-shot retrieval config (replaces manual examples).
+    few_shot_enabled: bool = True
+    few_shot_limit: int = 3
+    few_shot_threshold: float = 0.85
+    # Deprecated: legacy manual examples, retained read-only for the seed
+    # job. Will be dropped in a follow-up migration.
     few_shot_examples: list[FewShotExample] | None = None
     id: UUID = field(default_factory=uuid7)
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))

@@ -34,7 +34,7 @@ from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, VectorStorePort
 from storico.domain.services.extraction_judge_service import LLMJudgeService
-from storico.domain.services.extraction_service import ExtractionService, RAGConfig
+from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.infrastructure.database.base import create_session_factory, get_engine
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
@@ -52,7 +52,7 @@ from storico.infrastructure.llm import (
     PromptManager,
     TaskParser,
 )
-from storico.infrastructure.vector import EmbeddingService, QdrantAdapter
+from storico.infrastructure.vector import QdrantAdapter, get_embedding_port
 
 logger = logging.getLogger(__name__)
 
@@ -278,15 +278,18 @@ async def _run_extraction(
         ws_prompt = await resolve_workspace_prompt(workspace_id, prompt_repo, prompt_manager)
         system_prompt = ws_prompt.system_prompt
         instruction_template = ws_prompt.instruction_template
-        few_shot_examples = ws_prompt.few_shot_examples
-
-        embedding_service = EmbeddingService(
-            base_url=settings.ollama_host,
-            model=settings.embedding_model,
+        # Few-shot retrieval config resolved from the workspace prompt row
+        # (defaults used when the workspace has no explicit config).
+        few_shot_config = FewShotConfig(
+            enabled=getattr(ws_prompt, "few_shot_enabled", True),
+            limit=getattr(ws_prompt, "few_shot_limit", 3),
+            threshold=getattr(ws_prompt, "few_shot_threshold", 0.85),
         )
+
         try:
+            embedding_port = get_embedding_port(settings)
             vector_store: VectorStorePort | None = QdrantAdapter(
-                embedding_service=embedding_service,
+                embedding_port=embedding_port,
                 qdrant_url=settings.qdrant_url,
                 qdrant_api_key=settings.qdrant_api_key,
                 collection_name=settings.qdrant_collection,
@@ -311,10 +314,7 @@ async def _run_extraction(
             task_repo=task_repo,
             judge_service=LLMJudgeService(llm_port=llm_port, prompt_manager=prompt_manager),
             vector_store=vector_store,
-            rag_config=RAGConfig(
-                max_examples=settings.rag_max_examples,
-                similarity_threshold=settings.rag_similarity_threshold,
-            ),
+            few_shot_config=few_shot_config,
         )
 
         # 3. Build LLM config
@@ -332,7 +332,8 @@ async def _run_extraction(
             llm_config,
             system_prompt=system_prompt,
             instruction_template=instruction_template,
-            few_shot_examples=few_shot_examples,
+            workspace_id=workspace_id,
+            few_shot_config=few_shot_config,
         )
 
         # 4. Optionally validate via LLM-as-a-Judge — same system prompt
@@ -392,7 +393,7 @@ async def _run_extraction(
             await task_repo.save(task)
 
         # 7. Store in vector store for future RAG
-        await _store_rag(vector_store, story, extraction_id, parsed_tasks)
+        await _store_rag(vector_store, story, extraction_id, parsed_tasks, workspace_id)
 
         # 8. Transition UserStory to EXTRACTED (from EXTRACTING)
         if story.status == UserStoryStatus.EXTRACTING:
@@ -465,6 +466,7 @@ async def _store_rag(
     story: object,
     extraction_id: UUID,
     parsed_tasks: list,
+    workspace_id: UUID,
 ) -> None:
     """Store extraction result in vector store for future RAG searches."""
     if vector_store is None:
@@ -479,6 +481,7 @@ async def _store_rag(
             user_story_text=getattr(story, "raw_text", str(story)),
             tasks_summary=tasks_summary,
             model_used="",
+            workspace_id=workspace_id,
             confidence_score=None,
             user_story_id=str(getattr(story, "id", "")),
         )

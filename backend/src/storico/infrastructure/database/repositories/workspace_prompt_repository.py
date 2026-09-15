@@ -20,10 +20,8 @@ class SQLAlchemyWorkspacePromptRepository(WorkspacePromptRepository):
         self._session = session
 
     async def get(self, workspace_id: UUID) -> WorkspacePrompt | None:
-        stmt = select(WorkspacePromptModel).where(
-            WorkspacePromptModel.workspace_id == workspace_id
-        )
-        result = await self._session.execute(stmt)
+        stmt = select(WorkspacePromptModel).where(WorkspacePromptModel.workspace_id == workspace_id)
+        result = await self._session.execute(stmt)  # nosemgrep: parameterized ORM select
         row = result.scalar_one_or_none()
         return self._to_domain(row) if row else None
 
@@ -39,16 +37,12 @@ class SQLAlchemyWorkspacePromptRepository(WorkspacePromptRepository):
                 for key, value in self._to_orm_kwargs(prompt).items():
                     setattr(existing_row, key, value)
             else:
-                self._session.add(
-                    WorkspacePromptModel(**self._to_orm_kwargs(prompt))
-                )
+                self._session.add(WorkspacePromptModel(**self._to_orm_kwargs(prompt)))
             await self._session.commit()
             return prompt
         except SQLAlchemyError as e:
             await self._session.rollback()
-            raise RepositoryError(
-                "Database error upserting workspace prompt"
-            ) from e
+            raise RepositoryError("Database error upserting workspace prompt") from e
 
     @staticmethod
     def _to_domain(model: WorkspacePromptModel) -> WorkspacePrompt:
@@ -56,10 +50,11 @@ class SQLAlchemyWorkspacePromptRepository(WorkspacePromptRepository):
             workspace_id=model.workspace_id,
             system_prompt=model.system_prompt,
             instruction_template=model.instruction_template,
+            few_shot_enabled=model.few_shot_enabled,
+            few_shot_limit=model.few_shot_limit,
+            few_shot_threshold=model.few_shot_threshold,
             few_shot_examples=(
-                model.few_shot_examples.get("items", [])
-                if model.few_shot_examples
-                else None
+                model.few_shot_examples.get("items", []) if model.few_shot_examples else None
             ),
             id=model.id,
             updated_at=model.updated_at,
@@ -72,10 +67,11 @@ class SQLAlchemyWorkspacePromptRepository(WorkspacePromptRepository):
             "workspace_id": prompt.workspace_id,
             "system_prompt": prompt.system_prompt,
             "instruction_template": prompt.instruction_template,
+            "few_shot_enabled": prompt.few_shot_enabled,
+            "few_shot_limit": prompt.few_shot_limit,
+            "few_shot_threshold": prompt.few_shot_threshold,
             "few_shot_examples": (
-                {"items": prompt.few_shot_examples}
-                if prompt.few_shot_examples
-                else None
+                {"items": prompt.few_shot_examples} if prompt.few_shot_examples else None
             ),
             "updated_at": prompt.updated_at,
         }

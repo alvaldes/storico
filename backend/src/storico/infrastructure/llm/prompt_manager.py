@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from jinja2 import Environment, FileSystemLoader, Template, TemplateNotFound
 
 from storico.domain.entities import PromptTemplateNotFound
-
-if TYPE_CHECKING:
-    from storico.domain.ports import FewShotExample
 
 # Shared system prompt for task generation. All LLM adapters (Ollama, Gemini)
 # must send exactly this string as the system message so every model performs
@@ -35,7 +31,9 @@ class PromptManager:
     _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
     def __init__(self) -> None:
-        self._env = Environment(
+        # autoescape is intentionally disabled: prompt templates are trusted
+        # plain-text LLM instructions, never user-supplied HTML.
+        self._env = Environment(  # ast-grep-ignore
             loader=FileSystemLoader(str(self._PROMPTS_DIR)),
             autoescape=False,
         )
@@ -83,10 +81,11 @@ class PromptManager:
         Raises:
             PromptTemplateNotFound: If the template file does not exist.
         """
+        loader = self._env.loader
+        if loader is None:
+            raise PromptTemplateNotFound(template_name)
         try:
-            source, _, _ = self._env.loader.get_source(  # type: ignore[union-attr]
-                self._env, template_name
-            )
+            source, _, _ = loader.get_source(self._env, template_name)
             return source
         except TemplateNotFound as e:
             raise PromptTemplateNotFound(template_name) from e
@@ -94,7 +93,6 @@ class PromptManager:
     def render_instruction(
         self,
         instruction_template: str | None,
-        few_shot_examples: list["FewShotExample"] | None = None,
         **kwargs: object,
     ) -> str:
         """Render the task-generation instruction prompt.
@@ -104,10 +102,13 @@ class PromptManager:
         ``{{user_story}}``/``{{examples}}`` placeholders interpolate. When it
         is ``None``, falls back to rendering the ``task_generation.j2`` file.
 
+        Few-shot examples are no longer passed as a dedicated context variable;
+        they flow through the single ``examples`` variable that renders under
+        the ``## Few-Shot Examples`` section.
+
         Args:
             instruction_template: Inline Jinja2 template text, or ``None`` to
                 use the default ``task_generation.j2``.
-            few_shot_examples: Optional few-shot examples for style reference.
             **kwargs: Variables to pass to the template.
 
         Returns:
@@ -117,10 +118,6 @@ class PromptManager:
             PromptTemplateNotFound: If the default template file is missing
                 and no inline template was provided.
         """
-        # Include few_shot_examples in template context if provided
-        if few_shot_examples is not None:
-            kwargs["few_shot_examples"] = few_shot_examples
-
         if instruction_template is None:
             return self.render("task_generation.j2", **kwargs)
         return Template(instruction_template).render(**kwargs)

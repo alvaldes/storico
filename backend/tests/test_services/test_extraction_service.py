@@ -11,7 +11,7 @@ import pytest
 
 from storico.domain.entities import LLMConnectionError, ParseError
 from storico.domain.ports import ExtractionExample, LLMConfig, ParsedTask
-from storico.domain.services.extraction_service import ExtractionService, RAGConfig
+from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 
 
 class TestExtractionService:
@@ -102,9 +102,7 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        await deps["service"].extract(
-            mock_story, LLMConfig(model="test"), system_prompt="SYSTEM"
-        )
+        await deps["service"].extract(mock_story, LLMConfig(model="test"), system_prompt="SYSTEM")
 
         # Verify the system prompt is passed separately, not concatenated
         deps["llm_port"].generate.assert_called_once_with(
@@ -208,7 +206,9 @@ class TestExtractionService:
 
         deps["prompt_manager"].render_instruction.return_value = "S"
         deps["prompt_manager"].render_instruction.return_value = "I"
-        deps["llm_port"].generate.return_value = "1. summary: T1\ndescription: D1\n2. summary: T2\ndescription: D2"
+        deps[
+            "llm_port"
+        ].generate.return_value = "1. summary: T1\ndescription: D1\n2. summary: T2\ndescription: D2"
         deps["task_parser"].parse.return_value = [
             ParsedTask(summary="T1", description="D1"),
             ParsedTask(summary="T2", description="D2"),
@@ -340,7 +340,7 @@ class TestExtractionService:
             task_repo=task_repo,
             judge_service=judge_service,
             vector_store=vector_store,
-            rag_config=RAGConfig(max_examples=2, similarity_threshold=0.8),
+            few_shot_config=FewShotConfig(enabled=True, limit=2, threshold=0.8),
         )
         return {
             "service": service,
@@ -369,7 +369,9 @@ class TestExtractionService:
         result_tasks, raw = await deps["service"].extract(mock_story, LLMConfig(model="test"))
         assert len(result_tasks) == 1
         # Vector store should not be referenced at all
-        assert not hasattr(deps["service"], "_vector_store") or deps["service"]._vector_store is None
+        assert (
+            not hasattr(deps["service"], "_vector_store") or deps["service"]._vector_store is None
+        )
 
     @pytest.mark.asyncio
     async def test_extract_with_rag_examples(self, setup_with_rag) -> None:
@@ -446,7 +448,9 @@ class TestExtractionService:
             approved=True, total_score=45, criteria={}
         )
 
-        result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
+        result = await deps["service"].extract_and_persist(
+            mock_story, LLMConfig(model="test"), workspace_id=uuid4()
+        )
         assert result.status == "completed"
 
         # Verify store_extraction was called
@@ -473,7 +477,9 @@ class TestExtractionService:
         deps["extraction_repo"].save.side_effect = lambda e: e
         deps["task_repo"].save.side_effect = lambda t: t
 
-        result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
+        result = await deps["service"].extract_and_persist(
+            mock_story, LLMConfig(model="test"), workspace_id=uuid4()
+        )
         assert result.status == "completed"
         # Extraction and tasks should still be persisted
         assert deps["extraction_repo"].save.called

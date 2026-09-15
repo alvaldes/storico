@@ -15,18 +15,8 @@ Each numbered task MUST have `summary:` and `description:` on SEPARATE lines. Do
 
 CRITICAL: Use ONLY plain text. Do NOT use markdown formatting like **bold**, *italics*, or backticks. Write `summary:` and `description:` as plain text without any surrounding markers.
 
-{% if few_shot_examples %}
-## Few-Shot Examples (Style Reference)
-{% for ex in few_shot_examples %}
-User Story: {{ ex.user_story }}
-Tasks:
-{{ ex.tasks }}
----
-{% endfor %}
-{% endif %}
-
 {% if examples %}
-## Relevant Historical Examples
+## Few-Shot Examples
 {{ examples }}
 
 Now break down the following user story:

@@ -22,8 +22,8 @@ from storico.api.schemas.workspace_prompt import PromptRequest, PromptResponse
 from storico.application.prompts.resolve_workspace_prompt import build_default_prompt
 from storico.config.settings import Settings
 from storico.domain.entities.workspace import Workspace
-from storico.domain.entities.workspace_member import WorkspaceRole
 from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
+from storico.domain.entities.workspace_member import WorkspaceRole
 from storico.domain.entities.workspace_prompt import WorkspacePrompt
 from storico.infrastructure.database.repositories.workspace_llm_config_repository import (
     SQLAlchemyWorkspaceLLMConfigRepository,
@@ -74,9 +74,7 @@ async def resolve_llm_config(
     return LLMConfigResponse(
         provider=ws_config.provider,
         model=ws_config.model,
-        temperature=ws_config.temperature
-        if ws_config.temperature is not None
-        else 0.1,
+        temperature=ws_config.temperature if ws_config.temperature is not None else 0.1,
         max_tokens=ws_config.max_tokens or 2048,
         base_url=ws_config.base_url or settings.ollama_host,
         api_key=ws_config.api_key,
@@ -100,7 +98,9 @@ async def resolve_prompt(
     return PromptResponse(
         system_prompt=ws_prompt.system_prompt,
         instruction_template=ws_prompt.instruction_template,
-        few_shot_examples=ws_prompt.few_shot_examples,
+        few_shot_enabled=getattr(ws_prompt, "few_shot_enabled", True),
+        few_shot_limit=getattr(ws_prompt, "few_shot_limit", 3),
+        few_shot_threshold=getattr(ws_prompt, "few_shot_threshold", 0.85),
     )
 
 
@@ -144,9 +144,7 @@ async def upsert_llm_config(
         provider=body.provider
         if body.provider is not None
         else (existing.provider if existing else "ollama"),
-        model=body.model
-        if body.model is not None
-        else (existing.model if existing else None),
+        model=body.model if body.model is not None else (existing.model if existing else None),
         temperature=body.temperature
         if body.temperature is not None
         else (existing.temperature if existing else None),
@@ -205,9 +203,15 @@ async def upsert_prompts(
         instruction_template=body.instruction_template
         if body.instruction_template is not None
         else (existing.instruction_template if existing else None),
-        few_shot_examples=body.few_shot_examples
-        if body.few_shot_examples is not None
-        else (existing.few_shot_examples if existing else None),
+        few_shot_enabled=body.few_shot_enabled
+        if body.few_shot_enabled is not None
+        else (existing.few_shot_enabled if existing else True),
+        few_shot_limit=body.few_shot_limit
+        if body.few_shot_limit is not None
+        else (existing.few_shot_limit if existing else 3),
+        few_shot_threshold=body.few_shot_threshold
+        if body.few_shot_threshold is not None
+        else (existing.few_shot_threshold if existing else 0.85),
     )
 
     await prompt_repo.upsert(merged)
@@ -230,10 +234,7 @@ async def fetch_ollama_models(base_url: str) -> list[ModelInfo]:
         resp = await client.get(url)
         resp.raise_for_status()
         data = resp.json()
-    return [
-        ModelInfo(id=m["name"], name=m["name"])
-        for m in data.get("models", [])
-    ]
+    return [ModelInfo(id=m["name"], name=m["name"]) for m in data.get("models", [])]
 
 
 async def fetch_openai_models(api_key: str, base_url: str | None) -> list[ModelInfo]:
@@ -246,10 +247,7 @@ async def fetch_openai_models(api_key: str, base_url: str | None) -> list[ModelI
         )
         resp.raise_for_status()
         data = resp.json()
-    return [
-        ModelInfo(id=m["id"], name=m["id"])
-        for m in data.get("data", [])
-    ]
+    return [ModelInfo(id=m["id"], name=m["id"]) for m in data.get("data", [])]
 
 
 async def fetch_anthropic_models(api_key: str) -> list[ModelInfo]:
@@ -266,8 +264,7 @@ async def fetch_anthropic_models(api_key: str) -> list[ModelInfo]:
         resp.raise_for_status()
         data = resp.json()
     return [
-        ModelInfo(id=m["id"], name=m.get("display_name", m["id"]))
-        for m in data.get("data", [])
+        ModelInfo(id=m["id"], name=m.get("display_name", m["id"])) for m in data.get("data", [])
     ]
 
 
@@ -282,10 +279,7 @@ async def fetch_gemini_models(api_key: str) -> list[ModelInfo]:
         resp.raise_for_status()
         data = resp.json()
     return [
-        ModelInfo(
-            id=m["name"].removeprefix("models/"),
-            name=m.get("displayName", m["name"])
-        )
+        ModelInfo(id=m["name"].removeprefix("models/"), name=m.get("displayName", m["name"]))
         for m in data.get("models", [])
         if "generateContent" in m.get("supportedGenerationMethods", [])
     ]
