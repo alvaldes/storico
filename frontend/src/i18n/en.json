@@ -441,8 +441,6 @@
     "fixValidationErrors": "Fix validation errors before saving",
     "fewShotEnabled": "Automatic few-shot examples",
     "fewShotEnabledDesc": "Retrieve similar past extractions from this workspace and use them to guide the model.",
-    "fewShotEnabledOn": "On",
-    "fewShotEnabledOff": "Off",
     "fewShotLimit": "Max examples",
     "fewShotLimitDesc": "1–10, how many examples to inject.",
     "fewShotThreshold": "Similarity threshold",

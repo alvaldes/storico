@@ -1,5 +1,5 @@
-import { Bot, FileText } from 'lucide-react';
-import { Toggle } from '@/components/ui/toggle';
+import { Layers } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Field, FieldLabel, FieldDescription } from '@/components/ui/field';
@@ -32,26 +32,22 @@ export function FewShotConfigEditor({
       {/* ── Enabled toggle ── */}
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-1">
-          <span className="text-sm font-medium text-(--color-text)">
-            {t.workspace?.fewShotEnabled ?? 'Automatic few-shot examples'}
-          </span>
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-(--color-text-secondary)" />
+            <span className="text-sm font-medium text-(--color-text)">
+              {t.workspace?.fewShotEnabled ?? 'Automatic few-shot examples'}
+            </span>
+          </div>
           <p className="text-xs text-(--color-text-tertiary)">
             {t.workspace?.fewShotEnabledDesc ??
               'Retrieve similar past extractions from this workspace and use them to guide the model.'}
           </p>
         </div>
-        <Toggle
-          pressed={enabled}
-          onPressedChange={(next) => setEnabled(Boolean(next))}
-          variant="outline"
-          size="sm"
+        <Switch
+          checked={enabled}
+          onCheckedChange={(next) => setEnabled(next)}
           aria-label={t.workspace?.fewShotEnabled ?? 'Automatic few-shot examples'}
-        >
-          <Bot className="h-4 w-4" />
-          {enabled
-            ? (t.workspace?.fewShotEnabledOn ?? 'On')
-            : (t.workspace?.fewShotEnabledOff ?? 'Off')}
-        </Toggle>
+        />
       </div>
 
       {/* ── Limit ── */}
@@ -101,11 +97,8 @@ export function FewShotConfigEditor({
           </span>
         </div>
         <FieldDescription>
-          <span className="flex items-center gap-1.5">
-            <FileText className="h-3.5 w-3.5 shrink-0" />
-            {t.workspace?.fewShotThresholdDesc ??
-              'Minimum similarity (0.0–1.0) for an example to be considered.'}
-          </span>
+          {t.workspace?.fewShotThresholdDesc ??
+            'Minimum similarity (0.0–1.0) for an example to be considered.'}
         </FieldDescription>
       </Field>
     </div>

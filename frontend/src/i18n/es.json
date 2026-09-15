@@ -441,8 +441,6 @@
     "fixValidationErrors": "Corregí los errores de validación antes de guardar",
     "fewShotEnabled": "Ejemplos few-shot automáticos",
     "fewShotEnabledDesc": "Recupera extracciones similares previas de este espacio y las usa para guiar al modelo.",
-    "fewShotEnabledOn": "Activado",
-    "fewShotEnabledOff": "Desactivado",
     "fewShotLimit": "Máximo de ejemplos",
     "fewShotLimitDesc": "1–10, cuántos ejemplos inyectar.",
     "fewShotThreshold": "Umbral de similitud",
