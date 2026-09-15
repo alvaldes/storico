@@ -35,8 +35,19 @@ def _build_markdown(tasks: list[TaskResponse], story_text: dict[UUID, str]) -> s
 
     One section per story (``## {story text}``), each task rendered as a
     ``- **{title}** — {description}`` bullet, labels as ``#label`` inline, and
-    dependencies as ``→ {title}`` references.
+    dependencies as ``→ {title}`` references (the referenced task's title
+    when it can be resolved, otherwise the raw reference).
     """
+    # Resolve dependency references to the referenced task's title.
+    title_by_id = {str(t.id): t.title for t in tasks}
+    title_by_name = {t.title.strip().casefold(): t.title for t in tasks}
+
+    def resolve_dependency(dep: str) -> str:
+        reference = dep.strip()
+        return title_by_id.get(reference) or title_by_name.get(
+            reference.casefold(), dep
+        )
+
     by_story: dict[UUID, list[TaskResponse]] = {}
     for task in tasks:
         by_story.setdefault(task.user_story_id, []).append(task)
@@ -52,7 +63,9 @@ def _build_markdown(tasks: list[TaskResponse], story_text: dict[UUID, str]) -> s
             if task.labels:
                 bullet += " " + " ".join(f"#{label}" for label in task.labels)
             if task.dependencies:
-                bullet += " " + " ".join(f"→ {dep}" for dep in task.dependencies)
+                bullet += " " + " ".join(
+f"→ {resolve_dependency(dep)}" for dep in task.dependencies
+                )
             lines.append(bullet)
         lines.append("")
     return "\n".join(lines)

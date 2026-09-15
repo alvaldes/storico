@@ -213,11 +213,22 @@ class TestExportTasks:
     async def test_export_markdown_labels_and_deps(
         self, async_client, db_session: AsyncSession
     ) -> None:
-        """GET ?format=markdown renders labels and dependencies."""
+        """GET ?format=markdown renders labels and resolves dependencies to titles."""
         user = await _create_user(db_session)
         ws = await _create_workspace(db_session, user.id)
         story = await _create_story(db_session, ws.id)
         task_repo = SQLAlchemyTaskRepository(db_session)
+        predecessor = await task_repo.save(
+            Task(
+                user_story_id=story.id,
+                title="Predecessor task",
+                description="Comes first",
+                status=TaskStatus.DONE,
+                priority="high",
+                labels=[],
+                dependencies=[],
+            )
+        )
         task = Task(
             user_story_id=story.id,
             title="Task with meta",
@@ -225,7 +236,7 @@ class TestExportTasks:
             status=TaskStatus.TODO,
             priority="high",
             labels=["db", "backend"],
-            dependencies=["US-001", "US-002"],
+            dependencies=[str(predecessor.id)],
         )
         await task_repo.save(task)
 
@@ -234,7 +245,8 @@ class TestExportTasks:
             headers=_auth_headers(str(user.id)),
         )
         assert "#db #backend" in response.text
-        assert "→ US-001 → US-002" in response.text
+        # The dependency reference is resolved to the referenced task's title.
+        assert "→ Predecessor task" in response.text
 
     @pytest.mark.asyncio
     async def test_export_unknown_format(self, async_client, db_session: AsyncSession) -> None:
