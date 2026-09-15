@@ -640,7 +640,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               <Textarea
                 id="system-prompt"
                 rows={8}
-                className="min-h-[11rem] w-full resize-y"
+                className="min-h-20 h-20 w-full resize-y"
                 value={prompts.systemPrompt ?? ''}
                 onChange={(e) =>
                   setPrompts((prev) => ({
@@ -667,7 +667,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               <Textarea
                 id="instruction-template"
                 rows={12}
-                className="min-h-[16rem] w-full resize-y"
+                className="min-h-32 h-32 w-full resize-y"
                 value={prompts.instructionTemplate ?? ''}
                 onChange={(e) =>
                   setPrompts((prev) => ({
