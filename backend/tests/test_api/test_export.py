@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import Task, User
 from storico.domain.entities.project import Project
+from storico.domain.entities.task import TaskStatus
 from storico.domain.entities.user_story import UserStory
 from storico.domain.entities.workspace import Workspace
 from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
@@ -27,6 +28,7 @@ from storico.infrastructure.database.repositories.project_repository import (
 from storico.infrastructure.database.repositories.user_story_repository import (
     SQLAlchemyUserStoryRepository,
 )
+
 
 def _get_jwt_secret() -> str:
     """Load the JWT secret from Settings (respects env overrides)."""
@@ -57,16 +59,12 @@ async def _create_workspace(
     saved = await repo.save(ws)
     # Add membership
     member_repo = SQLAlchemyWorkspaceMemberRepository(db_session)
-    member = WorkspaceMember(
-        workspace_id=saved.id, user_id=user_id, role=WorkspaceRole.ADMIN
-    )
+    member = WorkspaceMember(workspace_id=saved.id, user_id=user_id, role=WorkspaceRole.ADMIN)
     await member_repo.add(member)
     return saved
 
 
-async def _create_story(
-    db_session: AsyncSession, workspace_id
-) -> UserStory:
+async def _create_story(db_session: AsyncSession, workspace_id) -> UserStory:
     project_repo = SQLAlchemyProjectRepository(db_session)
     project = Project(
         name="Test Project",
@@ -85,9 +83,7 @@ async def _create_story(
     return await story_repo.save(story)
 
 
-async def _create_tasks(
-    db_session: AsyncSession, story_id, count=3
-) -> list[Task]:
+async def _create_tasks(db_session: AsyncSession, story_id, count=3) -> list[Task]:
     repo = SQLAlchemyTaskRepository(db_session)
     tasks = []
     for i in range(count):
@@ -95,7 +91,7 @@ async def _create_tasks(
             user_story_id=story_id,
             title=f"Task {i + 1}",
             description=f"Description for task {i + 1}",
-            status="todo",
+            status=TaskStatus.TODO,
             priority="medium",
             labels=["backend", "api"] if i == 0 else ["frontend"],
             dependencies=[],
@@ -109,9 +105,7 @@ class TestExportTasks:
     """GET /api/v1/workspaces/{workspace_id}/export/tasks"""
 
     @pytest.mark.asyncio
-    async def test_export_json(
-        self, async_client, db_session: AsyncSession
-    ) -> None:
+    async def test_export_json(self, async_client, db_session: AsyncSession) -> None:
         """GET ?format=json returns JSON with correct content-type and filename."""
         user = await _create_user(db_session)
         ws = await _create_workspace(db_session, user.id)
@@ -139,9 +133,7 @@ class TestExportTasks:
         assert "updated_at" in data[0]
 
     @pytest.mark.asyncio
-    async def test_export_markdown(
-        self, async_client, db_session: AsyncSession
-    ) -> None:
+    async def test_export_markdown(self, async_client, db_session: AsyncSession) -> None:
         """GET ?format=markdown returns Markdown with correct headers."""
         user = await _create_user(db_session)
         ws = await _create_workspace(db_session, user.id)
@@ -161,15 +153,12 @@ class TestExportTasks:
 
         content = response.text
         assert "# Tasks Export" in content
-        assert "**Total tasks**: 1" in content
-        assert "## 1. Task 1" in content
-        assert "Description for task 1" in content
-        assert "**Labels**: backend, api" in content
+        assert "## As a user, I want to log in so that I can access my account" in content
+        assert "- **Task 1** — Description for task 1" in content
+        assert "#backend #api" in content
 
     @pytest.mark.asyncio
-    async def test_export_json_empty(
-        self, async_client, db_session: AsyncSession
-    ) -> None:
+    async def test_export_json_empty(self, async_client, db_session: AsyncSession) -> None:
         """GET with no tasks returns empty JSON array."""
         user = await _create_user(db_session)
         ws = await _create_workspace(db_session, user.id)
@@ -182,9 +171,7 @@ class TestExportTasks:
         assert response.json() == []
 
     @pytest.mark.asyncio
-    async def test_export_markdown_empty(
-        self, async_client, db_session: AsyncSession
-    ) -> None:
+    async def test_export_markdown_empty(self, async_client, db_session: AsyncSession) -> None:
         """GET with no tasks returns Markdown with zero count."""
         user = await _create_user(db_session)
         ws = await _create_workspace(db_session, user.id)
@@ -195,7 +182,6 @@ class TestExportTasks:
         )
         assert response.status_code == 200
         assert "# Tasks Export" in response.text
-        assert "**Total tasks**: 0" in response.text
 
     @pytest.mark.asyncio
     async def test_export_json_tasks_have_all_fields(
@@ -236,7 +222,7 @@ class TestExportTasks:
             user_story_id=story.id,
             title="Task with meta",
             description="Has labels and deps",
-            status="todo",
+            status=TaskStatus.TODO,
             priority="high",
             labels=["db", "backend"],
             dependencies=["US-001", "US-002"],
@@ -247,13 +233,11 @@ class TestExportTasks:
             f"/api/v1/workspaces/{ws.id}/export/tasks?format=markdown",
             headers=_auth_headers(str(user.id)),
         )
-        assert "**Labels**: db, backend" in response.text
-        assert "**Dependencies**: US-001, US-002" in response.text
+        assert "#db #backend" in response.text
+        assert "→ US-001 → US-002" in response.text
 
     @pytest.mark.asyncio
-    async def test_export_unknown_format(
-        self, async_client, db_session: AsyncSession
-    ) -> None:
+    async def test_export_unknown_format(self, async_client, db_session: AsyncSession) -> None:
         """GET with unsupported format returns 400."""
         user = await _create_user(db_session)
         ws = await _create_workspace(db_session, user.id)
@@ -266,9 +250,7 @@ class TestExportTasks:
         assert "Unsupported format" in response.text
 
     @pytest.mark.asyncio
-    async def test_export_unauthorized(
-        self, async_client, db_session: AsyncSession
-    ) -> None:
+    async def test_export_unauthorized(self, async_client, db_session: AsyncSession) -> None:
         """GET without auth headers returns 401."""
         ws_id = uuid4()
         response = await async_client.get(
@@ -278,9 +260,7 @@ class TestExportTasks:
         assert response.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_export_workspace_not_found(
-        self, async_client, db_session: AsyncSession
-    ) -> None:
+    async def test_export_workspace_not_found(self, async_client, db_session: AsyncSession) -> None:
         """GET with non-existent workspace returns 404."""
         user = await _create_user(db_session)
         fake_id = uuid4()
