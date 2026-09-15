@@ -103,9 +103,8 @@ async def test_llm_connection(
     """Test a connection to the specified LLM provider.
 
     Sends a minimal prompt (\"Hello\") and returns the result.
-    For Ollama, uses the ``OllamaAdapter`` directly.
-    For OpenAI and Anthropic, returns a descriptive error until those
-    adapters are implemented.
+    Each provider constructs its own adapter (Ollama, Gemini, OpenAI, or
+    Anthropic) and returns the raw response or a connection error message.
     """
     from storico.domain.ports import LLMConfig
 
@@ -174,9 +173,78 @@ async def test_llm_connection(
                 latency_ms=elapsed,
             )
 
+    if body.provider == "openai":
+        if not body.api_key:
+            return LLMTestResponse(
+                success=False,
+                message="OpenAI API key is required. Set it in workspace settings.",
+            )
+        api_key = body.api_key
+        from storico.infrastructure.llm import OpenAIAdapter
+
+        adapter = OpenAIAdapter(api_key=api_key, base_url=body.base_url)
+        config = LLMConfig(
+            model=body.model,
+            temperature=0.1,
+            max_tokens=10,
+            timeout=30,
+        )
+
+        try:
+            response = await adapter.generate("Hello", config)
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=True,
+                message=f"OpenAI responded: {response[:100]}",
+                model=body.model,
+                latency_ms=elapsed,
+            )
+        except Exception as e:
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=False,
+                message=f"OpenAI connection failed: {e}",
+                latency_ms=elapsed,
+            )
+
+    if body.provider == "anthropic":
+        if not body.api_key:
+            return LLMTestResponse(
+                success=False,
+                message="Anthropic API key is required. Set it in workspace settings.",
+            )
+        api_key = body.api_key
+        from storico.infrastructure.llm import AnthropicAdapter
+
+        adapter = AnthropicAdapter(api_key=api_key, base_url=body.base_url)
+        config = LLMConfig(
+            model=body.model,
+            temperature=0.1,
+            max_tokens=10,
+            timeout=30,
+        )
+
+        try:
+            response = await adapter.generate("Hello", config)
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=True,
+                message=f"Anthropic responded: {response[:100]}",
+                model=body.model,
+                latency_ms=elapsed,
+            )
+        except Exception as e:
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=False,
+                message=f"Anthropic connection failed: {e}",
+                latency_ms=elapsed,
+            )
+
     msg = (
         f"{body.provider.title()} adapter not yet implemented. "
-        "Only Ollama and Gemini are supported for connection testing at this time."
+        "Supported providers for connection testing: "
+        "Ollama, Gemini, OpenAI, and Anthropic."
     )
     return LLMTestResponse(success=False, message=msg)
 

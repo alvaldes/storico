@@ -13,12 +13,13 @@ from storico.application.extraction import ExtractFromStoryUseCase
 from storico.config.settings import get_settings
 from storico.domain.entities import User
 from storico.domain.entities.workspace import Workspace
-from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
+from storico.domain.entities.workspace_member import WorkspaceRole
 from storico.domain.ports import LLMPort, UserRepository, VectorStorePort
 from storico.domain.ports.workspace_member_repository import WorkspaceMemberRepository
 from storico.domain.ports.workspace_repository import WorkspaceRepository
 from storico.domain.services.extraction_judge_service import LLMJudgeService
 from storico.domain.services.extraction_service import ExtractionService, RAGConfig
+from storico.infrastructure.cache.user_cache import get_cached_user, set_cached_user
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyTaskRepository,
@@ -32,14 +33,22 @@ from storico.infrastructure.database.repositories.workspace_repository import (
     SQLAlchemyWorkspaceRepository,
 )
 from storico.infrastructure.database.session import get_session
-from storico.infrastructure.cache.user_cache import get_cached_user, set_cached_user
-from storico.infrastructure.llm import GeminiAdapter, OllamaAdapter, PromptManager, TaskParser
+from storico.infrastructure.llm import (
+    AnthropicAdapter,
+    GeminiAdapter,
+    OllamaAdapter,
+    OpenAIAdapter,
+    PromptManager,
+    TaskParser,
+)
 from storico.infrastructure.vector import EmbeddingService, QdrantAdapter
 
 logger = logging.getLogger(__name__)
 
 
-def get_repository[RepoType](repo_class: type[RepoType]) -> Callable[..., Awaitable[RepoType]]:
+def get_repository[RepoType](
+    repo_class: Callable[[AsyncSession], RepoType],
+) -> Callable[..., Awaitable[RepoType]]:
     """Factory that returns a FastAPI dependency for the given repository class.
 
     Usage::
@@ -132,19 +141,27 @@ def get_llm_port(provider: str = "ollama", api_key: str | None = None) -> LLMPor
     """Factory for the LLM port — returns the appropriate adapter.
 
     Args:
-        provider: The LLM provider name (``ollama``, ``gemini``, etc.).
+        provider: The LLM provider name (``ollama``, ``gemini``, ``openai``, ``anthropic``).
         api_key: API key for cloud providers (Gemini, OpenAI, Anthropic).
 
     Returns:
         An ``LLMPort`` implementation for the requested provider.
 
     Raises:
-        ValueError: If ``gemini`` is requested but no ``api_key`` is provided.
+        ValueError: If a cloud provider is requested but no ``api_key`` is provided.
     """
     if provider == "gemini":
         if not api_key:
             raise ValueError("API key is required for Gemini provider")
         return GeminiAdapter(api_key=api_key)
+    if provider == "openai":
+        if not api_key:
+            raise ValueError("API key is required for OpenAI provider")
+        return OpenAIAdapter(api_key=api_key)
+    if provider == "anthropic":
+        if not api_key:
+            raise ValueError("API key is required for Anthropic provider")
+        return AnthropicAdapter(api_key=api_key)
 
     # Default to Ollama
     return OllamaAdapter(base_url=get_settings().ollama_host)

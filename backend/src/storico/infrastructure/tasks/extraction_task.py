@@ -44,7 +44,14 @@ from storico.infrastructure.database.repositories import (
 from storico.infrastructure.database.repositories.workspace_prompt_repository import (
     SQLAlchemyWorkspacePromptRepository,
 )
-from storico.infrastructure.llm import GeminiAdapter, OllamaAdapter, PromptManager, TaskParser
+from storico.infrastructure.llm import (
+    AnthropicAdapter,
+    GeminiAdapter,
+    OllamaAdapter,
+    OpenAIAdapter,
+    PromptManager,
+    TaskParser,
+)
 from storico.infrastructure.vector import EmbeddingService, QdrantAdapter
 
 logger = logging.getLogger(__name__)
@@ -83,9 +90,9 @@ async def run_background_extraction(
         model: LLM model name (e.g. ``gemini-2.0-flash``, ``llama3.2``).
         temperature: Generation temperature (default: 0.1).
         validate: Whether to run LLM-as-a-Judge validation.
-        provider: ``"ollama"`` or ``"gemini"``.
-        api_key: API key for the provider (Gemini).
-        base_url: Base URL for the provider (Ollama).
+        provider: ``"ollama"``, ``"gemini"``, ``"openai"``, or ``"anthropic"``.
+        api_key: API key for cloud providers (Gemini, OpenAI, Anthropic).
+        base_url: Base URL override for the provider (Ollama, OpenAI-compatible).
         max_retries: Number of retry attempts on transient errors.
     """
     retry_delay = 1  # seconds, doubles each attempt
@@ -104,14 +111,17 @@ async def run_background_extraction(
                 base_url=base_url,
             )
             logger.info(
-                "Extraction %s completed", extraction_id,
+                "Extraction %s completed",
+                extraction_id,
             )
             return  # success
 
         except (LLMError, ParseError) as exc:
             # Deterministic errors — don't retry
             logger.error(
-                "Extraction %s failed (will NOT retry): %s", extraction_id, exc,
+                "Extraction %s failed (will NOT retry): %s",
+                extraction_id,
+                exc,
             )
             await _mark_extraction_failed(extraction_id, str(exc))
             return
@@ -152,7 +162,11 @@ async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
 
         recovered = 0
         for ext in all_extractions:
-            if ext.status == ExtractionStatus.PENDING and ext.created_at and ext.created_at < deadline:
+            if (
+                ext.status == ExtractionStatus.PENDING
+                and ext.created_at
+                and ext.created_at < deadline
+            ):
                 await repo.save(
                     Extraction(
                         id=ext.id,
@@ -236,6 +250,20 @@ async def _run_extraction(
                     "Set it in Workspace Settings before extracting."
                 )
             llm_port = GeminiAdapter(api_key=api_key)
+        elif provider == "openai":
+            if not api_key:
+                raise LLMError(
+                    "OpenAI API key is not configured for this workspace. "
+                    "Set it in Workspace Settings before extracting."
+                )
+            llm_port = OpenAIAdapter(api_key=api_key, base_url=base_url)
+        elif provider == "anthropic":
+            if not api_key:
+                raise LLMError(
+                    "Anthropic API key is not configured for this workspace. "
+                    "Set it in Workspace Settings before extracting."
+                )
+            llm_port = AnthropicAdapter(api_key=api_key, base_url=base_url)
         else:
             url = base_url or settings.ollama_host
             llm_port = OllamaAdapter(base_url=url)
@@ -247,9 +275,7 @@ async def _run_extraction(
         # when the workspace has no row yet. Extraction always uses the
         # workspace system prompt, never a hardcoded one.
         prompt_repo = SQLAlchemyWorkspacePromptRepository(session)
-        ws_prompt = await resolve_workspace_prompt(
-            workspace_id, prompt_repo, prompt_manager
-        )
+        ws_prompt = await resolve_workspace_prompt(workspace_id, prompt_repo, prompt_manager)
         system_prompt = ws_prompt.system_prompt
         instruction_template = ws_prompt.instruction_template
         few_shot_examples = ws_prompt.few_shot_examples
@@ -395,7 +421,7 @@ async def _mark_failed(
     pending = await extraction_repo.find_by_id(extraction_id)
     if pending is None:
         return
-    
+
     # Update extraction record
     failed = Extraction(
         id=extraction_id,
@@ -409,13 +435,13 @@ async def _mark_failed(
         created_at=pending.created_at,
     )
     await extraction_repo.save(failed)
-    
+
     # Transition UserStory to FAILED_EXTRACTION (from EXTRACTING or PENDING_EXTRACTION)
     story = await story_repo.find_by_id(pending.user_story_id)
     if story and story.status in (UserStoryStatus.EXTRACTING, UserStoryStatus.PENDING_EXTRACTION):
         from dataclasses import replace
         from datetime import UTC, datetime
-        
+
         updated_story = replace(
             story,
             status=UserStoryStatus.FAILED_EXTRACTION,
@@ -446,8 +472,7 @@ async def _store_rag(
         return
     try:
         tasks_summary = "\n".join(
-            f"{i + 1}. {t.summary}: {t.description}"
-            for i, t in enumerate(parsed_tasks)
+            f"{i + 1}. {t.summary}: {t.description}" for i, t in enumerate(parsed_tasks)
         )
         await vector_store.store_extraction(
             extraction_id=str(extraction_id),
@@ -495,17 +520,23 @@ async def _mark_extraction_failed(
             created_at=pending.created_at,
         )
         await repo.save(failed)
-        
+
         # Transition UserStory to FAILED_EXTRACTION
         story = await story_repo.find_by_id(pending.user_story_id)
-        if story and story.status in (UserStoryStatus.EXTRACTING, UserStoryStatus.PENDING_EXTRACTION):
+        if story and story.status in (
+            UserStoryStatus.EXTRACTING,
+            UserStoryStatus.PENDING_EXTRACTION,
+        ):
             from dataclasses import replace
             from datetime import UTC, datetime
-            
+
             updated_story = replace(
                 story,
                 status=UserStoryStatus.FAILED_EXTRACTION,
                 updated_at=datetime.now(UTC),
             )
             await story_repo.save(updated_story)
-            logger.info("UserStory %s transitioned to FAILED_EXTRACTION (via recovery)", pending.user_story_id)
+            logger.info(
+                "UserStory %s transitioned to FAILED_EXTRACTION (via recovery)",
+                pending.user_story_id,
+            )
