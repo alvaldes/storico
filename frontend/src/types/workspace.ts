@@ -28,13 +28,10 @@ export interface WorkspaceLLMConfig {
   apiKey?: string | null;
 }
 
-export interface FewShotExample {
-  userStory: string;
-  tasks: string;
-}
-
 export interface WorkspacePrompt {
   systemPrompt?: string | null;
   instructionTemplate?: string | null;
-  fewShotExamples?: FewShotExample[] | null;
+  fewShotEnabled?: boolean;
+  fewShotLimit?: number;
+  fewShotThreshold?: number;
 }

@@ -1,144 +1,82 @@
 import { describe, it, expect } from 'vitest';
 import { promptConfigSchema } from '@/schemas/workspace';
-import type { FewShotExample } from '@/schemas/workspace';
 
-describe('promptConfigSchema - fewShotExamples', () => {
-  const validExample: FewShotExample = {
-    userStory: 'As a user, I want to log in so that I can access my account',
-    tasks:
-      '1. summary: Set up auth\ndescription: Create user and session tables with proper indexes.',
-  };
-
-  it('accepts valid fewShotExamples array', () => {
-    const result = promptConfigSchema.safeParse({
-      fewShotExamples: [validExample],
-    });
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.fewShotExamples).toHaveLength(1);
-      expect(result.data.fewShotExamples?.[0].userStory).toBe(validExample.userStory);
-    }
-  });
-
-  it('accepts empty array', () => {
-    const result = promptConfigSchema.safeParse({
-      fewShotExamples: [],
-    });
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.fewShotExamples).toEqual([]);
-    }
-  });
-
-  it('accepts undefined', () => {
+describe('promptConfigSchema - few-shot config fields', () => {
+  it('accepts default config', () => {
     const result = promptConfigSchema.safeParse({});
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.fewShotExamples).toBeUndefined();
+      expect(result.data.fewShotEnabled).toBeUndefined();
+      expect(result.data.fewShotLimit).toBeUndefined();
+      expect(result.data.fewShotThreshold).toBeUndefined();
     }
   });
 
-  it('accepts max 3 examples', () => {
+  it('accepts valid config values', () => {
     const result = promptConfigSchema.safeParse({
-      fewShotExamples: [validExample, validExample, validExample],
+      fewShotEnabled: false,
+      fewShotLimit: 5,
+      fewShotThreshold: 0.9,
     });
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.fewShotExamples).toHaveLength(3);
+      expect(result.data.fewShotEnabled).toBe(false);
+      expect(result.data.fewShotLimit).toBe(5);
+      expect(result.data.fewShotThreshold).toBe(0.9);
     }
   });
 
-  it('rejects more than 3 examples', () => {
-    const result = promptConfigSchema.safeParse({
-      fewShotExamples: [validExample, validExample, validExample, validExample],
-    });
+  it('rejects limit below 1', () => {
+    const result = promptConfigSchema.safeParse({ fewShotLimit: 0 });
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toContain('3');
+      expect(result.error.issues[0].path).toEqual(['fewShotLimit']);
     }
   });
 
-  it('rejects userStory shorter than 10 characters', () => {
-    const result = promptConfigSchema.safeParse({
-      fewShotExamples: [{ userStory: 'Short', tasks: validExample.tasks }],
-    });
+  it('rejects limit above 10', () => {
+    const result = promptConfigSchema.safeParse({ fewShotLimit: 11 });
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toContain('10');
-      expect(result.error.issues[0].path).toEqual(['fewShotExamples', 0, 'userStory']);
+      expect(result.error.issues[0].path).toEqual(['fewShotLimit']);
     }
   });
 
-  it('rejects tasks shorter than 20 characters', () => {
-    const result = promptConfigSchema.safeParse({
-      fewShotExamples: [{ userStory: validExample.userStory, tasks: 'Too short' }],
-    });
+  it('rejects threshold below 0', () => {
+    const result = promptConfigSchema.safeParse({ fewShotThreshold: -0.1 });
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toContain('20');
-      expect(result.error.issues[0].path).toEqual(['fewShotExamples', 0, 'tasks']);
+      expect(result.error.issues[0].path).toEqual(['fewShotThreshold']);
     }
   });
 
-  it('rejects empty userStory', () => {
-    const result = promptConfigSchema.safeParse({
-      fewShotExamples: [{ userStory: '', tasks: validExample.tasks }],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects empty tasks', () => {
-    const result = promptConfigSchema.safeParse({
-      fewShotExamples: [{ userStory: validExample.userStory, tasks: '' }],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it('validates each example independently', () => {
-    const result = promptConfigSchema.safeParse({
-      fewShotExamples: [
-        validExample,
-        { userStory: 'Invalid', tasks: validExample.tasks }, // userStory too short
-      ],
-    });
+  it('rejects threshold above 1', () => {
+    const result = promptConfigSchema.safeParse({ fewShotThreshold: 1.1 });
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].path).toEqual(['fewShotExamples', 1, 'userStory']);
+      expect(result.error.issues[0].path).toEqual(['fewShotThreshold']);
     }
   });
 
-  it('accepts null', () => {
-    const result = promptConfigSchema.safeParse({
-      fewShotExamples: null,
-    });
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.fewShotExamples).toBeNull();
-    }
-  });
-
-  it('allows fewShotExamples alongside other fields', () => {
+  it('allows config alongside other prompt fields', () => {
     const result = promptConfigSchema.safeParse({
       systemPrompt: 'You are an expert...',
       instructionTemplate: 'Break this user story...',
-      fewShotExamples: [validExample],
+      fewShotEnabled: true,
+      fewShotLimit: 3,
+      fewShotThreshold: 0.85,
     });
 
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.systemPrompt).toBe('You are an expert...');
-      expect(result.data.fewShotExamples).toHaveLength(1);
+      expect(result.data.fewShotLimit).toBe(3);
     }
   });
 });

@@ -39,8 +39,8 @@ import { Field, FieldLabel, FieldDescription } from '@/components/ui/field';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { ProviderIcon } from '@/components/ui/provider-icon';
-import { FewShotExamplesEditor } from '@/components/react/FewShotExamplesEditor';
-import type { WorkspaceLLMConfig, WorkspacePrompt, FewShotExample } from '@/types/workspace';
+import { FewShotConfigEditor } from '@/components/react/FewShotConfigEditor';
+import type { WorkspaceLLMConfig, WorkspacePrompt } from '@/types/workspace';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
@@ -70,7 +70,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   const [prompts, setPrompts] = useState<WorkspacePrompt>({
     systemPrompt: '',
     instructionTemplate: '',
-    fewShotExamples: [],
+    fewShotEnabled: true,
+    fewShotLimit: 3,
+    fewShotThreshold: 0.85,
   });
   const [promptSaving, setPromptSaving] = useState(false);
   const [promptSaveResult, setPromptSaveResult] = useState<'idle' | 'success' | 'error'>('idle');
@@ -125,7 +127,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
         setPrompts({
           systemPrompt: promptData.systemPrompt ?? '',
           instructionTemplate: promptData.instructionTemplate ?? '',
-          fewShotExamples: promptData.fewShotExamples ?? [],
+          fewShotEnabled: promptData.fewShotEnabled ?? true,
+          fewShotLimit: promptData.fewShotLimit ?? 3,
+          fewShotThreshold: promptData.fewShotThreshold ?? 0.85,
         });
       }
     } catch (err) {
@@ -209,8 +213,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
       await upsertPrompts(workspaceId, {
         systemPrompt: prompts.systemPrompt || undefined,
         instructionTemplate: prompts.instructionTemplate || undefined,
-        fewShotExamples:
-          (prompts.fewShotExamples ?? []).length > 0 ? prompts.fewShotExamples : undefined,
+        fewShotEnabled: prompts.fewShotEnabled,
+        fewShotLimit: prompts.fewShotLimit,
+        fewShotThreshold: prompts.fewShotThreshold,
       });
       setPromptSaveResult('success');
       toast.success(t.workspace?.promptSaved ?? 'Prompt configuration saved');
@@ -681,14 +686,13 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               </FieldDescription>
             </Field>
 
-            {/* Few-Shot Examples Editor */}
-            <FewShotExamplesEditor
+            {/* Few-Shot Config Editor */}
+            <FewShotConfigEditor
               locale={locale}
-              examples={prompts.fewShotExamples ?? []}
-              onChange={(examples) =>
-                setPrompts((prev) => ({ ...prev, fewShotExamples: examples }))
-              }
-              maxExamples={3}
+              enabled={prompts.fewShotEnabled ?? true}
+              limit={prompts.fewShotLimit ?? 3}
+              threshold={prompts.fewShotThreshold ?? 0.85}
+              onChange={(value) => setPrompts((prev) => ({ ...prev, ...value }))}
             />
 
             {/* Save Button */}

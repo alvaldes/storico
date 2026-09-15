@@ -11,10 +11,8 @@ export {
   transferOwnershipSchema,
   llmConfigSchema,
   promptConfigSchema,
-  fewShotExampleSchema,
 } from './workspace';
 export type {
-  FewShotExample,
   CreateWorkspaceParams,
   UpdateWorkspaceParams,
   AddMemberParams,

@@ -29,22 +29,14 @@ export const llmConfigSchema = z.object({
   apiKey: z.string().max(500).optional(),
 });
 
-export const fewShotExampleSchema = z.object({
-  userStory: z.string().min(10, { message: 'User Story must be at least 10 characters' }),
-  tasks: z.string().min(20, { message: 'Tasks must be at least 20 characters' }),
-});
-
 export const promptConfigSchema = z.object({
   systemPrompt: z.string().optional(),
   instructionTemplate: z.string().optional(),
-  fewShotExamples: z
-    .array(fewShotExampleSchema)
-    .max(3, { message: 'Maximum 3 few-shot examples allowed' })
-    .optional()
-    .nullable(),
+  fewShotEnabled: z.boolean().optional(),
+  fewShotLimit: z.number().int().min(1).max(10).optional(),
+  fewShotThreshold: z.number().min(0).max(1).optional(),
 });
 
-export type FewShotExample = z.infer<typeof fewShotExampleSchema>;
 export type CreateWorkspaceParams = z.infer<typeof createWorkspaceSchema>;
 export type UpdateWorkspaceParams = z.infer<typeof updateWorkspaceSchema>;
 export type AddMemberParams = z.infer<typeof addMemberSchema>;
