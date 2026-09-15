@@ -1,0 +1,57 @@
+---
+strict_tdd: true
+context: |
+  Storico is a Python (FastAPI) + TypeScript (Astro/React) project.
+  Detected markers: pyproject.toml, pytest.ini, package.json,
+  pnpm-lock.yaml, alembic.
+  Package managers: pip via the conda env `storico` (backend) and pnpm.
+  Primary test command: cd backend && conda run -n storico python -m pytest
+  Unit tests: backend pytest (conda env storico); frontend vitest.
+  Integration tests: backend pytest tests/test_api (FastAPI test client).
+  E2E tests: none runnable (frontend e2e specs exist but
+  @playwright/test is not a devDependency).
+rules:
+  proposal:
+    require_problem_statement: true
+  spec:
+    require_acceptance_criteria: true
+  design:
+    require_tradeoffs: true
+  tasks:
+    protect_review_workload: true
+  apply:
+    test_command: 'cd backend && conda run -n storico python -m pytest'
+  verify:
+    test_command: 'cd backend && conda run -n storico python -m pytest'
+testing:
+  detected: 2026-09-14
+  runner:
+    command: 'cd backend && conda run -n storico python -m pytest'
+    framework: pytest
+  layers:
+    unit: pytest, vitest
+    integration: pytest
+    e2e: ''
+  commands:
+    unit:
+      - scope: backend
+        command: 'cd backend && conda run -n storico python -m pytest'
+        framework: pytest
+      - scope: frontend
+        command: 'cd frontend && pnpm test'
+        framework: vitest
+    integration:
+      - scope: backend
+        command: 'cd backend && conda run -n storico pytest -m integration'
+        framework: pytest
+    e2e: []
+  coverage:
+    command: ''
+    commands: []
+quality:
+  lint: ''
+  lint_commands: []
+  typecheck: ''
+  typecheck_commands: []
+  format: ''
+  format_commands: []
