@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Embedding
     embedding_model: str = "nomic-embed-text"
     embedding_dimensions: int = 768
+    embedding_provider: str = "ollama"
+    google_embedding_model: str = "text-embedding-004"
+    openai_embedding_model: str = "text-embedding-3-small"
 
     # Vector store (Qdrant)
     qdrant_collection: str = "storico_extractions"
@@ -39,6 +42,10 @@ class Settings(BaseSettings):
 
     # Auth — JWT secret for verifying proxy-generated tokens
     auth_jwt_secret: str = "dev-insecure-token-change-in-production"
+
+    # Embedding API keys
+    google_api_key: str | None = None
+    openai_api_key: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=_ENV_FILE,
