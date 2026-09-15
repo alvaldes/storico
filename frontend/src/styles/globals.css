@@ -152,7 +152,17 @@
 /* ── Dark Theme ───────────────────────────────────────────────── */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-@variant dark {
+/* Token overrides must share the *exact* scope of the `dark:` utility variant
+   (`:where([data-theme="dark"], [data-theme="dark"] *)`), which matches a nested
+   themed subtree as well as the root. Writing these overrides as `@variant dark { … }`
+   instead compiles to `:scope:where(…)`, i.e. :root-only: a nested `data-theme="dark"`
+   subtree would then get dark utilities resolving against light tokens, inverting
+   every themed control.
+   `:root[data-theme="dark"]` outranks the light `:root` block; the bare attribute and
+   descendant selectors carry the nested case. */
+:root[data-theme='dark'],
+[data-theme='dark'],
+[data-theme='dark'] * {
   --color-surface: #0f141d;
   --color-surface-secondary: oklch(0.18 0.01 260);
   --color-border: oklch(0.25 0.01 260);
