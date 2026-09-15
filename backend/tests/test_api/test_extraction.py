@@ -4,17 +4,18 @@ Tests the workspace-scoped routes at
 ``/api/v1/workspaces/{workspace_id}/extract/``.
 """
 
+import asyncio
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from storico.api.dependencies import get_extract_use_case, get_llm_port
-from storico.application.extraction import ExtractFromStoryUseCase
 from storico.domain.entities import Extraction, LLMConnectionError, User
+from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
-from storico.domain.ports import LLMPort
+from storico.domain.ports import LLMConfig, LLMPort
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
@@ -24,6 +25,7 @@ from storico.infrastructure.database.repositories import (
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
 )
+from storico.infrastructure.tasks import extraction_task
 from tests._helpers import create_workspace
 
 
@@ -40,9 +42,6 @@ async def _create_story(db_session: AsyncSession):
     """Create a user story in the test database."""
     from storico.domain.entities.project import Project
     from storico.domain.entities.user_story import UserStory
-    from storico.infrastructure.database.repositories import (
-        SQLAlchemyProjectRepository,
-    )
 
     ws = await create_workspace(db_session)
 
@@ -61,14 +60,10 @@ async def _create_story(db_session: AsyncSession):
     return await story_repo.save(story), ws
 
 
-async def _add_member(
-    db_session: AsyncSession, ws_id, user_id
-) -> None:
+async def _add_member(db_session: AsyncSession, ws_id, user_id) -> None:
     """Add a user as ADMIN member of a workspace."""
     repo = SQLAlchemyWorkspaceMemberRepository(db_session)
-    member = WorkspaceMember(
-        workspace_id=ws_id, user_id=user_id, role=WorkspaceRole.ADMIN
-    )
+    member = WorkspaceMember(workspace_id=ws_id, user_id=user_id, role=WorkspaceRole.ADMIN)
     await repo.add(member)
 
 
@@ -77,44 +72,48 @@ class TestExtractEndpoint:
 
     @pytest.mark.asyncio
     async def test_extract_success(
-        self, async_client, app, db_session: AsyncSession
+        self, async_client, db_session: AsyncSession, monkeypatch
     ) -> None:
-        """POST with valid story returns 202 with extraction metadata."""
+        """POST with a valid story returns 202 and persists a pending extraction."""
         user = await _create_user(db_session)
         story, ws = await _create_story(db_session)
         await _add_member(db_session, ws.id, user.id)
         headers = _auth_headers(str(user.id))
 
-        mock_use_case = AsyncMock(spec=ExtractFromStoryUseCase)
-        mock_use_case.execute.return_value = {
-            "extraction_id": uuid4(),
-            "status": "pending",
-            "error_info": None,
-            "model_used": "llama3.2",
-            "confidence_score": 0.9,
-            "created_at": "2026-07-06T00:00:00Z",
-        }
+        # The endpoint is fire-and-forget: it persists a pending row and schedules
+        # the LLM run. Patch the task so this asserts the scheduling contract
+        # instead of racing a real LLM call against an unrelated database.
+        scheduled = AsyncMock()
+        monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", scheduled)
 
-        app.dependency_overrides[get_extract_use_case] = lambda: mock_use_case
+        response = await async_client.post(
+            f"/api/v1/workspaces/{ws.id}/extract/",
+            json={"user_story_id": str(story.id), "model": "llama3.2"},
+            headers=headers,
+        )
 
-        try:
-            response = await async_client.post(
-                f"/api/v1/workspaces/{ws.id}/extract/",
-                json={"user_story_id": str(story.id), "model": "llama3.2"},
-                headers=headers,
-            )
-            assert response.status_code == 202
-            data = response.json()
-            assert data["status"] == "pending"
-            assert "extraction_id" in data
-            assert data["model_used"] == "llama3.2"
-        finally:
-            app.dependency_overrides.pop(get_extract_use_case, None)
+        assert response.status_code == 202
+        data = response.json()
+        assert data["status"] == "pending"
+        assert data["user_story_id"] == str(story.id)
+
+        # The pending row is the real contract: the client polls it by this id.
+        repo = SQLAlchemyExtractionRepository(db_session)
+        pending = await repo.find_by_id(UUID(data["extraction_id"]))
+        assert pending is not None
+        assert pending.status == ExtractionStatus.PENDING
+
+        # ...and the background run was scheduled for that exact row.
+        await asyncio.sleep(0)
+        scheduled.assert_called_once()
+        kwargs = scheduled.call_args.kwargs
+        assert kwargs["extraction_id"] == pending.id
+        assert kwargs["story_id"] == story.id
+        assert kwargs["workspace_id"] == ws.id
+        assert kwargs["model"] == "llama3.2"
 
     @pytest.mark.asyncio
-    async def test_extract_story_not_found(
-        self, async_client, db_session: AsyncSession
-    ) -> None:
+    async def test_extract_story_not_found(self, async_client, db_session: AsyncSession) -> None:
         """POST with non-existent story ID returns 404."""
         user = await _create_user(db_session)
         ws = await create_workspace(db_session)
@@ -130,34 +129,60 @@ class TestExtractEndpoint:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_extract_llm_error(
-        self, async_client, app, db_session: AsyncSession
+    async def test_llm_failure_is_recorded_on_the_extraction(
+        self, test_engine: AsyncEngine, monkeypatch
     ) -> None:
-        """POST when LLM fails returns 202 with failed status (not 500)."""
-        user = await _create_user(db_session)
-        story, ws = await _create_story(db_session)
-        await _add_member(db_session, ws.id, user.id)
-        headers = _auth_headers(str(user.id))
+        """An unreachable LLM is recorded as a failed extraction, never raised.
 
-        class FailingLLM(LLMPort):
-            async def generate(self, prompt: str, config: object) -> str:  # noqa: ARG002
+        The endpoint answers 202 before the LLM is ever called, so "the LLM
+        failed" can only be observed on the record the client polls. That work
+        lives in the background task, which builds its own session from settings
+        — point both it and its adapter at this test's engine.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+
+        async with factory() as session:
+            story, ws = await _create_story(session)
+
+        async with factory() as session:
+            repo = SQLAlchemyExtractionRepository(session)
+            pending = await repo.save(
+                Extraction(
+                    user_story_id=story.id,
+                    model_used="llama3.2",
+                    raw_response="",
+                    status=ExtractionStatus.PENDING,
+                    user_story_status=UserStoryStatus.PENDING_EXTRACTION,
+                )
+            )
+
+        class UnreachableLLM(LLMPort):
+            async def generate(
+                self,
+                prompt: str,  # noqa: ARG002
+                config: LLMConfig,  # noqa: ARG002
+                system_prompt: str | None = None,  # noqa: ARG002
+            ) -> str:
                 raise LLMConnectionError("Ollama not running")
 
-        async def failing_get_llm_port() -> LLMPort:
-            return FailingLLM()
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: UnreachableLLM())
 
-        app.dependency_overrides[get_llm_port] = failing_get_llm_port
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=story.id,
+            workspace_id=ws.id,
+            model="llama3.2",
+            max_retries=0,
+        )
 
-        try:
-            response = await async_client.post(
-                f"/api/v1/workspaces/{ws.id}/extract/",
-                json={"user_story_id": str(story.id), "model": "llama3.2"},
-                headers=headers,
-            )
-            # The use case persists the failed extraction, so we get 202
-            assert response.status_code == 202
-        finally:
-            app.dependency_overrides.pop(get_llm_port, None)
+        async with factory() as session:
+            repo = SQLAlchemyExtractionRepository(session)
+            failed = await repo.find_by_id(pending.id)
+
+        assert failed is not None
+        assert failed.status == ExtractionStatus.FAILED
+        assert "Ollama not running" in (failed.error_info or "")
 
     @pytest.mark.asyncio
     async def test_extract_unauthorized(self, async_client) -> None:
@@ -202,8 +227,9 @@ class TestExtractEndpoint:
 
 def _auth_headers(user_id: str) -> dict:
     """Generate JWT auth headers — mirrors conftest.make_jwt_headers."""
-    from storico.config.settings import Settings
     import jwt as pyjwt
+
+    from storico.config.settings import Settings
 
     secret = Settings.load().auth_jwt_secret
     token = pyjwt.encode({"sub": user_id}, secret, algorithm="HS256")
@@ -214,9 +240,7 @@ class TestExtractionStatusEndpoint:
     """GET /api/v1/workspaces/{workspace_id}/extract/status/{extraction_id}"""
 
     @pytest.mark.asyncio
-    async def test_status_completed(
-        self, async_client, db_session: AsyncSession
-    ) -> None:
+    async def test_status_completed(self, async_client, db_session: AsyncSession) -> None:
         """GET returns extraction details for completed extraction."""
         user = await _create_user(db_session)
         ws = await create_workspace(db_session)
@@ -228,7 +252,7 @@ class TestExtractionStatusEndpoint:
             user_story_id=story_id,
             model_used="llama3.2",
             raw_response="1. summary: Task one\ndescription: Desc",
-            status="completed",
+            status=ExtractionStatus.COMPLETED,
         )
         saved = await repo.save(extraction)
 
@@ -243,9 +267,7 @@ class TestExtractionStatusEndpoint:
         assert data["id"] == str(saved.id)
 
     @pytest.mark.asyncio
-    async def test_status_failed(
-        self, async_client, db_session: AsyncSession
-    ) -> None:
+    async def test_status_failed(self, async_client, db_session: AsyncSession) -> None:
         """GET returns error_info for failed extraction."""
         user = await _create_user(db_session)
         ws = await create_workspace(db_session)
@@ -257,7 +279,7 @@ class TestExtractionStatusEndpoint:
             user_story_id=story_id,
             model_used="llama3.2",
             raw_response="",
-            status="failed",
+            status=ExtractionStatus.FAILED,
             error_info="LLM connection failed",
         )
         saved = await repo.save(extraction)
@@ -286,7 +308,7 @@ class TestExtractionStatusEndpoint:
             user_story_id=story_id,
             model_used="mistral",
             raw_response="Some response",
-            status="completed",
+            status=ExtractionStatus.COMPLETED,
             confidence_score=0.85,
         )
         saved = await repo.save(extraction)
@@ -301,9 +323,7 @@ class TestExtractionStatusEndpoint:
         assert data["raw_response"] == "Some response"
 
     @pytest.mark.asyncio
-    async def test_status_not_found(
-        self, async_client, db_session: AsyncSession
-    ) -> None:
+    async def test_status_not_found(self, async_client, db_session: AsyncSession) -> None:
         """GET for non-existent extraction returns 404."""
         user = await _create_user(db_session)
         ws = await create_workspace(db_session)
