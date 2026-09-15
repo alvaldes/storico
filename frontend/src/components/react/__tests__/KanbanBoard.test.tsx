@@ -64,6 +64,7 @@ describe('KanbanBoard', () => {
       workspaceTasks: mockTasks,
       loading: false,
       error: null,
+      updatingTaskId: null,
       // Stub the actions: the board fetches on mount and there is no backend here.
       fetchTasksForWorkspace: vi.fn().mockResolvedValue(undefined),
       updateTaskStatus: vi.fn().mockResolvedValue(undefined),
@@ -82,5 +83,32 @@ describe('KanbanBoard', () => {
       expect(screen.getByText('Review')).toBeInTheDocument();
       expect(screen.getByText('Done')).toBeInTheDocument();
     });
+  });
+
+  it('shows a distinct empty state when the workspace has no tasks', async () => {
+    useTaskStore.setState({ workspaceTasks: [] });
+    render(<KanbanBoard locale="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No tasks in this workspace yet')).toBeInTheDocument();
+      expect(
+    screen.getByText('Extract tasks from a user story to see them here.'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('locks a card (spinner + no drag handle) while its status update is in flight', async () => {
+    useTaskStore.setState({ updatingTaskId: 'task-1' });
+    render(<KanbanBoard locale="en" />);
+
+    // The locked card shows a subtle loading indicator.
+    await waitFor(() => {
+      expect(screen.getByLabelText('Loading...')).toBeInTheDocument();
+    });
+    // Only the locked card is busy.
+    expect(screen.getAllByLabelText('Loading...')).toHaveLength(1);
+    // The locked card has no drag handle, so it cannot be re-dragged.
+    const handles = document.querySelectorAll('[data-rfd-drag-handle-draggable-id]');
+    expect(handles).toHaveLength(mockTasks.length - 1);
   });
 });

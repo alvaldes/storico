@@ -1,9 +1,10 @@
 'use client';
 
 import { Draggable } from '@hello-pangea/dnd';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useTranslations, type Locale } from '@/i18n/utils';
+import { useTaskStore } from '@/stores/taskStore';
 import type { Task } from '@/types/task';
 
 interface KanbanCardProps {
@@ -14,23 +15,33 @@ interface KanbanCardProps {
 
 export function KanbanCard({ task, index, locale }: KanbanCardProps) {
   const t = useTranslations(locale);
+  // While a status PUT is in flight for this task, the card shows a subtle
+  // loading indicator and must not be re-draggable.
+  const isUpdating = useTaskStore((s) => s.updatingTaskId === task.id);
 
   return (
-    <Draggable draggableId={task.id} index={index}>
+    <Draggable draggableId={task.id} index={index} isDragDisabled={isUpdating}>
       {(provided, snapshot) => (
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
           className={`rounded-lg border border-border bg-(--color-surface) p-3 transition-shadow ${
             snapshot.isDragging ? 'shadow-lg ring-2 ring-primary/30' : 'shadow-sm'
-          }`}
+          } ${isUpdating ? 'opacity-70' : ''}`}
+          aria-busy={isUpdating}
         >
           <div className="flex items-start gap-2">
             <div
-              {...provided.dragHandleProps}
-              className="mt-0.5 shrink-0 text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing"
+              {...(isUpdating ? {} : provided.dragHandleProps)}
+              className={`mt-0.5 shrink-0 text-muted-foreground/40 ${
+                isUpdating ? 'cursor-wait' : 'hover:text-muted-foreground cursor-grab active:cursor-grabbing'
+              }`}
             >
-              <GripVertical className="h-4 w-4" />
+              {isUpdating ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-label={t.common.loading} />
+              ) : (
+                <GripVertical className="h-4 w-4" />
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <a

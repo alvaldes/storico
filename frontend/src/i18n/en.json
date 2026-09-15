@@ -233,7 +233,9 @@
     "invalid_drop_title": "Invalid Move",
     "invalid_drop": "Cannot move task from {from} to {to}. Allowed: {allowed}",
     "backend_invalid_transition": "Server rejected move from {from} to {to}. Allowed: {allowed}",
-    "invalid_drop": "Cannot move task from {from} to {to}. Allowed: {allowed}"
+    "invalid_drop": "Cannot move task from {from} to {to}. Allowed: {allowed}",
+    "empty_board": "No tasks in this workspace yet",
+    "empty_board_hint": "Extract tasks from a user story to see them here."
   },
   "taskEditor": {
     "title": "Edit Task",
@@ -707,3 +709,4 @@
     }
   }
 }
+

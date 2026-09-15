@@ -233,7 +233,9 @@
     "invalid_drop_title": "Movimiento Inválido",
     "invalid_drop": "No se puede mover la tarea de {from} a {to}. Permitidos: {allowed}",
     "backend_invalid_transition": "El servidor rechazó mover de {from} a {to}. Permitidos: {allowed}",
-    "invalid_drop": "No se puede mover la tarea de {from} a {to}. Permitidos: {allowed}"
+    "invalid_drop": "No se puede mover la tarea de {from} a {to}. Permitidos: {allowed}",
+    "empty_board": "Aún no hay tareas en este workspace",
+    "empty_board_hint": "Extrae tareas de una historia de usuario para verlas aquí."
   },
   "taskEditor": {
     "title": "Editar Tarea",
@@ -707,3 +709,4 @@
     }
   }
 }
+

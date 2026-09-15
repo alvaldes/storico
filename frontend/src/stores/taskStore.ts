@@ -7,7 +7,7 @@ import { useStoryStore } from '@/stores/storyStore';
 
 // ── Types ──
 
-export type ExtractionStatus = 'idle' | 'pending' | 'completed' | 'failed';
+export type ExtractionStatus = 'idle' | 'pending' | 'completed' | 'failed' | 'unauthorized';
 export type ExtractionErrorCode = 'unauthorized' | 'network' | 'server' | null;
 
 export interface ExtractionErrorInfo {
@@ -172,13 +172,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     } catch (err) {
       const errorInfo = extractExtractionErrorInfo(err);
       const errorCode = categorizeExtractionError(err);
+      // A 401 is an auth failure, not an extraction failure: the store must
+      // NOT mark the extraction as `failed`, it must surface an auth-specific
+      // error so the UI can prompt re-authentication.
+      const unauthorized = errorCode === 'unauthorized';
       set((state) => ({
         extractions: {
           ...state.extractions,
           [storyId]: {
             extractionId: null,
-            status: 'failed',
-            userStoryStatus: 'failed_extraction',
+            status: unauthorized ? 'unauthorized' : 'failed',
+            userStoryStatus: unauthorized ? null : 'failed_extraction',
             error: errorInfo,
             errorCode,
           },
@@ -268,13 +272,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     } catch (err) {
       const errorInfo = extractExtractionErrorInfo(err);
       const errorCode = categorizeExtractionError(err);
+      const unauthorized = errorCode === 'unauthorized';
       set((state) => ({
         extractions: {
           ...state.extractions,
           [storyId]: {
             extractionId,
-            status: 'failed',
-            userStoryStatus: 'failed_extraction',
+            status: unauthorized ? 'unauthorized' : 'failed',
+            userStoryStatus: unauthorized ? null : 'failed_extraction',
             error: errorInfo,
             errorCode,
           },

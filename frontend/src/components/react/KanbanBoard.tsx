@@ -225,6 +225,17 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     );
   }
 
+  // Workspace selected but with no tasks: distinct empty state from the
+  // "no workspace" prompt, with a hint to extract tasks from a story.
+  if (workspaceTasks.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
+        <p className="text-sm font-medium text-foreground">{t.kanban.empty_board}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{t.kanban.empty_board_hint}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden">
       {/* Invalid drop toast */}
