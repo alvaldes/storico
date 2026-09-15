@@ -24,24 +24,15 @@ import {
   ComboboxEmpty,
   ComboboxValue,
 } from '@/components/ui/combobox';
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Field, FieldLabel, FieldDescription } from '@/components/ui/field';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { ProviderIcon } from '@/components/ui/provider-icon';
 import { FewShotConfigEditor } from '@/components/react/FewShotConfigEditor';
 import type { WorkspaceLLMConfig, WorkspacePrompt } from '@/types/workspace';
-import { useWorkspaceStore } from '@/stores/workspaceStore';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 
