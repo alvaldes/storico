@@ -9,22 +9,16 @@ import jwt as pyjwt  # PyJWT library
 from fastapi import Depends, HTTPException, Path, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from storico.application.extraction import ExtractFromStoryUseCase
 from storico.config.settings import get_settings
 from storico.domain.entities import User
 from storico.domain.entities.workspace import Workspace
 from storico.domain.entities.workspace_member import WorkspaceRole
-from storico.domain.ports import EmbeddingPort, LLMPort, UserRepository, VectorStorePort
+from storico.domain.ports import EmbeddingPort, UserRepository, VectorStorePort
 from storico.domain.ports.workspace_member_repository import WorkspaceMemberRepository
 from storico.domain.ports.workspace_repository import WorkspaceRepository
-from storico.domain.services.extraction_judge_service import LLMJudgeService
-from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.infrastructure.cache.user_cache import get_cached_user, set_cached_user
 from storico.infrastructure.database.repositories import (
-    SQLAlchemyExtractionRepository,
-    SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
-    SQLAlchemyUserStoryRepository,
 )
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
@@ -34,10 +28,6 @@ from storico.infrastructure.database.repositories.workspace_repository import (
 )
 from storico.infrastructure.database.session import get_session
 from storico.infrastructure.llm import (
-    AnthropicAdapter,
-    GeminiAdapter,
-    OllamaAdapter,
-    OpenAIAdapter,
     PromptManager,
     TaskParser,
 )
@@ -137,36 +127,6 @@ async def get_current_user(
     return user
 
 
-def get_llm_port(provider: str = "ollama", api_key: str | None = None) -> LLMPort:
-    """Factory for the LLM port — returns the appropriate adapter.
-
-    Args:
-        provider: The LLM provider name (``ollama``, ``gemini``, ``openai``, ``anthropic``).
-        api_key: API key for cloud providers (Gemini, OpenAI, Anthropic).
-
-    Returns:
-        An ``LLMPort`` implementation for the requested provider.
-
-    Raises:
-        ValueError: If a cloud provider is requested but no ``api_key`` is provided.
-    """
-    if provider == "gemini":
-        if not api_key:
-            raise ValueError("API key is required for Gemini provider")
-        return GeminiAdapter(api_key=api_key)
-    if provider == "openai":
-        if not api_key:
-            raise ValueError("API key is required for OpenAI provider")
-        return OpenAIAdapter(api_key=api_key)
-    if provider == "anthropic":
-        if not api_key:
-            raise ValueError("API key is required for Anthropic provider")
-        return AnthropicAdapter(api_key=api_key)
-
-    # Default to Ollama
-    return OllamaAdapter(base_url=get_settings().ollama_host)
-
-
 def get_prompt_manager() -> PromptManager:
     """Factory for the prompt manager."""
     return PromptManager()
@@ -201,46 +161,6 @@ def get_vector_store(
     except Exception:
         logger.warning("Failed to create QdrantAdapter, RAG disabled")
         return None
-
-
-def get_extract_use_case(
-    llm_port: LLMPort = Depends(get_llm_port),
-    prompt_manager: PromptManager = Depends(get_prompt_manager),
-    task_parser: TaskParser = Depends(get_task_parser),
-    session: AsyncSession = Depends(get_session),
-    vector_store: VectorStorePort | None = Depends(get_vector_store),
-) -> ExtractFromStoryUseCase:
-    """Factory for ``ExtractFromStoryUseCase`` with all dependencies wired."""
-
-    extraction_repo = SQLAlchemyExtractionRepository(session)
-    task_repo = SQLAlchemyTaskRepository(session)
-    story_repo = SQLAlchemyUserStoryRepository(session)
-
-    settings = get_settings()
-    few_shot_config = FewShotConfig(
-        enabled=True,
-        limit=settings.rag_max_examples,
-        threshold=settings.rag_similarity_threshold,
-    )
-
-    judge_service = LLMJudgeService(
-        llm_port=llm_port,
-        prompt_manager=prompt_manager,
-    )
-    extraction_service = ExtractionService(
-        llm_port=llm_port,
-        prompt_manager=prompt_manager,
-        task_parser=task_parser,
-        extraction_repo=extraction_repo,
-        task_repo=task_repo,
-        judge_service=judge_service,
-        vector_store=vector_store,
-        few_shot_config=few_shot_config,
-    )
-    return ExtractFromStoryUseCase(
-        extraction_service=extraction_service,
-        story_repo=story_repo,
-    )
 
 
 # ── Workspace dependencies ──────────────────────────────────────────
