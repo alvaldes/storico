@@ -93,57 +93,57 @@ describe('TaskEditor', () => {
 
   /* ── Dependency validation ── */
 
-      it('offers only sibling tasks from the same story as dependencies', async () => {
-        render(
-          <TaskEditor
-            task={{ ...mockTask, dependencies: [] }}
-            open={true}
-            onOpenChange={vi.fn()}
-            locale="en"
-          />,
-        );
+  it('offers only sibling tasks from the same story as dependencies', async () => {
+    render(
+      <TaskEditor
+        task={{ ...mockTask, dependencies: [] }}
+        open={true}
+        onOpenChange={vi.fn()}
+        locale="en"
+      />,
+    );
 
-        await screen.findByText('Edit Task');
+    await screen.findByText('Edit Task');
 
-        const depSelect = screen.getByLabelText('Dependencies') as HTMLSelectElement;
-        const values = Array.from(depSelect.options).map((o) => o.value);
+    const depSelect = screen.getByLabelText('Dependencies') as HTMLSelectElement;
+    const values = Array.from(depSelect.options).map((o) => o.value);
 
-        // The sibling is offered by task.id...
-        expect(values).toContain('task-0');
-        // ...and the edited task is never offered as its own dependency.
-        expect(values).not.toContain(mockTask.id);
-      });
+    // The sibling is offered by task.id...
+    expect(values).toContain('task-0');
+    // ...and the edited task is never offered as its own dependency.
+    expect(values).not.toContain(mockTask.id);
+  });
 
-      it('adds a selected sibling dependency by task.id', async () => {
-        const user = userEvent.setup();
-        render(
-          <TaskEditor
-            task={{ ...mockTask, dependencies: [] }}
-            open={true}
-            onOpenChange={vi.fn()}
-            locale="en"
-          />,
-        );
+  it('adds a selected sibling dependency by task.id', async () => {
+    const user = userEvent.setup();
+    render(
+      <TaskEditor
+        task={{ ...mockTask, dependencies: [] }}
+        open={true}
+        onOpenChange={vi.fn()}
+        locale="en"
+      />,
+    );
 
-        await screen.findByText('Edit Task');
+    await screen.findByText('Edit Task');
 
-        await user.selectOptions(screen.getByLabelText('Dependencies'), 'task-0');
+    await user.selectOptions(screen.getByLabelText('Dependencies'), 'task-0');
 
-        // The chip renders the sibling's title, not its raw id.
-        expect(screen.getByText('Setup repo')).toBeInTheDocument();
-      });
+    // The chip renders the sibling's title, not its raw id.
+    expect(screen.getByText('Setup repo')).toBeInTheDocument();
+  });
 
-      it('does not re-offer a sibling that is already a dependency', async () => {
-        render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
+  it('does not re-offer a sibling that is already a dependency', async () => {
+    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
 
-        await screen.findByText('Edit Task');
+    await screen.findByText('Edit Task');
 
-        const depSelect = screen.getByLabelText('Dependencies') as HTMLSelectElement;
-        const values = Array.from(depSelect.options).map((o) => o.value);
+    const depSelect = screen.getByLabelText('Dependencies') as HTMLSelectElement;
+    const values = Array.from(depSelect.options).map((o) => o.value);
 
-        // task-0 is already a dependency of mockTask, so it is not re-offered.
-        expect(values).not.toContain('task-0');
-      });
+    // task-0 is already a dependency of mockTask, so it is not re-offered.
+    expect(values).not.toContain('task-0');
+  });
 
   /* ── Save / rollback ── */
 

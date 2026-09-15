@@ -44,9 +44,7 @@ def _build_markdown(tasks: list[TaskResponse], story_text: dict[UUID, str]) -> s
 
     def resolve_dependency(dep: str) -> str:
         reference = dep.strip()
-        return title_by_id.get(reference) or title_by_name.get(
-            reference.casefold(), dep
-        )
+        return title_by_id.get(reference) or title_by_name.get(reference.casefold(), dep)
 
     by_story: dict[UUID, list[TaskResponse]] = {}
     for task in tasks:
@@ -64,7 +62,7 @@ def _build_markdown(tasks: list[TaskResponse], story_text: dict[UUID, str]) -> s
                 bullet += " " + " ".join(f"#{label}" for label in task.labels)
             if task.dependencies:
                 bullet += " " + " ".join(
-f"→ {resolve_dependency(dep)}" for dep in task.dependencies
+                    f"→ {resolve_dependency(dep)}" for dep in task.dependencies
                 )
             lines.append(bullet)
         lines.append("")

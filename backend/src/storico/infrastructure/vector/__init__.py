@@ -40,9 +40,7 @@ def get_embedding_port(settings: Settings) -> EmbeddingPort:
         )
     if provider == "google":
         if not settings.google_api_key:
-            raise ValueError(
-                "STORICO_GOOGLE_API_KEY is required for the google embedding provider"
-            )
+            raise ValueError("STORICO_GOOGLE_API_KEY is required for the google embedding provider")
         logger.info("Creating GoogleEmbeddingAdapter")
         return GoogleEmbeddingAdapter(
             api_key=settings.google_api_key,
@@ -51,9 +49,7 @@ def get_embedding_port(settings: Settings) -> EmbeddingPort:
         )
     if provider == "openai":
         if not settings.openai_api_key:
-            raise ValueError(
-                "STORICO_OPENAI_API_KEY is required for the openai embedding provider"
-            )
+            raise ValueError("STORICO_OPENAI_API_KEY is required for the openai embedding provider")
         logger.info("Creating OpenAIEmbeddingAdapter")
         return OpenAIEmbeddingAdapter(
             api_key=settings.openai_api_key,

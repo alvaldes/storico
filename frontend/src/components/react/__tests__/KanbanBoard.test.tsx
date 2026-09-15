@@ -92,7 +92,7 @@ describe('KanbanBoard', () => {
     await waitFor(() => {
       expect(screen.getByText('No tasks in this workspace yet')).toBeInTheDocument();
       expect(
-    screen.getByText('Extract tasks from a user story to see them here.'),
+        screen.getByText('Extract tasks from a user story to see them here.'),
       ).toBeInTheDocument();
     });
   });

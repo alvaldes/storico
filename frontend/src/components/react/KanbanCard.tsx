@@ -34,7 +34,9 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
             <div
               {...(isUpdating ? {} : provided.dragHandleProps)}
               className={`mt-0.5 shrink-0 text-muted-foreground/40 ${
-                isUpdating ? 'cursor-wait' : 'hover:text-muted-foreground cursor-grab active:cursor-grabbing'
+                isUpdating
+                  ? 'cursor-wait'
+                  : 'hover:text-muted-foreground cursor-grab active:cursor-grabbing'
               }`}
             >
               {isUpdating ? (

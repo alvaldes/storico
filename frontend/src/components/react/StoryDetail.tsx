@@ -93,22 +93,21 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
     };
   }, [storyId, resetExtraction]);
 
-      // Show a toast when extraction fails, or an auth-themed toast when the
-      // session expired (HTTP 401) — the latter is not an extraction failure.
-      useEffect(() => {
-        if (extraction) {
-          const settled =
-            extraction.status === 'failed' || extraction.status === 'unauthorized';
-          if (settled && prevExtractionStatus === 'pending') {
-            if (extraction.status === 'unauthorized') {
-              toast.error(t.stories.extractionUnauthorized);
-            } else {
-              toast.error(extraction.error?.friendlyMessage ?? t.stories.extractionFailed);
-            }
-          }
-          setPrevExtractionStatus(extraction.status);
+  // Show a toast when extraction fails, or an auth-themed toast when the
+  // session expired (HTTP 401) — the latter is not an extraction failure.
+  useEffect(() => {
+    if (extraction) {
+      const settled = extraction.status === 'failed' || extraction.status === 'unauthorized';
+      if (settled && prevExtractionStatus === 'pending') {
+        if (extraction.status === 'unauthorized') {
+          toast.error(t.stories.extractionUnauthorized);
+        } else {
+          toast.error(extraction.error?.friendlyMessage ?? t.stories.extractionFailed);
         }
-      }, [extraction?.status, extraction?.error, prevExtractionStatus, t]);
+      }
+      setPrevExtractionStatus(extraction.status);
+    }
+  }, [extraction?.status, extraction?.error, prevExtractionStatus, t]);
 
   // Resolve parent project for contextual back link
   useEffect(() => {
@@ -425,23 +424,23 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
                   {t.stories.extraction_takes_up_to_minute}
                 </p>
               </>
-                ) : extraction?.status === 'failed' || extraction?.status === 'unauthorized' ? (
-                  <>
-                    <ErrorDisplay
-                      friendlyMessage={
-                        extraction?.status === 'unauthorized'
-                          ? t.stories.extractionUnauthorized
-                          : (extraction?.error?.friendlyMessage ?? t.stories.extractionFailed)
-                      }
-                      rawDetail={extraction?.error?.rawDetail}
-                      status={extraction?.error?.status}
-                      errorCode={extraction?.error?.errorCode}
-                      retryLabel={t.stories.extraction_retry}
-                      onRetry={handleExtract}
-                      locale={locale}
-                    />
-                  </>
-                ) : (
+            ) : extraction?.status === 'failed' || extraction?.status === 'unauthorized' ? (
+              <>
+                <ErrorDisplay
+                  friendlyMessage={
+                    extraction?.status === 'unauthorized'
+                      ? t.stories.extractionUnauthorized
+                      : (extraction?.error?.friendlyMessage ?? t.stories.extractionFailed)
+                  }
+                  rawDetail={extraction?.error?.rawDetail}
+                  status={extraction?.error?.status}
+                  errorCode={extraction?.error?.errorCode}
+                  retryLabel={t.stories.extraction_retry}
+                  onRetry={handleExtract}
+                  locale={locale}
+                />
+              </>
+            ) : (
               <>
                 <Sparkles className="mb-3 h-8 w-8 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">{t.stories.detail_tasks_empty}</p>
