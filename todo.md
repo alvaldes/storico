@@ -1,9 +1,12 @@
 # Storico — Backlog
 
-> **Última actualización**: 2026-09-14 (2) — se cerraron por SDD dos changes: `few-shot-qdrant`
+> **Última actualización**: 2026-09-15 — auditoría de los fallos preexistentes del backend. Se
+> corrigieron 4 de los 14 y se re-diagnosticaron los 10 restantes: su causa es que **predatan el
+> scoping por workspace**, no el `.value` sobre `status` que se creía. Apareció además un gap de
+> autorización en `POST /tasks/`. Estado verificado **ejecutando la suite**, no leyendo documentos.
+> Última actualización previa: 2026-09-14 (2) — se cerraron por SDD dos changes: `few-shot-qdrant`
 > (few-shot automático desde Qdrant + `EmbeddingPort` cloud) y `us-decomposition`
 > (Kanban / Task Editor / Export; 4 blockers + 3 warnings de fidelidad corregidos).
-> Estado verificado contra el código, no contra lo que decían los documentos viejos.
 
 ---
 
@@ -35,6 +38,22 @@ factory `STORICO_EMBEDDING_PROVIDER` (`14d659b`). El vector store quedó workspa
 
 `workspace_prompts.few_shot_examples` quedó read-only como fuente del seed job. Una vez corrido el
 seed en prod (item 2), dropear la columna en una migración aparte.
+
+### 4. `POST /api/v1/tasks/` no valida workspace (gap de autorización)
+
+`create_task` (`api/routes/tasks.py:87`) recibe `current_user` con `# noqa: ARG001` y **nunca lo
+usa**: crea el `Task` con el `user_story_id` que venga en el body, sin resolver story → project →
+workspace ni verificar membresía. Cualquier usuario autenticado puede inyectar tareas en un
+workspace ajeno, y esas tareas después aparecen en el listado de sus miembros.
+
+Contraste: `GET /tasks/` **sí** está scoped (story → project → workspace + membresía). Lo
+documenta `test_create_task`, que pasa creando una tarea con un `user_story_id` random sin story ni
+workspace detrás.
+
+- **Fix**: validar la story y la membresía antes del `save()`, con el mismo patrón que
+  `extractions.py::_validate_extraction_workspace_access`, y eliminar el `noqa`.
+- **Decisión previa**: ¿crear tareas sueltas sigue siendo una operación soportada, o el único
+  camino debería ser la extracción desde una story?
 
 ---
 
@@ -84,10 +103,23 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
 
 ## 🧹 Limpieza menor / deuda pendiente
 
-- **14 tests backend fallando (preexistentes)** — root cause `task_repository._to_orm_kwargs`
-  llamando `.value` sobre un `status` que ya es `str` (afecta `test_extraction`,
-  `test_extractions`, `test_tasks`). Ajeno a los changes archivados; confirmado idéntico en
-  baseline. Cambio aparte.
+- **10 tests backend fallando (preexistentes)** — `test_extractions.py` (4) y `test_tasks.py` (6).
+  **Causa real: los tests predatan el scoping por workspace.** Siembran filas cuyo
+  `user_story_id` es un `uuid4()` sin story / project / workspace reales y nunca crean membresía,
+  mientras los routes resuelven el workspace **a través de la story** y exigen membresía: de ahí
+  los `404` y los listados vacíos (`total == 0`).
+  - **Corrección al diagnóstico anterior**: el `.value` sobre un `status` que ya es `str` **no** es
+    la causa. El patrón existe en `task_repository._to_orm_kwargs:91` pero no falla, porque
+    `Task.status` sí es enum. El `.value` que rompía estaba en
+    `extraction_repository._to_response`, y sólo afectaba a 3 tests de status.
+  - **Los 4 ya corregidos** (`acf33dc`): `test_extract_success` asertaba `model_used` /
+    `confidence_score` / `created_at` — campos que `ExtractResponse` no tiene — sobre un
+    `get_extract_use_case` que ningún route usa; `test_extract_llm_error` decía cubrir el fallo del
+    LLM pero sólo asertaba `202`, imposible para un endpoint fire-and-forget (se movió al task,
+    que es quien lo posee); y 3 tests de status pasaban strings donde va `ExtractionStatus`.
+  - **Fix de los 10**: que cada test siembre story → project → workspace + membresía. Los helpers
+    `_create_story` / `_add_member` de `test_extraction.py` sirven de modelo.
+  - **Verificación**: la suite quedó en 10 fallando / 399 pasando / 1 skip (baseline: 14 / 395 / 1).
 - **`VectorStorePort.search_similar`** — `workspace_id` quedó opcional; apretar a requerido
   (el path end-to-end siempre lo pasa). Recomendado en follow-up.
 - **`us-decomposition` `design.md`** — nombra el filename viejo `storico-tasks-{id}.{ext}` vs
@@ -95,10 +127,29 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
   design hay que realinearlo.
 - **`apply-progress.md` ausente** en `us-decomposition` (strict TDD) — excepción registrada
   (artefactos e implementación aterrizaron juntos históricamente).
-- **i18n keys muertas** del `FewShotExamplesEditor` eliminado (en.json / es.json) — higiene.
-- **Makefile**: `test-backend` apunta a `backend/.venv/bin/pytest` pero ese venv no tiene
-  pytest — los tests corren con el conda env `storico`. Decidir: instalar pytest en `.venv`
-  (portátil) o apuntar al conda (machine-specific).
+- **i18n keys muertas** del `FewShotExamplesEditor` eliminado — quedan **7** sin ningún uso en
+  `src/`: `fewShotDesc`, `fewShotTitle`, `fewShotTasksLabel`, `fewShotTasksMin`,
+  `fewShotUserStoryLabel`, `fewShotUserStoryMin`, `fewShotUserStoryPlaceholder` (en `en.json` y
+  `es.json`). Las de `fewShotEnabledOn` / `fewShotEnabledOff` ya se eliminaron.
+- **151 errores de `ruff check src tests` (preexistentes)** — 48 `UP007`, 39 `I001`, 24 `F401`,
+  16 `UP035`, 14 `UP017`, 5 `F841`, 3 `UP037`, 1 `E402`, 1 `F811`. 135 son autofixables. Los
+  archivos tocados en la última pasada quedaron limpios; el resto es deuda general. **No hay CI
+  que corra ruff ni pytest** (`.github/workflows/` sólo tiene `deploy-backend.yml`), así que esta
+  deuda crece sin freno.
+- **`globals.css`: `--color-border: var(--color-border)` es autorreferente** — está en el bloque
+  `@theme inline`. Hoy no rompe porque el `@theme` posterior redefine `--color-border` y gana la
+  cascada, pero si ese bloque se reordena o se elimina, `border-border` (aplicado a `*` en
+  `@layer base`) queda inválido y **desaparecen todos los bordes**. Debería apuntar directo al
+  token de diseño.
+- **Makefile**: `test-backend` apunta a `backend/.venv/bin/pytest` pero ese venv no traía pytest
+  — los tests corrían con el conda env `storico`. **Resuelto en la práctica**: se instaló el extra
+  `dev` ya declarado (`pytest`, `pytest-asyncio`, `pytest-cov`, `aiosqlite`, `httpx`, `ruff`) en
+  `backend/.venv`, que reproduce el baseline documentado con SQLite in-memory y sin Docker. Queda
+  decidir si se oficializa `.venv` (portátil) y se retira la dependencia del conda env.
+- **Falso positivo stale de pyright en `users.py`** — `lens_diagnostics` reporta
+  `RenameWorkspaceUseCase` sin `workspace_name` / `workspace_icon` en `PATCH /users/me/onboarding`.
+  El constructor sólo recibe `ws_repo` y `execute()` sí acepta `new_name` / `new_icon`;
+  `test_users.py` pasa 8/8. Ignorar salvo que ese código cambie.
 - **`StoryForm.tsx:515`**: último `dangerouslySetInnerHTML` del frontend — renderiza
   `t.stories.story_format_hint` (string i18n estático, seguro por contenido). Mismo patrón
   ya eliminado en `DeleteAccountDialog` con `renderBoldMarkup()`.
