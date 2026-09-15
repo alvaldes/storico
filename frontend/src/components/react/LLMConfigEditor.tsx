@@ -692,7 +692,19 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               enabled={prompts.fewShotEnabled ?? true}
               limit={prompts.fewShotLimit ?? 3}
               threshold={prompts.fewShotThreshold ?? 0.85}
-              onChange={(value) => setPrompts((prev) => ({ ...prev, ...value }))}
+              onChange={(value) =>
+                // The editor speaks a generic { enabled, limit, threshold } payload;
+                // the persisted prompt row speaks fewShot*. Map explicitly so the
+                // compiler catches a rename instead of a silent no-op: a spread of the
+                // payload into `prompts` writes keys nobody reads back, which leaves
+                // this controlled switch frozen and the saved values unchanged.
+                setPrompts((prev) => ({
+                  ...prev,
+                  fewShotEnabled: value.enabled,
+                  fewShotLimit: value.limit,
+                  fewShotThreshold: value.threshold,
+                }))
+              }
             />
 
             {/* Save Button */}
