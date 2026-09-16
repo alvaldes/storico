@@ -658,7 +658,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               <Textarea
                 id="instruction-template"
                 rows={12}
-                className="min-h-32 h-32 w-full resize-y"
+                className="min-h-36 h-36 w-full resize-y"
                 value={prompts.instructionTemplate ?? ''}
                 onChange={(e) =>
                   setPrompts((prev) => ({

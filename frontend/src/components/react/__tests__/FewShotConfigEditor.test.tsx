@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FewShotConfigEditor } from '../FewShotConfigEditor';
 
@@ -15,18 +15,26 @@ const renderEditor = (props = {}) => {
   );
 };
 
+/**
+ * The slider exposes its label on the named group wrapper; the range input that
+ * actually carries the value sits in a thumb that jsdom cannot lay out, so it is
+ * only reachable with `hidden: true`.
+ */
+const getSlider = (name: string) =>
+  within(screen.getByRole('group', { name })).getByRole('slider', { hidden: true });
+
 describe('FewShotConfigEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders the enabled switch, limit input, and threshold slider', () => {
+  it('renders the enabled switch, limit slider, and threshold slider', () => {
     renderEditor();
 
     expect(screen.getByText('Automatic few-shot examples')).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Automatic few-shot examples' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Max examples')).toBeInTheDocument();
-    expect(screen.getByText('Similarity threshold')).toBeInTheDocument();
+    expect(getSlider('Max examples')).toBeInTheDocument();
+    expect(getSlider('Similarity threshold')).toBeInTheDocument();
   });
 
   it('reflects enabled state through aria-checked', () => {
@@ -58,13 +66,14 @@ describe('FewShotConfigEditor', () => {
     const onChange = vi.fn();
     renderEditor({ limit: 3, onChange });
 
-    const input = screen.getByLabelText('Max examples');
-    fireEvent.change(input, { target: { value: '5' } });
-    expect(onChange).toHaveBeenCalledWith({ enabled: true, limit: 5, threshold: 0.85 });
+    // The limit now steps like the threshold slider: one arrow press is one example.
+    fireEvent.keyDown(getSlider('Max examples'), { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenCalledWith({ enabled: true, limit: 4, threshold: 0.85 });
   });
 
-  it('shows threshold value', () => {
-    renderEditor({ threshold: 0.9 });
+  it('shows the limit and threshold values', () => {
+    renderEditor({ limit: 7, threshold: 0.9 });
+    expect(screen.getByText('7')).toBeInTheDocument();
     expect(screen.getByText('0.90')).toBeInTheDocument();
   });
 
@@ -72,6 +81,13 @@ describe('FewShotConfigEditor', () => {
     renderEditor({ locale: 'es' });
     expect(screen.getByText('Ejemplos few-shot automáticos')).toBeInTheDocument();
     expect(screen.getByText('Máximo de ejemplos')).toBeInTheDocument();
+  });
+
+  it('disables both sliders while few-shot is off', () => {
+    renderEditor({ enabled: false });
+
+    expect(getSlider('Max examples')).toBeDisabled();
+    expect(getSlider('Similarity threshold')).toBeDisabled();
   });
 
   it('names the switch in the active locale', () => {

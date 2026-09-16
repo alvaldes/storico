@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { LLMConfigEditor } from '@/components/react/LLMConfigEditor';
@@ -131,7 +131,15 @@ describe('LLMConfigEditor few-shot wiring', () => {
 
     await user.click(control);
 
-    await waitFor(() => expect(screen.getByLabelText('Max examples')).toBeDisabled());
+    // The slider's label names the group wrapper; the range input it controls is
+    // only reachable with `hidden: true` because jsdom cannot lay out the thumb.
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('group', { name: 'Max examples' })).getByRole('slider', {
+          hidden: true,
+        }),
+      ).toBeDisabled(),
+    );
     // Both inputs are gated on the same flag, so they must agree with the switch.
     expect(control).toHaveAttribute('aria-checked', 'false');
   });

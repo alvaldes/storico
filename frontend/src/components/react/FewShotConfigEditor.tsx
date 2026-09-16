@@ -1,6 +1,5 @@
 import { Layers } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Field, FieldLabel, FieldDescription } from '@/components/ui/field';
 import en from '@/i18n/en.json';
@@ -52,38 +51,37 @@ export function FewShotConfigEditor({
 
       {/* ── Limit ── */}
       <Field>
-        <FieldLabel htmlFor="few-shot-limit">
+        <FieldLabel id="few-shot-limit-label">
           {t.workspace?.fewShotLimit ?? 'Max examples'}
         </FieldLabel>
         <div className="flex items-center gap-3">
-          <Input
-            id="few-shot-limit"
-            type="number"
+          <Slider
+            aria-labelledby="few-shot-limit-label"
+            value={[limit]}
+            onValueChange={(value) => setLimit(Array.isArray(value) ? value[0] : value)}
             min={1}
             max={10}
             step={1}
-            value={limit}
-            onChange={(e) => {
-              const parsed = parseInt(e.target.value, 10);
-              setLimit(Number.isNaN(parsed) ? 1 : Math.min(10, Math.max(1, parsed)));
-            }}
             disabled={!enabled}
-            className="max-w-[6rem]"
+            className="flex-1"
           />
-          <p className="text-xs text-(--color-text-tertiary)">
-            {t.workspace?.fewShotLimitDesc ?? '1–10, how many examples to inject.'}
-          </p>
+          <span className="min-w-[2.5rem] text-sm font-medium tabular-nums text-(--color-text-secondary)">
+            {limit}
+          </span>
         </div>
+        <FieldDescription>
+          {t.workspace?.fewShotLimitDesc ?? '1–10, how many examples to inject.'}
+        </FieldDescription>
       </Field>
 
       {/* ── Threshold ── */}
       <Field>
-        <FieldLabel htmlFor="few-shot-threshold">
+        <FieldLabel id="few-shot-threshold-label">
           {t.workspace?.fewShotThreshold ?? 'Similarity threshold'}
         </FieldLabel>
         <div className="flex items-center gap-3">
           <Slider
-            id="few-shot-threshold"
+            aria-labelledby="few-shot-threshold-label"
             value={[threshold]}
             onValueChange={(value) => setThreshold(Array.isArray(value) ? value[0] : value)}
             min={0}
