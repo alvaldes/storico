@@ -22,7 +22,6 @@ import {
   ComboboxList,
   ComboboxItem,
   ComboboxEmpty,
-  ComboboxValue,
 } from '@/components/ui/combobox';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -360,6 +359,10 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                 <div className="flex-1">
                   <Combobox
                     key={`model-${llmConfig.provider}`}
+                    // Controlled on the persisted model id: without `value` the input starts
+                    // empty, so the field only ever shows its placeholder and the saved
+                    // model stays invisible until the user re-picks it from the list.
+                    value={llmConfig.model || null}
                     onValueChange={(val) => {
                       if (val !== null && val !== undefined) {
                         setLlmConfig((prev) => ({
@@ -382,14 +385,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                               : (t.settings?.llm_anthropic_model_placeholder ?? 'claude-3-haiku')
                       }
                     />
-                    {/* Show the display name (m.name) instead of the id in the input */}
-                    <ComboboxValue>
-                      {(props) => {
-                        const value = props?.value;
-                        const model = availableModels.find((m) => m.id === value);
-                        return model?.name ?? value ?? '';
-                      }}
-                    </ComboboxValue>
+                    {/* The input text is the model id — the value that gets saved and the
+                        string the filter matches against; the list renders each model's
+                        friendly `name` instead. */}
                     <ComboboxContent>
                       <ComboboxList>
                         {availableModels.map((m) => (

@@ -144,3 +144,94 @@ describe('LLMConfigEditor few-shot wiring', () => {
     expect(control).toHaveAttribute('aria-checked', 'false');
   });
 });
+
+describe('LLMConfigEditor model field', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    vi.mocked(getLLMConfig).mockResolvedValue({
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: '',
+      apiKey: 'AIza-test',
+    });
+    vi.mocked(getPrompts).mockResolvedValue({
+      systemPrompt: 'You are an expert software development lead.',
+      instructionTemplate: 'Break this user story into smaller development tasks.',
+      fewShotEnabled: true,
+      fewShotLimit: 3,
+      fewShotThreshold: 0.85,
+    });
+    vi.mocked(fetchAvailableModels).mockResolvedValue([
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    ]);
+    vi.mocked(upsertLLMConfig).mockResolvedValue({
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: '',
+      apiKey: 'AIza-test',
+    });
+    vi.mocked(upsertPrompts).mockResolvedValue({});
+  });
+
+  it('shows the saved model id instead of the provider placeholder', async () => {
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+
+    const input = await screen.findByLabelText('Model');
+    await waitFor(() => expect(input).toHaveValue('gemini-2.5-flash'));
+    // The placeholder advertises the provider default; it must never read back as the value.
+    expect(input).toHaveAttribute('placeholder', 'gemini-2.0-flash');
+  });
+
+  it('shows the saved model id even when the provider list does not include it', async () => {
+    vi.mocked(fetchAvailableModels).mockResolvedValue([
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    ]);
+
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+
+    const input = await screen.findByLabelText('Model');
+    await waitFor(() => expect(input).toHaveValue('gemini-2.5-flash'));
+  });
+
+  it('saves the model picked from the list', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    const input = await screen.findByLabelText('Model');
+    await waitFor(() => expect(input).toHaveValue('gemini-2.5-flash'));
+
+    await user.click(screen.getByRole('button', { expanded: false }));
+    await user.click(await screen.findByRole('option', { name: 'Gemini 2.0 Flash' }));
+
+    await waitFor(() => expect(input).toHaveValue('gemini-2.0-flash'));
+
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ model: 'gemini-2.0-flash' }),
+      ),
+    );
+  });
+
+  it('saves the loaded model when the field is untouched', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    await screen.findByLabelText('Model');
+
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ model: 'gemini-2.5-flash' }),
+      ),
+    );
+  });
+});
