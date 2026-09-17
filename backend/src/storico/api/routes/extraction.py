@@ -23,16 +23,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from storico.api.dependencies import (
-    get_current_user,
     get_repository,
     get_workspace_for_user,
 )
 from storico.api.schemas.extraction import (
+    ExtractionResponse,
     ExtractRequest,
     ExtractResponse,
-    ExtractionResponse,
 )
-from storico.domain.entities import EntityNotFound, Extraction, User, Workspace, WorkspaceRole
+from storico.domain.entities import EntityNotFound, Extraction, Workspace, WorkspaceRole
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.infrastructure.database.repositories import (
@@ -235,6 +234,8 @@ async def extraction_status(
     extraction_id: UUID,
     ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
     repo: ExtractionRepoDep = None,  # type: ignore[assignment]
+    story_repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
 ) -> ExtractionResponse:
     """Get the status and details of an extraction by its ID.
 
@@ -242,13 +243,19 @@ async def extraction_status(
     in the URL path. Workspace membership is validated via
     ``get_workspace_for_user``.
     """
-    workspace, _ = ctx  # noqa: F841 — validates workspace membership
+    workspace, _ = ctx
     extraction = await repo.find_by_id(extraction_id)
     if extraction is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Extraction '{extraction_id}' not found",
         )
+
+    # Membership of the path workspace is not containment: without this check any
+    # member of any workspace could read any extraction by guessing its id.
+    await _validate_story_belongs_to_workspace(
+        extraction.user_story_id, workspace.id, story_repo, project_repo
+    )
     return ExtractionResponse(
         id=extraction.id,
         user_story_id=extraction.user_story_id,

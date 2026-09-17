@@ -1,6 +1,15 @@
 # Storico — Backlog
 
-> **Última actualización**: 2026-09-17 (3) — cerrada la clase completa del banner de `error`: los
+> **Última actualización**: 2026-09-17 (4) — cerrado el gap de autorización de `POST /tasks/` y, con
+> él, la clase entera: el walk `story → project → workspace → membresía` estaba copiado **cinco**
+> veces y ahora es una sola implementación (`api/dependencies.py::require_story_workspace_access`),
+> `create_task` autoriza antes de construir el `Task` (y perdió el `# noqa: ARG001`), y
+> `GET /workspaces/{ws}/extract/status/{id}` (que validaba la membresía del path pero **nunca** que
+> la extracción perteneciera a ese workspace) ahora exige contención. De paso se arreglaron los 10
+> tests que estaban rojos por fixtures. Verificado **ejecutando**, y con los tres cruces
+> reconstruidos en `/tmp`: tests de `HEAD` × `src/` de `HEAD` = los 10 rojos, tests nuevos × `src/`
+> viejo = exactamente los 4 tests de seguridad, todo junto = **415 passed / 0 failed / 1 skip**.
+> Última actualización previa: 2026-09-17 (3) — cerrada la clase completa del banner de `error`: los
 > cuatro `catch` de `updateProject` / `deleteProject` / `updateStory` / `deleteStory` ahora gatean el
 > banner por scope — `isScopedWorkspace(ws.id)` en proyectos, que ya llevan su workspace id en el
 > request, e `isScopeUnchanged(scopeAtCall)` en stories, que no lo llevan — y liberan `saving` fuera
@@ -105,22 +114,6 @@ factory `STORICO_EMBEDDING_PROVIDER` (`14d659b`). El vector store quedó workspa
 `workspace_prompts.few_shot_examples` quedó read-only como fuente del seed job. Una vez corrido el
 seed en prod (item 2), dropear la columna en una migración aparte.
 
-### 4. `POST /api/v1/tasks/` no valida workspace (gap de autorización)
-
-`create_task` (`api/routes/tasks.py:87`) recibe `current_user` con `# noqa: ARG001` y **nunca lo
-usa**: crea el `Task` con el `user_story_id` que venga en el body, sin resolver story → project →
-workspace ni verificar membresía. Cualquier usuario autenticado puede inyectar tareas en un
-workspace ajeno, y esas tareas después aparecen en el listado de sus miembros.
-
-Contraste: `GET /tasks/` **sí** está scoped (story → project → workspace + membresía). Lo
-documenta `test_create_task`, que pasa creando una tarea con un `user_story_id` random sin story ni
-workspace detrás.
-
-- **Fix**: validar la story y la membresía antes del `save()`, con el mismo patrón que
-  `extractions.py::_validate_extraction_workspace_access`, y eliminar el `noqa`.
-- **Decisión previa**: ¿crear tareas sueltas sigue siendo una operación soportada, o el único
-  camino debería ser la extracción desde una story?
-
 ---
 
 ## 🟡 Importantes
@@ -188,23 +181,38 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
   `resetScopedWorkspace()`, así que `scopeAtCall` es siempre `undefined`. Las variantes “muestreé un id
   real y me quedé” / “…y me moví” no están ejercitadas (equivalentes hoy, pero es el caso que el
   helper existe para cubrir).
-- **10 tests backend fallando (preexistentes)** — `test_extractions.py` (4) y `test_tasks.py` (6).
-  **Causa real: los tests predatan el scoping por workspace.** Siembran filas cuyo
-  `user_story_id` es un `uuid4()` sin story / project / workspace reales y nunca crean membresía,
-  mientras los routes resuelven el workspace **a través de la story** y exigen membresía: de ahí
-  los `404` y los listados vacíos (`total == 0`).
-  - **Corrección al diagnóstico anterior**: el `.value` sobre un `status` que ya es `str` **no** es
-    la causa. El patrón existe en `task_repository._to_orm_kwargs:91` pero no falla, porque
-    `Task.status` sí es enum. El `.value` que rompía estaba en
-    `extraction_repository._to_response`, y sólo afectaba a 3 tests de status.
-  - **Los 4 ya corregidos** (`acf33dc`): `test_extract_success` asertaba `model_used` /
-    `confidence_score` / `created_at` — campos que `ExtractResponse` no tiene — sobre un
-    `get_extract_use_case` que ningún route usa; `test_extract_llm_error` decía cubrir el fallo del
-    LLM pero sólo asertaba `202`, imposible para un endpoint fire-and-forget (se movió al task,
-    que es quien lo posee); y 3 tests de status pasaban strings donde va `ExtractionStatus`.
-  - **Fix de los 10**: que cada test siembre story → project → workspace + membresía. Los helpers
-    `_create_story` / `_add_member` de `test_extraction.py` sirven de modelo.
-  - **Verificación**: la suite quedó en 10 fallando / 399 pasando / 1 skip (baseline: 14 / 395 / 1).
+- **Seedings duplicados que quedaron fuera del cierre** — `test_stories.py::_seed_workspace_and_project`,
+  `test_export.py::_create_workspace` / `_create_story` / `_create_tasks` y
+  `test_workspace_settings_prompts.py::_add_member` hacen lo mismo que el nuevo `seed_workspace` de
+  `conftest.py`. Consolidarlos suma 3 archivos de test al scope; no se hizo para no inflar el diff.
+- **403/404 y `detail` inconsistentes en la misma condición** — conviven cuatro formas:
+  `"Not a member of this workspace"` (el walk compartido), `"Not a member of this project's
+  workspace"` (`stories.py::create_story` / `list_stories`), `"This user story does not belong to the
+  specified workspace"` (`extraction.py`) y `projects.py::_verify_project_belongs_to_workspace`, que usa
+  **404** donde `extraction.py` usa **403**. Preexistente; unificarlo es una decisión de contrato de API,
+  no un fix.
+- **Oráculo de existencia** — un miembro del workspace B distingue 404 ("no existe") de 403 ("existe
+  pero no es tuyo"). Preexistente en `GET /stories|tasks|extractions/{id}`; en el status route fue
+  mejora neta, porque antes devolvía el payload completo a cualquier miembro de cualquier workspace.
+- **Rama no ejercitada en el walk compartido** — `dependencies.py` `project is None` nunca se ejecuta en
+  `tests/test_api` (medido con `sys.settrace`). Inalcanzable por las FKs; valor bajo.
+- **Los 403 nuevos sólo fijan el status** — no pinnean `detail` ni `type`, a diferencia del 404, que sí
+  fija `type == "entity_not_found"`. Los strings de 403 quedan sin contrato fijado por test.
+- **`pytest-cov` NO es confiable en este entorno** — reporta como faltantes líneas que un
+  `sys.settrace` ve ejecutar (p. ej. `dependencies.py:259-270`, contradiciendo tests que pasan).
+  Repro: `COVERAGE_FILE=/tmp/x python -m pytest tests/test_api/test_stories.py --cov=storico.api`. No hay
+  `COVERAGE_*` ni `.coveragerc`. Cross-checkear con tracer antes de concluir algo por coverage.
+- **`frontend/src/lib/api.ts` `ApiClient.startExtraction` es código muerto con la URL mal armada** —
+  arma `/api/v1/workspaces/${data.user_story_id}/extract/`, o sea mete un **story id** en el segmento del
+  workspace. Nadie lo llama (`taskStore` importa `@/lib/tasks-api`, no `@/lib/api`), pero quien lo use
+  pega en la ruta equivocada. Eliminarlo o arreglarlo.
+- **`TaskService` es código muerto y duplica un contrato** — `application/services/task_service.py`
+  nunca se instancia (fuera de `application/__init__.py` no hay referencias) y su `update_status`
+  reimplementa el chequeo de transición que `update_task` hace inline, con otro tipo de error
+  (`InvalidStateTransition` vs `HTTPException(400, INVALID_STATE_TRANSITION)`); además referencia
+  `InvalidStateTransition` antes de definirlo en el mismo módulo. No tiene `create`, así que no es el seam
+  de `POST /tasks/`.
+- **`VectorStorePort.search_similar`**
 - **`VectorStorePort.search_similar`** — `workspace_id` quedó opcional; apretar a requerido
   (el path end-to-end siempre lo pasa). Recomendado en follow-up.
 - **`us-decomposition` `design.md`** — nombra el filename viejo `storico-tasks-{id}.{ext}` vs
@@ -216,9 +224,9 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
   `src/`: `fewShotDesc`, `fewShotTitle`, `fewShotTasksLabel`, `fewShotTasksMin`,
   `fewShotUserStoryLabel`, `fewShotUserStoryMin`, `fewShotUserStoryPlaceholder` (en `en.json` y
   `es.json`). Las de `fewShotEnabledOn` / `fewShotEnabledOff` ya se eliminaron.
-- **151 errores de `ruff check src tests` (preexistentes)** — 48 `UP007`, 39 `I001`, 24 `F401`,
-  16 `UP035`, 14 `UP017`, 5 `F841`, 3 `UP037`, 1 `E402`, 1 `F811`. 135 son autofixables. Los
-  archivos tocados en la última pasada quedaron limpios; el resto es deuda general. **No hay CI
+- **146 errores de `ruff check src tests` (preexistentes)** — eran 151; los archivos tocados en la
+  última pasada quedaron limpios (incluidos imports muertos que el autofix eliminó y `HEAD` sí tenía:
+  `stories.py` E402/F401 e `extraction.py` I001 + 2×F401). El resto es deuda general. **No hay CI
   que corra ruff ni pytest** (`.github/workflows/` sólo tiene `deploy-backend.yml`), así que esta
   deuda crece sin freno.
 - **`globals.css`: `--color-border: var(--color-border)` es autorreferente** — está en el bloque
@@ -244,6 +252,30 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
 ---
 
 ## ✅ Completado (referencia — items eliminados del backlog)
+
+- **Clase de autorización del backend cerrada** (2026-09-17, ex Bloqueante #4): `POST /api/v1/tasks/`
+  recibía `current_user` con `# noqa: ARG001` y **nunca lo usaba** — creaba el `Task` con el
+  `user_story_id` del body y lo guardaba, así que cualquier cliente autenticado podía inyectar tareas en
+  un workspace ajeno (la FK no es un control de autorización). Ahora el walk
+  `story → project → workspace → membresía` vive **una sola vez**, en
+  `api/dependencies.py::require_story_workspace_access`, con `reported_as` para conservar byte a byte el
+  `detail` del 404 por entidad cabeza; se colapsaron las **cinco** copias (`tasks.py` en
+  `create_task` / `_validate_task_workspace_access` / `list_tasks`, `stories.py` ×3, `extractions.py` en
+  `_validate_extraction_workspace_access` / `list_extractions`). Se cerró también el gap hermano de
+  lectura: `GET /workspaces/{ws}/extract/status/{id}` validaba la membresía del workspace del path pero
+  nunca que la extracción perteneciera a él, así que cualquier miembro podía leer cualquier extracción
+  por id. No se convirtió `extraction.py::_validate_story_belongs_to_workspace`: ese es un chequeo de
+  **contención** (la story debe vivir en el workspace del path), no de membresía, y reusar el helper de
+  membresía ahí habría sido una regresión de seguridad. 6 tests nuevos (4 falsables).
+- **Los 10 tests backend rojos por fixtures** (ex deuda de Limpieza menor): `test_extractions.py` (4) y
+  `test_tasks.py` (6) fallaban porque `authed_client` siembra **un usuario y cero membresías** mientras
+  las rutas resuelven el workspace a través de la story y exigen membresía — de ahí los 404 y los
+  listados vacíos. Se agregó `seed_workspace` a `tests/conftest.py` (cadena workspace → project →
+  stories + membresía, con knobs `user=` / `stories=` / `member=`), se relocalizaron los helpers
+  `_create_story` / `_add_member` de `test_extraction.py`, y ningún assert se debilitó (verificado por
+  AST). `TestCreateTask` usaba un `uuid4()` suelto y asertaba 201: **ese test documentaba el bug**, y
+  pasó a sembrar una story real. La suite backend pasó de **10 fallando / 399 pasando / 1 skip** a
+  **415 pasando / 0 fallando / 1 skip**.
 
 - **Clase completa del banner de `error` en los stores** (2026-09-17): los cuatro `catch` de
   `updateProject` / `deleteProject` / `updateStory` / `deleteStory` gatean el banner por scope y

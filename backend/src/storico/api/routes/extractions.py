@@ -5,7 +5,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from storico.api.dependencies import get_current_user, get_repository
+from storico.api.dependencies import (
+    get_current_user,
+    get_repository,
+    require_story_workspace_access,
+)
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.extraction import ExtractionResponse
 from storico.domain.entities import EntityNotFound, User
@@ -57,22 +61,16 @@ async def _validate_extraction_workspace_access(
     if extraction is None:
         raise EntityNotFound("Extraction", str(extraction_id))
 
-    story = await story_repo.find_by_id(extraction.user_story_id)
-    if story is None:
-        raise EntityNotFound("Extraction", str(extraction_id))
-
-    project = await project_repo.find_by_id(story.project_id)
-    if project is None:
-        raise EntityNotFound("Extraction", str(extraction_id))
-
-    member = await member_repo.find_by_workspace_and_user(
-        project.workspace_id, current_user.id
+    # Delegate the rest of the walk so a missing story, project or membership is
+    # still reported as a miss of this route's own head entity ("Extraction").
+    await require_story_workspace_access(
+        extraction.user_story_id,
+        current_user,
+        story_repo=story_repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
+        reported_as=("Extraction", extraction_id),
     )
-    if member is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not a member of this workspace",
-        )
     return extraction
 
 
@@ -108,18 +106,13 @@ async def list_extractions(
         all_extractions = await repo.list_by_workspace(workspace_id)
     elif user_story_id is not None:
         # Validate user has access to the user story's workspace
-        story = await story_repo.find_by_id(user_story_id)
-        if story is None:
-            raise EntityNotFound("UserStory", str(user_story_id))
-        project = await project_repo.find_by_id(story.project_id)
-        if project is None:
-            raise EntityNotFound("UserStory", str(user_story_id))
-        member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
-        if member is None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a member of this workspace",
-            )
+        await require_story_workspace_access(
+            user_story_id,
+            current_user,
+            story_repo=story_repo,
+            project_repo=project_repo,
+            member_repo=member_repo,
+        )
         all_extractions = await repo.list_by_story(user_story_id)
     else:
         # No filter provided: return extractions from all workspaces the user is a member of

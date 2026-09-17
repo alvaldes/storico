@@ -7,7 +7,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from storico.api.dependencies import get_current_user, get_repository
+from storico.api.dependencies import (
+    get_current_user,
+    get_repository,
+    require_story_workspace_access,
+)
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.task import (
     CreateTaskRequest,
@@ -67,30 +71,42 @@ async def _validate_task_workspace_access(
     if task is None:
         raise EntityNotFound("Task", str(task_id))
 
-    story = await story_repo.find_by_id(task.user_story_id)
-    if story is None:
-        raise EntityNotFound("Task", str(task_id))
-
-    project = await project_repo.find_by_id(story.project_id)
-    if project is None:
-        raise EntityNotFound("Task", str(task_id))
-
-    member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
-    if member is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not a member of this workspace",
-        )
+    # Delegate the rest of the walk so a missing story, project or membership is
+    # still reported as a miss of this route's own head entity ("Task").
+    await require_story_workspace_access(
+        task.user_story_id,
+        current_user,
+        story_repo=story_repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
+        reported_as=("Task", task_id),
+    )
     return task
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_task(
     body: CreateTaskRequest,
-    current_user: User = Depends(get_current_user),  # noqa: ARG001
+    current_user: User = Depends(get_current_user),
     repo: TaskRepoDep = None,  # type: ignore[assignment]
+    story_repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
 ) -> TaskResponse:
-    """Create a new task."""
+    """Create a new task.
+
+    The caller must be a member of the workspace that owns the story's project; a
+    ``user_story_id`` the caller merely knows is not authorization, and the foreign
+    key on ``tasks.user_story_id`` does not enforce that on its own.
+    """
+    await require_story_workspace_access(
+        body.user_story_id,
+        current_user,
+        story_repo=story_repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
+    )
+
     task = Task(
         user_story_id=body.user_story_id,
         title=body.title,
@@ -147,18 +163,13 @@ async def list_tasks(
         all_tasks = await repo.list_by_workspace(workspace_id)
     elif user_story_id is not None:
         # Validate user has access to the user story's workspace
-        story = await story_repo.find_by_id(user_story_id)
-        if story is None:
-            raise EntityNotFound("UserStory", str(user_story_id))
-        project = await project_repo.find_by_id(story.project_id)
-        if project is None:
-            raise EntityNotFound("UserStory", str(user_story_id))
-        member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
-        if member is None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a member of this workspace",
-            )
+        await require_story_workspace_access(
+            user_story_id,
+            current_user,
+            story_repo=story_repo,
+            project_repo=project_repo,
+            member_repo=member_repo,
+        )
         all_tasks = await repo.list_by_story(user_story_id)
     else:
         # No filter provided: return tasks from all workspaces the user is a member of
