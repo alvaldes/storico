@@ -27,6 +27,19 @@ const FEATURE_MAX = 300;
 const BENEFIT_MAX = 300;
 const RAW_TEXT_MAX = 2000;
 
+/**
+ * Renders i18n strings that author emphasis with `<strong>...</strong>` WITHOUT
+ * innerHTML: text segments stay text and only the authored segments become a
+ * `<strong>` element. Mirrors `renderBoldMarkup` in DeleteAccountDialog, which
+ * splits that file's `<b>...</b>` strings; this file's `story_format_hint`
+ * string authors `<strong>` instead.
+ */
+function renderBoldMarkup(text: string): React.ReactNode {
+  return text
+    .split(/<\/?strong>/)
+    .map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : part));
+}
+
 type StoryMode = 'parts' | 'full';
 
 interface StoryFormData {
@@ -510,10 +523,9 @@ export function StoryForm({
                 )}
               </div>
 
-              <p
-                className="text-xs text-muted-foreground leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: t.stories.story_format_hint }}
-              />
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {renderBoldMarkup(t.stories.story_format_hint)}
+              </p>
             </div>
           )}
 

@@ -1,6 +1,6 @@
 import type { Task, TaskStatus } from '@/types/task';
 import type { UserStory, UserStoryStatus } from '@/types/story';
-import type { ExtractionResponse, ExtractResponse, ExtractRequest } from '@/types/extraction';
+import type { ExtractionResponse } from '@/types/extraction';
 
 const BASE_URL = ''; // Proxy through Astro (same-origin)
 
@@ -247,10 +247,6 @@ class ApiClient {
   }
 
   // ── Extraction methods ──
-
-  async startExtraction(data: ExtractRequest): Promise<ExtractResponse> {
-    return this.post(`/api/v1/workspaces/${data.user_story_id}/extract/`, data);
-  }
 
   async getExtractionStatus(extractionId: string): Promise<ExtractionResponse> {
     return this.get(`/api/v1/extractions/${extractionId}`);

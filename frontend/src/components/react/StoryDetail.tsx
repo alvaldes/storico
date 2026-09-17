@@ -95,19 +95,23 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
 
   // Show a toast when extraction fails, or an auth-themed toast when the
   // session expired (HTTP 401) — the latter is not an extraction failure.
+  // `extractTasks` never rejects, so this effect is the single authority for
+  // the failure message; `handleExtract` must not report one itself.
   useEffect(() => {
     if (extraction) {
       const settled = extraction.status === 'failed' || extraction.status === 'unauthorized';
       if (settled && prevExtractionStatus === 'pending') {
         if (extraction.status === 'unauthorized') {
           toast.error(t.stories.extractionUnauthorized);
+        } else if (extraction.errorCode === 'timeout') {
+          toast.error(t.stories.extractionTimeout);
         } else {
           toast.error(extraction.error?.friendlyMessage ?? t.stories.extractionFailed);
         }
       }
       setPrevExtractionStatus(extraction.status);
     }
-  }, [extraction?.status, extraction?.error, prevExtractionStatus, t]);
+  }, [extraction?.status, extraction?.error, extraction?.errorCode, prevExtractionStatus, t]);
 
   // Resolve parent project for contextual back link
   useEffect(() => {
@@ -166,28 +170,10 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       toast.error(t.stories?.extractionFailed ?? 'Extraction failed');
       return;
     }
-    try {
-      await extractTasks(storyId, workspaceId);
-    } catch (err) {
-      if (err instanceof Error && 'status' in err) {
-        const apiErr = err as { status: number; message: string };
-        if (apiErr.status === 401) {
-          toast.error(t.stories?.extractionUnauthorized ?? 'Extraction failed — session expired');
-        } else if (apiErr.status === 400) {
-          toast.error(apiErr.message);
-        } else if (apiErr.status === 504) {
-          toast.error(t.stories?.extractionTimeout ?? 'Extraction timed out');
-        } else {
-          toast.error(apiErr.message || (t.stories?.extractionFailed ?? 'Extraction failed'));
-        }
-      } else if (err instanceof Error) {
-        toast.error(err.message);
-      } else {
-        toast.error(t.stories?.extractionFailed ?? 'Extraction failed');
-      }
-      // Reset extraction state on failure so the user can retry
-      resetExtraction(storyId);
-    }
+    // `extractTasks` swallows its own errors: it records the failure into
+    // `extractions[storyId]`, so awaiting it here can never reject and the
+    // toast effect above owns the failure message.
+    await extractTasks(storyId, workspaceId);
   };
 
   // ── Extract button rendering ──

@@ -76,13 +76,6 @@ export async function updateTask(
     priority?: string;
   },
 ): Promise<Task> {
-  // If status is being updated, validate client-side
-  if (fields.status !== undefined) {
-    // We need the current status - fetch it first
-    // Note: In practice, the caller (TaskEditor) should pass currentStatus
-    // For now, we'll let the backend validate and catch the error
-  }
-
   const raw = await api.put<RawTaskItem>(`/api/v1/tasks/${taskId}`, toSnakeCase(fields));
   return mapTaskItem(raw);
 }

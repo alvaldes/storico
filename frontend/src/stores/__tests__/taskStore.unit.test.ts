@@ -154,6 +154,20 @@ describe('taskStore — extraction error handling', () => {
     expect(extraction.errorCode).toBe('server');
     expect(extraction.userStoryStatus).toBe('failed_extraction');
   });
+
+  it('categorizes an HTTP 504 as a timeout, not a generic server failure', async () => {
+    vi.mocked(api.startExtraction).mockRejectedValue(
+      new ApiRequestError(504, 'Gateway Timeout', 'the model took too long'),
+    );
+
+    await useTaskStore.getState().extractTasks('story-3', 'ws-1');
+
+    const extraction = useTaskStore.getState().extractions['story-3'];
+    // A timeout is still a failure, but the code lets the view pick its own copy.
+    expect(extraction.status).toBe('failed');
+    expect(extraction.errorCode).toBe('timeout');
+    expect(extraction.userStoryStatus).toBe('failed_extraction');
+  });
 });
 
 describe('taskStore — stale workspace continuations', () => {

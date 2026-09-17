@@ -16,7 +16,7 @@ let workspaceTasksRequestSeq = 0;
 // ── Types ──
 
 export type ExtractionStatus = 'idle' | 'pending' | 'completed' | 'failed' | 'unauthorized';
-export type ExtractionErrorCode = 'unauthorized' | 'network' | 'server' | null;
+export type ExtractionErrorCode = 'unauthorized' | 'network' | 'timeout' | 'server' | null;
 
 export interface ExtractionErrorInfo {
   friendlyMessage: string;
@@ -46,7 +46,14 @@ export interface TaskState {
   allowedTransitions: Record<string, TaskStatus[]>;
 
   fetchTasks: (storyId: string) => Promise<void>;
-  /** Start an asynchronous extraction and begin polling for completion. */
+  /**
+   * Start an asynchronous extraction and begin polling for completion.
+   *
+   * Never rejects. Any failure is recorded into `extractions[storyId]` instead
+   * (`status: 'failed' | 'unauthorized'` plus `error`/`errorCode`), so calling it
+   * with `await` can never throw. The extraction toast in `StoryDetail` reads that
+   * entry and is therefore the single authority for the user-facing failure message.
+   */
   extractTasks: (storyId: string, workspaceId: string) => Promise<void>;
   /** Poll extraction status until completion or failure. */
   pollExtraction: (storyId: string, workspaceId: string, extractionId: string) => Promise<void>;
@@ -86,6 +93,7 @@ function categorizeExtractionError(err: unknown): ExtractionErrorCode {
   const anyErr = err as { status?: number; code?: number | string; message?: string };
   const status = anyErr.status ?? (typeof anyErr.code === 'number' ? anyErr.code : null);
   if (status === 401 || status === 403) return 'unauthorized';
+  if (status === 504) return 'timeout';
   if (err instanceof TypeError) return 'network';
   if (typeof anyErr.message === 'string' && /network|fetch|Failed to fetch/i.test(anyErr.message)) {
     return 'network';
