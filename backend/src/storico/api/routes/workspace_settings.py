@@ -48,17 +48,21 @@ router = APIRouter(
     tags=["workspace-settings"],
 )
 
-LLMConfigRepoDep = Annotated[
+# ``type`` rather than a plain assignment: these are type aliases, and PEP 695
+# declares that to the type checker instead of leaving it to infer an alias from an
+# assignment. FastAPI resolves them through ``get_type_hints`` like any other
+# ``Annotated`` dependency.
+type LLMConfigRepoDep = Annotated[
     SQLAlchemyWorkspaceLLMConfigRepository,
     Depends(get_repository(SQLAlchemyWorkspaceLLMConfigRepository)),
 ]
 
-PromptRepoDep = Annotated[
+type PromptRepoDep = Annotated[
     SQLAlchemyWorkspacePromptRepository,
     Depends(get_repository(SQLAlchemyWorkspacePromptRepository)),
 ]
 
-CustomProviderRepoDep = Annotated[
+type CustomProviderRepoDep = Annotated[
     SQLAlchemyCustomProviderRepository,
     Depends(get_repository(SQLAlchemyCustomProviderRepository)),
 ]
