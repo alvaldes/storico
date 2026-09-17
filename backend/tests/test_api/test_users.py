@@ -99,6 +99,46 @@ class TestCompleteOnboarding:
         assert len(workspaces) == 1
         assert workspaces[0].name == "My Team"
 
+    async def test_complete_onboarding_with_icon_only_keeps_the_workspace_name(
+        self, authed_client, authed_user: User, db_session: AsyncSession
+    ):
+        """PATCH /me/onboarding with only an icon updates the icon, not the name.
+
+        Onboarding can pick a workspace icon without renaming, and the rename use
+        case rejects an empty name, so the handler backfills the name from the
+        existing workspace. The observable contract asserted here is exactly that:
+        the icon becomes the supplied one and the name is untouched. Because the
+        backfill is what feeds a required argument, dropping it would surface as a
+        500 (``ValueError: Workspace name cannot be empty``) instead of a silent
+        rename, which is what makes this case falsifiable rather than incidental.
+        """
+        from storico.application.workspaces.create_workspace import CreateWorkspaceUseCase
+        from storico.infrastructure.database.repositories.workspace_member_repository import (
+            SQLAlchemyWorkspaceMemberRepository,
+        )
+        from storico.infrastructure.database.repositories.workspace_prompt_repository import (
+            SQLAlchemyWorkspacePromptRepository,
+        )
+
+        ws_repo = SQLAlchemyWorkspaceRepository(db_session)
+        member_repo = SQLAlchemyWorkspaceMemberRepository(db_session)
+        prompt_repo = SQLAlchemyWorkspacePromptRepository(db_session)
+
+        original_name = f"{authed_user.name}'s Workspace"
+        use_case = CreateWorkspaceUseCase(
+            ws_repo=ws_repo, member_repo=member_repo, prompt_repo=prompt_repo
+        )
+        await use_case.execute(name=original_name, user_id=authed_user.id)
+
+        response = await authed_client.patch(ONBOARDING_URL, json={"workspace_icon": "rocket"})
+        assert response.status_code == 200
+        assert response.json() == {"success": True}
+
+        workspaces = await ws_repo.list_by_user(authed_user.id)
+        assert len(workspaces) == 1
+        assert workspaces[0].name == original_name
+        assert workspaces[0].icon == "rocket"
+
     async def test_complete_onboarding_idempotent(self, authed_client):
         """PATCH /me/onboarding returns 200 on second call — idempotent."""
         # First call

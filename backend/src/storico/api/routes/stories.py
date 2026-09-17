@@ -66,7 +66,7 @@ async def create_story(
     if member is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not a member of this project's workspace",
+            detail="Not a member of this workspace",
         )
 
     # Check for duplicate story in the same project (by actor, feature, benefit)
@@ -140,7 +140,7 @@ async def list_stories(
         if member is None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a member of this project's workspace",
+                detail="Not a member of this workspace",
             )
         all_stories = await repo.list_by_project(project_id)
     else:

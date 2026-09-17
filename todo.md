@@ -1,6 +1,12 @@
 # Storico — Backlog
 
-> **Última actualización**: 2026-09-17 (6) — cerrados `TaskService` (opción (a): el único sitio de decisión
+> **Última actualización**: 2026-09-17 (7) — alineado el contrato de autorización: **404** = “esa fila no
+> existe”, **403** = “existe pero no es alcanzable por vos”, uniforme en todo el backend. `projects.py`
+> dejó de devolver 404 para contención y los dos strings distintos de membresía colapsaron en uno. +10
+> tests que lo fijan (7 probados por mutación), y se cubrieron la rama `project is None` del walk y la
+> rama sólo-icono del onboarding. Verificado: backend **427 passed / 1 skip / 0 failed**, `ruff` en cero,
+> frontend sin tocar.
+> Última actualización previa: 2026-09-17 (6) — cerrados `TaskService` (opción (a): el único sitio de decisión
 > de la transición es `TaskService.ensure_transition_allowed` y la ruta solo **traduce** el error de dominio a
 > un 400 byte a byte idéntico) y la deuda de lint: `ruff check src tests` de **145 → 0**, más
 > `.github/workflows/ci.yml` con dos jobs (backend: `ruff check` bloqueante + `pytest`; frontend: `tsc` +
@@ -182,19 +188,12 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
   `test_export.py::_create_workspace` / `_create_story` / `_create_tasks` y
   `test_workspace_settings_prompts.py::_add_member` hacen lo mismo que el nuevo `seed_workspace` de
   `conftest.py`. Consolidarlos suma 3 archivos de test al scope; no se hizo para no inflar el diff.
-- **403/404 y `detail` inconsistentes en la misma condición** — conviven cuatro formas:
-  `"Not a member of this workspace"` (el walk compartido), `"Not a member of this project's
-  workspace"` (`stories.py::create_story` / `list_stories`), `"This user story does not belong to the
-  specified workspace"` (`extraction.py`) y `projects.py::_verify_project_belongs_to_workspace`, que usa
-  **404** donde `extraction.py` usa **403**. Preexistente; unificarlo es una decisión de contrato de API,
-  no un fix.
-- **Oráculo de existencia** — un miembro del workspace B distingue 404 ("no existe") de 403 ("existe
-  pero no es tuyo"). Preexistente en `GET /stories|tasks|extractions/{id}`; en el status route fue
-  mejora neta, porque antes devolvía el payload completo a cualquier miembro de cualquier workspace.
-- **Rama no ejercitada en el walk compartido** — `dependencies.py` `project is None` nunca se ejecuta en
-  `tests/test_api` (medido con `sys.settrace`). Inalcanzable por las FKs; valor bajo.
-- **Los 403 nuevos sólo fijan el status** — no pinnean `detail` ni `type`, a diferencia del 404, que sí
-  fija `type == "entity_not_found"`. Los strings de 403 quedan sin contrato fijado por test.
+- **El oráculo de existencia es ahora un contrato, no una inconsistencia** — después de la alineación, la
+  regla es uniforme en todo el backend: **404** cuando la fila no existe, **403** cuando existe pero no es
+  alcanzable por vos (membresía o contención). Eso implica que un id de otro workspace se puede distinguir
+  de un id inexistente. Es el comportamiento **elegido** (el mismo trade-off que ya hacía `extraction.py`),
+  y unificarlo al revés —404 para todo— es una decisión de contrato de API, no un fix: cambiaría códigos
+  que el cliente ya recibe y que hoy nadie ramifica.
 - **`pytest-cov` NO es confiable en este entorno** — reporta como faltantes líneas que un
   `sys.settrace` ve ejecutar (p. ej. `dependencies.py:259-270`, contradiciendo tests que pasan).
   Repro: `COVERAGE_FILE=/tmp/x python -m pytest tests/test_api/test_stories.py --cov=storico.api`. No hay
@@ -207,8 +206,8 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
 - **Falso positivo de pyright en `users.py` (atribución corregida)** — el diagnóstico real es
   `users.py:101:34` sobre `OnboardingRequest()` (campos con default en `schemas/user.py`, así que la llamada
   es válida), **no** sobre `RenameWorkspaceUseCase`, que la nota anterior culpaba por error: el checker ve
-  una firma stale. No hay defecto de producción y no se agregó ninguna supresión. Aparte: la rama
-  sólo-icono del onboarding (`users.py:126-129`) no tiene ningún test.
+  una firma stale. No hay defecto de producción y no se agregó ninguna supresión. La rama sólo-icono del
+  onboarding (`users.py:126-129`), que estaba sin cubrir, ya tiene test.
 - **Dos `renderBoldMarkup` distintos** — el de `DeleteAccountDialog` parte de `<b>` y el que agregué en
   `StoryForm` parte de `<strong>` (el hint usa `<strong>`, así que reusar el otro rendiría los tags como
   texto). Son dos copias del mismo concepto: consolidarlas en un helper parametrizado. Ojo, el de
@@ -239,6 +238,20 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
 ---
 
 ## ✅ Completado (referencia — items eliminados del backlog)
+
+- **Contrato de autorización alineado y fijado** (2026-09-17): la misma condición se respondía de cuatro
+  formas distintas. Ahora **404** = “esa fila no existe” y **403** = “existe pero no es alcanzable por vos”,
+  uniforme en todo el backend: `projects.py` dejó de devolver 404 para la contención (el proyecto existe,
+  pero en otro workspace) y pasa a 403 con un string paralelo al de `extraction.py`, que quedó como la forma
+  de referencia; y los dos strings distintos de “no sos miembro del workspace dueño de X” colapsaron en uno.
+  Antes de tocar el código se auditó el consumidor: las tres rutas de proyecto se llaman desde
+  `projects-api.ts` y **todos** sus call sites son agnósticos del status (`.catch` → estado local), así que
+  ningún cliente primero depende del 404. Se agregó además la cobertura que faltaba: la rama
+  `project is None` del walk compartido (con repos stub, porque por API es inalcanzable), la rama sólo-icono
+  del onboarding, y los `detail` de los 403 —que esos sí llevan sólo `detail`, sin `type`: agregar un `type`
+  habría sido inventar contrato—. Suite 417 → 427, con 7 de los 10 tests nuevos probados por mutación y los
+  otros 3 declarados como pins. **Ningún test existente aseraba los strings viejos**, así que no hubo ninguna
+  aserción debilitada.
 
 - **Una sola autoridad para la regla de transición de tasks** (2026-09-17): la regla ya vivía en
   `domain/validators/state_machine.py`, pero **quién decidía y quién construía el error** estaba duplicado:

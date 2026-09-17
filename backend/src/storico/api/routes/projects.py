@@ -78,20 +78,28 @@ async def _verify_project_belongs_to_workspace(
     workspace_id: UUID,
     repo: SQLAlchemyProjectRepository,
 ) -> tuple[Project, int]:
-    """Find a project + its story count and verify workspace membership.
+    """Find a project + its story count and verify workspace containment.
 
     Uses ``find_by_id_with_count`` so a single JOIN+GROUP_BY round-trip
     returns both the project and its story count, eliminating the extra
     ``count_stories`` query ``get_project`` and ``update_project`` used
     to fire after ``find_by_id``.
 
-    Raises ``EntityNotFound`` (404) if the project does not exist or
-    does not belong to the workspace. Returns ``(project, story_count)``
-    on success so callers do not need another query.
+    Raises ``EntityNotFound`` (404) when the project does not exist at all,
+    and ``HTTPException`` (403) when it exists but belongs to another
+    workspace — the path workspace is what the caller claimed, so containment
+    is a different fact from existence and is reported the same way as the
+    parallel story-containment check in ``routes/extraction.py``. Returns
+    ``(project, story_count)`` on success so callers do not need another query.
     """
     pair = await repo.find_by_id_with_count(project_id)
-    if pair is None or pair.project.workspace_id != workspace_id:
+    if pair is None:
         raise EntityNotFound("Project", str(project_id))
+    if pair.project.workspace_id != workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This project does not belong to the specified workspace",
+        )
     return pair.project, pair.story_count
 
 

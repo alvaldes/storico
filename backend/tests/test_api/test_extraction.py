@@ -331,6 +331,9 @@ class TestExtractionStatusEndpoint:
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 403
+        assert response.json()["detail"] == (
+            "This user story does not belong to the specified workspace"
+        )
 
     @pytest.mark.asyncio
     async def test_status_still_returns_the_extraction_for_its_own_workspace(

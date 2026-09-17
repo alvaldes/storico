@@ -91,6 +91,7 @@ class TestCreateTask:
             },
         )
         assert response.status_code == 403
+        assert response.json()["detail"] == "Not a member of this workspace"
 
         persisted = await SQLAlchemyTaskRepository(db_session).list_by_story(story.story_id)
         assert persisted == []
@@ -118,6 +119,7 @@ class TestCreateTask:
             },
         )
         assert response.status_code == 403
+        assert response.json()["detail"] == "Not a member of this workspace"
 
         persisted = await SQLAlchemyTaskRepository(db_session).list_by_story(story.story_id)
         assert persisted == []
