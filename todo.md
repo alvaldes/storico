@@ -1,12 +1,75 @@
 # Storico — Backlog
 
-> **Última actualización**: 2026-09-15 — auditoría de los fallos preexistentes del backend. Se
+> **Última actualización**: 2026-09-17 — cierre del bug de cambio de workspace en el frontend
+> (crear o cambiar de workspace dejaba datos del workspace anterior en pantalla: la página
+> `/workspaces/{id}/settings` se ataba a la URL y guardaba en el workspace equivocado, y
+> `/stories` listaba historias de todos los workspaces). La clase de bug está cerrada y
+> verificada; quedan cuatro residuos menores, listados al inicio de este archivo.
+> Última actualización previa: 2026-09-15 — auditoría de los fallos preexistentes del backend. Se
 > corrigieron 4 de los 14 y se re-diagnosticaron los 10 restantes: su causa es que **predatan el
 > scoping por workspace**, no el `.value` sobre `status` que se creía. Apareció además un gap de
 > autorización en `POST /tasks/`. Estado verificado **ejecutando la suite**, no leyendo documentos.
 > Última actualización previa: 2026-09-14 (2) — se cerraron por SDD dos changes: `few-shot-qdrant`
 > (few-shot automático desde Qdrant + `EmbeddingPort` cloud) y `us-decomposition`
 > (Kanban / Task Editor / Export; 4 blockers + 3 warnings de fidelidad corregidos).
+
+---
+
+## 🔜 Próximo a tratar — residuos del cambio de workspace
+
+Contexto: el cambio de workspace ya es atómico y workspace-scoped (`workspaceStore.switchWorkspace`
+/ `clearWorkspaceScopedState`, `lib/workspace-scope.ts` como única autoridad del scope, guardas de
+token + scope en `projects` / `stories` / `workspaceTasks` / `extractions`). Los cuatro puntos
+siguientes son residuos que quedaron fuera de ese cambio: ninguno deja datos del workspace anterior
+en las slices workspace-scoped, y ninguno tiene síntoma visible hoy.
+
+### 1. `resetExtraction(storyId)` deja una entrada `idle` después de un cambio de workspace
+
+**Estado**: `taskStore.resetExtraction` (lo llama el cleanup de desmontaje de `StoryDetail`) escribe
+`extractions[storyId] = INITIAL_EXTRACTION` sin chequeo de scope. Si el cambio de workspace borró las
+slices antes de que corra ese cleanup, la slice nueva gana una entrada con todos los campos en null
+para el story id del workspace abandonado. Verificado: es **invisible** — el único lector de
+`extractions` es `StoryDetail` para el story que está renderizando, y `!extraction` y
+`status === 'idle'` rinden idéntico.
+
+- **Fix sugerido**: borrar la clave en lugar de escribir `INITIAL_EXTRACTION`, o gatear el cleanup
+  con el scope. Es del lado del store: el componente no tiene acceso al scope.
+- **Ojo**: el comentario de `setScopeWorkspace` dice “the single place a switch resets
+  `extractions`”, que no es exacto justamente por este camino.
+
+### 2. `pollExtraction` lee antes de chequear el scope
+
+**Estado**: en la rama `completed`, `await get().fetchTasks(storyId)` corre **antes** del primer
+chequeo de scope, así que un poll de un workspace descartado igual dispara
+`GET /stories/{id}/tasks` y escribe las slices keyed por story/task (`tasks`, `allowedTransitions`).
+No toca `workspaceTasks` ni `extractions`, que son las workspace-scoped.
+
+- **Fix sugerido**: mover ese `await` debajo del chequeo `isScopedWorkspace(workspaceId)`.
+
+### 3. El `error` global se escribe sin chequeo de scope
+
+**Estado**: el `catch` de `projectStore.createProject` (y el patrón equivalente de
+`storyStore.createStory`) hace `set({ error: message, saving: false })` sin comparar el scope. Un
+error de un request del workspace abandonado puede quedar como banner transitorio en el workspace
+nuevo. No es dato del workspace anterior, es un string global.
+
+- **Fix sugerido**: aplicar la misma comparación `getScopedWorkspaceId() === scopeAtCall` al escribir
+  `error`, o mover el `error` de las slices globales.
+
+### 4. `updateTask` / `updateTaskStatus` sin fence de scope
+
+**Estado**: verificado que **no hay fuga** — sólo hacen `map` sobre `tasks` (keyed por story, se
+conserva a propósito) y sobre `workspaceTasks`, que queda vacío tras un cambio de workspace, así que
+el `map` es un no-op. Se deja anotado como deuda de consistencia, no como bug.
+
+### Falta de verificación end-to-end
+
+**Estado**: todo el cambio está verificado con vitest + jsdom y APIs mockeadas (21 archivos / 139
+tests, `tsc` limpio, con sondeos de falsificación en cuatro rondas). No hay ejecución en navegador:
+`playwright` no está instalado y los specs de `frontend/e2e/` no son ejecutables.
+
+- **Pendiente**: confirmar el orden real de montaje/desmontaje de las islas con View Transitions en
+  un navegador. Es lo único que deja abierto la clase “residuo invisible” de los puntos 1 y 2.
 
 ---
 
