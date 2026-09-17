@@ -417,7 +417,6 @@
     "llmModelsNoApiKey": "Agrega tu API Key y guarda para habilitar sugerencias de modelos.",
     "llmRefreshModels": "Recargar modelos",
     "llmAddCustomProvider": "Agregar proveedor personalizado",
-    "llmUseKnownProvider": "Elegir un proveedor conocido",
     "llmCustomProviderPlaceholder": "ej. together, deepseek, groq",
     "llmCustomProviderDesc": "Un proveedor personalizado usa su propia URL Base y API Key. Agrega uno para registrar un nombre en este espacio de trabajo.",
     "llmCustomProviderAddTitle": "Agregar proveedor personalizado",

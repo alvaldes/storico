@@ -30,27 +30,27 @@ import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Field, FieldLabel, FieldDescription } from '@/components/ui/field';
-import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+} from '@/components/ui/select';
 import { ProviderIcon } from '@/components/ui/provider-icon';
 import { FewShotConfigEditor } from '@/components/react/FewShotConfigEditor';
-import type { WorkspaceLLMConfig, WorkspacePrompt } from '@/types/workspace';
+import { CustomProviderDialog } from '@/components/react/CustomProviderDialog';
+import { listCustomProviders } from '@/lib/custom-providers-api';
+import { ADD_CUSTOM_PROVIDER_VALUE, KNOWN_PROVIDERS, isKnownProvider } from '@/lib/llm-providers';
+import type { CustomProvider, WorkspaceLLMConfig, WorkspacePrompt } from '@/types/workspace';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
-
-/** Providers with first-class support (known model-fetch endpoints). */
-const KNOWN_PROVIDERS = ['ollama', 'openai', 'anthropic', 'gemini'] as const;
 
 /**
  * Id of the `<datalist>` that backs the custom model field's native suggestions. The
  * field stays a free-text input: the list only offers ids, it never constrains them.
  */
 const CUSTOM_MODEL_LIST_ID = 'llm-custom-model-list';
-
-type KnownProvider = (typeof KNOWN_PROVIDERS)[number];
-
-function isKnownProvider(p: string): p is KnownProvider {
-  return (KNOWN_PROVIDERS as readonly string[]).includes(p);
-}
 
 interface LLMConfigEditorProps {
   locale: 'en' | 'es';
@@ -70,10 +70,23 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     baseUrl: 'http://localhost:11434',
     apiKey: '',
   });
-  const [isCustomProvider, setIsCustomProvider] = useState(false);
-  const [customProviderName, setCustomProviderName] = useState('');
   const [llmSaving, setLlmSaving] = useState(false);
   const [llmSaveResult, setLlmSaveResult] = useState<'idle' | 'success' | 'error'>('idle');
+
+  /* ── Custom Provider Registry State ── */
+  const [customProviders, setCustomProviders] = useState<CustomProvider[]>([]);
+  // The select's popup is controlled so choosing the add option can close it without
+  // the selection moving.
+  const [providerSelectOpen, setProviderSelectOpen] = useState(false);
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false);
+  // `null` registers a new provider; a row renames that one.
+  const [providerDialogTarget, setProviderDialogTarget] = useState<CustomProvider | null>(null);
+
+  // Declared here rather than beside the other provider choices because the model-probe
+  // effect below reads it, and a `const` read before its declaration is a runtime error.
+  // Derived, never a stored flag: whether the provider is custom follows from the name
+  // itself, so a second source of truth cannot fall out of step with the saved config.
+  const isCustomProvider = !isKnownProvider(llmConfig.provider);
 
   /* ── Prompt Config State ── */
   const [prompts, setPrompts] = useState<WorkspacePrompt>({
@@ -135,10 +148,6 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
           baseUrl: llm.baseUrl ?? 'http://localhost:11434',
           apiKey: llm.apiKey ?? '',
         });
-        if (!isKnownProvider(loadedProvider)) {
-          setIsCustomProvider(true);
-          setCustomProviderName(loadedProvider);
-        }
       }
       if (promptData) {
         setPrompts({
@@ -182,6 +191,25 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     }
   }, [workspaceId, t]);
 
+  /* ── Custom Provider Registry ── */
+  const loadCustomProviders = useCallback(async () => {
+    try {
+      setCustomProviders(await listCustomProviders(workspaceId));
+    } catch (err) {
+      // The select stays usable without the registry — the known providers and the
+      // saved selection are still offered — so a failed list is reported without
+      // blocking the field. A member who cannot read the admin-only endpoint keeps
+      // exactly the behaviour they had before, which is why that case stays silent.
+      setCustomProviders([]);
+      if (err instanceof Error && (err.message.includes('403') || err.message.includes('admin'))) {
+        return;
+      }
+      toast.error(
+        t.workspace?.llmCustomProviderLoadError ?? 'Could not load the custom providers.',
+      );
+    }
+  }, [workspaceId, t]);
+
   /* ── Explicit Model Refresh ── */
   const handleRefreshModels = useCallback(async () => {
     await loadModels();
@@ -193,6 +221,10 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     setMounted(true);
     loadConfigs();
   }, [loadConfigs]);
+
+  useEffect(() => {
+    loadCustomProviders();
+  }, [loadCustomProviders]);
 
   // Auto-fetch models when the provider changes, for known providers only. The gate on
   // `loading` keeps the probe off until the saved config lands: probing earlier would
@@ -206,6 +238,32 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     if (!mounted || loading || isCustomProvider) return;
     loadModels();
   }, [loadModels, llmConfig.provider, mounted, loading, isCustomProvider]);
+
+  /* ── Provider Saved (create or rename) ── */
+  const handleProviderSaved = (saved: CustomProvider) => {
+    setCustomProviders((prev) =>
+      [...prev.filter((p) => p.id !== saved.id), saved].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+    );
+
+    if (providerDialogTarget) {
+      // A rename changes the name and nothing else: the endpoint, credential and model
+      // still belong to the same provider. The backend already followed it into the
+      // saved selection, so the field follows too, but only when it was pointing there.
+      if (llmConfig.provider === providerDialogTarget.name) {
+        setLlmConfig((prev) => ({ ...prev, provider: saved.name }));
+      }
+      return;
+    }
+
+    // A new provider has no endpoint, key or model yet, and the ones the previous
+    // provider left behind are not its values.
+    setLlmConfig((prev) => ({ ...prev, provider: saved.name, model: '', apiKey: '', baseUrl: '' }));
+    setAvailableModels([]);
+    setModelsError(null);
+    setCustomModelsProbed(false);
+  };
 
   /* ── LLM Save Handler ── */
   const handleLLMSave = async () => {
@@ -300,6 +358,31 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     );
   }
 
+  /* ── Provider choices ── */
+
+  const providerLabels: Record<string, string> = {
+    ollama: t.settings?.llm_provider_ollama ?? 'Ollama (Local)',
+    openai: t.settings?.llm_provider_openai ?? 'OpenAI',
+    anthropic: t.settings?.llm_provider_anthropic ?? 'Anthropic',
+    gemini: t.settings?.llm_provider_gemini ?? 'Gemini',
+  };
+  const providerLabel = (provider: string) => providerLabels[provider] ?? provider;
+
+  // The row the pencil renames. A custom provider without one has nothing to rename: it
+  // is a name the config holds that the registry does not, so the add action is the way
+  // to register it.
+  const selectedCustomProvider = customProviders.find((p) => p.name === llmConfig.provider);
+
+  // Names to offer, including the current selection when the registry does not hold it
+  // (an unreachable list, or a name configured before the registry existed). Without
+  // that fallback the select would render an empty value for a provider that is saved.
+  const customProviderNames = Array.from(
+    new Set([
+      ...customProviders.map((p) => p.name),
+      ...(isCustomProvider ? [llmConfig.provider] : []),
+    ]),
+  ).sort((a, b) => a.localeCompare(b));
+
   // Only meaningful once a list actually arrived; an empty list means "unknown", not
   // "missing", and the error hint already covers the unreachable case.
   const savedModelMissingFromList =
@@ -344,152 +427,96 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               </FieldLabel>
               <div className="flex items-start gap-2">
                 <div className="flex-1">
-                  {isCustomProvider ? (
-                    /* Custom provider — free text input */
-                    <Input
-                      id="llm-provider"
-                      type="text"
-                      value={customProviderName}
-                      onChange={(e) => {
-                        // Renaming the provider touches the name and nothing else: the
-                        // model, key and endpoint the user already entered remain valid
-                        // for the new name, and wiping them on every keystroke would
-                        // destroy work the user cannot see being undone.
-                        const name = e.target.value;
-                        setCustomProviderName(name);
-                        setLlmConfig((prev) => ({ ...prev, provider: name }));
-                      }}
-                      placeholder={
-                        t.workspace?.llmCustomProviderPlaceholder ??
-                        'e.g. together, deepseek, groq'
+                  {/* Always a select: the name is chosen or registered, never typed into
+                      this field. */}
+                  <Select
+                    value={llmConfig.provider}
+                    open={providerSelectOpen}
+                    onOpenChange={setProviderSelectOpen}
+                    onValueChange={(val) => {
+                      if (val === null) return;
+                      // The add option is a control, not a provider: it opens the dialog
+                      // and leaves the selection exactly where it was.
+                      if (val === ADD_CUSTOM_PROVIDER_VALUE) {
+                        setProviderDialogTarget(null);
+                        setProviderDialogOpen(true);
+                        setProviderSelectOpen(false);
+                        return;
                       }
-                    />
-                  ) : (
-                    /* Known providers — select dropdown */
-                    <Select
-                      value={llmConfig.provider}
-                      onValueChange={(val) => {
-                        if (val === null) return;
-                        setLlmConfig((prev) => ({
-                          ...prev,
-                          provider: val,
-                          model: '',
-                          apiKey: '',
-                          baseUrl: val === 'ollama' ? 'http://localhost:11434' : '',
-                        }));
-                      }}
-                    >
-                      <SelectTrigger id="llm-provider" className="w-full">
-                        <div className="flex items-center gap-2">
-                          <ProviderIcon
-                            provider={llmConfig.provider}
-                            theme={resolvedTheme}
-                            className="h-4 w-4 shrink-0"
-                          />
-                          <span>
-                            {llmConfig.provider === 'ollama'
-                              ? (t.settings?.llm_provider_ollama ?? 'Ollama (Local)')
-                              : llmConfig.provider === 'openai'
-                                ? (t.settings?.llm_provider_openai ?? 'OpenAI')
-                                : llmConfig.provider === 'gemini'
-                                  ? (t.settings?.llm_provider_gemini ?? 'Gemini')
-                                  : (t.settings?.llm_provider_anthropic ?? 'Anthropic')}
-                          </span>
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ollama">
-                          <ProviderIcon
-                            provider="ollama"
-                            theme={resolvedTheme}
-                            className="mr-2 h-4 w-4 shrink-0"
-                          />
-                          {t.settings?.llm_provider_ollama ?? 'Ollama (Local)'}
-                        </SelectItem>
-                        <SelectItem value="openai">
-                          <ProviderIcon
-                            provider="openai"
-                            theme={resolvedTheme}
-                            className="mr-2 h-4 w-4 shrink-0"
-                          />
-                          {t.settings?.llm_provider_openai ?? 'OpenAI'}
-                        </SelectItem>
-                        <SelectItem value="anthropic">
-                          <ProviderIcon
-                            provider="anthropic"
-                            theme={resolvedTheme}
-                            className="mr-2 h-4 w-4 shrink-0"
-                          />
-                          {t.settings?.llm_provider_anthropic ?? 'Anthropic'}
-                        </SelectItem>
-                        <SelectItem value="gemini">
-                          <ProviderIcon
-                            provider="gemini"
-                            theme={resolvedTheme}
-                            className="mr-2 h-4 w-4 shrink-0"
-                          />
-                          {t.settings?.llm_provider_gemini ?? 'Gemini'}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-                {/* Toggle between known/custom provider */}
-                <div className="relative">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    title={
-                      isCustomProvider
-                        ? (t.workspace?.llmUseKnownProvider ?? 'Choose a known provider')
-                        : (t.workspace?.llmAddCustomProvider ?? 'Add custom provider')
-                    }
-                    onClick={() => {
-                      // Entering or leaving custom mode changes which provider is in
-                      // effect, so the fields it owns are dropped here rather than on
-                      // every keystroke of the provider name.
-                      if (isCustomProvider) {
-                        // Switch back to a known provider (default: ollama)
-                        setIsCustomProvider(false);
-                        setCustomProviderName('');
-                        setCustomModelsProbed(false);
-                        setLlmConfig((prev) => ({
-                          ...prev,
-                          provider: 'ollama',
-                          model: '',
-                          apiKey: '',
-                          baseUrl: 'http://localhost:11434',
-                        }));
-                      } else {
-                        // Enter custom provider mode
-                        setIsCustomProvider(true);
-                        setCustomProviderName('');
-                        setCustomModelsProbed(false);
-                        setAvailableModels([]);
-                        setModelsError(null);
-                        setLlmConfig((prev) => ({
-                          ...prev,
-                          provider: '',
-                          model: '',
-                          apiKey: '',
-                          baseUrl: '',
-                        }));
-                      }
+                      // Switching provider drops the values the previous one owned: a
+                      // model id and an API key are not portable between endpoints.
+                      setLlmConfig((prev) => ({
+                        ...prev,
+                        provider: val,
+                        model: '',
+                        apiKey: '',
+                        baseUrl: val === 'ollama' ? 'http://localhost:11434' : '',
+                      }));
                     }}
                   >
-                    {isCustomProvider ? (
-                      <Pencil className="h-4 w-4" />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
-                  </Button>
+                    <SelectTrigger id="llm-provider" className="w-full">
+                      <div className="flex items-center gap-2">
+                        {/* Decorative: the label sits beside it. Marking it so keeps the
+                            icon's own accessible name — the Anthropic SVGs carry a
+                            `<title>` that repeats the label — out of the field's name. */}
+                        <ProviderIcon
+                          provider={llmConfig.provider}
+                          theme={resolvedTheme}
+                          className="h-4 w-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                        <span>{providerLabel(llmConfig.provider)}</span>
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {KNOWN_PROVIDERS.map((provider) => (
+                        <SelectItem key={provider} value={provider}>
+                          <ProviderIcon
+                            provider={provider}
+                            theme={resolvedTheme}
+                            className="mr-2 h-4 w-4 shrink-0"
+                            aria-hidden="true"
+                          />
+                          {providerLabel(provider)}
+                        </SelectItem>
+                      ))}
+                      {customProviderNames.length > 0 && <SelectSeparator />}
+                      {customProviderNames.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                      <SelectSeparator />
+                      <SelectItem value={ADD_CUSTOM_PROVIDER_VALUE}>
+                        <Plus className="mr-2 h-4 w-4 shrink-0" />
+                        {t.workspace?.llmAddCustomProvider ?? 'Add custom provider'}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+                {/* Rename sits beside the select, and only for a registered custom
+                    provider: a known provider's name is not the workspace's to edit. */}
+                {selectedCustomProvider && (
+                  <div className="relative">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      title={t.workspace?.llmCustomProviderRenameTitle ?? 'Rename custom provider'}
+                      onClick={() => {
+                        setProviderDialogTarget(selectedCustomProvider);
+                        setProviderDialogOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
               <FieldDescription>
                 {isCustomProvider
                   ? (t.workspace?.llmCustomProviderDesc ??
-                     'Enter the provider name. You will need to set the Base URL and API Key manually.')
+                    'Enter the provider name. You will need to set the Base URL and API Key manually.')
                   : (t.workspace?.llmProviderDesc ?? 'The AI model provider for task extraction.')}
               </FieldDescription>
             </Field>
@@ -524,7 +551,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       {availableModels.length > 0 && (
                         <datalist id={CUSTOM_MODEL_LIST_ID}>
                           {availableModels.map((m) => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
+                            <option key={m.id} value={m.id}>
+                              {m.name}
+                            </option>
                           ))}
                         </datalist>
                       )}
@@ -574,7 +603,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                             {t.workspace?.llmModelsLoading ?? 'Loading models...'}
                           </ComboboxEmpty>
                         ) : availableModels.length === 0 ? (
-                          <ComboboxEmpty>{modelsError ? modelsError : noModelsMessage}</ComboboxEmpty>
+                          <ComboboxEmpty>
+                            {modelsError ? modelsError : noModelsMessage}
+                          </ComboboxEmpty>
                         ) : null}
                       </ComboboxContent>
                     </Combobox>
@@ -919,6 +950,15 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
           </CardContent>
         </Card>
       </div>
+
+      <CustomProviderDialog
+        locale={locale}
+        workspaceId={workspaceId}
+        provider={providerDialogTarget}
+        open={providerDialogOpen}
+        onOpenChange={setProviderDialogOpen}
+        onSaved={handleProviderSaved}
+      />
     </div>
   );
 }

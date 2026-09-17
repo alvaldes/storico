@@ -417,7 +417,6 @@
     "llmModelsNoApiKey": "Add your API key and save to enable model suggestions.",
     "llmRefreshModels": "Refresh models",
     "llmAddCustomProvider": "Add custom provider",
-    "llmUseKnownProvider": "Choose a known provider",
     "llmCustomProviderPlaceholder": "e.g. together, deepseek, groq",
     "llmCustomProviderDesc": "A custom provider uses its own Base URL and API Key. Add one to register a name for this workspace.",
     "llmCustomProviderAddTitle": "Add custom provider",

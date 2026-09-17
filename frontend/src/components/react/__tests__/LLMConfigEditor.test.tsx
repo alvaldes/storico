@@ -5,6 +5,13 @@ import userEvent from '@testing-library/user-event';
 import { LLMConfigEditor } from '@/components/react/LLMConfigEditor';
 import { getLLMConfig, upsertLLMConfig, fetchAvailableModels } from '@/lib/llm-config-api';
 import { getPrompts, upsertPrompts } from '@/lib/prompts-api';
+import {
+  createCustomProvider,
+  listCustomProviders,
+  renameCustomProvider,
+} from '@/lib/custom-providers-api';
+import { ApiRequestError } from '@/lib/api';
+import type { CustomProvider } from '@/types/workspace';
 
 vi.mock('@/lib/llm-config-api', () => ({
   getLLMConfig: vi.fn(),
@@ -15,6 +22,14 @@ vi.mock('@/lib/llm-config-api', () => ({
 vi.mock('@/lib/prompts-api', () => ({
   getPrompts: vi.fn(),
   upsertPrompts: vi.fn(),
+}));
+
+// Defaults to an empty registry: most tests here are about the known-provider path,
+// which behaves identically whether or not the workspace has custom providers.
+vi.mock('@/lib/custom-providers-api', () => ({
+  listCustomProviders: vi.fn().mockResolvedValue([]),
+  createCustomProvider: vi.fn(),
+  renameCustomProvider: vi.fn(),
 }));
 
 const WORKSPACE_ID = 'ws-1';
@@ -358,8 +373,18 @@ describe('LLMConfigEditor custom provider', () => {
     { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner' },
   ];
 
+  /** The registry row the saved config already names. */
+  const REGISTERED: CustomProvider = {
+    id: 'cp-deepseek',
+    workspaceId: WORKSPACE_ID,
+    name: 'deepseek',
+    createdAt: '2026-09-18T10:00:00Z',
+    updatedAt: '2026-09-18T10:00:00Z',
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(listCustomProviders).mockResolvedValue([REGISTERED]);
 
     vi.mocked(getLLMConfig).mockResolvedValue({
       provider: 'deepseek',
@@ -397,36 +422,142 @@ describe('LLMConfigEditor custom provider', () => {
     await screen.findByDisplayValue('deepseek');
   }
 
-  it('issues no provider probe while the provider name is typed', async () => {
-    const user = userEvent.setup();
+  it('never makes the provider field editable', async () => {
     await renderCustomEditor();
 
-    // A custom workspace never auto-probes, so the counter starts empty and typing must
-    // not move it: each keystroke reaches the user's provider otherwise.
-    expect(fetchAvailableModels).not.toHaveBeenCalled();
+    // The field is selection-only: the labelled control is the combobox button, and no
+    // text field answers to the same label.
+    expect(screen.getByLabelText('Provider')).toHaveAttribute('role', 'combobox');
+    expect(screen.queryByRole('textbox', { name: 'Provider' })).not.toBeInTheDocument();
+  });
 
-    const providerInput = screen.getByLabelText('Provider');
-    await user.clear(providerInput);
-    await user.type(providerInput, 'groq');
+  it('issues no provider probe while the saved provider is a custom one', async () => {
+    await renderCustomEditor();
 
+    // A custom workspace never auto-probes: the backend reads the *saved* config, so a
+    // probe here would query a provider the workspace may not be saved against yet.
     expect(fetchAvailableModels).not.toHaveBeenCalled();
   });
 
-  it('keeps the entered API key and Base URL while the provider name is typed', async () => {
+  it('offers the rename action only for a custom provider', async () => {
+    await renderCustomEditor();
+
+    expect(screen.getByRole('button', { name: 'Rename custom provider' })).toBeInTheDocument();
+  });
+
+  it('opens the add dialog from the select without moving the selection', async () => {
     const user = userEvent.setup();
+    await renderCustomEditor();
+
+    await user.click(screen.getByLabelText('Provider'));
+    await user.click(await screen.findByRole('option', { name: 'Add custom provider' }));
+
+    // The add option is a control, not a value: the saved provider is still selected and
+    // the dialog is what opened.
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByLabelText('Provider')).toHaveTextContent('deepseek');
+    expect(screen.getByLabelText('Provider name')).toHaveValue('');
+  });
+
+  it('registers a provider, selects it, and clears the previous endpoint', async () => {
+    const user = userEvent.setup();
+    vi.mocked(createCustomProvider).mockResolvedValue({ ...REGISTERED, name: 'groq' });
+    await renderCustomEditor();
+
+    await user.click(screen.getByLabelText('Provider'));
+    await user.click(await screen.findByRole('option', { name: 'Add custom provider' }));
+    await user.type(await screen.findByLabelText('Provider name'), 'groq');
+    await user.click(screen.getByRole('button', { name: 'Add provider' }));
+
+    await waitFor(() =>
+      expect(createCustomProvider).toHaveBeenCalledWith(WORKSPACE_ID, {
+        name: 'groq',
+      }),
+    );
+    // The new provider is the selection, and the DeepSeek credential, endpoint and model
+    // are not its values.
+    await waitFor(() => expect(screen.getByLabelText('Provider')).toHaveTextContent('groq'));
+    expect(screen.getByLabelText('API Key')).toHaveValue('');
+    expect(screen.getByLabelText('Base URL')).toHaveValue('');
+    expect(screen.getByLabelText('Model')).toHaveValue('');
+  });
+
+  it('renames the selected provider and keeps its endpoint and credential', async () => {
+    const user = userEvent.setup();
+    vi.mocked(renameCustomProvider).mockResolvedValue({ ...REGISTERED, name: 'groq' });
     await renderCustomEditor();
 
     expect(screen.getByLabelText('API Key')).toHaveValue('sk-deepseek');
     expect(screen.getByLabelText('Base URL')).toHaveValue('https://api.deepseek.com/v1');
 
-    const providerInput = screen.getByLabelText('Provider');
-    await user.clear(providerInput);
-    await user.type(providerInput, 'groq');
+    await user.click(screen.getByRole('button', { name: 'Rename custom provider' }));
+    const nameInput = await screen.findByLabelText('Provider name');
+    // Pre-filled, so a rename starts from the name it is changing.
+    expect(nameInput).toHaveValue('deepseek');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'groq');
+    await user.click(screen.getByRole('button', { name: 'Save name' }));
 
-    // Renaming the provider does not invalidate the endpoint or the credential: only
-    // the mode switches do, because only they change which provider is in effect.
+    await waitFor(() =>
+      expect(renameCustomProvider).toHaveBeenCalledWith(WORKSPACE_ID, 'cp-deepseek', {
+        name: 'groq',
+      }),
+    );
+    // The selection follows the rename, and the endpoint and credential stay: only the
+    // name changed.
+    await waitFor(() => expect(screen.getByLabelText('Provider')).toHaveTextContent('groq'));
     expect(screen.getByLabelText('API Key')).toHaveValue('sk-deepseek');
     expect(screen.getByLabelText('Base URL')).toHaveValue('https://api.deepseek.com/v1');
+  });
+
+  it('reports a duplicate name and keeps the dialog open', async () => {
+    const user = userEvent.setup();
+    vi.mocked(createCustomProvider).mockRejectedValue(
+      new ApiRequestError(409, 'Conflict', 'already exists'),
+    );
+    await renderCustomEditor();
+
+    await user.click(screen.getByLabelText('Provider'));
+    await user.click(await screen.findByRole('option', { name: 'Add custom provider' }));
+    await user.type(await screen.findByLabelText('Provider name'), 'groq');
+    await user.click(screen.getByRole('button', { name: 'Add provider' }));
+
+    expect(
+      await screen.findByText('A provider with this name already exists in this workspace.'),
+    ).toBeInTheDocument();
+    // Still open, with the name the user typed, so they can correct it.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByLabelText('Provider name')).toHaveValue('groq');
+  });
+
+  it('refuses a built-in provider name before sending it', async () => {
+    const user = userEvent.setup();
+    await renderCustomEditor();
+
+    await user.click(screen.getByLabelText('Provider'));
+    await user.click(await screen.findByRole('option', { name: 'Add custom provider' }));
+    await user.type(await screen.findByLabelText('Provider name'), 'gemini');
+    await user.click(screen.getByRole('button', { name: 'Add provider' }));
+
+    expect(
+      await screen.findByText('That name is a built-in provider. Choose a different name.'),
+    ).toBeInTheDocument();
+    expect(createCustomProvider).not.toHaveBeenCalled();
+  });
+
+  it('refuses a name that is not a slug before sending it', async () => {
+    const user = userEvent.setup();
+    await renderCustomEditor();
+
+    await user.click(screen.getByLabelText('Provider'));
+    await user.click(await screen.findByRole('option', { name: 'Add custom provider' }));
+    await user.type(await screen.findByLabelText('Provider name'), 'has space');
+    await user.click(screen.getByRole('button', { name: 'Add provider' }));
+
+    expect(
+      await screen.findByText(/Use lowercase letters, digits, dots, dashes or underscores/),
+    ).toBeInTheDocument();
+    expect(createCustomProvider).not.toHaveBeenCalled();
   });
 
   it('probes the provider when the custom refresh button is pressed', async () => {
@@ -570,5 +701,93 @@ describe('LLMConfigEditor custom provider', () => {
     await waitFor(() => expect(fetchAvailableModels).toHaveBeenCalledWith(WORKSPACE_ID));
     await user.click(screen.getByRole('button', { expanded: false }));
     expect(await screen.findByRole('option', { name: 'DeepSeek Chat' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * A first-class provider's name is not the workspace's to edit, so the rename action
+ * belongs to the custom path alone.
+ */
+describe('LLMConfigEditor known provider', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(listCustomProviders).mockResolvedValue([]);
+    vi.mocked(getLLMConfig).mockResolvedValue({
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: '',
+      apiKey: 'AIza-test',
+    });
+    vi.mocked(getPrompts).mockResolvedValue({});
+    vi.mocked(fetchAvailableModels).mockResolvedValue([]);
+    vi.mocked(upsertLLMConfig).mockResolvedValue({
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: '',
+      apiKey: 'AIza-test',
+    });
+    vi.mocked(upsertPrompts).mockResolvedValue({});
+  });
+
+  it('offers no rename action', async () => {
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    await screen.findByLabelText('Model');
+
+    expect(
+      screen.queryByRole('button', { name: 'Rename custom provider' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('lists the four known providers and the add option', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    await screen.findByLabelText('Model');
+
+    await user.click(screen.getByLabelText('Provider'));
+
+    // Queried by accessible name: a provider icon that leaked its own title into the
+    // option's name would fail here instead of passing on a looser text match.
+    for (const label of ['Ollama (Local)', 'OpenAI', 'Anthropic', 'Gemini']) {
+      expect(await screen.findByRole('option', { name: label })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('option', { name: 'Add custom provider' })).toBeInTheDocument();
+  });
+
+  it('lists the workspace providers alongside them', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listCustomProviders).mockResolvedValue([
+      {
+        id: 'cp-1',
+        workspaceId: WORKSPACE_ID,
+        name: 'groq',
+        createdAt: '2026-09-18T10:00:00Z',
+        updatedAt: '2026-09-18T10:00:00Z',
+      },
+    ]);
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    await screen.findByLabelText('Model');
+
+    await user.click(screen.getByLabelText('Provider'));
+
+    for (const label of ['Ollama (Local)', 'OpenAI', 'Anthropic', 'Gemini', 'groq']) {
+      expect(await screen.findByRole('option', { name: label })).toBeInTheDocument();
+    }
+
+    // Known providers first, then the workspace's own, then the add control.
+    const options = await screen.findAllByRole('option');
+    expect(options).toHaveLength(6);
+    expect(
+      within(options[options.length - 1]).getByText('Add custom provider'),
+    ).toBeInTheDocument();
+
+    // Selecting one makes it the workspace's provider without touching the registry.
+    await user.click(screen.getByRole('option', { name: 'groq' }));
+    await waitFor(() => expect(screen.getByLabelText('Provider')).toHaveTextContent('groq'));
+    expect(createCustomProvider).not.toHaveBeenCalled();
+    expect(renameCustomProvider).not.toHaveBeenCalled();
   });
 });
