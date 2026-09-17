@@ -3,7 +3,7 @@ import type { Project } from '@/types/project';
 import type { CreateProjectParams, UpdateProjectParams } from '@/schemas';
 import * as api from '@/lib/projects-api';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
-import { getScopedWorkspaceId } from '@/lib/workspace-scope';
+import { getScopedWorkspaceId, isScopeUnchanged, isScopedWorkspace } from '@/lib/workspace-scope';
 import { createInflightTracker } from '@/stores/_inflight';
 
 // Dedupe of inflight fetchProjects calls. Multiple components mounting
@@ -84,7 +84,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ saving: true, error: null });
     try {
       const project = await api.createProject(ws.id, params);
-      if (getScopedWorkspaceId() === scopeAtCall) {
+      if (isScopeUnchanged(scopeAtCall)) {
         set((state) => ({ projects: [...state.projects, project], saving: false }));
       } else {
         // Only the store write is dropped; the caller still gets the project back so
@@ -94,7 +94,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       return project;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create project';
-      set({ error: message, saving: false });
+      // The banner is global, but the failure still belongs to the workspace this call started
+      // in: showing it after a switch would blame the new workspace for the old one's error.
+      if (isScopeUnchanged(scopeAtCall)) set({ error: message });
+      // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
+      // settled — the scope decides where the *result* belongs, not whether it finished.
+      set({ saving: false });
       throw err;
     }
   },
@@ -111,7 +116,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update project';
-      set({ error: message, saving: false });
+      // The banner is global, but it describes a request addressed to `ws.id`, so it must not
+      // outlive that workspace.
+      if (isScopedWorkspace(ws.id)) set({ error: message });
+      // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
+      // settled — the scope decides where the *result* belongs, not whether it finished.
+      set({ saving: false });
       throw err;
     }
   },
@@ -128,7 +138,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to delete project';
-      set({ error: message, saving: false });
+      // The banner is global, but it describes a request addressed to `ws.id`, so it must not
+      // outlive that workspace.
+      if (isScopedWorkspace(ws.id)) set({ error: message });
+      // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
+      // settled — the scope decides where the *result* belongs, not whether it finished.
+      set({ saving: false });
       throw err;
     }
   },

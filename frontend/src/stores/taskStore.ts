@@ -58,8 +58,11 @@ export interface TaskState {
    * an inflight continuation can tell that it was discarded. `null` means "no workspace
    * remains".
    *
-   * Not the only writer of `extractions`: `resetExtraction` still writes an all-null `idle`
-   * entry for a single story id (invisible residue, never previous-workspace data).
+   * The invariant the workspace guards rest on: an entry can only be **added** by a call that
+   * names the workspace it belongs to (`extractTasks`, `pollExtraction`, both gated by
+   * `isScopedWorkspace`). `resetExtraction` names no workspace because it only **deletes** one
+   * story's entry, so a cleanup that runs after a switch clears an already-empty slice and
+   * leaves nothing behind.
    */
   setScopeWorkspace: (workspaceId: string | null) => void;
   setTasks: (storyId: string, tasks: Task[]) => void;
@@ -76,14 +79,6 @@ export interface TaskState {
   /** Set allowed transitions for a task (fetched from API or computed client-side). */
   setAllowedTransitions: (taskId: string, transitions: TaskStatus[]) => void;
 }
-
-const INITIAL_EXTRACTION: ExtractionState = {
-  extractionId: null,
-  status: 'idle',
-  userStoryStatus: null,
-  error: null,
-  errorCode: null,
-};
 
 function categorizeExtractionError(err: unknown): ExtractionErrorCode {
   if (!err) return 'server';
@@ -233,8 +228,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       const status = await api.getExtractionStatus(extractionId);
 
       if (status.status === 'completed') {
-        // Fetch the tasks. `tasks` is story-keyed and deliberately survives a switch,
-        // so this refresh stays as it is; it writes no workspace-scoped slice.
+        // Checked before the refresh, not only after it: this poll belongs to a workspace that
+        // may already be gone, and `tasks` is keyed by *that* workspace's story, so the refresh
+        // would be a request nobody is waiting for. `tasks` surviving a switch is what makes the
+        // refresh safe to keep for the current workspace, not what makes it right to issue for a
+        // discarded one.
+        if (!scopeCurrent()) return;
         await get().fetchTasks(storyId);
         if (!scopeCurrent()) return;
         // Refresh the workspace-wide cache so KanbanBoard / ExportPanel reflect newly-created tasks.
@@ -549,11 +548,20 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   // ── Reset ──
 
   resetExtraction: (storyId: string) => {
-    set((state) => ({
-      extractions: {
-        ...state.extractions,
-        [storyId]: { ...INITIAL_EXTRACTION },
-      },
-    }));
+    // Dropped, never replaced by an all-null placeholder. `extractions` is workspace-scoped,
+    // and this call also runs from a component unmount — which can happen *after* the switch
+    // already cleared the slice. Writing a placeholder there would add an entry for the
+    // workspace the user has left.
+    //
+    // Deleting is not merely tidier: every *render* reader treats a missing entry exactly like
+    // an `idle` one. The toast effect is the only reader that tells them apart — it skips
+    // `setPrevExtractionStatus` — and it cannot observe that difference either, because the
+    // unmount cleanup is this method's only live caller.
+    if (!get().extractions[storyId]) return;
+    set((state) => {
+      const extractions = { ...state.extractions };
+      delete extractions[storyId];
+      return { extractions };
+    });
   },
 }));

@@ -62,3 +62,17 @@ export function resetScopedWorkspace(): void {
   scopeObserved = false;
   scopedWorkspaceId = null;
 }
+
+/**
+ * Whether the scope a call started in is still the scope on screen.
+ *
+ * A call that carries no workspace id of its own samples `getScopedWorkspaceId()` before it
+ * starts and compares it after it settles: a switch in between makes its leftovers — an
+ * appended row, an error banner — belong to a workspace the user has left. Fail-open
+ * exactly like `isScopedWorkspace`: while no switch has been observed both sides are
+ * `undefined`, so the comparison holds and such a call keeps the behavior it had before
+ * this guard existed.
+ */
+export function isScopeUnchanged(scopeAtCall: string | null | undefined): boolean {
+  return getScopedWorkspaceId() === scopeAtCall;
+}

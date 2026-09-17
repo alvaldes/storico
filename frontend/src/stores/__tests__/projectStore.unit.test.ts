@@ -49,10 +49,12 @@ function page(items: Project[]): PaginatedResponse<Project> {
 /** A promise the test resolves by hand, to hold one request inflight on purpose. */
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
     resolve = res;
+    reject = rej;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 const projectA = makeProject('project-a', 'ws-a');
@@ -190,6 +192,119 @@ describe('projectStore — created project scope guard', () => {
 
     expect(useProjectStore.getState().projects).toEqual([projectA]);
     expect(created).toBe(projectA);
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('does not surface a create failure that landed after the workspace was left', async () => {
+    // The switch triggers a projects fetch; it must land cleanly or its own failure
+    // would be the one this test reads from `error`.
+    vi.mocked(api.listProjects).mockResolvedValue(page([]));
+    const pendingCreate = deferred<Project>();
+    vi.mocked(api.createProject).mockImplementationOnce(() => pendingCreate.promise);
+
+    const inflight = useProjectStore
+      .getState()
+      .createProject({ name: 'New project', description: '' });
+
+    // The user switches to ws-b while the POST is still inflight.
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+
+    pendingCreate.reject(new Error('boom'));
+    await expect(inflight).rejects.toThrow('boom');
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+
+    // The global banner must not blame the new workspace for the old one's failure...
+    expect(useProjectStore.getState().error).toBeNull();
+    // ...while the store's in-flight flag still clears.
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('still surfaces a create failure when the workspace did not change', async () => {
+    vi.mocked(api.createProject).mockRejectedValueOnce(new Error('boom'));
+
+    await expect(
+      useProjectStore.getState().createProject({ name: 'New project', description: '' }),
+    ).rejects.toThrow('boom');
+
+    expect(useProjectStore.getState().error).toBe('boom');
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+});
+
+describe('projectStore — updated/deleted project scope guard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetScopedWorkspace();
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace('ws-a'), makeWorkspace('ws-b')],
+      currentWorkspace: makeWorkspace('ws-a'),
+      loading: false,
+      saving: false,
+      error: null,
+    });
+    useProjectStore.setState({ projects: [], loading: false, saving: false, error: null });
+  });
+
+  it('does not surface an update failure that landed after the workspace was left', async () => {
+    // The switch triggers a projects fetch; it must land cleanly or its own failure would be
+    // the one this test reads from `error`.
+    vi.mocked(api.listProjects).mockResolvedValue(page([]));
+    const pendingUpdate = deferred<Project>();
+    vi.mocked(api.updateProject).mockImplementationOnce(() => pendingUpdate.promise);
+
+    const inflight = useProjectStore.getState().updateProject('project-a', { name: 'Renamed' });
+
+    // The user switches to ws-b while the PUT is still inflight.
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+
+    pendingUpdate.reject(new Error('boom'));
+    await expect(inflight).rejects.toThrow('boom');
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+
+    // The global banner must not blame the new workspace for the old one's failure...
+    expect(useProjectStore.getState().error).toBeNull();
+    // ...while the store's in-flight flag still clears.
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('does not surface a delete failure that landed after the workspace was left', async () => {
+    // Same as the update case: the switch triggers a projects fetch that must land cleanly.
+    vi.mocked(api.listProjects).mockResolvedValue(page([]));
+    const pendingDelete = deferred<void>();
+    vi.mocked(api.deleteProject).mockImplementationOnce(() => pendingDelete.promise);
+
+    const inflight = useProjectStore.getState().deleteProject('project-a');
+
+    // The user switches to ws-b while the DELETE is still inflight.
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+
+    pendingDelete.reject(new Error('boom'));
+    await expect(inflight).rejects.toThrow('boom');
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+
+    // The global banner must not blame the new workspace for the old one's failure...
+    expect(useProjectStore.getState().error).toBeNull();
+    // ...while the store's in-flight flag still clears.
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('still surfaces an update failure when the workspace did not change', async () => {
+    vi.mocked(api.updateProject).mockRejectedValueOnce(new Error('boom'));
+
+    await expect(
+      useProjectStore.getState().updateProject('project-a', { name: 'Renamed' }),
+    ).rejects.toThrow('boom');
+
+    expect(useProjectStore.getState().error).toBe('boom');
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('still surfaces a delete failure when the workspace did not change', async () => {
+    vi.mocked(api.deleteProject).mockRejectedValueOnce(new Error('boom'));
+
+    await expect(useProjectStore.getState().deleteProject('project-a')).rejects.toThrow('boom');
+
+    expect(useProjectStore.getState().error).toBe('boom');
     expect(useProjectStore.getState().saving).toBe(false);
   });
 });

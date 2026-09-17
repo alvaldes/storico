@@ -59,10 +59,12 @@ function page(items: UserStory[]): PaginatedResponse<UserStory> {
 /** A promise the test resolves by hand, to hold one request inflight on purpose. */
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
     resolve = res;
+    reject = rej;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 const storyA = makeStory('story-ws-a');
@@ -204,6 +206,134 @@ describe('storyStore — created story scope guard', () => {
 
     expect(useStoryStore.getState().stories).toEqual([storyA]);
     expect(created).toBe(storyA);
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+
+  it('does not surface a create failure that landed after the workspace was left', async () => {
+    const pendingCreate = deferred<UserStory>();
+    vi.mocked(api.createStory).mockImplementationOnce(() => pendingCreate.promise);
+
+    const inflight = useStoryStore.getState().createStory({
+      projectId: '11111111-1111-1111-1111-111111111111',
+      actor: 'user',
+      feature: 'log in',
+      benefit: 'access',
+      rawText: '',
+    });
+
+    // The user switches to ws-b while the POST is still inflight.
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+
+    pendingCreate.reject(new Error('boom'));
+    await expect(inflight).rejects.toThrow('boom');
+    // Drain the projects fetch the switch triggered, so no promise leaks into the next test.
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+
+    // The global banner must not blame the new workspace for the old one's failure...
+    expect(useStoryStore.getState().error).toBeNull();
+    // ...while the store's in-flight flag still clears.
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+
+  it('still surfaces a create failure when the workspace did not change', async () => {
+    vi.mocked(api.createStory).mockRejectedValueOnce(new Error('boom'));
+
+    await expect(
+      useStoryStore.getState().createStory({
+        projectId: '11111111-1111-1111-1111-111111111111',
+        actor: 'user',
+        feature: 'log in',
+        benefit: 'access',
+        rawText: '',
+      }),
+    ).rejects.toThrow('boom');
+
+    expect(useStoryStore.getState().error).not.toBeNull();
+    expect(useStoryStore.getState().error?.friendlyMessage).toBe('boom');
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+});
+
+describe('storyStore — updated/deleted story scope guard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetScopedWorkspace();
+    vi.mocked(projectsApi.listProjects).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 100,
+    });
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace('ws-a'), makeWorkspace('ws-b')],
+      currentWorkspace: makeWorkspace('ws-a'),
+      loading: false,
+      saving: false,
+      error: null,
+    });
+    useStoryStore.setState({ stories: [], loading: false, saving: false, error: null });
+  });
+
+  it('does not surface an update failure that landed after the workspace was left', async () => {
+    // The switch triggers a projects fetch; it must land cleanly or its own failure would be
+    // the one this test reads from `error`.
+    const pendingUpdate = deferred<UserStory>();
+    vi.mocked(api.updateStory).mockImplementationOnce(() => pendingUpdate.promise);
+
+    const inflight = useStoryStore.getState().updateStory('story-ws-a', { actor: 'updated' });
+
+    // The user switches to ws-b while the PUT is still inflight.
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+
+    pendingUpdate.reject(new Error('boom'));
+    await expect(inflight).rejects.toThrow('boom');
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+
+    // The global banner must not blame the new workspace for the old one's failure...
+    expect(useStoryStore.getState().error).toBeNull();
+    // ...while the store's in-flight flag still clears.
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+
+  it('does not surface a delete failure that landed after the workspace was left', async () => {
+    // Same as the update case: the switch triggers a projects fetch that must land cleanly.
+    const pendingDelete = deferred<void>();
+    vi.mocked(api.deleteStory).mockImplementationOnce(() => pendingDelete.promise);
+
+    const inflight = useStoryStore.getState().deleteStory('story-ws-a');
+
+    // The user switches to ws-b while the DELETE is still inflight.
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+
+    pendingDelete.reject(new Error('boom'));
+    await expect(inflight).rejects.toThrow('boom');
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+
+    // The global banner must not blame the new workspace for the old one's failure...
+    expect(useStoryStore.getState().error).toBeNull();
+    // ...while the store's in-flight flag still clears.
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+
+  it('still surfaces an update failure when the workspace did not change', async () => {
+    vi.mocked(api.updateStory).mockRejectedValueOnce(new Error('boom'));
+
+    await expect(
+      useStoryStore.getState().updateStory('story-ws-a', { actor: 'updated' }),
+    ).rejects.toThrow('boom');
+
+    expect(useStoryStore.getState().error).not.toBeNull();
+    expect(useStoryStore.getState().error?.friendlyMessage).toBe('boom');
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+
+  it('still surfaces a delete failure when the workspace did not change', async () => {
+    vi.mocked(api.deleteStory).mockRejectedValueOnce(new Error('boom'));
+
+    await expect(useStoryStore.getState().deleteStory('story-ws-a')).rejects.toThrow('boom');
+
+    expect(useStoryStore.getState().error).not.toBeNull();
+    expect(useStoryStore.getState().error?.friendlyMessage).toBe('boom');
     expect(useStoryStore.getState().saving).toBe(false);
   });
 });

@@ -1,6 +1,23 @@
 # Storico — Backlog
 
-> **Última actualización**: 2026-09-17 — cierre del bug de cambio de workspace en el frontend
+> **Última actualización**: 2026-09-17 (3) — cerrada la clase completa del banner de `error`: los
+> cuatro `catch` de `updateProject` / `deleteProject` / `updateStory` / `deleteStory` ahora gatean el
+> banner por scope — `isScopedWorkspace(ws.id)` en proyectos, que ya llevan su workspace id en el
+> request, e `isScopeUnchanged(scopeAtCall)` en stories, que no lo llevan — y liberan `saving` fuera
+> de la guarda. 8 tests nuevos, 4 de ellos falsables. Verificado **ejecutando**: 21 archivos / **159**
+> tests, `tsc` limpio, `pnpm build` verde. La verificación destapó que `projectStore.saving` /
+> `storyStore.saving` **no tienen ningún consumidor** en producción y que `storyStore.error` se
+> escribe y nadie lo lee: ver 🧹 Limpieza menor.
+> Última actualización previa: 2026-09-17 (2) — cerrados tres de los cuatro residuos del cambio de
+> workspace: `resetExtraction` borra la clave en lugar de escribir un placeholder `idle`,
+> `pollExtraction` chequea el scope **antes** del refresh de tasks, y el banner de `error` se escribe
+> gateado por scope en `createProject` / `createStory` vía el nuevo `isScopeUnchanged`. El cuarto
+> punto se cerró fijando el invariante con un test de regresión, no con código. La verificación
+> destapó además que **la misma clase sigue viva** en `updateProject` / `deleteProject` /
+> `updateStory` / `deleteStory`, y que el `catch` de `handleExtract` es código muerto: los dos están
+> al inicio de este archivo. Estado verificado **ejecutando**: 21 archivos / 151 tests, `tsc` limpio,
+> `pnpm build` verde.
+> Última actualización previa: 2026-09-17 — cierre del bug de cambio de workspace en el frontend
 > (crear o cambiar de workspace dejaba datos del workspace anterior en pantalla: la página
 > `/workspaces/{id}/settings` se ataba a la URL y guardaba en el workspace equivocado, y
 > `/stories` listaba historias de todos los workspaces). La clase de bug está cerrada y
@@ -15,61 +32,47 @@
 
 ---
 
-## 🔜 Próximo a tratar — residuos del cambio de workspace
+## 🔜 Próximo a tratar — cierre de la clase “scope” en los stores
 
-Contexto: el cambio de workspace ya es atómico y workspace-scoped (`workspaceStore.switchWorkspace`
-/ `clearWorkspaceScopedState`, `lib/workspace-scope.ts` como única autoridad del scope, guardas de
-token + scope en `projects` / `stories` / `workspaceTasks` / `extractions`). Los cuatro puntos
-siguientes son residuos que quedaron fuera de ese cambio: ninguno deja datos del workspace anterior
-en las slices workspace-scoped, y ninguno tiene síntoma visible hoy.
+Contexto: el cambio de workspace ya es atómico y workspace-scoped, y `lib/workspace-scope.ts` es la
+única autoridad del scope. Los tres residuos que quedaban fuera de ese cambio, y después la misma
+clase completa en los cuatro `catch` de `update*` / `delete*`, se cerraron el 2026-09-17 (ver
+✅ Completado). Lo que sigue es lo que esos cierres **dejaron al descubierto**, más la verificación que
+sigue faltando.
 
-### 1. `resetExtraction(storyId)` deja una entrada `idle` después de un cambio de workspace
+### 1. `StoryDetail.handleExtract`: el `catch` es código muerto (preexistente)
 
-**Estado**: `taskStore.resetExtraction` (lo llama el cleanup de desmontaje de `StoryDetail`) escribe
-`extractions[storyId] = INITIAL_EXTRACTION` sin chequeo de scope. Si el cambio de workspace borró las
-slices antes de que corra ese cleanup, la slice nueva gana una entrada con todos los campos en null
-para el story id del workspace abandonado. Verificado: es **invisible** — el único lector de
-`extractions` es `StoryDetail` para el story que está renderizando, y `!extraction` y
-`status === 'idle'` rinden idéntico.
+**Estado**: `taskStore.extractTasks` **se traga sus propios errores** — su `catch` marca la extracción
+como `failed` / `unauthorized` y no tiene `throw` — así que `await extractTasks(...)` nunca rechaza y
+el `catch` de `handleExtract` (`StoryDetail.tsx:170-190`) no se ejecuta nunca; con él, su
+`toast.error` y su `resetExtraction(storyId)`. No es un bug visible: el toast de fallo llega igual por
+el `useEffect` que observa `extractions[storyId].status`. Pero implica que el cleanup de desmontaje es
+la **única llamada viva** de `resetExtraction`, y que hay ~20 líneas de manejo de errores por status
+HTTP (401 / 400 / 504) que no cubren nada.
 
-- **Fix sugerido**: borrar la clave en lugar de escribir `INITIAL_EXTRACTION`, o gatear el cleanup
-  con el scope. Es del lado del store: el componente no tiene acceso al scope.
-- **Ojo**: el comentario de `setScopeWorkspace` dice “the single place a switch resets
-  `extractions`”, que no es exacto justamente por este camino.
+- **Decisión pendiente**: ¿el store re-lanza para que el componente maneje los status, o el componente
+  suelta ese `catch` y se queda con el toast del efecto?
 
-### 2. `pollExtraction` lee antes de chequear el scope
+### 2. La equivalencia `missing` vs `idle` está verificada por lectura, no por test de componente
 
-**Estado**: en la rama `completed`, `await get().fetchTasks(storyId)` corre **antes** del primer
-chequeo de scope, así que un poll de un workspace descartado igual dispara
-`GET /stories/{id}/tasks` y escribe las slices keyed por story/task (`tasks`, `allowedTransitions`).
-No toca `workspaceTasks` ni `extractions`, que son las workspace-scoped.
+**Estado**: el fix de `resetExtraction` se apoya en que un entry ausente y uno con `status === 'idle'`
+toman la misma rama en cada lector que **renderiza** (botón de extraer, spinner, `disabled`). Está
+verificado leyendo `StoryDetail` y fijado por un test de store; no por un test de componente, porque
+no existe `StoryDetail.test.tsx` y montarlo pide mockear el store, el router y el layout. El único
+lector que los distingue es el `useEffect` del toast (salta `setPrevExtractionStatus`), y no puede
+observar la diferencia porque el cleanup de desmontaje es la única llamada viva (ver punto 1).
 
-- **Fix sugerido**: mover ese `await` debajo del chequeo `isScopedWorkspace(workspaceId)`.
-
-### 3. El `error` global se escribe sin chequeo de scope
-
-**Estado**: el `catch` de `projectStore.createProject` (y el patrón equivalente de
-`storyStore.createStory`) hace `set({ error: message, saving: false })` sin comparar el scope. Un
-error de un request del workspace abandonado puede quedar como banner transitorio en el workspace
-nuevo. No es dato del workspace anterior, es un string global.
-
-- **Fix sugerido**: aplicar la misma comparación `getScopedWorkspaceId() === scopeAtCall` al escribir
-  `error`, o mover el `error` de las slices globales.
-
-### 4. `updateTask` / `updateTaskStatus` sin fence de scope
-
-**Estado**: verificado que **no hay fuga** — sólo hacen `map` sobre `tasks` (keyed por story, se
-conserva a propósito) y sobre `workspaceTasks`, que queda vacío tras un cambio de workspace, así que
-el `map` es un no-op. Se deja anotado como deuda de consistencia, no como bug.
+- **Pendiente**: un test de componente de `StoryDetail` que fije las dos ramas. Es la única parte de
+  este cierre apoyada en lectura en lugar de ejecución.
 
 ### Falta de verificación end-to-end
 
-**Estado**: todo el cambio está verificado con vitest + jsdom y APIs mockeadas (21 archivos / 139
-tests, `tsc` limpio, con sondeos de falsificación en cuatro rondas). No hay ejecución en navegador:
-`playwright` no está instalado y los specs de `frontend/e2e/` no son ejecutables.
+**Estado**: todo el cambio está verificado con vitest + jsdom y APIs mockeadas (21 archivos / **159**
+tests en verde, `tsc` limpio, `pnpm build` verde). No hay ejecución en navegador: `playwright` no está
+instalado y los specs de `frontend/e2e/` no son ejecutables.
 
 - **Pendiente**: confirmar el orden real de montaje/desmontaje de las islas con View Transitions en
-  un navegador. Es lo único que deja abierto la clase “residuo invisible” de los puntos 1 y 2.
+  un navegador. Es lo que deja abierta la clase “residuo invisible” del punto 2.
 
 ---
 
@@ -166,6 +169,25 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
 
 ## 🧹 Limpieza menor / deuda pendiente
 
+- **`projectStore.saving` / `storyStore.saving` son estado muerto** — ningún componente los lee: todos
+  los `saving` de la UI son `useState` locales (`StoryForm`, `ProjectForm`, `TaskEditor`,
+  `ProjectsList.deleteSaving`). Los stores los escriben y los liberan, lo cual es correcto como
+  contrato, pero hoy no mueven nada. Decidir: cablearlos a los forms o eliminarlos.
+- **`storyStore.error` se escribe y nadie lo lee** — los `catch` de `createStory` / `updateStory` /
+  `deleteStory` escriben un campo sin consumidor (a diferencia de `projectStore.error`, que
+  `ProjectsList.tsx:43` sí consume vía `setLocalError`). El gating por scope de esos tres caminos es
+  correcto como contrato del store, pero **su valor visible hoy es cero**; el del lado de proyectos sí
+  llega a pantalla.
+- **Invariante no asertado: `currentWorkspace.id === scopedWorkspaceId`** — la guarda
+  `isScopedWorkspace(ws.id)` de `projectStore` lo asume, y `workspaceStore.fetchWorkspaces` compara
+  `nextWorkspace.id` contra `persisted.id` (o sea, contra `currentWorkspace`) en lugar de contra el id
+  scoped. Hoy se cumple en los caminos que llaman a `setScopedWorkspaceId`, pero nada lo fija por test
+  y el modo de falla es un banner **suprimido**, que es la dirección silenciosa. Un test que asiente la
+  equivalencia en cada camino del switch lo cerraría.
+- **Cobertura: `scopeAtCall` observado en las mutaciones de story** — los tests nuevos arrancan de
+  `resetScopedWorkspace()`, así que `scopeAtCall` es siempre `undefined`. Las variantes “muestreé un id
+  real y me quedé” / “…y me moví” no están ejercitadas (equivalentes hoy, pero es el caso que el
+  helper existe para cubrir).
 - **10 tests backend fallando (preexistentes)** — `test_extractions.py` (4) y `test_tasks.py` (6).
   **Causa real: los tests predatan el scoping por workspace.** Siembran filas cuyo
   `user_story_id` es un `uuid4()` sin story / project / workspace reales y nunca crean membresía,
@@ -222,6 +244,25 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
 ---
 
 ## ✅ Completado (referencia — items eliminados del backlog)
+
+- **Clase completa del banner de `error` en los stores** (2026-09-17): los cuatro `catch` de
+  `updateProject` / `deleteProject` / `updateStory` / `deleteStory` gatean el banner por scope y
+  liberan `saving` fuera de la guarda. Asimetría deliberada y justificada: los requests de proyecto
+  **llevan** su workspace id (`PUT/DELETE /workspaces/{ws}/projects/{id}`), así que reusan
+  `isScopedWorkspace(ws.id)`; los de story no llevan ninguno (`PUT/DELETE /stories/{id}`), así que
+  muestrean `scopeAtCall` con `isScopeUnchanged`. Los comentarios de los seis sitios se corrigieron
+  después de que la verificación mostrara que hablaban de un spinner inexistente. 8 tests nuevos
+  (4 falsables).
+
+- **Residuos del cambio de workspace** (2026-09-17): `resetExtraction` borra la clave en lugar de
+  escribir `INITIAL_EXTRACTION` (constante eliminada; se apoya en que un entry ausente y uno `idle`
+  son equivalentes para todo lector que renderiza); `pollExtraction` chequea el scope **antes** del
+  `fetchTasks` de la rama `completed`, no solo después; `isScopeUnchanged(scopeAtCall)` nuevo en
+  `lib/workspace-scope.ts`, que además colapsa la comparación duplicada a una sola y ahora gatea el
+  banner de `error` en `createProject` / `createStory`; y un test de regresión que fija el no-op de
+  `updateTask` / `updateTaskStatus` sobre `workspaceTasks`. Los comentarios desactualizados de
+  `setScopeWorkspace` y `resetExtraction` quedaron corregidos. Verificado con RED/GREEN por test
+  (12 tests nuevos; 6 de ellos fallan contra el código previo).
 
 - **Few-shot automático desde Qdrant** (`few-shot-qdrant`): reemplaza el editor manual por
   retrieval workspace-scoped desde Qdrant; sección de prompt unificada; config por workspace

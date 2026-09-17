@@ -4,7 +4,7 @@ import type { CreateStoryParams, UpdateStoryParams } from '@/schemas';
 import * as api from '@/lib/stories-api';
 import { createInflightTracker } from '@/stores/_inflight';
 import { ApiRequestError } from '@/lib/api';
-import { getScopedWorkspaceId } from '@/lib/workspace-scope';
+import { getScopedWorkspaceId, isScopeUnchanged } from '@/lib/workspace-scope';
 
 // Dedupe of inflight fetchStories calls. StoriesList and Dashboard can call
 // fetchStories(projectId) at the same time when mounting concurrently. Key is
@@ -138,7 +138,7 @@ export const useStoryStore = create<StoryState>((set, get) => ({
     set({ saving: true, error: null });
     try {
       const story = await api.createStory(params);
-      if (getScopedWorkspaceId() === scopeAtCall) {
+      if (isScopeUnchanged(scopeAtCall)) {
         set((state) => ({ stories: [...state.stories, story], saving: false }));
       } else {
         // Only the store write is dropped; the caller still gets the story back so the
@@ -148,12 +148,20 @@ export const useStoryStore = create<StoryState>((set, get) => ({
       return story;
     } catch (err) {
       const errorInfo = extractStoryErrorInfo(err);
-      set({ error: errorInfo, saving: false });
+      // Same reasoning as the append above: the banner is global, but it describes a request of
+      // the workspace this call started in.
+      if (isScopeUnchanged(scopeAtCall)) set({ error: errorInfo });
+      // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
+      // settled — the scope decides where the *result* belongs, not whether it finished.
+      set({ saving: false });
       throw err;
     }
   },
 
   updateStory: async (id, params) => {
+    // Sampled before the request, exactly like `createStory`: the catch has to be able to tell
+    // whether the scope moved while the request was inflight.
+    const scopeAtCall = getScopedWorkspaceId();
     set({ saving: true, error: null });
     try {
       const updated = await api.updateStory(id, params);
@@ -163,12 +171,20 @@ export const useStoryStore = create<StoryState>((set, get) => ({
       }));
     } catch (err) {
       const errorInfo = extractStoryErrorInfo(err);
-      set({ error: errorInfo, saving: false });
+      // Same as `createStory`: the banner is global, but it describes a request of the workspace
+      // this call started in.
+      if (isScopeUnchanged(scopeAtCall)) set({ error: errorInfo });
+      // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
+      // settled — the scope decides where the *result* belongs, not whether it finished.
+      set({ saving: false });
       throw err;
     }
   },
 
   deleteStory: async (id) => {
+    // Sampled before the request, exactly like `createStory`: the catch has to be able to tell
+    // whether the scope moved while the request was inflight.
+    const scopeAtCall = getScopedWorkspaceId();
     set({ saving: true, error: null });
     try {
       await api.deleteStory(id);
@@ -178,7 +194,12 @@ export const useStoryStore = create<StoryState>((set, get) => ({
       }));
     } catch (err) {
       const errorInfo = extractStoryErrorInfo(err);
-      set({ error: errorInfo, saving: false });
+      // Same as `createStory`: the banner is global, but it describes a request of the workspace
+      // this call started in.
+      if (isScopeUnchanged(scopeAtCall)) set({ error: errorInfo });
+      // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
+      // settled — the scope decides where the *result* belongs, not whether it finished.
+      set({ saving: false });
       throw err;
     }
   },

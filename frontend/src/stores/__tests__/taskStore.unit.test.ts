@@ -228,6 +228,7 @@ describe('taskStore — stale workspace continuations', () => {
 
     // The discarded workspace's tasks must not be fetched at all...
     expect(api.listTasksByWorkspace).not.toHaveBeenCalled();
+    expect(api.listTasks).not.toHaveBeenCalled();
     // ...and the cleared extraction entry must not be resurrected.
     expect(useTaskStore.getState().extractions['story-1']).toBeUndefined();
     expect(storiesApi.getStory).not.toHaveBeenCalled();
@@ -308,6 +309,7 @@ describe('taskStore — stale workspace continuations', () => {
 
     // A completed poll for a deleted workspace must not write the workspace-scoped slice...
     expect(api.listTasksByWorkspace).not.toHaveBeenCalled();
+    expect(api.listTasks).not.toHaveBeenCalled();
     expect(useTaskStore.getState().workspaceTasks).toEqual([]);
     // ...nor resurrect the cleared extraction entry, nor refresh the story.
     expect(useTaskStore.getState().extractions['story-1']).toBeUndefined();
@@ -334,6 +336,7 @@ describe('taskStore — stale workspace continuations', () => {
     await useTaskStore.getState().pollExtraction('story-2', 'ws-a', 'ext-2');
 
     expect(api.listTasksByWorkspace).toHaveBeenCalledWith('ws-a');
+    expect(api.listTasks).toHaveBeenCalledWith('story-2');
     expect(useTaskStore.getState().workspaceTasks).toEqual([task]);
     expect(useTaskStore.getState().extractions['story-2'].status).toBe('completed');
     expect(storiesApi.getStory).toHaveBeenCalledWith('story-2');
@@ -374,7 +377,71 @@ describe('taskStore — stale workspace continuations', () => {
     await useTaskStore.getState().pollExtraction('story-2', 'ws-a', 'ext-3');
 
     expect(useTaskStore.getState().extractions['story-2'].status).toBe('completed');
+    expect(api.listTasks).toHaveBeenCalledWith('story-2');
     expect(useTaskStore.getState().workspaceTasks).toEqual([task]);
+  });
+
+  it('leaves no idle entry behind when the unmount cleanup runs after the switch cleared the slice', () => {
+    setScopedWorkspaceId('ws-a');
+    useTaskStore.setState({
+      extractions: {
+        'story-1': {
+          extractionId: 'ext-1',
+          status: 'pending',
+          userStoryStatus: 'extracting',
+          error: null,
+          errorCode: null,
+        },
+      },
+    });
+
+    // The switch empties the workspace-scoped slice and moves the scope...
+    useTaskStore.getState().setScopeWorkspace('ws-b');
+    // ...and only then does the story view's unmount cleanup run.
+    useTaskStore.getState().resetExtraction('story-1');
+
+    // No entry may be added for the story of the workspace the user left.
+    expect(useTaskStore.getState().extractions).toEqual({});
+  });
+
+  it('still drops a settled extraction entry so the next visit starts clean', () => {
+    useTaskStore.setState({
+      extractions: {
+        'story-1': {
+          extractionId: 'ext-1',
+          status: 'failed',
+          userStoryStatus: 'failed_extraction',
+          error: null,
+          errorCode: 'server',
+        },
+      },
+    });
+
+    useTaskStore.getState().resetExtraction('story-1');
+
+    expect(useTaskStore.getState().extractions['story-1']).toBeUndefined();
+    expect(useTaskStore.getState().extractions).toEqual({});
+  });
+
+  it('does not publish a discarded workspace task into the workspace-wide slice', async () => {
+    const pendingUpdate = deferred<Task>();
+    vi.mocked(api.updateTask).mockImplementationOnce(() => pendingUpdate.promise);
+
+    setScopedWorkspaceId('ws-a');
+    useTaskStore.setState({ tasks: { 'story-2': [task] }, workspaceTasks: [task] });
+
+    // The optimistic write lands before the PUT is awaited...
+    const inflight = useTaskStore.getState().updateTask('task-1', { title: 'Renamed' });
+    // ...and the user switches while the PUT is still inflight, which empties `workspaceTasks`.
+    useTaskStore.getState().setScopeWorkspace('ws-b');
+
+    pendingUpdate.resolve({ ...task, title: 'Renamed' });
+    await inflight;
+
+    // `tasks` is story-keyed and deliberately kept, so the server value may land there.
+    // `workspaceTasks` is workspace-scoped: the response must not resurrect the entry.
+    expect(useTaskStore.getState().workspaceTasks).toEqual([]);
+    expect(useTaskStore.getState().updatingTaskId).toBeNull();
   });
 });
 
