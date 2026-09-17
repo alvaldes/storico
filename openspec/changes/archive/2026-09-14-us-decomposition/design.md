@@ -95,7 +95,7 @@ GET /api/v1/workspaces/{workspace_id}/export/tasks/?format=json|markdown
 # Response: 200 with Content-Disposition attachment
 # Headers:
 #   Content-Type: application/json | text/markdown
-#   Content-Disposition: attachment; filename="storico-tasks-{id}.{ext}"
+#   Content-Disposition: attachment; filename="tasks-export-{workspace_id}.{ext}"
 # Body: in-memory serialized content (no server file writes)
 ```
 
