@@ -40,6 +40,12 @@ import es from '@/i18n/es.json';
 /** Providers with first-class support (known model-fetch endpoints). */
 const KNOWN_PROVIDERS = ['ollama', 'openai', 'anthropic', 'gemini'] as const;
 
+/**
+ * Id of the `<datalist>` that backs the custom model field's native suggestions. The
+ * field stays a free-text input: the list only offers ids, it never constrains them.
+ */
+const CUSTOM_MODEL_LIST_ID = 'llm-custom-model-list';
+
 type KnownProvider = (typeof KNOWN_PROVIDERS)[number];
 
 function isKnownProvider(p: string): p is KnownProvider {
@@ -84,6 +90,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  // A custom-provider list exists only because the user asked for one, so the empty and
+  // error hints must stay silent until a probe has actually settled.
+  const [customModelsProbed, setCustomModelsProbed] = useState(false);
 
   /* ── Shared State ── */
   const [loading, setLoading] = useState(true);
@@ -173,16 +182,30 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     }
   }, [workspaceId, t]);
 
+  /* ── Explicit Model Refresh ── */
+  const handleRefreshModels = useCallback(async () => {
+    await loadModels();
+    // `loadModels` never rejects, so this records a settled probe on failure too.
+    setCustomModelsProbed(true);
+  }, [loadModels]);
+
   useEffect(() => {
     setMounted(true);
     loadConfigs();
   }, [loadConfigs]);
 
-  // Auto-fetch models when provider changes (only after initial load)
+  // Auto-fetch models when the provider changes, for known providers only. The gate on
+  // `loading` keeps the probe off until the saved config lands: probing earlier would
+  // query the default provider for a workspace that may not use it, and its result
+  // would then sit in the field after the real provider takes over. In custom mode the
+  // provider name is free text, so an auto-probe would fire one external request per
+  // keystroke, and the backend reads the *saved* workspace config: probing before a save
+  // has nothing to read. Custom mode therefore loads its list only from the explicit
+  // refresh button.
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || loading || isCustomProvider) return;
     loadModels();
-  }, [loadModels, llmConfig.provider, mounted]);
+  }, [loadModels, llmConfig.provider, mounted, loading, isCustomProvider]);
 
   /* ── LLM Save Handler ── */
   const handleLLMSave = async () => {
@@ -291,6 +314,12 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   const noModelsMessage =
     t.workspace?.llmModelsEmpty ?? 'No models available. Check the provider then refresh.';
 
+  // A known cloud provider cannot be probed without a key, but a custom provider's key
+  // is optional: the backend treats it as optional and a local gateway serves `/models`
+  // without one, so custom mode is gated on the request in flight alone.
+  const refreshModelsNeedsApiKey =
+    !isCustomProvider && llmConfig.provider !== 'ollama' && !llmConfig.apiKey;
+
   return (
     <div className="space-y-6">
       {/* Two-column grid: LLM Config + Prompt Config */}
@@ -322,15 +351,13 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       type="text"
                       value={customProviderName}
                       onChange={(e) => {
+                        // Renaming the provider touches the name and nothing else: the
+                        // model, key and endpoint the user already entered remain valid
+                        // for the new name, and wiping them on every keystroke would
+                        // destroy work the user cannot see being undone.
                         const name = e.target.value;
                         setCustomProviderName(name);
-                        setLlmConfig((prev) => ({
-                          ...prev,
-                          provider: name,
-                          model: '',
-                          apiKey: '',
-                          baseUrl: '',
-                        }));
+                        setLlmConfig((prev) => ({ ...prev, provider: name }));
                       }}
                       placeholder={
                         t.workspace?.llmCustomProviderPlaceholder ??
@@ -419,10 +446,14 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                         : (t.workspace?.llmAddCustomProvider ?? 'Add custom provider')
                     }
                     onClick={() => {
+                      // Entering or leaving custom mode changes which provider is in
+                      // effect, so the fields it owns are dropped here rather than on
+                      // every keystroke of the provider name.
                       if (isCustomProvider) {
                         // Switch back to a known provider (default: ollama)
                         setIsCustomProvider(false);
                         setCustomProviderName('');
+                        setCustomModelsProbed(false);
                         setLlmConfig((prev) => ({
                           ...prev,
                           provider: 'ollama',
@@ -434,6 +465,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                         // Enter custom provider mode
                         setIsCustomProvider(true);
                         setCustomProviderName('');
+                        setCustomModelsProbed(false);
+                        setAvailableModels([]);
+                        setModelsError(null);
                         setLlmConfig((prev) => ({
                           ...prev,
                           provider: '',
@@ -466,22 +500,35 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               <div className="flex items-start gap-2">
                 <div className="flex-1">
                   {isCustomProvider ? (
-                    /* Custom provider — free text input for model name */
-                    <Input
-                      id="llm-model"
-                      type="text"
-                      value={llmConfig.model ?? ''}
-                      onChange={(e) =>
-                        setLlmConfig((prev) => ({
-                          ...prev,
-                          model: e.target.value,
-                        }))
-                      }
-                      placeholder={
-                        t.workspace?.llmCustomModelPlaceholder ??
-                        'e.g. deepseek-chat, groq-llama-3.3-70b'
-                      }
-                    />
+                    /* Custom provider — free text input, optionally suggested from the
+                       provider's own list. */
+                    <>
+                      <Input
+                        id="llm-model"
+                        type="text"
+                        value={llmConfig.model ?? ''}
+                        onChange={(e) =>
+                          setLlmConfig((prev) => ({
+                            ...prev,
+                            model: e.target.value,
+                          }))
+                        }
+                        placeholder={
+                          t.workspace?.llmCustomModelPlaceholder ??
+                          'e.g. deepseek-chat, groq-llama-3.3-70b'
+                        }
+                        // Native suggestions, not a selection: `list` only offers the ids
+                        // a probe found, and typing an unlisted id still saves.
+                        list={availableModels.length > 0 ? CUSTOM_MODEL_LIST_ID : undefined}
+                      />
+                      {availableModels.length > 0 && (
+                        <datalist id={CUSTOM_MODEL_LIST_ID}>
+                          {availableModels.map((m) => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </datalist>
+                      )}
+                    </>
                   ) : (
                     /* Known providers — Combobox with auto-populated suggestions */
                     <Combobox
@@ -533,34 +580,46 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     </Combobox>
                   )}
                 </div>
-                {!isCustomProvider && (
-                  <div className="relative">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={loadModels}
-                      disabled={
-                        modelsLoading || (llmConfig.provider !== 'ollama' && !llmConfig.apiKey)
-                      }
-                      title={
-                        llmConfig.provider !== 'ollama' && !llmConfig.apiKey
-                          ? (t.workspace?.llmModelsNoApiKey ?? 'Add your API key first')
-                          : (t.workspace?.llmRefreshModels ?? 'Refresh models')
-                      }
-                    >
-                      <RotateCw className={`h-4 w-4 ${modelsLoading ? 'animate-spin' : ''}`} />
-                    </Button>
-                  </div>
-                )}
+                <div className="relative">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={handleRefreshModels}
+                    disabled={modelsLoading || refreshModelsNeedsApiKey}
+                    title={
+                      refreshModelsNeedsApiKey
+                        ? (t.workspace?.llmModelsNoApiKey ?? 'Add your API key first')
+                        : (t.workspace?.llmRefreshModels ?? 'Refresh models')
+                    }
+                  >
+                    <RotateCw className={`h-4 w-4 ${modelsLoading ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
               </div>
               <FieldDescription>
                 {isCustomProvider ? (
-                  <span className="flex items-center gap-1.5 text-(--color-text-tertiary)">
-                    <CircleHelp className="h-3.5 w-3.5 shrink-0" />
-                    {t.workspace?.llmCustomModelDesc ??
-                      'Type the model identifier exactly as the provider expects it.'}
-                  </span>
+                  /* Custom hints report real state in priority order: a failed probe,
+                     then a probe that came back empty, then the typing hint. Nothing
+                     claims a list is empty before the user has asked for one. */
+                  modelsError ? (
+                    <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                      <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                      {modelsError}
+                    </span>
+                  ) : customModelsProbed && availableModels.length === 0 ? (
+                    <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                      <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                      {t.workspace?.llmCustomModelsEmpty ??
+                        'The provider returned no models. Type the model id manually.'}
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-(--color-text-tertiary)">
+                      <CircleHelp className="h-3.5 w-3.5 shrink-0" />
+                      {t.workspace?.llmCustomModelHint ??
+                        "Type the model id the provider expects, or load the provider's list for suggestions."}
+                    </span>
+                  )
                 ) : modelsError ? (
                   <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
                     <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
@@ -690,7 +749,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       }))
                     }
                     placeholder={
-                      llmConfig.provider === 'openai'
+                      isCustomProvider || llmConfig.provider === 'openai'
                         ? 'sk-...'
                         : llmConfig.provider === 'gemini'
                           ? 'AIzaSyD-...'
@@ -719,7 +778,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       }))
                     }
                     placeholder={
-                      llmConfig.provider === 'openai'
+                      isCustomProvider || llmConfig.provider === 'openai'
                         ? 'https://api.openai.com/v1'
                         : 'https://api.anthropic.com'
                     }
