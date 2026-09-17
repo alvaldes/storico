@@ -228,6 +228,8 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
   - Labels, botones, mensajes de error, tooltips traducibles
   - Las tareas generadas y etiquetas técnicas se devuelven en inglés (output del LLM)
   - Los prompts del sistema y las instrucciones al LLM están en español (como se definió en la tesis)
+  - **El español de la UI es neutro internacional, nunca rioplatense.** Trato de "tú" y formas estándar: "Selecciona un modelo", "Revisa el proveedor", "Guarda la configuración". Voseo prohibido: "Seleccioná", "Revisá", "Guardá", "tenés", "podés", "sos", "acá", "dejalo", "intentalo". Aplica a TODO el copy en español de la aplicación (`es.json` y cualquier string suelto). Verificado por `frontend/src/i18n/__tests__/neutral-spanish.test.ts`.
+  - `en.json` y `es.json` mantienen exactamente las mismas claves (mismo test).
 
 ### ADR-009: Reutilización de código existente
 
