@@ -88,8 +88,10 @@ class SQLAlchemyWorkspaceRepository(WorkspaceRepository):
             raise EntityNotFound("Workspace", str(workspace_id))
 
     async def count_members(self, workspace_id: UUID) -> int:
-        stmt = select(func.count()).select_from(WorkspaceMemberModel).where(
-            WorkspaceMemberModel.workspace_id == workspace_id
+        stmt = (
+            select(func.count())
+            .select_from(WorkspaceMemberModel)
+            .where(WorkspaceMemberModel.workspace_id == workspace_id)
         )
         result = await self._session.execute(stmt)
         return result.scalar_one()

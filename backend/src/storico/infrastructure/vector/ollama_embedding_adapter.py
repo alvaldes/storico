@@ -51,6 +51,8 @@ class OllamaEmbeddingAdapter(EmbeddingPort):
 
         try:
             return await self._service.embed(text)
-        except Exception as e:  # pragma: no cover - defensive, EmbeddingService already handles errors
+        except (
+            Exception
+        ) as e:  # pragma: no cover - defensive, EmbeddingService already handles errors
             logger.warning("Ollama embedding service failed: %s", e)
             return []

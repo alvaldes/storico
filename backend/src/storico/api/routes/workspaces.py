@@ -137,10 +137,7 @@ async def list_workspaces(
 ) -> WorkspaceListResponse:
     """List all workspaces the authenticated user is a member of."""
     results = await ws_repo.list_by_user_with_counts(current_user.id)
-    workspaces = [
-        _workspace_to_response(r.workspace, r.role, r.member_count)
-        for r in results
-    ]
+    workspaces = [_workspace_to_response(r.workspace, r.role, r.member_count) for r in results]
     return WorkspaceListResponse(workspaces=workspaces)
 
 
@@ -264,14 +261,11 @@ async def update_member_role(
     if user_id == workspace.owner_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The workspace owner's role cannot be changed. "
-            "Transfer ownership first.",
+            detail="The workspace owner's role cannot be changed. Transfer ownership first.",
         )
 
     new_role = WorkspaceRole(body.role)
-    updated_member = await member_repo.update_role(
-        workspace.id, user_id, new_role
-    )
+    updated_member = await member_repo.update_role(workspace.id, user_id, new_role)
     return await _enrich_member(updated_member, user_repo)
 
 

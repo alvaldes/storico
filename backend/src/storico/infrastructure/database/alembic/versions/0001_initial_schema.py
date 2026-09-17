@@ -28,14 +28,10 @@ def upgrade() -> None:
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("auth_provider", sa.String(50), nullable=False),
         sa.Column("auth_id", sa.String(255), nullable=False),
-        sa.Column(
-            "created_at", sa.DateTime(timezone=True), nullable=False
-        ),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id", name="pk_users"),
         sa.UniqueConstraint("email", name="uq_users_email"),
-        sa.UniqueConstraint(
-            "auth_provider", "auth_id", name="uq_users_auth_provider_auth_id"
-        ),
+        sa.UniqueConstraint("auth_provider", "auth_id", name="uq_users_auth_provider_auth_id"),
     )
 
     # --- projects ---
@@ -45,12 +41,8 @@ def upgrade() -> None:
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("description", sa.Text(), nullable=False, server_default=""),
         sa.Column("owner_id", sa.Uuid(), nullable=False),
-        sa.Column(
-            "created_at", sa.DateTime(timezone=True), nullable=False
-        ),
-        sa.Column(
-            "updated_at", sa.DateTime(timezone=True), nullable=False
-        ),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id", name="pk_projects"),
         sa.ForeignKeyConstraint(
             ["owner_id"],
@@ -68,9 +60,7 @@ def upgrade() -> None:
         sa.Column("feature", sa.Text(), nullable=False),
         sa.Column("benefit", sa.Text(), nullable=False),
         sa.Column("raw_text", sa.Text(), nullable=False),
-        sa.Column(
-            "created_at", sa.DateTime(timezone=True), nullable=False
-        ),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id", name="pk_user_stories"),
         sa.ForeignKeyConstraint(
             ["project_id"],
@@ -78,9 +68,7 @@ def upgrade() -> None:
             name="fk_user_stories_project_id_projects",
         ),
     )
-    op.create_index(
-        "ix_user_stories_project_id", "user_stories", ["project_id"]
-    )
+    op.create_index("ix_user_stories_project_id", "user_stories", ["project_id"])
 
     # --- tasks ---
     op.create_table(
@@ -88,9 +76,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("user_story_id", sa.Uuid(), nullable=False),
         sa.Column("title", sa.String(255), nullable=False),
-        sa.Column(
-            "description", sa.Text(), nullable=False, server_default=""
-        ),
+        sa.Column("description", sa.Text(), nullable=False, server_default=""),
         sa.Column(
             "status",
             sa.String(50),
@@ -105,12 +91,8 @@ def upgrade() -> None:
         ),
         sa.Column("labels", sa.JSON(), nullable=True),
         sa.Column("dependencies", sa.JSON(), nullable=True),
-        sa.Column(
-            "created_at", sa.DateTime(timezone=True), nullable=False
-        ),
-        sa.Column(
-            "updated_at", sa.DateTime(timezone=True), nullable=False
-        ),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id", name="pk_tasks"),
         sa.ForeignKeyConstraint(
             ["user_story_id"],
@@ -118,9 +100,7 @@ def upgrade() -> None:
             name="fk_tasks_user_story_id_user_stories",
         ),
     )
-    op.create_index(
-        "ix_tasks_user_story_id", "tasks", ["user_story_id"]
-    )
+    op.create_index("ix_tasks_user_story_id", "tasks", ["user_story_id"])
 
     # --- extractions ---
     op.create_table(
@@ -131,9 +111,7 @@ def upgrade() -> None:
         sa.Column("prompt_config", sa.JSON(), nullable=True),
         sa.Column("raw_response", sa.Text(), nullable=False),
         sa.Column("confidence_score", sa.Float(), nullable=True),
-        sa.Column(
-            "created_at", sa.DateTime(timezone=True), nullable=False
-        ),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id", name="pk_extractions"),
         sa.ForeignKeyConstraint(
             ["user_story_id"],
@@ -141,9 +119,7 @@ def upgrade() -> None:
             name="fk_extractions_user_story_id_user_stories",
         ),
     )
-    op.create_index(
-        "ix_extractions_user_story_id", "extractions", ["user_story_id"]
-    )
+    op.create_index("ix_extractions_user_story_id", "extractions", ["user_story_id"])
 
 
 def downgrade() -> None:

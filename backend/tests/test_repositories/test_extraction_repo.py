@@ -15,9 +15,7 @@ def story_id() -> UUID:
 
 
 @pytest.mark.asyncio
-async def test_save_with_nullable_fields(
-    db_session: AsyncSession, story_id: UUID
-) -> None:
+async def test_save_with_nullable_fields(db_session: AsyncSession, story_id: UUID) -> None:
     """Save an extraction with nullable confidence_score and prompt_config."""
     repo = SQLAlchemyExtractionRepository(db_session)
     extraction = Extraction(
@@ -40,9 +38,7 @@ async def test_save_with_nullable_fields(
 
 
 @pytest.mark.asyncio
-async def test_save_with_null_fields(
-    db_session: AsyncSession, story_id: UUID
-) -> None:
+async def test_save_with_null_fields(db_session: AsyncSession, story_id: UUID) -> None:
     """Save an extraction without optional fields (prompt_config, confidence_score)."""
     repo = SQLAlchemyExtractionRepository(db_session)
     extraction = Extraction(

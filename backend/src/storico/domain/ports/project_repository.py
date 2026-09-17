@@ -20,9 +20,7 @@ class ProjectRepository(ABC):
         ...
 
     @abstractmethod
-    async def find_by_id_with_count(
-        self, project_id: UUID
-    ) -> ProjectWithCount | None:
+    async def find_by_id_with_count(self, project_id: UUID) -> ProjectWithCount | None:
         """Find a project and the count of its user stories in one query."""
         ...
 
@@ -32,9 +30,7 @@ class ProjectRepository(ABC):
         ...
 
     @abstractmethod
-    async def list_by_workspace_with_counts(
-        self, workspace_id: UUID
-    ) -> list[ProjectWithCount]:
+    async def list_by_workspace_with_counts(self, workspace_id: UUID) -> list[ProjectWithCount]:
         """Return all projects in a workspace with their story counts.
 
         Folds the per-project story count into a single JOIN+GROUP_BY query

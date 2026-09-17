@@ -60,9 +60,7 @@ async def sync_user(
     Step (c): neither → create user + link account + create personal workspace.
     """
     # Step (a) — returning user, same provider
-    existing = await repo.find_by_auth(
-        payload.auth_provider, payload.auth_provider_id
-    )
+    existing = await repo.find_by_auth(payload.auth_provider, payload.auth_provider_id)
     if existing:
         user = User(
             id=existing.id,
@@ -87,9 +85,7 @@ async def sync_user(
     # Step (b) — same email, different provider → link
     email_user = await repo.find_by_email(payload.email)
     if email_user:
-        await repo.link_account(
-            email_user.id, payload.auth_provider, payload.auth_provider_id
-        )
+        await repo.link_account(email_user.id, payload.auth_provider, payload.auth_provider_id)
         user = User(
             id=email_user.id,
             email=payload.email,

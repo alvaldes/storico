@@ -43,9 +43,7 @@ class SQLAlchemyWorkspaceMemberRepository(WorkspaceMemberRepository):
             result = await self._session.execute(stmt)
             await self._session.commit()
             if result.rowcount == 0:
-                raise EntityNotFound(
-                    "WorkspaceMember", f"{workspace_id}/{user_id}"
-                )
+                raise EntityNotFound("WorkspaceMember", f"{workspace_id}/{user_id}")
         except SQLAlchemyError as e:
             await self._session.rollback()
             raise RepositoryError("Database error removing workspace member") from e
@@ -67,15 +65,11 @@ class SQLAlchemyWorkspaceMemberRepository(WorkspaceMemberRepository):
             await self._session.commit()
             row = result.scalar_one_or_none()
             if not row:
-                raise EntityNotFound(
-                    "WorkspaceMember", f"{workspace_id}/{user_id}"
-                )
+                raise EntityNotFound("WorkspaceMember", f"{workspace_id}/{user_id}")
             return self._to_domain(row)
         except SQLAlchemyError as e:
             await self._session.rollback()
-            raise RepositoryError(
-                "Database error updating workspace member role"
-            ) from e
+            raise RepositoryError("Database error updating workspace member role") from e
 
     async def find_by_workspace_and_user(
         self, workspace_id: UUID, user_id: UUID
@@ -88,19 +82,13 @@ class SQLAlchemyWorkspaceMemberRepository(WorkspaceMemberRepository):
         row = result.scalar_one_or_none()
         return self._to_domain(row) if row else None
 
-    async def list_by_workspace(
-        self, workspace_id: UUID
-    ) -> list[WorkspaceMember]:
-        stmt = select(WorkspaceMemberModel).where(
-            WorkspaceMemberModel.workspace_id == workspace_id
-        )
+    async def list_by_workspace(self, workspace_id: UUID) -> list[WorkspaceMember]:
+        stmt = select(WorkspaceMemberModel).where(WorkspaceMemberModel.workspace_id == workspace_id)
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
 
     async def list_by_user(self, user_id: UUID) -> list[WorkspaceMember]:
-        stmt = select(WorkspaceMemberModel).where(
-            WorkspaceMemberModel.user_id == user_id
-        )
+        stmt = select(WorkspaceMemberModel).where(WorkspaceMemberModel.user_id == user_id)
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
 
@@ -116,9 +104,7 @@ class SQLAlchemyWorkspaceMemberRepository(WorkspaceMemberRepository):
             if not workspace:
                 raise EntityNotFound("Workspace", str(workspace_id))
             if workspace.owner_id != current_owner_id:
-                raise OwnerTransferError(
-                    "Current owner does not match workspace owner"
-                )
+                raise OwnerTransferError("Current owner does not match workspace owner")
 
             # Verify new owner is an admin member
             member_stmt = select(WorkspaceMemberModel).where(
@@ -128,13 +114,9 @@ class SQLAlchemyWorkspaceMemberRepository(WorkspaceMemberRepository):
             member_result = await self._session.execute(member_stmt)
             new_owner_member = member_result.scalar_one_or_none()
             if not new_owner_member:
-                raise OwnerTransferError(
-                    "New owner must be a member of the workspace"
-                )
+                raise OwnerTransferError("New owner must be a member of the workspace")
             if new_owner_member.role != WorkspaceRole.ADMIN.value:
-                raise OwnerTransferError(
-                    "New owner must have admin role"
-                )
+                raise OwnerTransferError("New owner must have admin role")
 
             # Update workspace owner
             workspace.owner_id = new_owner_id
@@ -154,14 +136,16 @@ class SQLAlchemyWorkspaceMemberRepository(WorkspaceMemberRepository):
             await self._session.rollback()
             if isinstance(e, (OwnerTransferError, EntityNotFound)):
                 raise
-            raise RepositoryError(
-                "Database error transferring workspace ownership"
-            ) from e
+            raise RepositoryError("Database error transferring workspace ownership") from e
 
     async def count_admins(self, workspace_id: UUID) -> int:
-        stmt = select(func.count()).select_from(WorkspaceMemberModel).where(
-            WorkspaceMemberModel.workspace_id == workspace_id,
-            WorkspaceMemberModel.role == WorkspaceRole.ADMIN.value,
+        stmt = (
+            select(func.count())
+            .select_from(WorkspaceMemberModel)
+            .where(
+                WorkspaceMemberModel.workspace_id == workspace_id,
+                WorkspaceMemberModel.role == WorkspaceRole.ADMIN.value,
+            )
         )
         result = await self._session.execute(stmt)
         return result.scalar_one()

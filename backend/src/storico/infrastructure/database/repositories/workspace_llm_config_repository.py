@@ -39,16 +39,12 @@ class SQLAlchemyWorkspaceLLMConfigRepository(WorkspaceLLMConfigRepository):
                 for key, value in self._to_orm_kwargs(config).items():
                     setattr(existing_row, key, value)
             else:
-                self._session.add(
-                    WorkspaceLLMConfigModel(**self._to_orm_kwargs(config))
-                )
+                self._session.add(WorkspaceLLMConfigModel(**self._to_orm_kwargs(config)))
             await self._session.commit()
             return config
         except SQLAlchemyError as e:
             await self._session.rollback()
-            raise RepositoryError(
-                "Database error upserting workspace LLM config"
-            ) from e
+            raise RepositoryError("Database error upserting workspace LLM config") from e
 
     @staticmethod
     def _to_domain(model: WorkspaceLLMConfigModel) -> WorkspaceLLMConfig:

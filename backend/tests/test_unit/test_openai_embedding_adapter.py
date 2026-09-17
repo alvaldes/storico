@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-sys.path.insert(0, '../../src')
+sys.path.insert(0, "../../src")
 
 from unittest.mock import AsyncMock, patch
 
@@ -33,7 +33,10 @@ async def test_openai_embedding_adapter_embed_success() -> None:
     mock_client = AsyncMock()
     mock_client.embeddings.create.return_value = mock_response
 
-    with patch("storico.infrastructure.vector.openai_embedding_adapter.AsyncOpenAI", return_value=mock_client):
+    with patch(
+        "storico.infrastructure.vector.openai_embedding_adapter.AsyncOpenAI",
+        return_value=mock_client,
+    ):
         adapter = OpenAIEmbeddingAdapter(api_key="test-key")
         embedding = await adapter.embed("hello world")
         assert embedding == [0.1, 0.2, 0.3]
@@ -53,7 +56,9 @@ async def test_openai_embedding_adapter_embed_empty_text() -> None:
 @pytest.mark.unit
 async def test_openai_embedding_adapter_embed_api_failure() -> None:
     """OpenAIEmbeddingAdapter.embed returns empty list on API failure."""
-    with patch("storico.infrastructure.vector.openai_embedding_adapter.AsyncOpenAI") as mock_client_class:
+    with patch(
+        "storico.infrastructure.vector.openai_embedding_adapter.AsyncOpenAI"
+    ) as mock_client_class:
         mock_client = AsyncMock()
         mock_client.embeddings.create.side_effect = Exception("API error")
         mock_client_class.return_value = mock_client

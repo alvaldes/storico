@@ -15,9 +15,7 @@ def story_id() -> UUID:
 
 
 @pytest.mark.asyncio
-async def test_save_with_json_labels_and_deps(
-    db_session: AsyncSession, story_id: UUID
-) -> None:
+async def test_save_with_json_labels_and_deps(db_session: AsyncSession, story_id: UUID) -> None:
     """Save a task with labels and dependencies, then verify they round-trip."""
     repo = SQLAlchemyTaskRepository(db_session)
     task = Task(
@@ -76,9 +74,7 @@ async def test_list_by_story_empty(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_sets_updated_at(
-    db_session: AsyncSession, story_id: UUID
-) -> None:
+async def test_update_sets_updated_at(db_session: AsyncSession, story_id: UUID) -> None:
     """Saving an existing task updates its updated_at timestamp."""
     repo = SQLAlchemyTaskRepository(db_session)
     task = Task(user_story_id=story_id, title="Original")

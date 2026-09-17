@@ -159,9 +159,7 @@ class TestPipelineUsesWorkspacePrompt:
         from storico.domain.services.extraction_judge_service import LLMJudgeService
 
         llm_port = AsyncMock()
-        llm_port.generate.return_value = (
-            '{"approved": true, "total_score": 45}'
-        )
+        llm_port.generate.return_value = '{"approved": true, "total_score": 45}'
         prompt_manager = MagicMock()
         prompt_manager.render_judge_prompt.return_value = "Judge prompt"
         judge = LLMJudgeService(llm_port=llm_port, prompt_manager=prompt_manager)

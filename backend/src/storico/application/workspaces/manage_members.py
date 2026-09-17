@@ -66,9 +66,7 @@ class AddMemberUseCase:
             raise EntityNotFound("User", target_user_email)
 
         # Validate not already a member
-        existing = await self._member_repo.find_by_workspace_and_user(
-            workspace_id, user.id
-        )
+        existing = await self._member_repo.find_by_workspace_and_user(workspace_id, user.id)
         if existing is not None:
             raise DuplicateEntity(
                 "WorkspaceMember",
@@ -133,9 +131,7 @@ class RemoveMemberUseCase:
             raise CannotRemoveOwnerError()
 
         # Validate membership record exists
-        member = await self._member_repo.find_by_workspace_and_user(
-            workspace_id, target_user_id
-        )
+        member = await self._member_repo.find_by_workspace_and_user(workspace_id, target_user_id)
         if member is None:
             raise NotWorkspaceMember(workspace_id, target_user_id)
 
@@ -144,8 +140,7 @@ class RemoveMemberUseCase:
             admin_count = await self._member_repo.count_admins(workspace_id)
             if admin_count <= 1:
                 raise LastAdminError(
-                    "Cannot remove yourself as the last admin. "
-                    "Promote another member first."
+                    "Cannot remove yourself as the last admin. Promote another member first."
                 )
 
         await self._member_repo.remove(workspace_id, target_user_id)

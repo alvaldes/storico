@@ -15,9 +15,7 @@ def project_id() -> UUID:
 
 
 @pytest.mark.asyncio
-async def test_save_and_find_by_id(
-    db_session: AsyncSession, project_id: UUID
-) -> None:
+async def test_save_and_find_by_id(db_session: AsyncSession, project_id: UUID) -> None:
     """Save a user story and retrieve it by id."""
     repo = SQLAlchemyUserStoryRepository(db_session)
     story = UserStory(

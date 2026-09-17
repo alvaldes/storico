@@ -56,8 +56,7 @@ class EmbeddingService:
 
         if response.status_code == 404:
             logger.warning(
-                "Embedding model '%s' not found in Ollama. "
-                "Run: ollama pull %s",
+                "Embedding model '%s' not found in Ollama. Run: ollama pull %s",
                 self._model,
                 self._model,
             )

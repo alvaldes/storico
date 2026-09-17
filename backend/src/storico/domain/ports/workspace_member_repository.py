@@ -36,9 +36,7 @@ class WorkspaceMemberRepository(ABC):
         ...
 
     @abstractmethod
-    async def list_by_workspace(
-        self, workspace_id: UUID
-    ) -> list[WorkspaceMember]:
+    async def list_by_workspace(self, workspace_id: UUID) -> list[WorkspaceMember]:
         """Return all members of a workspace."""
         ...
 

@@ -35,6 +35,10 @@ jobs:
         working-directory: backend
         run: ruff check src tests
 
+      - name: Check formatting (ruff format)
+        working-directory: backend
+        run: ruff format --check src tests
+
       - name: Test (pytest)
         working-directory: backend
         run: pytest -q

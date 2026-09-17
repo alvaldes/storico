@@ -93,10 +93,9 @@ async def test_find_by_id_with_count_returns_none_when_missing(
     repo = SQLAlchemyProjectRepository(db_session)
     assert await repo.find_by_id_with_count(uuid4()) is None
 
+
 @pytest.mark.asyncio
-async def test_save_and_find_by_id(
-    db_session: AsyncSession, workspace_id: UUID
-) -> None:
+async def test_save_and_find_by_id(db_session: AsyncSession, workspace_id: UUID) -> None:
     """Save a project and retrieve it by id."""
     repo = SQLAlchemyProjectRepository(db_session)
     project = Project(name="Test Project", workspace_id=workspace_id, description="A test")
@@ -155,9 +154,7 @@ async def test_delete_raises_entity_not_found(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_returns_empty_for_no_matches(
-    db_session: AsyncSession
-) -> None:
+async def test_list_returns_empty_for_no_matches(db_session: AsyncSession) -> None:
     """list_by_workspace returns empty list when no projects match."""
     repo = SQLAlchemyProjectRepository(db_session)
     result = await repo.list_by_workspace(uuid4())
@@ -165,9 +162,7 @@ async def test_list_returns_empty_for_no_matches(
 
 
 @pytest.mark.asyncio
-async def test_list_all(
-    db_session: AsyncSession, workspace_id: UUID
-) -> None:
+async def test_list_all(db_session: AsyncSession, workspace_id: UUID) -> None:
     """list returns all projects."""
     repo = SQLAlchemyProjectRepository(db_session)
     p1 = Project(name="P1", workspace_id=workspace_id)
@@ -180,9 +175,7 @@ async def test_list_all(
 
 
 @pytest.mark.asyncio
-async def test_update_sets_updated_at(
-    db_session: AsyncSession, workspace_id: UUID
-) -> None:
+async def test_update_sets_updated_at(db_session: AsyncSession, workspace_id: UUID) -> None:
     """Saving an existing project updates its updated_at timestamp."""
     repo = SQLAlchemyProjectRepository(db_session)
     project = Project(name="Original", workspace_id=workspace_id)

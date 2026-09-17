@@ -1,6 +1,16 @@
 # Storico — Backlog
 
-> **Última actualización**: 2026-09-17 (7) — alineado el contrato de autorización: **404** = “esa fila no
+> **Última actualización**: 2026-09-17 (8) — **ciclo cerrado**: todos los items accionables de “Próximo a
+> tratar” y “Limpieza menor” que se podían cerrar sin otro feature quedaron cerrados. En esta pasada:
+> `storyStore.error` eliminado (nadie lo leía, junto con los tipos y el helper que solo él usaba), 8 tests
+> que fijan el invariante `currentWorkspace.id === scopedWorkspaceId` por cada camino del switch, variantes
+> con `scopeAtCall` **observado**, los dos `renderBoldMarkup` consolidados en uno con tests de la propiedad
+> anti-XSS, tipos muertos borrados, seedings duplicados consolidados en `seed_workspace` (con diff de
+> aserciones: **una sola cambió, y es un renombre**), test del caso `None` explícito del adapter, `design.md`
+> realineado contra el código real, `apply-progress.md` registrado honestamente (sin inventar un log TDD), y
+> el backend reformateado entero con `ruff format --check` a**gregado al CI**. Verificado: backend **428/1/0**,
+> frontend **23 archivos / 189**, `tsc` limpio, `ruff check` y `ruff format --check` en cero.
+> Última actualización previa: 2026-09-17 (7) — alineado el contrato de autorización: **404** = “esa fila no
 > existe”, **403** = “existe pero no es alcanzable por vos”, uniforme en todo el backend. `projects.py`
 > dejó de devolver 404 para contención y los dos strings distintos de membresía colapsaron en uno. +10
 > tests que lo fijan (7 probados por mutación), y se cubrieron la rama `project is None` del walk y la
@@ -163,31 +173,20 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
 
 ---
 
-## 🧹 Limpieza menor / deuda pendiente
+## 🧹 Deuda conocida y notas aceptadas
 
-- **`projectStore.saving` / `storyStore.saving` son estado muerto** — ningún componente los lee: todos
-  los `saving` de la UI son `useState` locales (`StoryForm`, `ProjectForm`, `TaskEditor`,
-  `ProjectsList.deleteSaving`). Los stores los escriben y los liberan, lo cual es correcto como
-  contrato, pero hoy no mueven nada. Decidir: cablearlos a los forms o eliminarlos.
-- **`storyStore.error` se escribe y nadie lo lee** — los `catch` de `createStory` / `updateStory` /
-  `deleteStory` escriben un campo sin consumidor (a diferencia de `projectStore.error`, que
-  `ProjectsList.tsx:43` sí consume vía `setLocalError`). El gating por scope de esos tres caminos es
-  correcto como contrato del store, pero **su valor visible hoy es cero**; el del lado de proyectos sí
-  llega a pantalla.
-- **Invariante no asertado: `currentWorkspace.id === scopedWorkspaceId`** — la guarda
-  `isScopedWorkspace(ws.id)` de `projectStore` lo asume, y `workspaceStore.fetchWorkspaces` compara
-  `nextWorkspace.id` contra `persisted.id` (o sea, contra `currentWorkspace`) en lugar de contra el id
-  scoped. Hoy se cumple en los caminos que llaman a `setScopedWorkspaceId`, pero nada lo fija por test
-  y el modo de falla es un banner **suprimido**, que es la dirección silenciosa. Un test que asiente la
-  equivalencia en cada camino del switch lo cerraría.
-- **Cobertura: `scopeAtCall` observado en las mutaciones de story** — los tests nuevos arrancan de
-  `resetScopedWorkspace()`, así que `scopeAtCall` es siempre `undefined`. Las variantes “muestreé un id
-  real y me quedé” / “…y me moví” no están ejercitadas (equivalentes hoy, pero es el caso que el
-  helper existe para cubrir).
-- **Seedings duplicados que quedaron fuera del cierre** — `test_stories.py::_seed_workspace_and_project`,
-  `test_export.py::_create_workspace` / `_create_story` / `_create_tasks` y
-  `test_workspace_settings_prompts.py::_add_member` hacen lo mismo que el nuevo `seed_workspace` de
-  `conftest.py`. Consolidarlos suma 3 archivos de test al scope; no se hizo para no inflar el diff.
+Todo lo accionable de esta sección se cerró el 2026-09-17 (ver ✅ Completado). Lo que queda son notas
+aceptadas o deuda que necesita otro feature, no trabajo pendiente de esta lista.
+
+- **Ruido heurístico de pi-lens en la capa de datos** — marca *Potential SQL injection sink* en cualquier
+  `session.execute(...)` y `Cannot access attribute "rowcount" for class "Result[Any]"`. Verificado uno por
+  uno: `workspaces.py:290` es una llamada a un *use case* con UUIDs (cero SQL, no hay statement), y los
+  repositorios pasan `select(...)` / `delete(...)` de SQLAlchemy construidos con `==`, o sea parametrizados;
+  `rowcount` sí existe en runtime (`CursorResult`), es un hueco de los stubs. El diff de esos archivos es
+  **puro rewrap** de `ruff format`: un formateador no puede crear un error de SQL ni de tipos. No están en el
+  gate (no hay mypy ni pyright configurados) y arreglarlos pediría `cast` / `type: ignore`, que es ruido, no
+  seguridad. **No re-investigar sin decidir antes si el backend tiene type-check.**
+
 - **El oráculo de existencia es ahora un contrato, no una inconsistencia** — después de la alineación, la
   regla es uniforme en todo el backend: **404** cuando la fila no existe, **403** cuando existe pero no es
   alcanzable por vos (membresía o contención). Eso implica que un id de otro workspace se puede distinguir
@@ -198,28 +197,11 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
   `sys.settrace` ve ejecutar (p. ej. `dependencies.py:259-270`, contradiciendo tests que pasan).
   Repro: `COVERAGE_FILE=/tmp/x python -m pytest tests/test_api/test_stories.py --cov=storico.api`. No hay
   `COVERAGE_*` ni `.coveragerc`. Cross-checkear con tracer antes de concluir algo por coverage.
-- **`us-decomposition` `design.md`** — nombra el filename viejo `storico-tasks-{id}.{ext}` vs
-  el implementado `tasks-export-{workspace.id}.{ext}`; el spec canónico no lo manda, pero el
-  design hay que realinearlo.
-- **`apply-progress.md` ausente** en `us-decomposition` (strict TDD) — excepción registrada
-  (artefactos e implementación aterrizaron juntos históricamente).
 - **Falso positivo de pyright en `users.py` (atribución corregida)** — el diagnóstico real es
   `users.py:101:34` sobre `OnboardingRequest()` (campos con default en `schemas/user.py`, así que la llamada
   es válida), **no** sobre `RenameWorkspaceUseCase`, que la nota anterior culpaba por error: el checker ve
   una firma stale. No hay defecto de producción y no se agregó ninguna supresión. La rama sólo-icono del
   onboarding (`users.py:126-129`), que estaba sin cubrir, ya tiene test.
-- **Dos `renderBoldMarkup` distintos** — el de `DeleteAccountDialog` parte de `<b>` y el que agregué en
-  `StoryForm` parte de `<strong>` (el hint usa `<strong>`, así que reusar el otro rendiría los tags como
-  texto). Son dos copias del mismo concepto: consolidarlas en un helper parametrizado. Ojo, el de
-  `DeleteAccountDialog` vive en un área con historia de XSS y el cambio pide su propio test.
-- **Tipos muertos por la limpieza** — `ExtractRequest` y `ExtractResponse` en `types/extraction.ts`
-  quedaron sin referencias al borrar `ApiClient.startExtraction` (`ExtractionUserStory` ya estaba muerto
-  antes). Borrarlos o darles uso.
-- **Caso no cubierto del adapter** — los tests nuevos sólo ejercitan un `workspace_id` no nulo, así que
-  revertir **sólo** el adapter a `… if workspace_id is not None else None` deja la suite verde (Python permite
-  pasar `None` explícito más allá de la anotación). Un test con `None` explícito lo cierra.
-- **Segundo round de ruff, no ejecutado**: `ruff format --check src tests` reporta **58 archivos** que
-  reformatearía. Es un reformateo masivo y merece su propio work unit, no colarse dentro del sweep de lint.
 - **El primer run del CI puede salir rojo por infraestructura, no por código**:
   `tests/test_integration/test_projects_integration.py` se saltea **localmente** porque el daemon de Docker no
   responde, y en los runners de GitHub Docker sí está, así que va a intentar levantar
@@ -238,6 +220,24 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
 ---
 
 ## ✅ Completado (referencia — items eliminados del backlog)
+
+- **Cierre del ciclo de limpieza** (2026-09-17): `storyStore.error` eliminado —nadie lo leía, y con él se
+  fueron `StoryErrorInfo`, `extractStoryErrorInfo` y las 3 escrituras que lo alimentaban; el `saving` se queda
+  porque es el contrato de “hay una mutación en vuelo” y es lo que pinnean los tests (7 tests renombrados
+  siguen asertando la liberación de `saving`, **ninguno borrado**)—. Se agregaron 8 tests que fijan
+  `getScopedWorkspaceId() === currentWorkspace?.id ?? null` en **cada** camino que toca `setScopedWorkspaceId`,
+  más variantes con `scopeAtCall` **observado** (antes todas arrancaban de unobserved) en los cuatro guards.
+  Los dos `renderBoldMarkup` (uno partía de `<b>`, el otro de `<strong>`) son un helper compartido con tests
+  que incluyen un payload `<img onerror>` + `<script>` renderizado como **texto literal**, o sea la propiedad
+  que hace segura esa zona después del fix de XSS. Se borraron los tipos muertos `ExtractRequest`,
+  `ExtractResponse` y `ExtractionUserStory`. Los seedings duplicados de 4 archivos de test se consolidaron en
+  `seed_workspace` —verificado con diff de aserciones: **una sola cambió y es un renombre de identificador**,
+  `test_export.py` y `test_workspace_settings_prompts.py` no cambiaron ninguna—. Se agregó el test del caso
+  `None` explícito del adapter (el revert que reabriría la fuga), se realineó el `design.md` de
+  `us-decomposition` contra lo que el código produce de verdad (`tasks-export-{workspace.id}.{ext}`), y se
+  registró la ausencia de `apply-progress.md` **sin fabricar un log TDD**: el documento cita el commit real y
+  la evidencia que sí existe, y dice explícitamente qué no puede atestiguar. El backend quedó reformateado
+  (`ruff format`, 29 archivos) con `ruff format --check` **agregado al CI**.
 
 - **Contrato de autorización alineado y fijado** (2026-09-17): la misma condición se respondía de cuatro
   formas distintas. Ahora **404** = “esa fila no existe” y **403** = “existe pero no es alcanzable por vos”,

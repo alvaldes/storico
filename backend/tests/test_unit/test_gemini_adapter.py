@@ -81,10 +81,9 @@ class TestGeminiAdapter:
             "Test prompt", self.config, system_prompt="Shared role"
         )
 
-        gemini_system = (
-            mock_client_cls.return_value.models.generate_content.call_args.kwargs["config"]
-            .system_instruction
-        )
+        gemini_system = mock_client_cls.return_value.models.generate_content.call_args.kwargs[
+            "config"
+        ].system_instruction
         ollama_system = ollama_payload["messages"][0]["content"]
 
         assert gemini_system == ollama_system
