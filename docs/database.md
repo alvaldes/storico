@@ -22,6 +22,7 @@ users ──1:N── projects*
 workspaces ──1:N── projects
 workspaces ──1:1── workspace_prompts
 workspaces ──1:1── workspace_llm_configs
+workspaces ──1:N── custom_providers
 projects ──1:N── user_stories ──1:N── tasks
 user_stories ──1:N── extractions
 ```
@@ -101,6 +102,27 @@ UNIQUE: `(workspace_id, user_id)`
 | updated_at | DateTime(tz) | NOT NULL |
 
 Uno por workspace.
+
+#### custom_providers
+
+| Columna | Tipo | Restricciones |
+|---------|------|--------------|
+| id | UUID | PK |
+| workspace_id | UUID | FK → workspaces.id (CASCADE), indexado |
+| name | String(50) | NOT NULL |
+| created_at | DateTime(tz) | NOT NULL |
+| updated_at | DateTime(tz) | NOT NULL |
+
+UNIQUE: `(workspace_id, name)`
+
+Nombres de proveedores LLM que un workspace registró para endpoints que no son uno de
+los cuatro proveedores integrados (`ollama`, `openai`, `anthropic`, `gemini`). A
+diferencia de `workspace_prompts` y `workspace_llm_configs`, la relación es 1:N: el
+mismo nombre puede existir en dos workspaces, pero no dos veces en el mismo. El nombre
+es el valor que `workspace_llm_configs.provider` guarda y el que selecciona el adapter,
+por lo que la migración `0021` registra una fila por cada config existente cuyo
+`provider` no sea uno de los cuatro integrados. El modelo, la API Key y la URL Base
+siguen viviendo en `workspace_llm_configs`.
 
 #### workspace_prompts
 

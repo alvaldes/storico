@@ -91,6 +91,20 @@ Autenticación vía header `Authorization: Bearer <token>`. El token se obtiene 
 | GET | `/api/v1/workspaces/{wsId}/settings/llm/models` | Modelos disponibles |
 | POST | `/api/v1/llm/test` | Test de conexión LLM |
 
+### Proveedores personalizados (scoped a workspace)
+
+| Método | Path | Descripción |
+|--------|------|-------------|
+| GET | `/api/v1/workspaces/{wsId}/settings/providers` | Listar proveedores personalizados |
+| POST | `/api/v1/workspaces/{wsId}/settings/providers` | Registrar un proveedor personalizado |
+| PATCH | `/api/v1/workspaces/{wsId}/settings/providers/{providerId}` | Renombrar un proveedor personalizado |
+
+Todos requieren rol admin. El nombre se normaliza (recorte y minúsculas) y se valida
+contra `^[a-z0-9][a-z0-9._-]{0,49}$`; un nombre de proveedor integrado o ya registrado
+en el mismo workspace responde `409`, y un `providerId` de otro workspace responde
+`404`. Al renombrar el proveedor que el workspace tiene seleccionado, también se
+actualiza `workspace_llm_configs.provider`.
+
 ### Prompts (scoped a workspace)
 
 | Método | Path | Descripción |
