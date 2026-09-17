@@ -67,7 +67,7 @@ providers (`ollama`, `openai`, `anthropic`, `gemini`) — e.g. `deepseek`, `groq
 
 ### T-001 — Backend: OpenAI-compatible model discovery for custom providers
 
-- **Status**: pending
+- **Status**: done (commit `90b234c`)
 - **Files to modify**: `backend/src/storico/api/routes/workspace_settings.py`
 - **Files to create**: `backend/tests/test_api/test_workspace_settings_models.py`
 - **What**:
@@ -88,7 +88,7 @@ providers (`ollama`, `openai`, `anthropic`, `gemini`) — e.g. `deepseek`, `groq
 
 ### T-002 — Backend: route custom providers to the OpenAI-compatible adapter
 
-- **Status**: pending
+- **Status**: done (commit `9b6ab1c`)
 - **Files to modify**: `backend/src/storico/infrastructure/tasks/extraction_task.py`
 - **Files to create**: `backend/tests/test_api/test_extraction_provider_routing.py`
 - **What**:
@@ -108,7 +108,7 @@ providers (`ollama`, `openai`, `anthropic`, `gemini`) — e.g. `deepseek`, `groq
 
 ### T-003 — Frontend: custom-provider model discovery UX
 
-- **Status**: pending
+- **Status**: in progress
 - **Files to modify**: `frontend/src/components/react/LLMConfigEditor.tsx`,
   `frontend/src/i18n/en.json`, `frontend/src/i18n/es.json`
 - **What**:
@@ -148,11 +148,12 @@ providers (`ollama`, `openai`, `anthropic`, `gemini`) — e.g. `deepseek`, `groq
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Naive `{base}/models` join 404s on a version-less root | Discovery silently returns nothing | D2 probe order; T-001 covers it with a test |
+| Naive `{base}/models` join 404s on a version-less root | Discovery silently returns nothing | D2 probe order; covered by `90b234c` |
 | Keystroke-driven probes hammer an external provider | Rate limits, latency, noisy logs | T-003 debounce/explicit action |
 | Free-text commit in the base-ui Combobox reverts on blur | User loses the typed model id | Prefer a plain `Input` with native `<datalist>` suggestions in custom mode; if a richer popover is used it must commit typed text on blur and be verified |
-| `else → OllamaAdapter` is load-bearing for `provider=None` | Existing workspaces break | Route defaults `provider` to `"ollama"`; match `ollama` explicitly and cover unset in tests |
-| Extra `/v1` appended to a base that already has it | 404 on the second probe | Guard on the `/v1` suffix; covered by test |
+| An existing workspace whose provider name is not one of the four known ones loses its implicit Ollama fallback | A previously "working" (but wrong-endpoint) extraction now fails loudly | Accepted as the point of D1: calling Ollama when the workspace asked for `deepseek` is the defect. The failure names the missing Base URL |
+| The installed `openai==3.14.0` rejects an empty key and reads an ambient `OPENAI_API_KEY` when passed `None` | An unauthenticated custom gateway could not be called, or would silently borrow an environment credential | Non-secret `_CUSTOM_PROVIDER_PLACEHOLDER_KEY` constant; a stored key always wins; covered by `9b6ab1c` |
+| Extra `/v1` appended to a base that already has it | 404 on the second probe | Guarded on the `/v1` suffix; covered by `90b234c` |
 
 ## Evidence log
 
@@ -160,3 +161,5 @@ _(each completed task records its commit identity here)_
 
 | Task | Commit | Outcome |
 |------|--------|---------|
+| T-001 | `90b234c` | `fetch_openai_compatible_models` probes `{base}/models` then `{base}/v1/models` (guarded against a doubled `/v1`), key optional, first HTTP 200 carrying a `data` list wins, otherwise the last `httpx.HTTPError` propagates to the existing 502 mapping. `fetch_openai_models` delegates. 16 new tests. Verified: focused suite 16 passed, `ruff check` clean, `ruff format --check` clean, full backend suite 444 passed / 1 skipped. |
+| T-002 | `9b6ab1c` | Adapter selection extracted from `_run_extraction` into the pure `_build_llm_port`; `ollama` is an explicit branch, unknown names route to `OpenAIAdapter`, and a custom provider without a base URL raises `LLMError` instead of reaching Ollama. Unauthenticated custom gateways get the `no-key-required` placeholder after `openai==3.14.0` was observed to reject `""` and to read an ambient `OPENAI_API_KEY` when passed `None`. 16 new tests. Verified: focused suite 16 passed, `ruff check` clean, `ruff format --check` clean, full backend suite 460 passed / 1 skipped, and `AsyncOpenAI(api_key="no-key-required", base_url=...)` constructs under 3.14.0. |
