@@ -33,6 +33,7 @@ import { Field, FieldLabel } from '@/components/ui/field';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { navigate } from 'astro:transitions/client';
+import { workspaceScopedPath, workspaceSettingsPath } from '@/lib/workspace-nav';
 import { IconPicker, IconTrigger } from '@/components/ui/icon-picker';
 
 interface Team {
@@ -59,13 +60,19 @@ export function TeamSwitcher({ teams, locale }: { teams: Team[]; locale: Locale 
     if (!workspaceName.trim()) return;
     setCreating(true);
     try {
-      await createWorkspace({
+      const created = await createWorkspace({
         name: workspaceName.trim(),
         icon: workspaceIcon,
       });
       setCreateOpen(false);
       setWorkspaceName('');
       setWorkspaceIcon('building-2');
+      // Creating always switches the current workspace, so land on the new
+      // workspace settings page and keep sidebar, page and URL in agreement.
+      const settingsPath = workspaceSettingsPath(locale, created.id);
+      if (settingsPath) {
+        navigate(settingsPath);
+      }
     } catch {
       // error handled by store
     } finally {
@@ -182,11 +189,11 @@ export function TeamSwitcher({ teams, locale }: { teams: Team[]; locale: Locale 
                         .workspaces.find((w) => w.id === team.id);
                       if (!ws) return;
                       setCurrentWorkspace(ws);
-                      // Navigate to the same page but with the new workspace UUID
-                      const pathname = window.location.pathname;
-                      const wsMatch = pathname.match(/^(\/[a-z]{2}\/workspaces\/)[^/]+(\/.*)?$/);
-                      if (wsMatch) {
-                        navigate(`${wsMatch[1]}${team.id}${wsMatch[2] ?? ''}`);
+                      // On a workspace-scoped page keep the same subpath with the new id;
+                      // elsewhere the store-driven pages reload themselves.
+                      const scopedPath = workspaceScopedPath(window.location.pathname, team.id);
+                      if (scopedPath) {
+                        navigate(scopedPath);
                       }
                     }}
                     className="gap-2 p-2"

@@ -11,6 +11,16 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    alias: {
+      // `astro:transitions/client` is an Astro *virtual* module: it only exists
+      // inside a real Astro build, so a plain vitest process cannot resolve it.
+      // Point it at a test-only no-op stub so components that import it stay
+      // loadable in tests. Production code still imports the real module.
+      'astro:transitions/client': path.resolve(
+        __dirname,
+        './src/test/astro-transitions-client-stub.ts',
+      ),
+    },
     css: { modules: { classNameStrategy: 'non-scoped' } },
     exclude: [
       '**/node_modules/**',

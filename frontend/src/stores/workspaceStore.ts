@@ -4,6 +4,8 @@ import type { Workspace } from '@/types/workspace';
 import type { CreateWorkspaceParams, UpdateWorkspaceParams } from '@/schemas';
 import * as api from '@/lib/workspace-api';
 import { useProjectStore } from '@/stores/projectStore';
+import { useStoryStore } from '@/stores/storyStore';
+import { useTaskStore } from '@/stores/taskStore';
 import { createInflightTracker } from '@/stores/_inflight';
 
 // Dedupe of inflight fetchWorkspaces calls. Astro View Transitions may remount
@@ -34,6 +36,35 @@ interface WorkspaceState {
   getById: (id: string) => Workspace | undefined;
 }
 
+type WorkspaceSetter = (partial: Partial<WorkspaceState>) => void;
+
+/**
+ * Drop every workspace-scoped slice of the switching stores.
+ *
+ * `taskStore.tasks` (keyed by storyId) and `taskStore.allowedTransitions` (keyed by
+ * taskId) are deliberately kept: both are refetched per story and clearing them would
+ * blank an open story view mid-visit. `workspaceTasks` and `extractions` are
+ * workspace-scoped and must never survive a switch, so they are dropped by
+ * `taskStore.setScopeWorkspace`, which also moves the store's workspace scope and
+ * thereby invalidates any inflight continuation from the workspace being left.
+ */
+function clearWorkspaceScopedState(workspaceId: string | null): void {
+  useProjectStore.getState().reset();
+  useStoryStore.getState().reset();
+  useTaskStore.getState().setScopeWorkspace(workspaceId);
+}
+
+/**
+ * Make `next` the current workspace and load its projects.
+ * The single entry point for an actual workspace change: it clears the previous
+ * workspace's slices before the new fetch resolves, so no stale data can leak.
+ */
+function switchWorkspace(set: WorkspaceSetter, next: Workspace | null): void {
+  set({ currentWorkspace: next });
+  clearWorkspaceScopedState(next?.id ?? null);
+  useProjectStore.getState().fetchProjects();
+}
+
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set, get) => ({
@@ -48,18 +79,19 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         try {
           const response = await workspacesInflight.run('workspaces', () => api.listWorkspaces());
           const workspaces = response.workspaces;
-          set((state) => {
-            // Auto-select the first workspace if none is currently selected.
-            // Hydrate from persisted workspace.id if the workspace still exists.
-            const persisted = state.currentWorkspace;
-            const match = persisted && workspaces.find((w) => w.id === persisted.id);
-            return {
-              workspaces,
-              loading: true,
-              currentWorkspace: match ?? (workspaces.length > 0 ? workspaces[0] : null),
-            };
-          });
-          // Fetch projects for the (possibly auto-selected) workspace
+          // Auto-select the first workspace if none is currently selected.
+          // Hydrate from persisted workspace.id if the workspace still exists.
+          const persisted = get().currentWorkspace;
+          const match = persisted && workspaces.find((w) => w.id === persisted.id);
+          const nextWorkspace = match ?? (workspaces.length > 0 ? workspaces[0] : null);
+          set({ workspaces, loading: true, currentWorkspace: nextWorkspace });
+          if ((nextWorkspace?.id ?? null) !== (persisted?.id ?? null)) {
+            // Hydration landed on a different workspace: drop the previous one's slices.
+            clearWorkspaceScopedState(nextWorkspace?.id ?? null);
+          }
+          // Fetch projects for the (possibly auto-selected) workspace. This is the
+          // only projects request here — it dedupes on `projects:{wsId}` when the
+          // id did not change.
           useProjectStore.getState().fetchProjects();
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Failed to fetch workspaces';
@@ -68,8 +100,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       },
 
       setCurrentWorkspace: (workspace) => {
-        set({ currentWorkspace: workspace });
-        useProjectStore.getState().fetchProjects();
+        if (get().currentWorkspace?.id === workspace.id) {
+          // Same workspace (e.g. a rename): refresh the cached metadata, never wipe data.
+          set({ currentWorkspace: workspace });
+          useProjectStore.getState().fetchProjects();
+          return;
+        }
+        switchWorkspace(set, workspace);
       },
 
       createWorkspace: async (params) => {
@@ -78,10 +115,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           const workspace = await api.createWorkspace(params);
           set((state) => ({
             workspaces: [...state.workspaces, workspace],
-            currentWorkspace: workspace,
             saving: false,
           }));
-          useProjectStore.getState().fetchProjects();
+          switchWorkspace(set, workspace);
           return workspace;
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Failed to create workspace';
@@ -111,16 +147,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set({ saving: true, error: null });
         try {
           await api.deleteWorkspace(id);
-          set((state) => {
-            const workspaces = state.workspaces.filter((w) => w.id !== id);
-            const currentWorkspace =
-              state.currentWorkspace?.id === id
-                ? workspaces.length > 0
-                  ? workspaces[0]
-                  : null
-                : state.currentWorkspace;
-            return { workspaces, currentWorkspace, saving: false };
-          });
+          const wasCurrent = get().currentWorkspace?.id === id;
+          const workspaces = get().workspaces.filter((w) => w.id !== id);
+          set({ workspaces, saving: false });
+          if (wasCurrent) {
+            // Route the replacement through the same switch so projects are not stale.
+            switchWorkspace(set, workspaces.length > 0 ? workspaces[0] : null);
+          }
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Failed to delete workspace';
           set({ error: message, saving: false });

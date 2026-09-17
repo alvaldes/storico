@@ -3,7 +3,15 @@ import { getAllowedTaskTransitions, type Task, type TaskStatus } from '@/types/t
 import type { UserStory, UserStoryStatus } from '@/types/story';
 import * as api from '@/lib/tasks-api';
 import { ApiRequestError, type RawBackendError } from '@/lib/api';
+import { isScopedWorkspace, setScopedWorkspaceId } from '@/lib/workspace-scope';
 import { useStoryStore } from '@/stores/storyStore';
+
+// Monotonic token of the newest fetchTasksForWorkspace call. Two workspace fetches can
+// settle out of order and only the newest one may write the workspace-scoped slices.
+// The workspace scope itself — which workspace those slices belong to — lives in
+// `@/lib/workspace-scope`, so every guard here reads the same value as the switch that
+// moved it instead of keeping a second copy that could disagree.
+let workspaceTasksRequestSeq = 0;
 
 // ── Types ──
 
@@ -43,6 +51,17 @@ export interface TaskState {
   /** Poll extraction status until completion or failure. */
   pollExtraction: (storyId: string, workspaceId: string, extractionId: string) => Promise<void>;
   fetchTasksForWorkspace: (workspaceId: string) => Promise<void>;
+  /**
+   * Point the workspace-scoped slices at `workspaceId` and drop them.
+   * The single place a switch resets `workspaceTasks` and `extractions`: a switch must never
+   * leave the previous workspace's data behind, and the scope must move with the drop so
+   * an inflight continuation can tell that it was discarded. `null` means "no workspace
+   * remains".
+   *
+   * Not the only writer of `extractions`: `resetExtraction` still writes an all-null `idle`
+   * entry for a single story id (invisible residue, never previous-workspace data).
+   */
+  setScopeWorkspace: (workspaceId: string | null) => void;
   setTasks: (storyId: string, tasks: Task[]) => void;
   /**
    * Optimistic PUT update with rollback.
@@ -137,6 +156,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   // ── Async extraction ──
 
   extractTasks: async (storyId: string, workspaceId: string) => {
+    // The request is tagged with its workspace, so a call that is already stale — a
+    // component the user just left — must not even mark the story as pending: that entry
+    // would survive the switch with no poll to ever settle it.
+    if (!isScopedWorkspace(workspaceId)) return;
+
     // Mark extraction as pending
     set((state) => ({
       extractions: {
@@ -153,6 +177,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
     try {
       const result = await api.startExtraction(storyId, workspaceId);
+
+      // The POST may land after the workspace it belongs to was discarded. Writing the
+      // extraction id now would resurrect that departed workspace's entry as `pending` in
+      // the new workspace, and starting a poll for it would keep the ghost alive.
+      if (!isScopedWorkspace(workspaceId)) return;
+
       // Store the extraction ID and start polling
       set((state) => ({
         extractions: {
@@ -170,6 +200,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       // Start polling in the background
       get().pollExtraction(storyId, workspaceId, result.extractionId);
     } catch (err) {
+      // A failure of the discarded workspace's extraction must not leave an entry behind
+      // in the new workspace's slices either.
+      if (!isScopedWorkspace(workspaceId)) return;
       const errorInfo = extractExtractionErrorInfo(err);
       const errorCode = categorizeExtractionError(err);
       // A 401 is an auth failure, not an extraction failure: the store must
@@ -192,12 +225,18 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   pollExtraction: async (storyId: string, workspaceId: string, extractionId: string) => {
+    // Every write below belongs to the workspace this poll started in. When that
+    // workspace was discarded meanwhile, the continuation must not land on the new
+    // workspace's slices. The scope check is read fresh right before each write.
+    const scopeCurrent = () => isScopedWorkspace(workspaceId);
     try {
       const status = await api.getExtractionStatus(extractionId);
 
       if (status.status === 'completed') {
-        // Fetch the tasks
+        // Fetch the tasks. `tasks` is story-keyed and deliberately survives a switch,
+        // so this refresh stays as it is; it writes no workspace-scoped slice.
         await get().fetchTasks(storyId);
+        if (!scopeCurrent()) return;
         // Refresh the workspace-wide cache so KanbanBoard / ExportPanel reflect newly-created tasks.
         if (workspaceId) {
           try {
@@ -206,6 +245,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             /* workspaceTasks is best-effort; per-story fetch already succeeded */
           }
         }
+        // Re-checked after the await above: a switch during it must not resurrect the entry.
+        if (!scopeCurrent()) return;
         set((state) => ({
           extractions: {
             ...state.extractions,
@@ -225,6 +266,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           /* best effort */
         }
       } else if (status.status === 'failed') {
+        if (!scopeCurrent()) return;
         const errorInfo: ExtractionErrorInfo = {
           friendlyMessage: status.errorInfo ?? 'Extraction failed',
           rawDetail: status.errorInfo ?? 'Extraction failed',
@@ -251,6 +293,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         }
       } else {
         // Still pending — poll again after a short delay, update userStoryStatus
+        if (!scopeCurrent()) return;
         set((state) => ({
           extractions: {
             ...state.extractions,
@@ -270,6 +313,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         }, 2000);
       }
     } catch (err) {
+      // A failure of the discarded workspace's poll must not surface on the new one.
+      if (!scopeCurrent()) return;
       const errorInfo = extractExtractionErrorInfo(err);
       const errorCode = categorizeExtractionError(err);
       const unauthorized = errorCode === 'unauthorized';
@@ -290,10 +335,26 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   // ── Workspace tasks ──
 
+  setScopeWorkspace: (workspaceId: string | null) => {
+    // The scope moves first, so an inflight continuation from the workspace being left
+    // already reads the new scope and drops its write; only then are the slices cleared.
+    setScopedWorkspaceId(workspaceId);
+    set({ workspaceTasks: [], extractions: {} });
+  },
+
   fetchTasksForWorkspace: async (workspaceId: string) => {
+    // Claimed before the request starts: this call owns `loading` until it settles.
+    const requestId = ++workspaceTasksRequestSeq;
     set({ loading: true, error: null });
     try {
       const items = await api.listTasksByWorkspace(workspaceId);
+      if (requestId !== workspaceTasksRequestSeq) return;
+      if (!isScopedWorkspace(workspaceId)) {
+        // No newer request exists, so nobody else owns `loading`: release it, but never
+        // apply the discarded workspace's tasks or transitions.
+        set({ loading: false });
+        return;
+      }
       set({ workspaceTasks: items, loading: false });
       // Store allowed transitions
       set((state) => {
@@ -304,6 +365,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         return { allowedTransitions: newTransitions };
       });
     } catch (err) {
+      if (requestId !== workspaceTasksRequestSeq) return;
+      if (!isScopedWorkspace(workspaceId)) {
+        // Same as above: drop the discarded workspace's error along with its data.
+        set({ loading: false });
+        return;
+      }
       const message = err instanceof Error ? err.message : 'Failed to fetch tasks';
       set({ error: message, loading: false });
     }

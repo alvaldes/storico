@@ -13,6 +13,7 @@ import {
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { useStoryStore } from '@/stores/storyStore';
 import { useProjectStore } from '@/stores/projectStore';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
 import type { UserStory } from '@/types/story';
 import { shortUUID } from '@/lib/utils';
 import { StoryForm } from '@/components/react/StoryForm';
@@ -56,6 +57,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
   const t = useTranslations(locale);
   const { projects, fetchProjects } = useProjectStore();
   const { stories, loading, fetchStories, createStory, updateStory, deleteStory } = useStoryStore();
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(initialProjectId);
   const [formOpen, setFormOpen] = useState(false);
   const [editingStory, setEditingStory] = useState<UserStory | null>(null);
@@ -124,14 +126,16 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
     ? t.stories.create_title_with_project.replace('{projectName}', selectedProjectName)
     : t.stories.create_title;
 
-  // Sync selectedProjectId when the prop changes (e.g. Astro View Transitions)
+  // Sync selectedProjectId when the prop changes (e.g. Astro View Transitions), and
+  // reset it when the workspace changes: a project chosen in the previous workspace
+  // must not keep scoping the new workspace's query.
   useEffect(() => {
     setSelectedProjectId(initialProjectId);
-  }, [initialProjectId]);
+  }, [initialProjectId, workspaceId]);
 
   useEffect(() => {
-    fetchStories(selectedProjectId);
-  }, [fetchStories, selectedProjectId]);
+    fetchStories(selectedProjectId, workspaceId);
+  }, [fetchStories, selectedProjectId, workspaceId]);
 
   // Client-side filter: guard against View Transition stale store data.
   // Stories from a previous page survive in the Zustand singleton until

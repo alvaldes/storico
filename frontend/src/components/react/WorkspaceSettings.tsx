@@ -63,6 +63,10 @@ export function WorkspaceSettings({ locale, workspaceId }: WorkspaceSettingsProp
   /* ── Current User ── */
   const currentUser = useAuthStore((s) => s.user);
 
+  /* ── Current Workspace (store view of the same fact) ── */
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
+  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
+
   /* ── Resolve workspaceId from URL (survives View Transitions) ── */
   const [resolvedWsId, setResolvedWsId] = useState(workspaceId);
   // Use resolved URL ID (survives View Transitions) instead of initial prop
@@ -82,6 +86,26 @@ export function WorkspaceSettings({ locale, workspaceId }: WorkspaceSettingsProp
     document.addEventListener('astro:after-swap', onSwap);
     return () => document.removeEventListener('astro:after-swap', onSwap);
   }, []);
+
+  /**
+   * Make the URL id and the store agree instead of disagreeing.
+   *
+   * This page loads its own data from the URL id, while the sidebar, the team
+   * switcher and the store-driven pages read `currentWorkspace`. When the two
+   * disagree (deep link, or the landing right after creating a workspace), adopt
+   * the URL id so the whole app talks about the same workspace.
+   *
+   * No-op when the id is not a workspace the user belongs to (list not loaded yet,
+   * unknown id, or a non-member), and it depends on `workspaces` so it retries once
+   * the membership list arrives. It re-runs only if the id or the current workspace
+   * changes, so it can never loop.
+   */
+  useEffect(() => {
+    if (currentWorkspaceId === wsId) return;
+    const workspace = workspaces.find((w) => w.id === wsId);
+    if (!workspace) return;
+    useWorkspaceStore.getState().setCurrentWorkspace(workspace);
+  }, [wsId, currentWorkspaceId, workspaces]);
 
   /* ── Shared State ── */
   const [loading, setLoading] = useState(true);

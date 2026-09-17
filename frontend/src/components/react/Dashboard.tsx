@@ -16,7 +16,10 @@ export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
   const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([fetchProjects(), fetchStories(currentWorkspace?.id)]).finally(() =>
+    // `fetchStories(projectId, workspaceId)`: the dashboard lists every story of
+    // the current workspace, so the id belongs in the second slot. Passing it as
+    // `projectId` made the API look up a project with a workspace id and fail.
+    Promise.all([fetchProjects(), fetchStories(undefined, currentWorkspace?.id)]).finally(() =>
       setInitialLoading(false),
     );
   }, [fetchProjects, fetchStories, currentWorkspace?.id]);
