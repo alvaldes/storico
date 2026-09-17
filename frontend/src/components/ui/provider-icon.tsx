@@ -1,4 +1,5 @@
 import type { SVGProps } from 'react';
+import { Server } from 'lucide-react';
 import { OllamaDark } from '@/components/ui/svgs/ollamaDark';
 import { OllamaLight } from '@/components/ui/svgs/ollamaLight';
 import { Openai } from '@/components/ui/svgs/openai';
@@ -25,6 +26,6 @@ export function ProviderIcon({ provider, theme, ...props }: ProviderIconProps) {
     case 'gemini':
       return <Gemini {...props} />;
     default:
-      return null;
+      return <Server {...props} />;
   }
 }
