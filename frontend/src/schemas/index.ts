@@ -11,6 +11,7 @@ export {
   transferOwnershipSchema,
   llmConfigSchema,
   promptConfigSchema,
+  customProviderNameSchema,
 } from './workspace';
 export type {
   CreateWorkspaceParams,
@@ -19,4 +20,5 @@ export type {
   TransferOwnershipParams,
   LLMConfigParams,
   PromptConfigParams,
+  CustomProviderNameParams,
 } from './workspace';

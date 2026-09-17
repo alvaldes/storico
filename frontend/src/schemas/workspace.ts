@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { isValidProviderName, normalizeProviderName } from '@/lib/llm-providers';
+
 export const createWorkspaceSchema = z.object({
   name: z.string().min(1, { message: 'Workspace name is required' }).max(255),
   slug: z.string().max(100).optional(),
@@ -37,9 +39,26 @@ export const promptConfigSchema = z.object({
   fewShotThreshold: z.number().min(0).max(1).optional(),
 });
 
+/**
+ * A custom provider name, validated before the round trip.
+ *
+ * The name is normalized the way the backend normalizes it, then checked against the
+ * same slug rule, so a rejected name never costs a request. The backend remains
+ * authoritative — this only spares the user the wait.
+ */
+export const customProviderNameSchema = z.object({
+  name: z
+    .string()
+    .transform((value) => normalizeProviderName(value))
+    .refine((value) => isValidProviderName(value), {
+      message: 'Invalid provider name',
+    }),
+});
+
 export type CreateWorkspaceParams = z.infer<typeof createWorkspaceSchema>;
 export type UpdateWorkspaceParams = z.infer<typeof updateWorkspaceSchema>;
 export type AddMemberParams = z.infer<typeof addMemberSchema>;
 export type TransferOwnershipParams = z.infer<typeof transferOwnershipSchema>;
 export type LLMConfigParams = z.infer<typeof llmConfigSchema>;
 export type PromptConfigParams = z.infer<typeof promptConfigSchema>;
+export type CustomProviderNameParams = z.infer<typeof customProviderNameSchema>;

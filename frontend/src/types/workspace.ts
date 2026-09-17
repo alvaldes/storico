@@ -28,6 +28,14 @@ export interface WorkspaceLLMConfig {
   apiKey?: string | null;
 }
 
+export interface CustomProvider {
+  id: string;
+  workspaceId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WorkspacePrompt {
   systemPrompt?: string | null;
   instructionTemplate?: string | null;
