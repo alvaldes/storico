@@ -2,10 +2,20 @@
 
 Tests must seed the full ``workspace → project → story`` chain plus the caller's
 membership because every route in this module resolves a task's workspace by
-walking ``task → story → project`` and then requires membership in that workspace.
+walking ``task → story → project`` and then requires membership in that
+workspace — ``POST /`` included, which resolves the walk from its ``user_story_id``
+body field before it persists anything.
 """
 
 from uuid import uuid4
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from storico.domain.entities import User
+from storico.infrastructure.database.repositories import (
+    SQLAlchemyTaskRepository,
+    SQLAlchemyUserRepository,
+)
 
 
 class TestCreateTask:
@@ -15,7 +25,9 @@ class TestCreateTask:
         """POST with valid data returns 201 and a TaskResponse body.
 
         The story is seeded rather than a bare ``uuid4()`` so the created task is
-        addressable by the read routes.
+        addressable by the read routes, and because POST walks the same
+        ``story → project → workspace`` chain as the read routes and requires
+        membership before it persists.
         """
         story_id = (await seed_workspace()).story_id
         payload = {
@@ -56,6 +68,93 @@ class TestCreateTask:
         data = response.json()
         assert data["labels"] == ["backend", "api"]
         assert data["dependencies"] == ["US-001"]
+
+    async def test_create_task_is_forbidden_for_a_non_member(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """POST into a workspace the caller is not a member of returns 403.
+
+        The foreign key on ``tasks.user_story_id`` is not an authorization
+        control: the story id alone used to be enough to write a task into
+        someone else's workspace. ``member=False`` keeps the story addressable
+        while withholding exactly the membership the route must require, and the
+        empty repository read afterwards proves nothing was persisted.
+        """
+        story = await seed_workspace(member=False)
+
+        response = await authed_client.post(
+            "/api/v1/tasks/",
+            json={
+                "user_story_id": str(story.story_id),
+                "title": "Injected task",
+                "description": "Written into a workspace the caller cannot reach",
+            },
+        )
+        assert response.status_code == 403
+
+        persisted = await SQLAlchemyTaskRepository(db_session).list_by_story(story.story_id)
+        assert persisted == []
+
+    async def test_create_task_is_forbidden_in_another_users_workspace(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """POST into another user's workspace returns 403, not 201.
+
+        ``seed_workspace(user=other_user)`` builds a fully consistent chain —
+        ``other_user`` really is its admin member — so the only thing between the
+        authenticated caller and a 201 is the membership check on the caller's
+        identity rather than on the story's existence.
+        """
+        other_user = await SQLAlchemyUserRepository(db_session).save(
+            User(email="other@test.com", name="Other Test")
+        )
+        story = await seed_workspace(user=other_user)
+
+        response = await authed_client.post(
+            "/api/v1/tasks/",
+            json={
+                "user_story_id": str(story.story_id),
+                "title": "Cross-tenant task",
+            },
+        )
+        assert response.status_code == 403
+
+        persisted = await SQLAlchemyTaskRepository(db_session).list_by_story(story.story_id)
+        assert persisted == []
+
+    async def test_create_task_rejects_an_unknown_story_id(self, authed_client):
+        """POST with a story id that does not exist returns 404.
+
+        An unknown story is reported as the caller's own head entity
+        (``UserStory``), so the route never reveals which hop of the
+        ``story → project → workspace`` walk failed.
+        """
+        response = await authed_client.post(
+            "/api/v1/tasks/",
+            json={"user_story_id": str(uuid4()), "title": "Orphan task"},
+        )
+        assert response.status_code == 404
+        assert response.json()["type"] == "entity_not_found"
+
+    async def test_create_task_still_succeeds_for_a_member(self, authed_client, seed_workspace):
+        """POST into one's own workspace still returns 201 and reads back.
+
+        The positive pin for the new authorization check: rejecting non-members
+        must not disturb the member path or make the created task unreadable.
+        """
+        story = await seed_workspace()
+
+        response = await authed_client.post(
+            "/api/v1/tasks/",
+            json={"user_story_id": str(story.story_id), "title": "Member task"},
+        )
+        assert response.status_code == 201
+        assert response.json()["title"] == "Member task"
+
+        listed = await authed_client.get(f"/api/v1/tasks/?user_story_id={story.story_id}")
+        assert listed.status_code == 200
+        assert listed.json()["total"] == 1
+        assert listed.json()["items"][0]["title"] == "Member task"
 
 
 class TestListTasks:

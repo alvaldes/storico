@@ -218,8 +218,8 @@ class TestExtractionStatusEndpoint:
     ) -> None:
         """GET returns extraction details for completed extraction."""
         user = await _create_user(db_session)
-        # The extraction hangs off a real story in this workspace rather than a
-        # dangling id, so the seeded chain stays internally consistent.
+        # The status route checks containment as well as membership, so the
+        # extraction must hang off a story that really lives in this workspace.
         seeded = await seed_workspace(user=user)
         ws_id = seeded.workspace_id
         story_id = seeded.story_id
@@ -300,6 +300,69 @@ class TestExtractionStatusEndpoint:
         data = response.json()
         assert data["confidence_score"] == 0.85
         assert data["raw_response"] == "Some response"
+
+    @pytest.mark.asyncio
+    async def test_status_is_forbidden_for_another_workspaces_extraction(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """GET with a path workspace that does not own the extraction returns 403.
+
+        Membership of the workspace in the URL is not containment: without the
+        extra ``story → project → workspace`` check, any member of any workspace
+        could read any extraction by id. Both workspaces below belong to the
+        caller, so only containment separates the request from a 200.
+        """
+        user = await _create_user(db_session)
+        owner = await seed_workspace(user=user)
+        foreign = await seed_workspace(user=user, stories=0)
+        repo = SQLAlchemyExtractionRepository(db_session)
+
+        saved = await repo.save(
+            Extraction(
+                user_story_id=owner.story_id,
+                model_used="llama3.2",
+                raw_response="",
+                status=ExtractionStatus.COMPLETED,
+            )
+        )
+
+        response = await async_client.get(
+            f"/api/v1/workspaces/{foreign.workspace_id}/extract/status/{saved.id}",
+            headers=_auth_headers(str(user.id)),
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_status_still_returns_the_extraction_for_its_own_workspace(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """GET for the workspace that owns the extraction still returns the payload.
+
+        The positive pin for the containment check: it must reject foreign
+        workspaces without disturbing the owning workspace's read path.
+        """
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        repo = SQLAlchemyExtractionRepository(db_session)
+
+        saved = await repo.save(
+            Extraction(
+                user_story_id=seeded.story_id,
+                model_used="llama3.2",
+                raw_response="1. summary: Task one\ndescription: Desc",
+                status=ExtractionStatus.COMPLETED,
+            )
+        )
+
+        response = await async_client.get(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/status/{saved.id}",
+            headers=_auth_headers(str(user.id)),
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(saved.id)
+        assert data["user_story_id"] == str(seeded.story_id)
+        assert data["status"] == "completed"
 
     @pytest.mark.asyncio
     async def test_status_not_found(

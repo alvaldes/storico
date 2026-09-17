@@ -10,7 +10,7 @@ from fastapi import Depends, HTTPException, Path, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.config.settings import get_settings
-from storico.domain.entities import User
+from storico.domain.entities import EntityNotFound, User, UserStory
 from storico.domain.entities.workspace import Workspace
 from storico.domain.entities.workspace_member import WorkspaceRole
 from storico.domain.ports import EmbeddingPort, UserRepository, VectorStorePort
@@ -18,7 +18,9 @@ from storico.domain.ports.workspace_member_repository import WorkspaceMemberRepo
 from storico.domain.ports.workspace_repository import WorkspaceRepository
 from storico.infrastructure.cache.user_cache import get_cached_user, set_cached_user
 from storico.infrastructure.database.repositories import (
+    SQLAlchemyProjectRepository,
     SQLAlchemyUserRepository,
+    SQLAlchemyUserStoryRepository,
 )
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
@@ -231,3 +233,38 @@ async def require_owner(
             detail="Only the workspace owner can perform this action",
         )
     return workspace
+
+
+async def require_story_workspace_access(
+    story_id: UUID,
+    current_user: User,
+    *,
+    story_repo: SQLAlchemyUserStoryRepository,
+    project_repo: SQLAlchemyProjectRepository,
+    member_repo: SQLAlchemyWorkspaceMemberRepository,
+    reported_as: tuple[str, UUID] | None = None,
+) -> UserStory:
+    """Resolve a story's workspace and require the caller to be a member of it.
+
+    The story -> project -> workspace walk that every task, story and extraction route
+    needs. Every failure is reported as a miss of the *caller's* head entity
+    (``reported_as``), so a route never tells the caller whether the story, its project,
+    or their own membership was the problem.
+
+    Raises ``EntityNotFound`` (404) for a missing story or project and ``HTTPException``
+    (403) for a missing membership.
+    """
+    label, report_id = reported_as or ("UserStory", story_id)
+    story = await story_repo.find_by_id(story_id)
+    if story is None:
+        raise EntityNotFound(label, str(report_id))
+    project = await project_repo.find_by_id(story.project_id)
+    if project is None:
+        raise EntityNotFound(label, str(report_id))
+    member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of this workspace",
+        )
+    return story

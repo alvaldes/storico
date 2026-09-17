@@ -6,7 +6,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from storico.api.dependencies import get_current_user, get_repository
+from storico.api.dependencies import (
+    get_current_user,
+    get_repository,
+    require_story_workspace_access,
+)
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.story import (
     CreateUserStoryRequest,
@@ -40,38 +44,6 @@ MemberRepoDep = Annotated[
 ]
 
 
-async def _validate_story_workspace_access(
-    story_id: UUID,
-    current_user: User,
-    story_repo: SQLAlchemyUserStoryRepository,
-    project_repo: SQLAlchemyProjectRepository,
-    member_repo: SQLAlchemyWorkspaceMemberRepository,
-) -> UserStory:
-    """Find a story and verify the user has access to its workspace.
-
-    Returns the story if access is granted. Raises 404 or 403 otherwise.
-    """
-    story = await story_repo.find_by_id(story_id)
-    if story is None:
-        raise EntityNotFound("UserStory", str(story_id))
-
-    project = await project_repo.find_by_id(story.project_id)
-    if project is None:
-        raise EntityNotFound("UserStory", str(story_id))
-
-    member = await member_repo.find_by_workspace_and_user(
-        project.workspace_id, current_user.id
-    )
-    if member is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not a member of this workspace",
-        )
-    return story
-
-
-from storico.domain.entities import DuplicateEntity
-
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_story(
     body: CreateUserStoryRequest,
@@ -90,9 +62,7 @@ async def create_story(
     if project is None:
         raise EntityNotFound("Project", str(body.project_id))
 
-    member = await member_repo.find_by_workspace_and_user(
-        project.workspace_id, current_user.id
-    )
+    member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
     if member is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -223,8 +193,12 @@ async def get_story(
 
     The user must be a member of the workspace that owns the story's project.
     """
-    story = await _validate_story_workspace_access(
-        story_id, current_user, repo, project_repo, member_repo
+    story = await require_story_workspace_access(
+        story_id,
+        current_user,
+        story_repo=repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
     )
     return UserStoryResponse(
         id=story.id,
@@ -251,8 +225,12 @@ async def update_story(
 
     The user must be a member of the workspace that owns the story's project.
     """
-    existing = await _validate_story_workspace_access(
-        story_id, current_user, repo, project_repo, member_repo
+    existing = await require_story_workspace_access(
+        story_id,
+        current_user,
+        story_repo=repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
     )
 
     kwargs: dict = {}
@@ -291,7 +269,11 @@ async def delete_story(
 
     The user must be a member of the workspace that owns the story's project.
     """
-    await _validate_story_workspace_access(
-        story_id, current_user, repo, project_repo, member_repo
+    await require_story_workspace_access(
+        story_id,
+        current_user,
+        story_repo=repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
     )
     await repo.delete(story_id)
