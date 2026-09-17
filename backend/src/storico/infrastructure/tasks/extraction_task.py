@@ -32,7 +32,7 @@ from storico.domain.entities import Extraction, Task
 from storico.domain.entities.exceptions import LLMError, ParseError
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
-from storico.domain.ports import LLMConfig, VectorStorePort
+from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
 from storico.domain.services.extraction_judge_service import LLMJudgeService
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.infrastructure.database.base import create_session_factory, get_engine
@@ -90,7 +90,10 @@ async def run_background_extraction(
         model: LLM model name (e.g. ``gemini-2.0-flash``, ``llama3.2``).
         temperature: Generation temperature (default: 0.1).
         validate: Whether to run LLM-as-a-Judge validation.
-        provider: ``"ollama"``, ``"gemini"``, ``"openai"``, or ``"anthropic"``.
+        provider: Workspace provider name.  ``"ollama"``, ``"gemini"``,
+            ``"openai"``, and ``"anthropic"`` have dedicated adapters; any
+            other name is a workspace-defined custom provider served by an
+            OpenAI-compatible endpoint.
         api_key: API key for cloud providers (Gemini, OpenAI, Anthropic).
         base_url: Base URL override for the provider (Ollama, OpenAI-compatible).
         max_retries: Number of retry attempts on transient errors.
@@ -188,6 +191,71 @@ async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
 
 # ── Internal extraction logic ─────────────────────────────────────
 
+# Sent when a custom provider has no stored key. ``AsyncOpenAI`` rejects an
+# empty key with ``OpenAIError("Missing credentials…")``, and ``None`` would
+# let the SDK fall back to an ambient ``OPENAI_API_KEY`` — which would break
+# the workspace-config-only credential rule enforced at this call site.
+_CUSTOM_PROVIDER_PLACEHOLDER_KEY = "no-key-required"
+
+
+def _build_llm_port(
+    provider: str,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    ollama_host: str = "http://localhost:11434",
+) -> LLMPort:
+    """Select the LLM adapter for a workspace-configured provider.
+
+    Kept pure and synchronous so provider routing is testable without a
+    database session or an event loop, and taking ``ollama_host`` as an
+    argument rather than reading ``Settings`` here for the same reason.
+
+    Args:
+        provider: Workspace provider name.  Anything outside the four known
+            names is a custom provider, which the settings UI can only
+            configure against an OpenAI-compatible endpoint.
+        api_key: API key from the workspace config.
+        base_url: Base URL from the workspace config.
+        ollama_host: Ollama server URL used when no override is configured.
+
+    Returns:
+        Adapter bound to the workspace's endpoint.
+
+    Raises:
+        LLMError: If the selected provider is missing workspace-provided
+            credentials, or a custom provider has no base URL to call.
+    """
+    if provider == "gemini":
+        if not api_key:
+            raise LLMError(
+                "Gemini API key is not configured for this workspace. "
+                "Set it in Workspace Settings before extracting."
+            )
+        return GeminiAdapter(api_key=api_key)
+    if provider == "openai":
+        if not api_key:
+            raise LLMError(
+                "OpenAI API key is not configured for this workspace. "
+                "Set it in Workspace Settings before extracting."
+            )
+        return OpenAIAdapter(api_key=api_key, base_url=base_url)
+    if provider == "anthropic":
+        if not api_key:
+            raise LLMError(
+                "Anthropic API key is not configured for this workspace. "
+                "Set it in Workspace Settings before extracting."
+            )
+        return AnthropicAdapter(api_key=api_key, base_url=base_url)
+    if provider == "ollama":
+        return OllamaAdapter(base_url=base_url or ollama_host)
+
+    if not base_url:
+        raise LLMError(
+            f"Base URL is not configured for the custom provider '{provider}'. "
+            "Set it in Workspace Settings before extracting."
+        )
+    return OpenAIAdapter(api_key=api_key or _CUSTOM_PROVIDER_PLACEHOLDER_KEY, base_url=base_url)
+
 
 async def _run_extraction(
     extraction_id: UUID,
@@ -243,30 +311,7 @@ async def _run_extraction(
             logger.info("UserStory %s transitioned to EXTRACTING", story_id)
 
         # LLM adapter — API key MUST come from workspace config, not env
-        if provider == "gemini":
-            if not api_key:
-                raise LLMError(
-                    "Gemini API key is not configured for this workspace. "
-                    "Set it in Workspace Settings before extracting."
-                )
-            llm_port = GeminiAdapter(api_key=api_key)
-        elif provider == "openai":
-            if not api_key:
-                raise LLMError(
-                    "OpenAI API key is not configured for this workspace. "
-                    "Set it in Workspace Settings before extracting."
-                )
-            llm_port = OpenAIAdapter(api_key=api_key, base_url=base_url)
-        elif provider == "anthropic":
-            if not api_key:
-                raise LLMError(
-                    "Anthropic API key is not configured for this workspace. "
-                    "Set it in Workspace Settings before extracting."
-                )
-            llm_port = AnthropicAdapter(api_key=api_key, base_url=base_url)
-        else:
-            url = base_url or settings.ollama_host
-            llm_port = OllamaAdapter(base_url=url)
+        llm_port = _build_llm_port(provider, api_key, base_url, settings.ollama_host)
 
         prompt_manager = PromptManager()
         task_parser = TaskParser()
