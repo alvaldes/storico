@@ -1,3 +1,4 @@
+from storico.domain.entities.custom_provider import CustomProvider
 from storico.domain.entities.exceptions import (
     CannotRemoveOwnerError,
     DuplicateEntity,
@@ -56,4 +57,5 @@ __all__ = [
     "WorkspaceRole",
     "WorkspaceLLMConfig",
     "WorkspacePrompt",
+    "CustomProvider",
 ]

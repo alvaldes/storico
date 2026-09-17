@@ -1,4 +1,5 @@
 from storico.domain.entities.few_shot import FewShotExample
+from storico.domain.ports.custom_provider_repository import CustomProviderRepository
 from storico.domain.ports.embedding_port import EmbeddingPort
 from storico.domain.ports.extraction_repository import ExtractionRepository
 from storico.domain.ports.llm_port import ExtractionResult, LLMConfig, LLMPort, ParsedTask
@@ -38,4 +39,5 @@ __all__ = [
     "WorkspaceMemberRepository",
     "WorkspaceLLMConfigRepository",
     "WorkspacePromptRepository",
+    "CustomProviderRepository",
 ]

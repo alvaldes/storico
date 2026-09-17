@@ -1,5 +1,8 @@
 """Repository implementations — re-export all SQLAlchemy repository classes."""
 
+from storico.infrastructure.database.repositories.custom_provider_repository import (
+    SQLAlchemyCustomProviderRepository,
+)
 from storico.infrastructure.database.repositories.extraction_repository import (
     SQLAlchemyExtractionRepository,
 )
@@ -42,4 +45,5 @@ __all__ = [
     "SQLAlchemyWorkspaceMemberRepository",
     "SQLAlchemyWorkspaceLLMConfigRepository",
     "SQLAlchemyWorkspacePromptRepository",
+    "SQLAlchemyCustomProviderRepository",
 ]

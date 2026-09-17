@@ -1,6 +1,7 @@
 """ORM models — re-export Base and all models for Alembic metadata registration."""
 
 from storico.infrastructure.database.models.base import Base
+from storico.infrastructure.database.models.custom_provider import CustomProviderModel
 from storico.infrastructure.database.models.extraction import ExtractionModel
 from storico.infrastructure.database.models.project import ProjectModel
 from storico.infrastructure.database.models.task import TaskModel
@@ -34,4 +35,5 @@ __all__ = [
     "WorkspaceMemberModel",
     "WorkspaceLLMConfigModel",
     "WorkspacePromptModel",
+    "CustomProviderModel",
 ]
