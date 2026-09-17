@@ -9,6 +9,8 @@ import {
   RotateCw,
   CircleHelp,
   TriangleAlert,
+  Plus,
+  Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getLLMConfig, upsertLLMConfig, fetchAvailableModels } from '@/lib/llm-config-api';
@@ -35,6 +37,15 @@ import type { WorkspaceLLMConfig, WorkspacePrompt } from '@/types/workspace';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 
+/** Providers with first-class support (known model-fetch endpoints). */
+const KNOWN_PROVIDERS = ['ollama', 'openai', 'anthropic', 'gemini'] as const;
+
+type KnownProvider = (typeof KNOWN_PROVIDERS)[number];
+
+function isKnownProvider(p: string): p is KnownProvider {
+  return (KNOWN_PROVIDERS as readonly string[]).includes(p);
+}
+
 interface LLMConfigEditorProps {
   locale: 'en' | 'es';
   workspaceId: string;
@@ -53,6 +64,8 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     baseUrl: 'http://localhost:11434',
     apiKey: '',
   });
+  const [isCustomProvider, setIsCustomProvider] = useState(false);
+  const [customProviderName, setCustomProviderName] = useState('');
   const [llmSaving, setLlmSaving] = useState(false);
   const [llmSaveResult, setLlmSaveResult] = useState<'idle' | 'success' | 'error'>('idle');
 
@@ -104,14 +117,19 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
       ]);
 
       if (llm) {
+        const loadedProvider = llm.provider || 'ollama';
         setLlmConfig({
-          provider: llm.provider || 'ollama',
+          provider: loadedProvider,
           model: llm.model ?? '',
           temperature: llm.temperature ?? 0.1,
           maxTokens: llm.maxTokens ?? 2048,
           baseUrl: llm.baseUrl ?? 'http://localhost:11434',
           apiKey: llm.apiKey ?? '',
         });
+        if (!isKnownProvider(loadedProvider)) {
+          setIsCustomProvider(true);
+          setCustomProviderName(loadedProvider);
+        }
       }
       if (promptData) {
         setPrompts({
@@ -295,151 +313,255 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               <FieldLabel htmlFor="llm-provider">
                 {t.settings?.llm_provider ?? 'Provider'}
               </FieldLabel>
-              <Select
-                value={llmConfig.provider}
-                onValueChange={(val) => {
-                  if (val === null) return;
-                  setLlmConfig((prev) => ({
-                    ...prev,
-                    provider: val,
-                    model: '',
-                    apiKey: '',
-                    baseUrl: val === 'ollama' ? 'http://localhost:11434' : '',
-                  }));
-                }}
-              >
-                <SelectTrigger id="llm-provider" className="w-full">
-                  <div className="flex items-center gap-2">
-                    <ProviderIcon
-                      provider={llmConfig.provider}
-                      theme={resolvedTheme}
-                      className="h-4 w-4 shrink-0"
-                    />
-                    <span>
-                      {llmConfig.provider === 'ollama'
-                        ? (t.settings?.llm_provider_ollama ?? 'Ollama (Local)')
-                        : llmConfig.provider === 'openai'
-                          ? (t.settings?.llm_provider_openai ?? 'OpenAI')
-                          : llmConfig.provider === 'gemini'
-                            ? (t.settings?.llm_provider_gemini ?? 'Gemini')
-                            : (t.settings?.llm_provider_anthropic ?? 'Anthropic')}
-                    </span>
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ollama">
-                    <ProviderIcon
-                      provider="ollama"
-                      theme={resolvedTheme}
-                      className="mr-2 h-4 w-4 shrink-0"
-                    />
-                    {t.settings?.llm_provider_ollama ?? 'Ollama (Local)'}
-                  </SelectItem>
-                  <SelectItem value="openai">
-                    <ProviderIcon
-                      provider="openai"
-                      theme={resolvedTheme}
-                      className="mr-2 h-4 w-4 shrink-0"
-                    />
-                    {t.settings?.llm_provider_openai ?? 'OpenAI'}
-                  </SelectItem>
-                  <SelectItem value="anthropic">
-                    <ProviderIcon
-                      provider="anthropic"
-                      theme={resolvedTheme}
-                      className="mr-2 h-4 w-4 shrink-0"
-                    />
-                    {t.settings?.llm_provider_anthropic ?? 'Anthropic'}
-                  </SelectItem>
-                  <SelectItem value="gemini">
-                    <ProviderIcon
-                      provider="gemini"
-                      theme={resolvedTheme}
-                      className="mr-2 h-4 w-4 shrink-0"
-                    />
-                    {t.settings?.llm_provider_gemini ?? 'Gemini'}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <FieldDescription>
-                {t.workspace?.llmProviderDesc ?? 'The AI model provider for task extraction.'}
-              </FieldDescription>
-            </Field>
-
-            {/* Model — Combobox with auto-populated suggestions */}
-            <Field>
-              <FieldLabel htmlFor="llm-model">{t.settings?.llm_ollama_model ?? 'Model'}</FieldLabel>
               <div className="flex items-start gap-2">
                 <div className="flex-1">
-                  <Combobox
-                    key={`model-${llmConfig.provider}`}
-                    // Controlled on the persisted model id: without `value` the input starts
-                    // empty, so the field only ever shows its placeholder and the saved
-                    // model stays invisible until the user re-picks it from the list.
-                    value={llmConfig.model || null}
-                    onValueChange={(val) => {
-                      if (val !== null && val !== undefined) {
+                  {isCustomProvider ? (
+                    /* Custom provider — free text input */
+                    <Input
+                      id="llm-provider"
+                      type="text"
+                      value={customProviderName}
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        setCustomProviderName(name);
                         setLlmConfig((prev) => ({
                           ...prev,
-                          model: String(val),
+                          provider: name,
+                          model: '',
+                          apiKey: '',
+                          baseUrl: '',
                         }));
+                      }}
+                      placeholder={
+                        t.workspace?.llmCustomProviderPlaceholder ??
+                        'e.g. together, deepseek, groq'
                       }
-                    }}
-                  >
-                    <ComboboxInput
-                      id="llm-model"
-                      disabled={llmConfig.provider !== 'ollama' && !llmConfig.apiKey}
-                      // `readOnly` rides on the input element, not on the combobox root:
-                      // the root would also lock the list selection, while the DOM
-                      // attribute only removes typing. base-ui commits a model solely
-                      // through `onValueChange`, so typed text would show up in the field
-                      // and then revert on blur — a field that looks editable and is not.
-                      readOnly
-                      // No provider default here: any model name in the placeholder reads
-                      // as a model that is already chosen.
-                      placeholder={t.settings?.llm_model_placeholder ?? 'Select a model'}
                     />
-                    {/* The input text is the model id — the value that gets saved; the
-                        list renders each model's friendly `name` instead. */}
-                    <ComboboxContent>
-                      <ComboboxList>
-                        {availableModels.map((m) => (
-                          <ComboboxItem key={m.id} value={m.id}>
-                            {m.name}
-                          </ComboboxItem>
-                        ))}
-                      </ComboboxList>
-                      {modelsLoading ? (
-                        <ComboboxEmpty>
-                          {t.workspace?.llmModelsLoading ?? 'Loading models...'}
-                        </ComboboxEmpty>
-                      ) : availableModels.length === 0 ? (
-                        <ComboboxEmpty>{modelsError ? modelsError : noModelsMessage}</ComboboxEmpty>
-                      ) : null}
-                    </ComboboxContent>
-                  </Combobox>
+                  ) : (
+                    /* Known providers — select dropdown */
+                    <Select
+                      value={llmConfig.provider}
+                      onValueChange={(val) => {
+                        if (val === null) return;
+                        setLlmConfig((prev) => ({
+                          ...prev,
+                          provider: val,
+                          model: '',
+                          apiKey: '',
+                          baseUrl: val === 'ollama' ? 'http://localhost:11434' : '',
+                        }));
+                      }}
+                    >
+                      <SelectTrigger id="llm-provider" className="w-full">
+                        <div className="flex items-center gap-2">
+                          <ProviderIcon
+                            provider={llmConfig.provider}
+                            theme={resolvedTheme}
+                            className="h-4 w-4 shrink-0"
+                          />
+                          <span>
+                            {llmConfig.provider === 'ollama'
+                              ? (t.settings?.llm_provider_ollama ?? 'Ollama (Local)')
+                              : llmConfig.provider === 'openai'
+                                ? (t.settings?.llm_provider_openai ?? 'OpenAI')
+                                : llmConfig.provider === 'gemini'
+                                  ? (t.settings?.llm_provider_gemini ?? 'Gemini')
+                                  : (t.settings?.llm_provider_anthropic ?? 'Anthropic')}
+                          </span>
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ollama">
+                          <ProviderIcon
+                            provider="ollama"
+                            theme={resolvedTheme}
+                            className="mr-2 h-4 w-4 shrink-0"
+                          />
+                          {t.settings?.llm_provider_ollama ?? 'Ollama (Local)'}
+                        </SelectItem>
+                        <SelectItem value="openai">
+                          <ProviderIcon
+                            provider="openai"
+                            theme={resolvedTheme}
+                            className="mr-2 h-4 w-4 shrink-0"
+                          />
+                          {t.settings?.llm_provider_openai ?? 'OpenAI'}
+                        </SelectItem>
+                        <SelectItem value="anthropic">
+                          <ProviderIcon
+                            provider="anthropic"
+                            theme={resolvedTheme}
+                            className="mr-2 h-4 w-4 shrink-0"
+                          />
+                          {t.settings?.llm_provider_anthropic ?? 'Anthropic'}
+                        </SelectItem>
+                        <SelectItem value="gemini">
+                          <ProviderIcon
+                            provider="gemini"
+                            theme={resolvedTheme}
+                            className="mr-2 h-4 w-4 shrink-0"
+                          />
+                          {t.settings?.llm_provider_gemini ?? 'Gemini'}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
+                {/* Toggle between known/custom provider */}
                 <div className="relative">
                   <Button
                     type="button"
                     variant="outline"
                     size="icon"
-                    onClick={loadModels}
-                    disabled={
-                      modelsLoading || (llmConfig.provider !== 'ollama' && !llmConfig.apiKey)
-                    }
                     title={
-                      llmConfig.provider !== 'ollama' && !llmConfig.apiKey
-                        ? (t.workspace?.llmModelsNoApiKey ?? 'Add your API key first')
-                        : (t.workspace?.llmRefreshModels ?? 'Refresh models')
+                      isCustomProvider
+                        ? (t.workspace?.llmUseKnownProvider ?? 'Choose a known provider')
+                        : (t.workspace?.llmAddCustomProvider ?? 'Add custom provider')
                     }
+                    onClick={() => {
+                      if (isCustomProvider) {
+                        // Switch back to a known provider (default: ollama)
+                        setIsCustomProvider(false);
+                        setCustomProviderName('');
+                        setLlmConfig((prev) => ({
+                          ...prev,
+                          provider: 'ollama',
+                          model: '',
+                          apiKey: '',
+                          baseUrl: 'http://localhost:11434',
+                        }));
+                      } else {
+                        // Enter custom provider mode
+                        setIsCustomProvider(true);
+                        setCustomProviderName('');
+                        setLlmConfig((prev) => ({
+                          ...prev,
+                          provider: '',
+                          model: '',
+                          apiKey: '',
+                          baseUrl: '',
+                        }));
+                      }
+                    }}
                   >
-                    <RotateCw className={`h-4 w-4 ${modelsLoading ? 'animate-spin' : ''}`} />
+                    {isCustomProvider ? (
+                      <Pencil className="h-4 w-4" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </div>
               <FieldDescription>
-                {modelsError ? (
+                {isCustomProvider
+                  ? (t.workspace?.llmCustomProviderDesc ??
+                     'Enter the provider name. You will need to set the Base URL and API Key manually.')
+                  : (t.workspace?.llmProviderDesc ?? 'The AI model provider for task extraction.')}
+              </FieldDescription>
+            </Field>
+
+            {/* Model — Combobox for known providers, free Input for custom */}
+            <Field>
+              <FieldLabel htmlFor="llm-model">{t.settings?.llm_ollama_model ?? 'Model'}</FieldLabel>
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  {isCustomProvider ? (
+                    /* Custom provider — free text input for model name */
+                    <Input
+                      id="llm-model"
+                      type="text"
+                      value={llmConfig.model ?? ''}
+                      onChange={(e) =>
+                        setLlmConfig((prev) => ({
+                          ...prev,
+                          model: e.target.value,
+                        }))
+                      }
+                      placeholder={
+                        t.workspace?.llmCustomModelPlaceholder ??
+                        'e.g. deepseek-chat, groq-llama-3.3-70b'
+                      }
+                    />
+                  ) : (
+                    /* Known providers — Combobox with auto-populated suggestions */
+                    <Combobox
+                      key={`model-${llmConfig.provider}`}
+                      // Controlled on the persisted model id: without `value` the input starts
+                      // empty, so the field only ever shows its placeholder and the saved
+                      // model stays invisible until the user re-picks it from the list.
+                      value={llmConfig.model || null}
+                      onValueChange={(val) => {
+                        if (val !== null && val !== undefined) {
+                          setLlmConfig((prev) => ({
+                            ...prev,
+                            model: String(val),
+                          }));
+                        }
+                      }}
+                    >
+                      <ComboboxInput
+                        id="llm-model"
+                        disabled={llmConfig.provider !== 'ollama' && !llmConfig.apiKey}
+                        // `readOnly` rides on the input element, not on the combobox root:
+                        // the root would also lock the list selection, while the DOM
+                        // attribute only removes typing. base-ui commits a model solely
+                        // through `onValueChange`, so typed text would show up in the field
+                        // and then revert on blur — a field that looks editable and is not.
+                        readOnly
+                        // No provider default here: any model name in the placeholder reads
+                        // as a model that is already chosen.
+                        placeholder={t.settings?.llm_model_placeholder ?? 'Select a model'}
+                      />
+                      {/* The input text is the model id — the value that gets saved; the
+                          list renders each model's friendly `name` instead. */}
+                      <ComboboxContent>
+                        <ComboboxList>
+                          {availableModels.map((m) => (
+                            <ComboboxItem key={m.id} value={m.id}>
+                              {m.name}
+                            </ComboboxItem>
+                          ))}
+                        </ComboboxList>
+                        {modelsLoading ? (
+                          <ComboboxEmpty>
+                            {t.workspace?.llmModelsLoading ?? 'Loading models...'}
+                          </ComboboxEmpty>
+                        ) : availableModels.length === 0 ? (
+                          <ComboboxEmpty>{modelsError ? modelsError : noModelsMessage}</ComboboxEmpty>
+                        ) : null}
+                      </ComboboxContent>
+                    </Combobox>
+                  )}
+                </div>
+                {!isCustomProvider && (
+                  <div className="relative">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={loadModels}
+                      disabled={
+                        modelsLoading || (llmConfig.provider !== 'ollama' && !llmConfig.apiKey)
+                      }
+                      title={
+                        llmConfig.provider !== 'ollama' && !llmConfig.apiKey
+                          ? (t.workspace?.llmModelsNoApiKey ?? 'Add your API key first')
+                          : (t.workspace?.llmRefreshModels ?? 'Refresh models')
+                      }
+                    >
+                      <RotateCw className={`h-4 w-4 ${modelsLoading ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <FieldDescription>
+                {isCustomProvider ? (
+                  <span className="flex items-center gap-1.5 text-(--color-text-tertiary)">
+                    <CircleHelp className="h-3.5 w-3.5 shrink-0" />
+                    {t.workspace?.llmCustomModelDesc ??
+                      'Type the model identifier exactly as the provider expects it.'}
+                  </span>
+                ) : modelsError ? (
                   <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
                     <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
                     {modelsError}
