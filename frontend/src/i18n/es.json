@@ -408,6 +408,8 @@
     "llmBaseUrlDesc": "La URL donde se ejecuta tu instancia de Ollama.",
     "llmProviderDesc": "El proveedor de modelos de IA para la extracción de tareas.",
     "llmModelDesc": "El nombre del modelo a usar para la extracción de tareas.",
+    "llmModelUseCustom": "Usar \"{model}\"",
+    "llmModelNotInList": "El modelo guardado no aparece en la lista del proveedor.",
     "llmTemperatureDesc": "Valores bajos = salida más consistente. Valores altos = más creativa.",
     "llmMaxTokensDesc": "Cantidad máxima de tokens que el modelo puede generar por respuesta.",
     "llmApiKeyDesc": "Tu API Key para este proveedor. Se almacena encriptada.",

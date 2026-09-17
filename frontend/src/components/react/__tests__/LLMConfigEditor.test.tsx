@@ -220,6 +220,134 @@ describe('LLMConfigEditor model field', () => {
     );
   });
 
+  it('offers the typed model as a pickable option when no listed id matches it', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    const input = await screen.findByLabelText('Model');
+    await waitFor(() => expect(input).toHaveValue('gemini-2.5-flash'));
+
+    await user.clear(input);
+    await user.type(input, 'gemini-3-pro-preview');
+
+    await user.click(await screen.findByRole('option', { name: 'Use "gemini-3-pro-preview"' }));
+    await waitFor(() => expect(input).toHaveValue('gemini-3-pro-preview'));
+
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ model: 'gemini-3-pro-preview' }),
+      ),
+    );
+  });
+
+  it('does not offer the typed value when it already names a listed model', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    const input = await screen.findByLabelText('Model');
+    await waitFor(() => expect(input).toHaveValue('gemini-2.5-flash'));
+
+    await user.clear(input);
+    await user.type(input, 'gemini-2.0-flash');
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('option', { name: 'Use "gemini-2.0-flash"' }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it('still lets you set a model when the provider list is unavailable', async () => {
+    vi.mocked(fetchAvailableModels).mockRejectedValue(new Error('502 Bad Gateway'));
+
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    const input = await screen.findByLabelText('Model');
+    await waitFor(() => expect(input).toHaveValue('gemini-2.5-flash'));
+
+    await user.clear(input);
+    await user.type(input, 'gemini-2.0-flash');
+    await user.click(await screen.findByRole('option', { name: 'Use "gemini-2.0-flash"' }));
+
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ model: 'gemini-2.0-flash' }),
+      ),
+    );
+  });
+
+  it('stops offering the typed value once it has been selected', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    const input = await screen.findByLabelText('Model');
+    await waitFor(() => expect(input).toHaveValue('gemini-2.5-flash'));
+
+    await user.clear(input);
+    await user.type(input, 'gemini-3-pro-preview');
+    await user.click(await screen.findByRole('option', { name: 'Use "gemini-3-pro-preview"' }));
+    await waitFor(() => expect(input).toHaveValue('gemini-3-pro-preview'));
+
+    // Reopening with the committed value must not show it as a candidate again.
+    await user.click(screen.getByRole('button', { expanded: false }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('option', { name: 'Use "gemini-3-pro-preview"' }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it('drops the typed candidate when the provider changes', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    const input = await screen.findByLabelText('Model');
+    await waitFor(() => expect(input).toHaveValue('gemini-2.5-flash'));
+
+    await user.clear(input);
+    await user.type(input, 'gemini-3-pro-preview');
+    await screen.findByRole('option', { name: 'Use "gemini-3-pro-preview"' });
+
+    // The provider field exposes no accessible role name in jsdom, so reach the
+    // trigger through the label the field already points at with `htmlFor`.
+    await user.click(screen.getByLabelText('Provider'));
+    await user.click(await screen.findByRole('option', { name: /Anthropic/ }));
+    // The combobox remounts on provider change, so re-query instead of reusing `input`.
+    await waitFor(() => expect(screen.getByLabelText('Model')).toHaveValue(''));
+
+    // The candidate belonged to the previous provider's list; it must not resurface.
+    await user.click(screen.getByRole('button', { expanded: false }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('option', { name: 'Use "gemini-3-pro-preview"' }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it('warns when the saved model is missing from the provider list', async () => {
+    vi.mocked(fetchAvailableModels).mockResolvedValue([
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    ]);
+
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+
+    expect(
+      await screen.findByText("The saved model is not in the provider's model list."),
+    ).toBeInTheDocument();
+  });
+
+  it('stays quiet when the saved model is in the provider list', async () => {
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    const input = await screen.findByLabelText('Model');
+    await waitFor(() => expect(input).toHaveValue('gemini-2.5-flash'));
+
+    expect(
+      screen.queryByText("The saved model is not in the provider's model list."),
+    ).not.toBeInTheDocument();
+  });
+
   it('saves the loaded model when the field is untouched', async () => {
     const user = userEvent.setup();
     render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);

@@ -71,6 +71,10 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  // Raw text in the model field. base-ui's Combobox never commits typed text on its
+  // own (it reverts to the selected value on blur), so the query is mirrored here to
+  // offer the typed value as an explicit, pickable item.
+  const [modelQuery, setModelQuery] = useState('');
 
   /* ── Shared State ── */
   const [loading, setLoading] = useState(true);
@@ -259,6 +263,24 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     );
   }
 
+  // A typed value that names no listed model is still a valid model id. Offer it as an
+  // explicit item: the primitive discards free text on blur, and forcing a selection
+  // from the provider list would leave the field unsettable whenever that list is
+  // empty or incomplete.
+  const customModelCandidate = modelQuery.trim();
+  const showCustomModelOption =
+    customModelCandidate !== '' &&
+    customModelCandidate !== llmConfig.model &&
+    !availableModels.some((m) => m.id === customModelCandidate);
+
+  // Only meaningful once a list actually arrived; an empty list means "unknown", not
+  // "missing", and the error hint already covers the unreachable case.
+  const savedModelMissingFromList =
+    llmConfig.model !== '' &&
+    !modelsLoading &&
+    availableModels.length > 0 &&
+    !availableModels.some((m) => m.id === llmConfig.model);
+
   return (
     <div className="space-y-6">
       {/* Two-column grid: LLM Config + Prompt Config */}
@@ -292,6 +314,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     apiKey: '',
                     baseUrl: val === 'ollama' ? 'http://localhost:11434' : '',
                   }));
+                  // The combobox remounts on provider change; a query kept from the
+                  // previous provider would offer a model that no longer exists.
+                  setModelQuery('');
                 }}
               >
                 <SelectTrigger id="llm-provider" className="w-full">
@@ -363,6 +388,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     // empty, so the field only ever shows its placeholder and the saved
                     // model stays invisible until the user re-picks it from the list.
                     value={llmConfig.model || null}
+                    onInputValueChange={(val) => setModelQuery(String(val ?? ''))}
                     onValueChange={(val) => {
                       if (val !== null && val !== undefined) {
                         setLlmConfig((prev) => ({
@@ -395,6 +421,17 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                             {m.name}
                           </ComboboxItem>
                         ))}
+                        {/* base-ui never commits typed text: without this item a model
+                            that the provider does not list (or cannot list, e.g. while
+                            the provider is unreachable) could not be set at all. */}
+                        {showCustomModelOption ? (
+                          <ComboboxItem value={customModelCandidate}>
+                            {(t.workspace?.llmModelUseCustom ?? 'Use "{model}"').replace(
+                              '{model}',
+                              customModelCandidate,
+                            )}
+                          </ComboboxItem>
+                        ) : null}
                       </ComboboxList>
                       {modelsLoading ? (
                         <ComboboxEmpty>
@@ -441,6 +478,12 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     <CircleHelp className="h-3.5 w-3.5 shrink-0" />
                     {t.workspace?.llmModelsNoApiKey ??
                       'Add your API key and save to enable model suggestions.'}
+                  </span>
+                ) : savedModelMissingFromList ? (
+                  <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                    <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                    {t.workspace?.llmModelNotInList ??
+                      "The saved model is not in the provider's model list."}
                   </span>
                 ) : (
                   (t.workspace?.llmModelDesc ?? 'The model name to use for task extraction.')
