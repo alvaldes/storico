@@ -6,6 +6,8 @@ admin role for the target workspace.
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -13,6 +15,11 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from storico.api.dependencies import get_repository, require_admin
+from storico.api.schemas.custom_provider import (
+    KNOWN_PROVIDERS,
+    CustomProviderRequest,
+    CustomProviderResponse,
+)
 from storico.api.schemas.workspace_llm_config import (
     LLMConfigRequest,
     LLMConfigResponse,
@@ -21,10 +28,14 @@ from storico.api.schemas.workspace_llm_config import (
 from storico.api.schemas.workspace_prompt import PromptRequest, PromptResponse
 from storico.application.prompts.resolve_workspace_prompt import build_default_prompt
 from storico.config.settings import Settings
+from storico.domain.entities.custom_provider import CustomProvider
 from storico.domain.entities.workspace import Workspace
 from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
 from storico.domain.entities.workspace_member import WorkspaceRole
 from storico.domain.entities.workspace_prompt import WorkspacePrompt
+from storico.infrastructure.database.repositories.custom_provider_repository import (
+    SQLAlchemyCustomProviderRepository,
+)
 from storico.infrastructure.database.repositories.workspace_llm_config_repository import (
     SQLAlchemyWorkspaceLLMConfigRepository,
 )
@@ -45,6 +56,11 @@ LLMConfigRepoDep = Annotated[
 PromptRepoDep = Annotated[
     SQLAlchemyWorkspacePromptRepository,
     Depends(get_repository(SQLAlchemyWorkspacePromptRepository)),
+]
+
+CustomProviderRepoDep = Annotated[
+    SQLAlchemyCustomProviderRepository,
+    Depends(get_repository(SQLAlchemyCustomProviderRepository)),
 ]
 
 
@@ -161,6 +177,128 @@ async def upsert_llm_config(
 
     await config_repo.upsert(merged)
     return await resolve_llm_config(workspace.id, config_repo, settings)
+
+
+# ── Custom provider endpoints ─────────────────────────────────────
+
+
+def _reject_known_provider_name(name: str) -> None:
+    """Refuse a name that is already a first-class provider.
+
+    A known provider has its own adapter branch and model-discovery endpoint, so
+    a registry row for it would only duplicate an entry the select already offers.
+    """
+    if name in KNOWN_PROVIDERS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"'{name}' is a built-in provider and cannot be registered as a custom one",
+        )
+
+
+async def _repoint_selected_provider(
+    config_repo: SQLAlchemyWorkspaceLLMConfigRepository,
+    workspace_id: UUID,
+    old_name: str,
+    new_name: str,
+) -> None:
+    """Follow a rename into the workspace's selected provider, if it is that one.
+
+    The selection is stored as the provider *name*, so renaming the selected
+    provider without rewriting the config would leave the workspace pointing at a
+    name the registry no longer holds. A rename of any other provider leaves the
+    config untouched, along with the model, key and endpoint it owns.
+    """
+    config = await config_repo.get(workspace_id)
+    if config is None or config.provider != old_name:
+        return
+    await config_repo.upsert(replace(config, provider=new_name, updated_at=datetime.now(UTC)))
+
+
+@router.get("/providers")
+async def list_custom_providers(
+    provider_repo: CustomProviderRepoDep,
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(require_admin),
+) -> list[CustomProviderResponse]:
+    """List the workspace's registered custom providers, ordered by name.
+
+    Scoped to the workspace: no other workspace's providers are reachable here.
+    Admin only.
+    """
+    workspace, _ = ctx
+    providers = await provider_repo.list_by_workspace(workspace.id)
+    return [CustomProviderResponse.model_validate(provider) for provider in providers]
+
+
+@router.post("/providers", status_code=status.HTTP_201_CREATED)
+async def create_custom_provider(
+    body: CustomProviderRequest,
+    provider_repo: CustomProviderRepoDep,
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(require_admin),
+) -> CustomProviderResponse:
+    """Register a custom provider name for this workspace. Admin only.
+
+    The name is normalised by the request schema, so casing and surrounding
+    whitespace cannot produce a second row for a name the workspace already has.
+    """
+    workspace, _ = ctx
+    _reject_known_provider_name(body.name)
+
+    existing = await provider_repo.find_by_workspace_and_name(workspace.id, body.name)
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Custom provider '{body.name}' already exists in this workspace",
+        )
+
+    created = await provider_repo.create(CustomProvider(workspace_id=workspace.id, name=body.name))
+    return CustomProviderResponse.model_validate(created)
+
+
+@router.patch("/providers/{provider_id}")
+async def rename_custom_provider(
+    provider_id: UUID,
+    body: CustomProviderRequest,
+    provider_repo: CustomProviderRepoDep,
+    config_repo: LLMConfigRepoDep,
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(require_admin),
+) -> CustomProviderResponse:
+    """Rename a custom provider, and the selection that names it. Admin only.
+
+    A provider id belonging to another workspace reads as absent rather than as
+    a cross-workspace write. Renaming the provider this workspace has selected
+    also rewrites the selection, so the two cannot drift apart.
+    """
+    workspace, _ = ctx
+    _reject_known_provider_name(body.name)
+
+    existing = await provider_repo.get(provider_id)
+    if existing is None or existing.workspace_id != workspace.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom provider not found",
+        )
+
+    # A rename to the name it already has is a no-op, not a duplicate: reporting a
+    # conflict here would make the pencil fail on an unchanged submit.
+    if existing.name == body.name:
+        return CustomProviderResponse.model_validate(existing)
+
+    duplicate = await provider_repo.find_by_workspace_and_name(workspace.id, body.name)
+    if duplicate is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Custom provider '{body.name}' already exists in this workspace",
+        )
+
+    renamed = await provider_repo.rename(provider_id, body.name)
+    if renamed is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom provider not found",
+        )
+
+    await _repoint_selected_provider(config_repo, workspace.id, existing.name, renamed.name)
+    return CustomProviderResponse.model_validate(renamed)
 
 
 # ── Prompt endpoints ──────────────────────────────────────────────
