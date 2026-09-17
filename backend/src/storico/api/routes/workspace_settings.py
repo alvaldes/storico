@@ -237,17 +237,61 @@ async def fetch_ollama_models(base_url: str) -> list[ModelInfo]:
     return [ModelInfo(id=m["name"], name=m["name"]) for m in data.get("models", [])]
 
 
+async def fetch_openai_compatible_models(
+    base_url: str,
+    api_key: str | None,
+    client: httpx.AsyncClient | None = None,
+) -> list[ModelInfo]:
+    """Fetch available models from any OpenAI-compatible ``/models`` endpoint.
+
+    Servers disagree on whether the configured base URL already carries the
+    ``/v1`` segment, so both spellings are probed and the first one answering
+    with a ``data`` list wins. The key stays optional because self-hosted
+    gateways commonly accept unauthenticated requests.
+    """
+    stripped = base_url.rstrip("/")
+    candidates = [f"{stripped}/models"]
+    if not stripped.endswith("/v1"):
+        candidates.append(f"{stripped}/v1/models")
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
+    owns_client = client is None
+    if client is None:
+        client = httpx.AsyncClient(timeout=10.0)
+
+    last_error: httpx.HTTPError | None = None
+    try:
+        for url in candidates:
+            try:
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                payload = resp.json()
+            except httpx.HTTPError as e:
+                last_error = e
+                continue
+            except ValueError:
+                continue
+
+            entries = payload.get("data") if isinstance(payload, dict) else None
+            if not isinstance(entries, list):
+                continue
+            return [
+                ModelInfo(id=entry["id"], name=entry["id"])
+                for entry in entries
+                if isinstance(entry, dict) and "id" in entry
+            ]
+    finally:
+        if owns_client:
+            await client.aclose()
+
+    if last_error is not None:
+        raise last_error
+    raise httpx.HTTPError(f"No OpenAI-compatible model list found at {base_url}")
+
+
 async def fetch_openai_models(api_key: str, base_url: str | None) -> list[ModelInfo]:
-    """Fetch available models from the OpenAI API."""
-    url = f"{base_url.rstrip('/')}/models" if base_url else f"{OPENAI_API_BASE}/models"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(
-            url,
-            headers={"Authorization": f"Bearer {api_key}"},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    return [ModelInfo(id=m["id"], name=m["id"]) for m in data.get("data", [])]
+    """Fetch available models from OpenAI, or from a configured compatible base URL."""
+    return await fetch_openai_compatible_models(base_url or OPENAI_API_BASE, api_key)
 
 
 async def fetch_anthropic_models(api_key: str) -> list[ModelInfo]:
@@ -321,7 +365,10 @@ async def list_available_models(
                 return []
             return await fetch_gemini_models(config.api_key)
 
-        return []
+        # Anything else is a custom provider assumed to speak the OpenAI wire format.
+        if not config.base_url:
+            return []
+        return await fetch_openai_compatible_models(config.base_url, config.api_key)
     except httpx.HTTPError as e:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
