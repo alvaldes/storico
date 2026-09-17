@@ -160,13 +160,23 @@ class ExtractionService:
         """Search for similar past extractions, workspace-scoped and best-effort.
 
         Returns an empty list when retrieval is disabled, no vector store is
-        configured, or the search fails — extraction never fails on retrieval.
+        configured, the extraction has no workspace scope, or the search fails
+        — extraction never fails on retrieval.
         """
         if not few_shot_config.enabled:
             logger.debug("Few-shot retrieval disabled, skipping search")
             return []
         if self._vector_store is None:
             logger.debug("Few-shot retrieval disabled: no vector store configured")
+            return []
+        if workspace_id is None:
+            # Fail closed. An unscoped lookup would reach every workspace, so
+            # other workspaces' user stories would leak into this prompt.
+            # Skipping retrieval is strictly better than widening the search.
+            logger.warning(
+                "Few-shot retrieval skipped: extraction has no workspace scope",
+                extra={"reason": "missing_workspace_id"},
+            )
             return []
         try:
             return await self._vector_store.search_similar(

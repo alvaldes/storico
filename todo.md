@@ -1,6 +1,15 @@
 # Storico — Backlog
 
-> **Última actualización**: 2026-09-17 (4) — cerrado el gap de autorización de `POST /tasks/` y, con
+> **Última actualización**: 2026-09-17 (5) — barrido de “Próximo a tratar” y “Limpieza menor”. Cerrados:
+> el `catch` inalcanzable de `handleExtract` (con el toast de 504 preservado, que ahora aparece de verdad),
+> el test de componente que faltaba para la equivalencia `missing` ≡ `idle`, `ApiClient.startExtraction`,
+> el bloque no-op de `tasks-api.ts`, las 7 claves i18n muertas, el último `dangerouslySetInnerHTML` y el
+> alias identidad de `--color-border`; más el scope obligatorio de `VectorStorePort.search_similar` con
+> fail-closed. **Dos correcciones de encuadre**: la fuga de RAG era **latente** (ningún caller de producción
+> omitía el scope) y `TaskService` **no** es código muerto (lo usa un test de integración) — lo que hay ahí
+> son dos autoridades de la regla de transición. Verificado: backend **416/1/0**, frontend **22 archivos /
+> 162**, `tsc` limpio.
+> Última actualización previa: 2026-09-17 (4) — cerrado el gap de autorización de `POST /tasks/` y, con
 > él, la clase entera: el walk `story → project → workspace → membresía` estaba copiado **cinco**
 > veces y ahora es una sola implementación (`api/dependencies.py::require_story_workspace_access`),
 > `create_task` autoriza antes de construir el `Task` (y perdió el `# noqa: ARG001`), y
@@ -41,47 +50,29 @@
 
 ---
 
-## 🔜 Próximo a tratar — cierre de la clase “scope” en los stores
+## 🔜 Próximo a tratar — verificación que falta
 
-Contexto: el cambio de workspace ya es atómico y workspace-scoped, y `lib/workspace-scope.ts` es la
-única autoridad del scope. Los tres residuos que quedaban fuera de ese cambio, y después la misma
-clase completa en los cuatro `catch` de `update*` / `delete*`, se cerraron el 2026-09-17 (ver
-✅ Completado). Lo que sigue es lo que esos cierres **dejaron al descubierto**, más la verificación que
-sigue faltando.
+Los puntos de “código muerto” que estaban en esta sección se cerraron el 2026-09-17 (ver ✅ Completado). Lo
+que queda no es código: es verificación que sólo un navegador o un test que todavía no existe pueden darnos.
 
-### 1. `StoryDetail.handleExtract`: el `catch` es código muerto (preexistente)
+### 1. El toast de fallo asume que el render de `pending` se observó antes de asentarse
 
-**Estado**: `taskStore.extractTasks` **se traga sus propios errores** — su `catch` marca la extracción
-como `failed` / `unauthorized` y no tiene `throw` — así que `await extractTasks(...)` nunca rechaza y
-el `catch` de `handleExtract` (`StoryDetail.tsx:170-190`) no se ejecuta nunca; con él, su
-`toast.error` y su `resetExtraction(storyId)`. No es un bug visible: el toast de fallo llega igual por
-el `useEffect` que observa `extractions[storyId].status`. Pero implica que el cleanup de desmontaje es
-la **única llamada viva** de `resetExtraction`, y que hay ~20 líneas de manejo de errores por status
-HTTP (401 / 400 / 504) que no cubren nada.
+**Estado**: la autoridad única del toast de fallo es el `useEffect` de `StoryDetail`, y dispara sólo si
+`prevExtractionStatus === 'pending'` cuando la extracción se asienta. El test de componente nuevo arma esa
+secuencia a mano (render `pending` → asentar). En producción el rechazo del POST pasa por I/O, así que React
+flushea el render de `pending` primero; pero con updates completamente batcheados el toast no saldría, y
+**ningún test cubre el caso colapsado**. Es preexistente: el `catch` que se borró era inalcanzable, así que
+tampoco lo cubría.
 
-- **Decisión pendiente**: ¿el store re-lanza para que el componente maneje los status, o el componente
-  suelta ese `catch` y se queda con el toast del efecto?
+### 2. Falta de verificación end-to-end
 
-### 2. La equivalencia `missing` vs `idle` está verificada por lectura, no por test de componente
-
-**Estado**: el fix de `resetExtraction` se apoya en que un entry ausente y uno con `status === 'idle'`
-toman la misma rama en cada lector que **renderiza** (botón de extraer, spinner, `disabled`). Está
-verificado leyendo `StoryDetail` y fijado por un test de store; no por un test de componente, porque
-no existe `StoryDetail.test.tsx` y montarlo pide mockear el store, el router y el layout. El único
-lector que los distingue es el `useEffect` del toast (salta `setPrevExtractionStatus`), y no puede
-observar la diferencia porque el cleanup de desmontaje es la única llamada viva (ver punto 1).
-
-- **Pendiente**: un test de componente de `StoryDetail` que fije las dos ramas. Es la única parte de
-  este cierre apoyada en lectura en lugar de ejecución.
-
-### Falta de verificación end-to-end
-
-**Estado**: todo el cambio está verificado con vitest + jsdom y APIs mockeadas (21 archivos / **159**
+**Estado**: todo el cambio está verificado con vitest + jsdom y APIs mockeadas (22 archivos / **162**
 tests en verde, `tsc` limpio, `pnpm build` verde). No hay ejecución en navegador: `playwright` no está
 instalado y los specs de `frontend/e2e/` no son ejecutables.
 
 - **Pendiente**: confirmar el orden real de montaje/desmontaje de las islas con View Transitions en
-  un navegador. Es lo que deja abierta la clase “residuo invisible” del punto 2.
+  un navegador. Tampoco hay test que cubra el CSS compilado: el fix de `--color-border` se validó compilando
+el CSS por fuera de la suite.
 
 ---
 
@@ -202,55 +193,65 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
   `sys.settrace` ve ejecutar (p. ej. `dependencies.py:259-270`, contradiciendo tests que pasan).
   Repro: `COVERAGE_FILE=/tmp/x python -m pytest tests/test_api/test_stories.py --cov=storico.api`. No hay
   `COVERAGE_*` ni `.coveragerc`. Cross-checkear con tracer antes de concluir algo por coverage.
-- **`frontend/src/lib/api.ts` `ApiClient.startExtraction` es código muerto con la URL mal armada** —
-  arma `/api/v1/workspaces/${data.user_story_id}/extract/`, o sea mete un **story id** en el segmento del
-  workspace. Nadie lo llama (`taskStore` importa `@/lib/tasks-api`, no `@/lib/api`), pero quien lo use
-  pega en la ruta equivocada. Eliminarlo o arreglarlo.
-- **`TaskService` es código muerto y duplica un contrato** — `application/services/task_service.py`
-  nunca se instancia (fuera de `application/__init__.py` no hay referencias) y su `update_status`
-  reimplementa el chequeo de transición que `update_task` hace inline, con otro tipo de error
-  (`InvalidStateTransition` vs `HTTPException(400, INVALID_STATE_TRANSITION)`); además referencia
-  `InvalidStateTransition` antes de definirlo en el mismo módulo. No tiene `create`, así que no es el seam
-  de `POST /tasks/`.
-- **`VectorStorePort.search_similar`** — `workspace_id` quedó opcional; apretar a requerido
-  (el path end-to-end siempre lo pasa). Recomendado en follow-up.
 - **`us-decomposition` `design.md`** — nombra el filename viejo `storico-tasks-{id}.{ext}` vs
   el implementado `tasks-export-{workspace.id}.{ext}`; el spec canónico no lo manda, pero el
   design hay que realinearlo.
 - **`apply-progress.md` ausente** en `us-decomposition` (strict TDD) — excepción registrada
   (artefactos e implementación aterrizaron juntos históricamente).
-- **i18n keys muertas** del `FewShotExamplesEditor` eliminado — quedan **7** sin ningún uso en
-  `src/`: `fewShotDesc`, `fewShotTitle`, `fewShotTasksLabel`, `fewShotTasksMin`,
-  `fewShotUserStoryLabel`, `fewShotUserStoryMin`, `fewShotUserStoryPlaceholder` (en `en.json` y
-  `es.json`). Las de `fewShotEnabledOn` / `fewShotEnabledOff` ya se eliminaron.
-- **146 errores de `ruff check src tests` (preexistentes)** — eran 151; los archivos tocados en la
-  última pasada quedaron limpios (incluidos imports muertos que el autofix eliminó y `HEAD` sí tenía:
-  `stories.py` E402/F401 e `extraction.py` I001 + 2×F401). El resto es deuda general. **No hay CI
-  que corra ruff ni pytest** (`.github/workflows/` sólo tiene `deploy-backend.yml`), así que esta
-  deuda crece sin freno.
-- **`globals.css`: `--color-border: var(--color-border)` es autorreferente** — está en el bloque
-  `@theme inline`. Hoy no rompe porque el `@theme` posterior redefine `--color-border` y gana la
-  cascada, pero si ese bloque se reordena o se elimina, `border-border` (aplicado a `*` en
-  `@layer base`) queda inválido y **desaparecen todos los bordes**. Debería apuntar directo al
-  token de diseño.
-- **Makefile**: `test-backend` apunta a `backend/.venv/bin/pytest` pero ese venv no traía pytest
-  — los tests corrían con el conda env `storico`. **Resuelto en la práctica**: se instaló el extra
-  `dev` ya declarado (`pytest`, `pytest-asyncio`, `pytest-cov`, `aiosqlite`, `httpx`, `ruff`) en
-  `backend/.venv`, que reproduce el baseline documentado con SQLite in-memory y sin Docker. Queda
-  decidir si se oficializa `.venv` (portátil) y se retira la dependencia del conda env.
-- **Falso positivo stale de pyright en `users.py`** — `lens_diagnostics` reporta
-  `RenameWorkspaceUseCase` sin `workspace_name` / `workspace_icon` en `PATCH /users/me/onboarding`.
-  El constructor sólo recibe `ws_repo` y `execute()` sí acepta `new_name` / `new_icon`;
-  `test_users.py` pasa 8/8. Ignorar salvo que ese código cambie.
-- **`StoryForm.tsx:515`**: último `dangerouslySetInnerHTML` del frontend — renderiza
-  `t.stories.story_format_hint` (string i18n estático, seguro por contenido). Mismo patrón
-  ya eliminado en `DeleteAccountDialog` con `renderBoldMarkup()`.
-- **`tasks-api.ts` `updateTask`**: bloque muerto — *"We need the current status - fetch it
-  first"* sin hacer nada. Implementar o eliminar.
+- **`TaskService` NO es código muerto (corrección de diagnóstico)** — `todo.md` decía que nadie lo
+  instanciaba; `tests/integration/test_state_machine_scenarios.py:23` lo importa y lo ejercita. El problema
+  real es otro: **la producción no lo usa** y su `update_status` duplica el chequeo de transición que
+  `update_task` hace inline (`tasks.py`), con otro tipo de error (`InvalidStateTransition` vs
+  `HTTPException(400, …)`). O sea: dos autoridades de la misma regla, y un test que testea la que no corre.
+  **Decisión pendiente**: (a) que `update_task` delegue en el servicio y mapee `InvalidStateTransition` → 400
+  (una sola autoridad, y el test pasa a ser significativo), o (b) borrar el servicio **y** su test. Toca una
+  ruta, así que es comportamiento, no limpieza.
+- **Falso positivo de pyright en `users.py` (atribución corregida)** — el diagnóstico real es
+  `users.py:101:34` sobre `OnboardingRequest()` (campos con default en `schemas/user.py`, así que la llamada
+  es válida), **no** sobre `RenameWorkspaceUseCase`, que la nota anterior culpaba por error: el checker ve
+  una firma stale. No hay defecto de producción y no se agregó ninguna supresión. Aparte: la rama
+  sólo-icono del onboarding (`users.py:126-129`) no tiene ningún test.
+- **Dos `renderBoldMarkup` distintos** — el de `DeleteAccountDialog` parte de `<b>` y el que agregué en
+  `StoryForm` parte de `<strong>` (el hint usa `<strong>`, así que reusar el otro rendiría los tags como
+  texto). Son dos copias del mismo concepto: consolidarlas en un helper parametrizado. Ojo, el de
+  `DeleteAccountDialog` vive en un área con historia de XSS y el cambio pide su propio test.
+- **Tipos muertos por la limpieza** — `ExtractRequest` y `ExtractResponse` en `types/extraction.ts`
+  quedaron sin referencias al borrar `ApiClient.startExtraction` (`ExtractionUserStory` ya estaba muerto
+  antes). Borrarlos o darles uso.
+- **Caso no cubierto del adapter** — los tests nuevos sólo ejercitan un `workspace_id` no nulo, así que
+  revertir **sólo** el adapter a `… if workspace_id is not None else None` deja la suite verde (Python permite
+  pasar `None` explícito más allá de la anotación). Un test con `None` explícito lo cierra.
+- **145 errores de `ruff check src tests` (preexistentes)** — eran 151; los archivos de cada pasada quedaron
+  limpios (incluidos imports muertos que el autofix eliminó y `HEAD` sí tenía: `stories.py` E402/F401 e
+  `extraction.py` I001 + 2×F401). **Sigue sin haber CI que corra ruff ni pytest** (`.github/workflows/` sólo
+  tiene `deploy-backend.yml`): eso es lo que explica que la suite haya estado 10 tests roja durante meses y
+  que ruff llegara a 145. Decidido el 2026-09-17: primero el sweep de `ruff --fix` (~135 autofixables,
+  verificado por los 416 tests) y después el workflow con `ruff check` + pytest + vitest. **Pendiente.**
 
 ---
 
 ## ✅ Completado (referencia — items eliminados del backlog)
+
+- **Limpieza de código muerto del frontend** (2026-09-17): borrado el `catch` de `handleExtract` (era
+  inalcanzable: `extractTasks` se traga sus errores) con el toast de timeout **preservado** enseñándole al
+  store el código 504 — o sea que el toast de timeout ahora aparece de verdad, antes no aparecía nunca;
+  borrado `ApiClient.startExtraction` (código muerto cuya URL metía un *story id* en el segmento del
+  workspace); el bloque no-op de `tasks-api.ts::updateTask`; las 7 claves i18n muertas (de ambos archivos, con
+  la paridad verificada por test); el último `dangerouslySetInnerHTML` reemplazado por `renderBoldMarkup` (el
+  frontend ya no tiene ninguno); y el alias identidad `--color-border: var(--color-border)` eliminado
+  (compilado antes y después con Tailwind: mismo valor resuelto, y el modo de falla pasa de mudo a error de
+  compilación). Nuevo `StoryDetail.test.tsx` (2 tests, no vacuos: probados por mutación) que fija la
+  equivalencia `missing` ≡ `idle` **en el componente**. Suite FE 159 → 162.
+- **`VectorStorePort.search_similar` con scope obligatorio** (2026-09-17): `workspace_id` pasó de opcional a
+  requerido keyword-only en el puerto y en el adapter (que ahora arma el filtro de workspace siempre), y
+  `_fetch_rag_examples` **falla cerrado** (warning + `[]`) cuando no hay scope, en vez de degradar a una
+  búsqueda global. Se reemplazó `test_search_similar_without_workspace_sends_no_filter`, que **aserteaba la
+  fuga** (`query_filter is None`), por un test de contrato que detecta si alguien vuelve a poner el default.
+  **Corrección de encuadre**: la fuga era **latente**, no viva — `extract_and_persist` no tiene ningún caller
+  de producción y el único que llama a `extract()` (`extraction_task.py:330`) siempre pasa el workspace, así
+  que el impacto era cero en producción; lo que se gana es el contrato del puerto y el fail-closed para
+  llamadas directas. Verificado además que `make test-backend` funciona desde `backend/.venv` (esa deuda ya
+  estaba resuelta en el Makefile; el warning de SQLAlchemy delata el path de `.venv`).
 
 - **Clase de autorización del backend cerrada** (2026-09-17, ex Bloqueante #4): `POST /api/v1/tasks/`
   recibía `current_user` con `# noqa: ARG001` y **nunca lo usaba** — creaba el `Task` con el

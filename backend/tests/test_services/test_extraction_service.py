@@ -396,7 +396,9 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        await deps["service"].extract(mock_story, LLMConfig(model="test"))
+        # RAG retrieval requires a workspace scope; this call exercises the
+        # scoped-search path end to end.
+        await deps["service"].extract(mock_story, LLMConfig(model="test"), workspace_id=uuid4())
 
         # Verify search_similar was called
         deps["vector_store"].search_similar.assert_called_once()
@@ -420,9 +422,44 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        result_tasks, raw = await deps["service"].extract(mock_story, LLMConfig(model="test"))
+        result_tasks, raw = await deps["service"].extract(
+            mock_story, LLMConfig(model="test"), workspace_id=uuid4()
+        )
         assert len(result_tasks) == 1
         # Should render WITHOUT examples kwarg
+        call_kwargs = deps["prompt_manager"].render_instruction.call_args[1]
+        assert "examples" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_extract_rag_enabled_without_workspace_skips_search(self, setup_with_rag) -> None:
+        """A RAG-enabled extraction with no workspace scope fails closed.
+
+        An unscoped search would reach every workspace and leak other
+        workspaces' user stories into this prompt, so retrieval is skipped
+        entirely: no vector search runs and no examples reach the prompt.
+        """
+        deps = setup_with_rag
+        deps["vector_store"].search_similar.return_value = [
+            ExtractionExample(
+                user_story_text="Story from another workspace",
+                tasks_summary="1. Task A",
+                model_used="test",
+                confidence_score=0.9,
+                similarity_score=0.95,
+            )
+        ]
+        deps["prompt_manager"].render_instruction.return_value = "Instruction"
+        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
+
+        mock_story = MagicMock()
+        mock_story.id = uuid4()
+        mock_story.raw_text = "Story"
+
+        result_tasks, raw = await deps["service"].extract(mock_story, LLMConfig(model="test"))
+
+        assert len(result_tasks) == 1
+        deps["vector_store"].search_similar.assert_not_called()
         call_kwargs = deps["prompt_manager"].render_instruction.call_args[1]
         assert "examples" not in call_kwargs
 

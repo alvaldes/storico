@@ -4,12 +4,14 @@ Uses unittest.mock to mock AsyncQdrantClient and EmbeddingPort
 so no real network calls or databases are needed.
 """
 
+import inspect
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
+from storico.domain.ports import VectorStorePort
 from storico.infrastructure.vector.qdrant_adapter import QdrantAdapter
 
 
@@ -115,8 +117,15 @@ class TestQdrantAdapter:
         assert query_filter.must[0].match.value == str(self.workspace_id)
 
     @pytest.mark.asyncio
-    async def test_search_similar_without_workspace_sends_no_filter(self) -> None:
-        """No workspace id means no filter (unchanged legacy search path)."""
+    async def test_search_similar_is_always_scoped_and_scope_is_required(self) -> None:
+        """A search is always workspace-filtered; the scope cannot be omitted.
+
+        Replaces the former ``test_search_similar_without_workspace_sends_no_filter``
+        test, which pinned the leak: an unscoped lookup returned points from every
+        workspace, so other workspaces' user stories were injected into this
+        workspace's prompt. The scope is now required on both the port and the
+        adapter, so re-adding a default makes this test fail.
+        """
         port = _make_embedding_port()
         port.embed.return_value = [0.1, 0.2, 0.3]
 
@@ -131,10 +140,27 @@ class TestQdrantAdapter:
         mock_client.query_points.return_value = _make_query_response([])
         adapter._client = mock_client
 
-        await adapter.search_similar(text="test")
+        await adapter.search_similar(text="test", workspace_id=self.workspace_id)
 
         call_kwargs = mock_client.query_points.call_args[1]
-        assert call_kwargs["query_filter"] is None
+        query_filter = call_kwargs["query_filter"]
+        # Every search carries the workspace filter — never None.
+        assert query_filter is not None
+        assert query_filter.must[0].key == "workspace_id"
+        assert query_filter.must[0].match.value == str(self.workspace_id)
+
+        # Omitting the scope is not expressible on either the port or the
+        # adapter: no default exists, so the call fails before any search runs.
+        # ``bind`` is given an explicit ``self``, so the only failure it can
+        # report is the missing ``workspace_id`` — re-adding a default makes the
+        # bind succeed and fails here. Without that ``self`` the bind would raise
+        # for the missing ``self`` first and pass no matter what.
+        for target in (VectorStorePort.search_similar, QdrantAdapter.search_similar):
+            signature = inspect.signature(target)
+            scope_param = signature.parameters["workspace_id"]
+            assert scope_param.default is inspect.Parameter.empty
+            with pytest.raises(TypeError, match="workspace_id"):
+                signature.bind(object(), text="test")
 
     @pytest.mark.asyncio
     async def test_search_similar_empty(self) -> None:
@@ -153,7 +179,7 @@ class TestQdrantAdapter:
         mock_client.query_points.return_value = _make_query_response([])
         adapter._client = mock_client
 
-        results = await adapter.search_similar(text="test")
+        results = await adapter.search_similar(text="test", workspace_id=self.workspace_id)
         assert results == []
 
     # ── search_similar — graceful degradation ────────────────────────
@@ -170,7 +196,7 @@ class TestQdrantAdapter:
             collection_name=self.collection,
         )
 
-        results = await adapter.search_similar(text="test")
+        results = await adapter.search_similar(text="test", workspace_id=self.workspace_id)
         assert results == []
 
     @pytest.mark.asyncio
@@ -190,7 +216,7 @@ class TestQdrantAdapter:
         mock_client.query_points.side_effect = RuntimeError("Qdrant down")
         adapter._client = mock_client
 
-        results = await adapter.search_similar(text="test")
+        results = await adapter.search_similar(text="test", workspace_id=self.workspace_id)
         assert results == []
 
     # ── store_extraction — success ───────────────────────────────────
@@ -412,7 +438,7 @@ class TestQdrantAdapter:
             "storico.infrastructure.vector.qdrant_adapter.AsyncQdrantClient",
             side_effect=RuntimeError("connection refused"),
         ):
-            results = await adapter.search_similar(text="test")
+            results = await adapter.search_similar(text="test", workspace_id=self.workspace_id)
             assert results == []
 
             await adapter.store_extraction(

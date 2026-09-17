@@ -142,12 +142,14 @@ class QdrantAdapter(VectorStorePort):
         text: str,
         limit: int = 3,
         threshold: float = 0.85,
-        workspace_id: UUID | None = None,
+        *,
+        workspace_id: UUID,
     ) -> list[ExtractionExample]:
         """Search for similar extractions by embedding the input text.
 
-        When ``workspace_id`` is provided, only points stored for that workspace
-        are returned. Graceful degradation: returns empty list on any failure.
+        The query always carries a ``workspace_id`` filter, so a search can
+        never widen into a cross-workspace read. Graceful degradation: returns
+        empty list on any failure.
         """
         # Generate embedding
         embedding = await self._embedding_port.embed(text)
@@ -161,9 +163,7 @@ class QdrantAdapter(VectorStorePort):
 
         # Search
         try:
-            query_filter = (
-                self._build_workspace_filter(workspace_id) if workspace_id is not None else None
-            )
+            query_filter = self._build_workspace_filter(workspace_id)
             search_result = await client.query_points(
                 collection_name=self._collection_name,
                 query=embedding,

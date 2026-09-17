@@ -27,17 +27,24 @@ class VectorStorePort(ABC):
         text: str,
         limit: int = 3,
         threshold: float = 0.85,
-        workspace_id: UUID | None = None,
+        *,
+        workspace_id: UUID,
     ) -> list[ExtractionExample]:
         """Search for similar extractions by embedding the input text.
+
+        The search is always scoped to ``workspace_id``. A workspace-scoped RAG
+        lookup that silently widens into a global search is a cross-workspace
+        leak — other workspaces' user stories would end up in this workspace's
+        prompt — so omitting the scope is deliberately not expressible. Callers
+        that cannot supply one must fail closed and skip retrieval.
 
         Args:
             text: User story text to search by.
             limit: Maximum number of results to return.
             threshold: Minimum similarity score (0.0 to 1.0).
-            workspace_id: Optional workspace to scope the search to. When
-                provided, only examples stored for that workspace are returned;
-                points without a matching ``workspace_id`` payload are excluded.
+            workspace_id: Workspace to scope the search to. Required; only
+                examples stored for that workspace are returned, and points
+                without a matching ``workspace_id`` payload are excluded.
 
         Returns:
             List of similar ExtractionExample results.
