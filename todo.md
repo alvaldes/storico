@@ -212,7 +212,6 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
   (`InvalidStateTransition` vs `HTTPException(400, INVALID_STATE_TRANSITION)`); además referencia
   `InvalidStateTransition` antes de definirlo en el mismo módulo. No tiene `create`, así que no es el seam
   de `POST /tasks/`.
-- **`VectorStorePort.search_similar`**
 - **`VectorStorePort.search_similar`** — `workspace_id` quedó opcional; apretar a requerido
   (el path end-to-end siempre lo pasa). Recomendado en follow-up.
 - **`us-decomposition` `design.md`** — nombra el filename viejo `storico-tasks-{id}.{ext}` vs
