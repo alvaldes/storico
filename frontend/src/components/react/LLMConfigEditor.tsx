@@ -71,10 +71,6 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
-  // Raw text in the model field. base-ui's Combobox never commits typed text on its
-  // own (it reverts to the selected value on blur), so the query is mirrored here to
-  // offer the typed value as an explicit, pickable item.
-  const [modelQuery, setModelQuery] = useState('');
 
   /* ── Shared State ── */
   const [loading, setLoading] = useState(true);
@@ -263,16 +259,6 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     );
   }
 
-  // A typed value that names no listed model is still a valid model id. Offer it as an
-  // explicit item: the primitive discards free text on blur, and forcing a selection
-  // from the provider list would leave the field unsettable whenever that list is
-  // empty or incomplete.
-  const customModelCandidate = modelQuery.trim();
-  const showCustomModelOption =
-    customModelCandidate !== '' &&
-    customModelCandidate !== llmConfig.model &&
-    !availableModels.some((m) => m.id === customModelCandidate);
-
   // Only meaningful once a list actually arrived; an empty list means "unknown", not
   // "missing", and the error hint already covers the unreachable case.
   const savedModelMissingFromList =
@@ -280,6 +266,12 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     !modelsLoading &&
     availableModels.length > 0 &&
     !availableModels.some((m) => m.id === llmConfig.model);
+
+  // The field is selection-only, so an empty list is a hard stop rather than a hint
+  // to type something: name it where the user is already looking.
+  const modelListUnavailable = !modelsLoading && availableModels.length === 0;
+  const noModelsMessage =
+    t.workspace?.llmModelsEmpty ?? 'No models available. Check the provider then refresh.';
 
   return (
     <div className="space-y-6">
@@ -314,9 +306,6 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     apiKey: '',
                     baseUrl: val === 'ollama' ? 'http://localhost:11434' : '',
                   }));
-                  // The combobox remounts on provider change; a query kept from the
-                  // previous provider would offer a model that no longer exists.
-                  setModelQuery('');
                 }}
               >
                 <SelectTrigger id="llm-provider" className="w-full">
@@ -388,7 +377,6 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     // empty, so the field only ever shows its placeholder and the saved
                     // model stays invisible until the user re-picks it from the list.
                     value={llmConfig.model || null}
-                    onInputValueChange={(val) => setModelQuery(String(val ?? ''))}
                     onValueChange={(val) => {
                       if (val !== null && val !== undefined) {
                         setLlmConfig((prev) => ({
@@ -401,19 +389,18 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     <ComboboxInput
                       id="llm-model"
                       disabled={llmConfig.provider !== 'ollama' && !llmConfig.apiKey}
-                      placeholder={
-                        llmConfig.provider === 'ollama'
-                          ? (t.settings?.llm_ollama_model_placeholder ?? 'llama3.2, mistral')
-                          : llmConfig.provider === 'openai'
-                            ? (t.settings?.llm_openai_model_placeholder ?? 'gpt-4o-mini')
-                            : llmConfig.provider === 'gemini'
-                              ? (t.settings?.llm_gemini_model_placeholder ?? 'gemini-2.0-flash')
-                              : (t.settings?.llm_anthropic_model_placeholder ?? 'claude-3-haiku')
-                      }
+                      // `readOnly` rides on the input element, not on the combobox root:
+                      // the root would also lock the list selection, while the DOM
+                      // attribute only removes typing. base-ui commits a model solely
+                      // through `onValueChange`, so typed text would show up in the field
+                      // and then revert on blur — a field that looks editable and is not.
+                      readOnly
+                      // No provider default here: any model name in the placeholder reads
+                      // as a model that is already chosen.
+                      placeholder={t.settings?.llm_model_placeholder ?? 'Select a model'}
                     />
-                    {/* The input text is the model id — the value that gets saved and the
-                        string the filter matches against; the list renders each model's
-                        friendly `name` instead. */}
+                    {/* The input text is the model id — the value that gets saved; the
+                        list renders each model's friendly `name` instead. */}
                     <ComboboxContent>
                       <ComboboxList>
                         {availableModels.map((m) => (
@@ -421,29 +408,13 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                             {m.name}
                           </ComboboxItem>
                         ))}
-                        {/* base-ui never commits typed text: without this item a model
-                            that the provider does not list (or cannot list, e.g. while
-                            the provider is unreachable) could not be set at all. */}
-                        {showCustomModelOption ? (
-                          <ComboboxItem value={customModelCandidate}>
-                            {(t.workspace?.llmModelUseCustom ?? 'Use "{model}"').replace(
-                              '{model}',
-                              customModelCandidate,
-                            )}
-                          </ComboboxItem>
-                        ) : null}
                       </ComboboxList>
                       {modelsLoading ? (
                         <ComboboxEmpty>
                           {t.workspace?.llmModelsLoading ?? 'Loading models...'}
                         </ComboboxEmpty>
                       ) : availableModels.length === 0 ? (
-                        <ComboboxEmpty>
-                          {modelsError
-                            ? modelsError
-                            : (t.workspace?.llmModelsEmpty ??
-                              'No models found. Type a custom name.')}
-                        </ComboboxEmpty>
+                        <ComboboxEmpty>{modelsError ? modelsError : noModelsMessage}</ComboboxEmpty>
                       ) : null}
                     </ComboboxContent>
                   </Combobox>
@@ -485,8 +456,14 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     {t.workspace?.llmModelNotInList ??
                       "The saved model is not in the provider's model list."}
                   </span>
+                ) : modelListUnavailable ? (
+                  <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                    <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                    {noModelsMessage}
+                  </span>
                 ) : (
-                  (t.workspace?.llmModelDesc ?? 'The model name to use for task extraction.')
+                  (t.workspace?.llmModelDesc ??
+                  "The model to use for task extraction, picked from the provider's list.")
                 )}
               </FieldDescription>
             </Field>
