@@ -11,19 +11,11 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import Task, User
-from storico.domain.entities.project import Project
 from storico.domain.entities.task import TaskStatus
 from storico.domain.entities.user_story import UserStory
-from storico.domain.entities.workspace import Workspace
-from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
 from storico.infrastructure.database.repositories import (
     SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
-    SQLAlchemyWorkspaceMemberRepository,
-    SQLAlchemyWorkspaceRepository,
-)
-from storico.infrastructure.database.repositories.project_repository import (
-    SQLAlchemyProjectRepository,
 )
 from storico.infrastructure.database.repositories.user_story_repository import (
     SQLAlchemyUserStoryRepository,
@@ -51,39 +43,31 @@ async def _create_user(db_session: AsyncSession) -> User:
     return saved
 
 
-async def _create_workspace(
-    db_session: AsyncSession, user_id, name="Export Workspace"
-) -> Workspace:
-    repo = SQLAlchemyWorkspaceRepository(db_session)
-    ws = Workspace(name=name, slug=name.lower().replace(" ", "-"), owner_id=user_id)
-    saved = await repo.save(ws)
-    # Add membership
-    member_repo = SQLAlchemyWorkspaceMemberRepository(db_session)
-    member = WorkspaceMember(workspace_id=saved.id, user_id=user_id, role=WorkspaceRole.ADMIN)
-    await member_repo.add(member)
-    return saved
+async def _create_story(db_session: AsyncSession, project_id) -> UserStory:
+    """Create the story this file's export assertions embed, in a seeded project.
 
-
-async def _create_story(db_session: AsyncSession, workspace_id) -> UserStory:
-    project_repo = SQLAlchemyProjectRepository(db_session)
-    project = Project(
-        name="Test Project",
-        workspace_id=workspace_id,
-    )
-    project = await project_repo.save(project)
-
-    story_repo = SQLAlchemyUserStoryRepository(db_session)
+    Only the story row is built here. The workspace -> project -> membership
+    chain comes from the shared ``seed_workspace`` factory, so the project must
+    already exist. The story's ``raw_text`` is pinned here because the Markdown
+    export renders it verbatim as a section header.
+    """
     story = UserStory(
-        project_id=project.id,
+        project_id=project_id,
         actor="user",
         feature="log in",
         benefit="access account",
         raw_text="As a user, I want to log in so that I can access my account",
     )
-    return await story_repo.save(story)
+    return await SQLAlchemyUserStoryRepository(db_session).save(story)
 
 
 async def _create_tasks(db_session: AsyncSession, story_id, count=3) -> list[Task]:
+    """Create ``count`` tasks with the label shape this file asserts on.
+
+    Local on purpose: the first task carries ``["backend", "api"]`` and the rest
+    ``["frontend"]`` because the export assertions pin exactly that, so it is a
+    fixture for these tests rather than a knob on the shared seeding factory.
+    """
     repo = SQLAlchemyTaskRepository(db_session)
     tasks = []
     for i in range(count):
@@ -105,22 +89,25 @@ class TestExportTasks:
     """GET /api/v1/workspaces/{workspace_id}/export/tasks"""
 
     @pytest.mark.asyncio
-    async def test_export_json(self, async_client, db_session: AsyncSession) -> None:
+    async def test_export_json(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
         """GET ?format=json returns JSON with correct content-type and filename."""
         user = await _create_user(db_session)
-        ws = await _create_workspace(db_session, user.id)
-        story = await _create_story(db_session, ws.id)
+        seeded = await seed_workspace(user=user, stories=0)
+        story = await _create_story(db_session, seeded.project_id)
+        ws_id = seeded.workspace_id
         await _create_tasks(db_session, story.id, count=2)
 
         response = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/export/tasks?format=json",
+            f"/api/v1/workspaces/{ws_id}/export/tasks?format=json",
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/json; charset=utf-8"
         assert (
             response.headers["content-disposition"]
-            == f'attachment; filename="tasks-export-{ws.id}.json"'
+            == f'attachment; filename="tasks-export-{ws_id}.json"'
         )
 
         data = response.json()
@@ -133,22 +120,25 @@ class TestExportTasks:
         assert "updated_at" in data[0]
 
     @pytest.mark.asyncio
-    async def test_export_markdown(self, async_client, db_session: AsyncSession) -> None:
+    async def test_export_markdown(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
         """GET ?format=markdown returns Markdown with correct headers."""
         user = await _create_user(db_session)
-        ws = await _create_workspace(db_session, user.id)
-        story = await _create_story(db_session, ws.id)
+        seeded = await seed_workspace(user=user, stories=0)
+        story = await _create_story(db_session, seeded.project_id)
+        ws_id = seeded.workspace_id
         await _create_tasks(db_session, story.id, count=1)
 
         response = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/export/tasks?format=markdown",
+            f"/api/v1/workspaces/{ws_id}/export/tasks?format=markdown",
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/markdown; charset=utf-8"
         assert (
             response.headers["content-disposition"]
-            == f'attachment; filename="tasks-export-{ws.id}.md"'
+            == f'attachment; filename="tasks-export-{ws_id}.md"'
         )
 
         content = response.text
@@ -158,26 +148,30 @@ class TestExportTasks:
         assert "#backend #api" in content
 
     @pytest.mark.asyncio
-    async def test_export_json_empty(self, async_client, db_session: AsyncSession) -> None:
+    async def test_export_json_empty(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
         """GET with no tasks returns empty JSON array."""
         user = await _create_user(db_session)
-        ws = await _create_workspace(db_session, user.id)
+        ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
 
         response = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/export/tasks?format=json",
+            f"/api/v1/workspaces/{ws_id}/export/tasks?format=json",
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 200
         assert response.json() == []
 
     @pytest.mark.asyncio
-    async def test_export_markdown_empty(self, async_client, db_session: AsyncSession) -> None:
+    async def test_export_markdown_empty(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
         """GET with no tasks returns Markdown with zero count."""
         user = await _create_user(db_session)
-        ws = await _create_workspace(db_session, user.id)
+        ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
 
         response = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/export/tasks?format=markdown",
+            f"/api/v1/workspaces/{ws_id}/export/tasks?format=markdown",
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 200
@@ -185,16 +179,17 @@ class TestExportTasks:
 
     @pytest.mark.asyncio
     async def test_export_json_tasks_have_all_fields(
-        self, async_client, db_session: AsyncSession
+        self, async_client, db_session: AsyncSession, seed_workspace
     ) -> None:
         """GET ?format=json returns all expected task fields."""
         user = await _create_user(db_session)
-        ws = await _create_workspace(db_session, user.id)
-        story = await _create_story(db_session, ws.id)
+        seeded = await seed_workspace(user=user, stories=0)
+        story = await _create_story(db_session, seeded.project_id)
+        ws_id = seeded.workspace_id
         await _create_tasks(db_session, story.id, count=1)
 
         response = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/export/tasks?format=json",
+            f"/api/v1/workspaces/{ws_id}/export/tasks?format=json",
             headers=_auth_headers(str(user.id)),
         )
         task = response.json()[0]
@@ -211,16 +206,17 @@ class TestExportTasks:
 
     @pytest.mark.asyncio
     async def test_export_markdown_labels_and_deps(
-        self, async_client, db_session: AsyncSession
+        self, async_client, db_session: AsyncSession, seed_workspace
     ) -> None:
         """GET ?format=markdown renders labels and resolves dependencies to titles."""
         user = await _create_user(db_session)
-        ws = await _create_workspace(db_session, user.id)
-        story = await _create_story(db_session, ws.id)
+        seeded = await seed_workspace(user=user, stories=0)
+        story_id = (await _create_story(db_session, seeded.project_id)).id
+        ws_id = seeded.workspace_id
         task_repo = SQLAlchemyTaskRepository(db_session)
         predecessor = await task_repo.save(
             Task(
-                user_story_id=story.id,
+                user_story_id=story_id,
                 title="Predecessor task",
                 description="Comes first",
                 status=TaskStatus.DONE,
@@ -230,7 +226,7 @@ class TestExportTasks:
             )
         )
         task = Task(
-            user_story_id=story.id,
+            user_story_id=story_id,
             title="Task with meta",
             description="Has labels and deps",
             status=TaskStatus.TODO,
@@ -241,7 +237,7 @@ class TestExportTasks:
         await task_repo.save(task)
 
         response = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/export/tasks?format=markdown",
+            f"/api/v1/workspaces/{ws_id}/export/tasks?format=markdown",
             headers=_auth_headers(str(user.id)),
         )
         assert "#db #backend" in response.text
@@ -249,13 +245,15 @@ class TestExportTasks:
         assert "→ Predecessor task" in response.text
 
     @pytest.mark.asyncio
-    async def test_export_unknown_format(self, async_client, db_session: AsyncSession) -> None:
+    async def test_export_unknown_format(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
         """GET with unsupported format returns 400."""
         user = await _create_user(db_session)
-        ws = await _create_workspace(db_session, user.id)
+        ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
 
         response = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/export/tasks?format=csv",
+            f"/api/v1/workspaces/{ws_id}/export/tasks?format=csv",
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 400

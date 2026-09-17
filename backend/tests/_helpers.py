@@ -1,8 +1,11 @@
 """Shared test helpers for Storico integration tests.
 
-Canonical workspace-project seeding pattern: build Workspaces via the
-repository so tests round-trip through the same entity↔ORM mapping the
-production code path uses. Mirrors backend/tests/test_api/test_export.py:52-75.
+Low-level builders only. Constructing a Workspace through the repository keeps
+tests on the same entity↔ORM mapping the production code path uses.
+
+Seeding a whole ``workspace → project → stories`` chain plus the caller's
+membership has exactly one entry point — the ``seed_workspace`` fixture in
+``tests/conftest.py`` — and this module deliberately stays below it.
 
 Slug inline because ``python-slugify`` is not a project dependency
 (see backend/pyproject.toml); tests need no real slugification semantics.
@@ -23,8 +26,8 @@ from storico.infrastructure.database.repositories.workspace_repository import (
 def _slugify(name: str) -> str:
     """Minimal slugifier — only used for test fixture display names.
 
-    Keeps the same ``name.lower().replace(" ", "-")`` shape as the
-    pre-existing helper in backend/tests/test_api/test_export.py:56.
+    Not real slugification: ``python-slugify`` is not a project dependency, and
+    no test asserts on slug semantics beyond uniqueness.
     """
     return name.lower().replace(" ", "-")
 
@@ -38,12 +41,12 @@ async def create_workspace(
 ) -> Workspace:
     """Create and persist a Workspace, returning the saved entity.
 
-    Helper for tests that need a valid ``workspace_id`` when constructing
-    ``Project`` entities or POSTing to the (workspace-scoped) projects API.
+    For tests that need a valid ``workspace_id`` when constructing ``Project``
+    entities or POSTing to the (workspace-scoped) projects API, and for the
+    ``seed_workspace`` factory itself.
 
-    Auto-generates ``slug`` from ``name`` and ``owner_id`` (``uuid4``) if
-    not provided, matching the Workspace entity contract used in
-    ``_create_workspace`` in ``tests/test_api/test_export.py``.
+    Auto-generates ``slug`` from ``name`` and ``owner_id`` (``uuid4``) when they
+    are not provided.
     """
     slug_value = slug or _slugify(name)
     owner_value = owner_id or uuid4()

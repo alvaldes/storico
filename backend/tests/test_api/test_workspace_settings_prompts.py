@@ -12,12 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.config.settings import Settings
 from storico.domain.entities.user import User
-from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
+from storico.domain.entities.workspace_member import WorkspaceRole
 from storico.infrastructure.database.repositories import SQLAlchemyUserRepository
-from storico.infrastructure.database.repositories.workspace_member_repository import (
-    SQLAlchemyWorkspaceMemberRepository,
-)
-from tests._helpers import create_workspace
 
 
 def _auth_headers(user_id: str) -> dict:
@@ -36,26 +32,20 @@ async def _create_user(db_session: AsyncSession, email: str = "config@test.com")
     return saved
 
 
-async def _add_member(db_session: AsyncSession, ws_id, user_id, role) -> None:
-    """Add a user as a member of a workspace with the given role."""
-    repo = SQLAlchemyWorkspaceMemberRepository(db_session)
-    member = WorkspaceMember(workspace_id=ws_id, user_id=user_id, role=role)
-    await repo.add(member)
-
-
 @pytest.mark.integration
 class TestWorkspacePromptConfig:
     """Workspace prompt config read/write with admin-only authorization."""
 
     @pytest.mark.asyncio
-    async def test_read_defaults_with_no_row(self, async_client, db_session) -> None:
+    async def test_read_defaults_with_no_row(
+        self, async_client, db_session, seed_workspace
+    ) -> None:
         """S-CONFIG-1: no prompt row → enabled true, limit 3, threshold 0.85."""
         user = await _create_user(db_session)
-        ws = await create_workspace(db_session)
-        await _add_member(db_session, ws.id, user.id, WorkspaceRole.ADMIN)
+        ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
 
         response = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/settings/prompts",
+            f"/api/v1/workspaces/{ws_id}/settings/prompts",
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 200
@@ -65,14 +55,15 @@ class TestWorkspacePromptConfig:
         assert data["few_shot_threshold"] == 0.85
 
     @pytest.mark.asyncio
-    async def test_update_config_is_persisted(self, async_client, db_session) -> None:
+    async def test_update_config_is_persisted(
+        self, async_client, db_session, seed_workspace
+    ) -> None:
         """S-CONFIG-2: PUT {enabled:false, limit:5, threshold:0.9} then GET returns them."""
         user = await _create_user(db_session)
-        ws = await create_workspace(db_session)
-        await _add_member(db_session, ws.id, user.id, WorkspaceRole.ADMIN)
+        ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
 
         put_resp = await async_client.put(
-            f"/api/v1/workspaces/{ws.id}/settings/prompts",
+            f"/api/v1/workspaces/{ws_id}/settings/prompts",
             json={"few_shot_enabled": False, "few_shot_limit": 5, "few_shot_threshold": 0.9},
             headers=_auth_headers(str(user.id)),
         )
@@ -83,7 +74,7 @@ class TestWorkspacePromptConfig:
         assert body["few_shot_threshold"] == 0.9
 
         get_resp = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/settings/prompts",
+            f"/api/v1/workspaces/{ws_id}/settings/prompts",
             headers=_auth_headers(str(user.id)),
         )
         assert get_resp.status_code == 200
@@ -93,21 +84,22 @@ class TestWorkspacePromptConfig:
         assert data["few_shot_threshold"] == 0.9
 
     @pytest.mark.asyncio
-    async def test_validation_rejects_out_of_range(self, async_client, db_session) -> None:
+    async def test_validation_rejects_out_of_range(
+        self, async_client, db_session, seed_workspace
+    ) -> None:
         """S-CONFIG-3: limit=0 and threshold=1.5 fail with 422 and persist nothing."""
         user = await _create_user(db_session)
-        ws = await create_workspace(db_session)
-        await _add_member(db_session, ws.id, user.id, WorkspaceRole.ADMIN)
+        ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
 
         limit_resp = await async_client.put(
-            f"/api/v1/workspaces/{ws.id}/settings/prompts",
+            f"/api/v1/workspaces/{ws_id}/settings/prompts",
             json={"few_shot_limit": 0},
             headers=_auth_headers(str(user.id)),
         )
         assert limit_resp.status_code == 422
 
         threshold_resp = await async_client.put(
-            f"/api/v1/workspaces/{ws.id}/settings/prompts",
+            f"/api/v1/workspaces/{ws_id}/settings/prompts",
             json={"few_shot_threshold": 1.5},
             headers=_auth_headers(str(user.id)),
         )
@@ -115,7 +107,7 @@ class TestWorkspacePromptConfig:
 
         # A later GET still shows the defaults (nothing was persisted).
         get_resp = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/settings/prompts",
+            f"/api/v1/workspaces/{ws_id}/settings/prompts",
             headers=_auth_headers(str(user.id)),
         )
         assert get_resp.status_code == 200
@@ -124,28 +116,30 @@ class TestWorkspacePromptConfig:
         assert data["few_shot_threshold"] == 0.85
 
     @pytest.mark.asyncio
-    async def test_authorization_non_admin_403(self, async_client, db_session) -> None:
+    async def test_authorization_non_admin_403(
+        self, async_client, db_session, seed_workspace
+    ) -> None:
         """S-CONFIG-4: a non-admin member cannot update the config."""
         user = await _create_user(db_session)
-        ws = await create_workspace(db_session)
-        await _add_member(db_session, ws.id, user.id, WorkspaceRole.MEMBER)
+        ws_id = (await seed_workspace(user=user, stories=0, role=WorkspaceRole.MEMBER)).workspace_id
 
         response = await async_client.put(
-            f"/api/v1/workspaces/{ws.id}/settings/prompts",
+            f"/api/v1/workspaces/{ws_id}/settings/prompts",
             json={"few_shot_enabled": False},
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 403
 
     @pytest.mark.asyncio
-    async def test_legacy_few_shot_examples_rejected_422(self, async_client, db_session) -> None:
+    async def test_legacy_few_shot_examples_rejected_422(
+        self, async_client, db_session, seed_workspace
+    ) -> None:
         """S-CONFIG-5: posting the legacy few_shot_examples field is rejected."""
         user = await _create_user(db_session)
-        ws = await create_workspace(db_session)
-        await _add_member(db_session, ws.id, user.id, WorkspaceRole.ADMIN)
+        ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
 
         response = await async_client.put(
-            f"/api/v1/workspaces/{ws.id}/settings/prompts",
+            f"/api/v1/workspaces/{ws_id}/settings/prompts",
             json={
                 "few_shot_examples": [
                     {

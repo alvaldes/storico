@@ -179,6 +179,12 @@ async def seed_workspace(
       needs an accessible (empty) workspace.
     - ``member``: ``False`` when a test needs a chain the caller must NOT be
       able to reach.
+    - ``role``: the role that membership is granted with; ``ADMIN`` by default,
+      because that is what the routes' admin-only checks accept.
+
+    Everything else a test needs on top of the chain — tasks, a second
+    workspace, a user to hand to ``user`` — is composed by the test from this
+    factory, not added here as another knob.
     """
 
     async def _seed(
@@ -186,6 +192,7 @@ async def seed_workspace(
         user: User | None = None,
         stories: int = 1,
         member: bool = True,
+        role: WorkspaceRole = WorkspaceRole.ADMIN,
     ) -> SeededWorkspace:
         owner = user or authed_user
         # ``workspaces.slug`` is unique, so each seeded workspace needs its own.
@@ -221,7 +228,7 @@ async def seed_workspace(
                 WorkspaceMember(
                     workspace_id=workspace.id,
                     user_id=owner.id,
-                    role=WorkspaceRole.ADMIN,
+                    role=role,
                 )
             )
 

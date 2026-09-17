@@ -2,74 +2,30 @@
 
 Tests must seed a workspace and project because the API validates that the
 story's project exists and the authenticated user is a member of its workspace.
+The chain comes from the shared ``seed_workspace`` factory; only the foreign
+owner, which is a user rather than part of the chain, is built locally.
 """
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import User
-from storico.domain.entities.project import Project
-from storico.domain.entities.workspace import Workspace
-from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
-from storico.infrastructure.database.repositories import (
-    SQLAlchemyUserRepository,
-    SQLAlchemyWorkspaceMemberRepository,
-    SQLAlchemyWorkspaceRepository,
-)
-from storico.infrastructure.database.repositories.project_repository import (
-    SQLAlchemyProjectRepository,
-)
+from storico.infrastructure.database.repositories import SQLAlchemyUserRepository
 
 RAW_TEXT = "As a user, I want to log in so that I can access my account"
 
 FORBIDDEN_NOT_A_MEMBER = "Not a member of this workspace"
 
 
-async def _seed_workspace_and_project(
-    db_session: AsyncSession, user: User
-) -> tuple[Workspace, Project]:
-    """Create a workspace (user as owner + admin member) and a project in it."""
-    ws_repo = SQLAlchemyWorkspaceRepository(db_session)
-    ws = Workspace(
-        name="Test Workspace",
-        slug="test-workspace",
-        owner_id=user.id,
-    )
-    ws = await ws_repo.save(ws)
-
-    member_repo = SQLAlchemyWorkspaceMemberRepository(db_session)
-    member = WorkspaceMember(workspace_id=ws.id, user_id=user.id, role=WorkspaceRole.ADMIN)
-    await member_repo.add(member)
-
-    project_repo = SQLAlchemyProjectRepository(db_session)
-    project = Project(name="Test Project", workspace_id=ws.id)
-    project = await project_repo.save(project)
-
-    return ws, project
-
-
-async def _seed_second_workspace(db_session: AsyncSession, user: User) -> Workspace:
-    """Create a second workspace for multi-project tests."""
-    ws_repo = SQLAlchemyWorkspaceRepository(db_session)
-    ws = Workspace(name="WS 2", slug="ws-2", owner_id=user.id)
-    ws = await ws_repo.save(ws)
-
-    member_repo = SQLAlchemyWorkspaceMemberRepository(db_session)
-    await member_repo.add(
-        WorkspaceMember(workspace_id=ws.id, user_id=user.id, role=WorkspaceRole.ADMIN)
-    )
-    return ws
-
-
 class TestCreateStory:
     """POST /api/v1/stories/"""
 
-    async def test_create_story(self, authed_client, db_session: AsyncSession, authed_user: User):
+    async def test_create_story(self, authed_client, seed_workspace):
         """POST with valid data returns 201 and a UserStoryResponse body."""
-        _, project = await _seed_workspace_and_project(db_session, authed_user)
+        seeded = await seed_workspace(stories=0)
         payload = {
-            "project_id": str(project.id),
+            "project_id": str(seeded.project_id),
             "actor": "user",
             "feature": "log in",
             "benefit": "access my account",
@@ -83,17 +39,15 @@ class TestCreateStory:
         assert data["feature"] == "log in"
         assert data["benefit"] == "access my account"
         assert data["raw_text"] == RAW_TEXT
-        assert data["project_id"] == str(project.id)
+        assert data["project_id"] == str(seeded.project_id)
         assert "id" in data
         assert "created_at" in data
 
-    async def test_create_duplicate_story_fails(
-        self, authed_client, db_session: AsyncSession, authed_user: User
-    ):
+    async def test_create_duplicate_story_fails(self, authed_client, seed_workspace):
         """POST with same actor, feature, benefit in same project returns 409 conflict."""
-        _, project = await _seed_workspace_and_project(db_session, authed_user)
+        seeded = await seed_workspace(stories=0)
         payload = {
-            "project_id": str(project.id),
+            "project_id": str(seeded.project_id),
             "actor": "user",
             "feature": "log in",
             "benefit": "access my account",
@@ -114,12 +68,12 @@ class TestCreateStory:
         assert existing_id in data["detail"]
 
     async def test_create_duplicate_story_with_different_raw_text_fails(
-        self, authed_client, db_session: AsyncSession, authed_user: User
+        self, authed_client, seed_workspace
     ):
         """POST with same parts but different raw_text format fails."""
-        _, project = await _seed_workspace_and_project(db_session, authed_user)
+        seeded = await seed_workspace(stories=0)
         payload1 = {
-            "project_id": str(project.id),
+            "project_id": str(seeded.project_id),
             "actor": "user",
             "feature": "log in",
             "benefit": "access my account",
@@ -131,7 +85,7 @@ class TestCreateStory:
 
         # Second creation with same parts but different raw_text format
         payload2 = {
-            "project_id": str(project.id),
+            "project_id": str(seeded.project_id),
             "actor": "user",
             "feature": "log in",
             "benefit": "access my account",
@@ -148,13 +102,13 @@ class TestCreateStory:
 class TestListStories:
     """GET /api/v1/stories/"""
 
-    async def test_list_stories(self, authed_client, db_session: AsyncSession, authed_user: User):
+    async def test_list_stories(self, authed_client, seed_workspace):
         """POST one story, GET returns it in the items list."""
-        _, project = await _seed_workspace_and_project(db_session, authed_user)
+        seeded = await seed_workspace(stories=0)
         await authed_client.post(
             "/api/v1/stories/",
             json={
-                "project_id": str(project.id),
+                "project_id": str(seeded.project_id),
                 "actor": "user",
                 "feature": "view profile",
                 "benefit": "see my details",
@@ -178,19 +132,15 @@ class TestListStories:
         assert response.json()["items"] == []
         assert response.json()["total"] == 0
 
-    async def test_list_stories_by_project(
-        self, authed_client, db_session: AsyncSession, authed_user: User
-    ):
+    async def test_list_stories_by_project(self, authed_client, seed_workspace):
         """GET ?project_id= filters stories by project."""
-        _, project_a = await _seed_workspace_and_project(db_session, authed_user)
-        ws2 = await _seed_second_workspace(db_session, authed_user)
-        project_repo = SQLAlchemyProjectRepository(db_session)
-        project_b = await project_repo.save(Project(name="Project B", workspace_id=ws2.id))
+        project_a = (await seed_workspace(stories=0)).project_id
+        project_b = (await seed_workspace(stories=0)).project_id
 
         await authed_client.post(
             "/api/v1/stories/",
             json={
-                "project_id": str(project_a.id),
+                "project_id": str(project_a),
                 "actor": "user",
                 "feature": "feature A",
                 "benefit": "benefit",
@@ -200,7 +150,7 @@ class TestListStories:
         await authed_client.post(
             "/api/v1/stories/",
             json={
-                "project_id": str(project_b.id),
+                "project_id": str(project_b),
                 "actor": "admin",
                 "feature": "feature B",
                 "benefit": "benefit",
@@ -209,7 +159,7 @@ class TestListStories:
         )
 
         # Filter by project_b
-        response = await authed_client.get(f"/api/v1/stories/?project_id={project_b.id}")
+        response = await authed_client.get(f"/api/v1/stories/?project_id={project_b}")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
@@ -219,13 +169,13 @@ class TestListStories:
 class TestGetStory:
     """GET /api/v1/stories/{story_id}"""
 
-    async def test_get_story(self, authed_client, db_session: AsyncSession, authed_user: User):
+    async def test_get_story(self, authed_client, seed_workspace):
         """POST then GET by id returns the story."""
-        _, project = await _seed_workspace_and_project(db_session, authed_user)
+        seeded = await seed_workspace(stories=0)
         create_resp = await authed_client.post(
             "/api/v1/stories/",
             json={
-                "project_id": str(project.id),
+                "project_id": str(seeded.project_id),
                 "actor": "user",
                 "feature": "get story",
                 "benefit": "test retrieval",
@@ -250,13 +200,13 @@ class TestGetStory:
 class TestUpdateStory:
     """PUT /api/v1/stories/{story_id}"""
 
-    async def test_update_story(self, authed_client, db_session: AsyncSession, authed_user: User):
+    async def test_update_story(self, authed_client, seed_workspace):
         """POST then PUT updates the story fields."""
-        _, project = await _seed_workspace_and_project(db_session, authed_user)
+        seeded = await seed_workspace(stories=0)
         create_resp = await authed_client.post(
             "/api/v1/stories/",
             json={
-                "project_id": str(project.id),
+                "project_id": str(seeded.project_id),
                 "actor": "user",
                 "feature": "old feature",
                 "benefit": "old benefit",
@@ -280,13 +230,13 @@ class TestUpdateStory:
 class TestDeleteStory:
     """DELETE /api/v1/stories/{story_id}"""
 
-    async def test_delete_story(self, authed_client, db_session: AsyncSession, authed_user: User):
+    async def test_delete_story(self, authed_client, seed_workspace):
         """POST then DELETE returns 204."""
-        _, project = await _seed_workspace_and_project(db_session, authed_user)
+        seeded = await seed_workspace(stories=0)
         create_resp = await authed_client.post(
             "/api/v1/stories/",
             json={
-                "project_id": str(project.id),
+                "project_id": str(seeded.project_id),
                 "actor": "user",
                 "feature": "to delete",
                 "benefit": "gone",
@@ -310,7 +260,7 @@ class TestDeleteStory:
         assert response.json()["type"] == "entity_not_found"
 
 
-async def _seed_foreign_project(db_session: AsyncSession) -> Project:
+async def _seed_foreign_project(db_session: AsyncSession, seed_workspace) -> UUID:
     """Seed a workspace+project whose workspace ``authed_user`` is not in.
 
     The chain is fully consistent — the other user really is the workspace's
@@ -320,8 +270,7 @@ async def _seed_foreign_project(db_session: AsyncSession) -> Project:
     other = await SQLAlchemyUserRepository(db_session).save(
         User(email="other-story-owner@test.com", name="Other Story Owner")
     )
-    _, project = await _seed_workspace_and_project(db_session, other)
-    return project
+    return (await seed_workspace(user=other, stories=0)).project_id
 
 
 class TestStoryMembership:
@@ -335,15 +284,15 @@ class TestStoryMembership:
     """
 
     async def test_create_story_is_forbidden_for_a_non_member(
-        self, authed_client, db_session: AsyncSession
+        self, authed_client, db_session: AsyncSession, seed_workspace
     ):
         """POST into a workspace the caller is not a member of returns the shared 403."""
-        project = await _seed_foreign_project(db_session)
+        project_id = await _seed_foreign_project(db_session, seed_workspace)
 
         response = await authed_client.post(
             "/api/v1/stories/",
             json={
-                "project_id": str(project.id),
+                "project_id": str(project_id),
                 "actor": "user",
                 "feature": "write into a foreign workspace",
                 "benefit": "this must be refused",
@@ -355,12 +304,12 @@ class TestStoryMembership:
         assert response.json()["detail"] == FORBIDDEN_NOT_A_MEMBER
 
     async def test_list_stories_by_a_foreign_project_is_forbidden(
-        self, authed_client, db_session: AsyncSession
+        self, authed_client, db_session: AsyncSession, seed_workspace
     ):
         """GET ``?project_id=`` for a project in a foreign workspace returns the shared 403."""
-        project = await _seed_foreign_project(db_session)
+        project_id = await _seed_foreign_project(db_session, seed_workspace)
 
-        response = await authed_client.get(f"/api/v1/stories/?project_id={project.id}")
+        response = await authed_client.get(f"/api/v1/stories/?project_id={project_id}")
 
         assert response.status_code == 403
         assert response.json()["detail"] == FORBIDDEN_NOT_A_MEMBER

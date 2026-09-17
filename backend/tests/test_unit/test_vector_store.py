@@ -6,8 +6,9 @@ so no real network calls or databases are needed.
 
 import inspect
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -161,6 +162,42 @@ class TestQdrantAdapter:
             assert scope_param.default is inspect.Parameter.empty
             with pytest.raises(TypeError, match="workspace_id"):
                 signature.bind(object(), text="test")
+
+    @pytest.mark.asyncio
+    async def test_search_similar_with_explicit_none_still_sends_a_filter(self) -> None:
+        """An explicit ``None`` scope can never produce an unfiltered query.
+
+        The annotation says ``workspace_id: UUID``, but nothing stops a caller
+        from passing ``None`` at runtime. This pins what the adapter does with
+        that call: it still sends a ``workspace_id`` filter to ``query_points``.
+        The one adapter-only edit that would silently reopen the cross-workspace
+        leak -- ``query_filter = ... if workspace_id is not None else None`` --
+        makes this assertion fail, while the non-null tests above stay green.
+        """
+        port = _make_embedding_port()
+        port.embed.return_value = [0.1, 0.2, 0.3]
+
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+
+        mock_client = AsyncMock()
+        mock_client.query_points.return_value = _make_query_response([])
+        adapter._client = mock_client
+
+        # ``cast`` rather than ``# type: ignore[arg-type]``: no type checker runs
+        # in this gate, so the cast only documents the deliberate breach of the
+        # annotation. Either spelling keeps the call legal at runtime.
+        await adapter.search_similar(text="test", workspace_id=cast(UUID, None))
+
+        call_kwargs = mock_client.query_points.call_args[1]
+        query_filter = call_kwargs["query_filter"]
+        # Not None: the query stays filtered even for a runtime ``None`` scope.
+        assert query_filter is not None
+        assert query_filter.must[0].key == "workspace_id"
 
     @pytest.mark.asyncio
     async def test_search_similar_empty(self) -> None:
