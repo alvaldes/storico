@@ -1,6 +1,8 @@
 """pytest fixtures for Storico backend tests."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from dataclasses import dataclass
+from uuid import UUID, uuid4
 
 import jwt as pyjwt
 import pytest
@@ -14,13 +16,42 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from storico.api.app import create_app
+from storico.domain.entities.project import Project
 from storico.domain.entities.user import User
+from storico.domain.entities.user_story import UserStory
+from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
 from storico.infrastructure.cache.user_cache import _reset_user_cache
 from storico.infrastructure.database.models import Base
-from storico.infrastructure.database.repositories import SQLAlchemyUserRepository
+from storico.infrastructure.database.repositories import (
+    SQLAlchemyProjectRepository,
+    SQLAlchemyUserRepository,
+    SQLAlchemyUserStoryRepository,
+)
+from storico.infrastructure.database.repositories.workspace_member_repository import (
+    SQLAlchemyWorkspaceMemberRepository,
+)
 from storico.infrastructure.database.session import get_session
+from tests._helpers import create_workspace
 
 TEST_DATABASE_URL = "sqlite+aiosqlite://"
+
+
+@dataclass(frozen=True, slots=True)
+class SeededWorkspace:
+    """Ids of one seeded ``workspace → project → stories`` chain.
+
+    ``story_ids`` keeps the order the stories were created in; ``story_id`` is
+    the convenience accessor for the common single-story chain.
+    """
+
+    workspace_id: UUID
+    project_id: UUID
+    story_ids: tuple[UUID, ...]
+
+    @property
+    def story_id(self) -> UUID:
+        """Id of the first seeded story."""
+        return self.story_ids[0]
 
 
 @pytest.fixture(autouse=True)
@@ -76,9 +107,7 @@ async def async_client(app, test_engine: AsyncEngine):
     Each test gets a fresh database — tables are created before the client
     is yielded and disposed after the test completes.
     """
-    factory = async_sessionmaker(
-        bind=test_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
 
     # Override the ``get_session`` dependency so routes use the test database.
     async def override_get_session():
@@ -103,9 +132,7 @@ async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, N
     Uses the same engine as ``async_client`` so direct repository calls and
     API-driven operations see the same data.
     """
-    factory = async_sessionmaker(
-        bind=test_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         yield session
 
@@ -121,10 +148,87 @@ async def authed_user(db_session: AsyncSession) -> User:
 
 
 @pytest_asyncio.fixture
-async def authed_client(
-    authed_user: User, async_client: AsyncClient
-) -> AsyncClient:
+async def authed_client(authed_user: User, async_client: AsyncClient) -> AsyncClient:
     """Return an async client pre-authenticated as ``authed_user`` via JWT."""
     token = make_jwt_headers(str(authed_user.id))["Authorization"]
     async_client.headers.update({"Authorization": token})
     return async_client
+
+
+@pytest_asyncio.fixture
+async def seed_workspace(
+    db_session: AsyncSession, authed_user: User
+) -> Callable[..., Awaitable[SeededWorkspace]]:
+    """Return a factory that seeds a workspace chain its caller can access.
+
+    Why this exists: the ``/api/v1/extractions`` and ``/api/v1/tasks`` routes
+    resolve a row's workspace by walking ``task/extraction → story → project →
+    workspace`` and only then require the caller to be a member of that
+    workspace (``member_repo.find_by_workspace_and_user``). A bare ``uuid4()``
+    used as a ``user_story_id`` therefore never reads back as a row: the walk
+    raises a 404 before the membership check is even reached. Seeding the whole
+    chain — membership included — is what makes such a row addressable.
+
+    Defaults target the ``authed_client`` caller: the chain is seeded with
+    ``authed_user`` as an ADMIN member, because that membership is exactly what
+    the routes' workspace resolution requires. Knobs, so a test asks for
+    exactly what it needs:
+
+    - ``user``: seed the chain for a different authenticated user instead.
+    - ``stories``: how many stories the project gets; ``0`` when a test only
+      needs an accessible (empty) workspace.
+    - ``member``: ``False`` when a test needs a chain the caller must NOT be
+      able to reach.
+    """
+
+    async def _seed(
+        *,
+        user: User | None = None,
+        stories: int = 1,
+        member: bool = True,
+    ) -> SeededWorkspace:
+        owner = user or authed_user
+        # ``workspaces.slug`` is unique, so each seeded workspace needs its own.
+        workspace = await create_workspace(
+            db_session,
+            name="Seeded Workspace",
+            slug=f"seeded-workspace-{uuid4().hex[:8]}",
+            owner_id=owner.id,
+        )
+        project = await SQLAlchemyProjectRepository(db_session).save(
+            Project(name="Seeded Project", workspace_id=workspace.id)
+        )
+
+        story_repo = SQLAlchemyUserStoryRepository(db_session)
+        story_ids: list[UUID] = []
+        for index in range(stories):
+            story = await story_repo.save(
+                UserStory(
+                    project_id=project.id,
+                    actor="user",
+                    feature=f"use seeded feature {index}",
+                    benefit="the seeded chain is addressable",
+                    raw_text=(
+                        f"As a user, I want to use seeded feature {index} "
+                        "so that the seeded chain is addressable"
+                    ),
+                )
+            )
+            story_ids.append(story.id)
+
+        if member:
+            await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+                WorkspaceMember(
+                    workspace_id=workspace.id,
+                    user_id=owner.id,
+                    role=WorkspaceRole.ADMIN,
+                )
+            )
+
+        return SeededWorkspace(
+            workspace_id=workspace.id,
+            project_id=project.id,
+            story_ids=tuple(story_ids),
+        )
+
+    return _seed

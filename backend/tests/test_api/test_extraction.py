@@ -14,19 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from storico.domain.entities import Extraction, LLMConnectionError, User
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
-from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
 from storico.domain.ports import LLMConfig, LLMPort
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
-    SQLAlchemyProjectRepository,
     SQLAlchemyUserRepository,
-    SQLAlchemyUserStoryRepository,
-)
-from storico.infrastructure.database.repositories.workspace_member_repository import (
-    SQLAlchemyWorkspaceMemberRepository,
 )
 from storico.infrastructure.tasks import extraction_task
-from tests._helpers import create_workspace
 
 
 async def _create_user(db_session: AsyncSession, email: str = "test@example.com") -> User:
@@ -38,46 +31,18 @@ async def _create_user(db_session: AsyncSession, email: str = "test@example.com"
     return saved
 
 
-async def _create_story(db_session: AsyncSession):
-    """Create a user story in the test database."""
-    from storico.domain.entities.project import Project
-    from storico.domain.entities.user_story import UserStory
-
-    ws = await create_workspace(db_session)
-
-    project_repo = SQLAlchemyProjectRepository(db_session)
-    project = Project(name="Test Project", workspace_id=ws.id)
-    project = await project_repo.save(project)
-
-    story_repo = SQLAlchemyUserStoryRepository(db_session)
-    story = UserStory(
-        project_id=project.id,
-        actor="user",
-        feature="log in to my account",
-        benefit="access my dashboard",
-        raw_text="As a user, I want to log in so that I can access my dashboard",
-    )
-    return await story_repo.save(story), ws
-
-
-async def _add_member(db_session: AsyncSession, ws_id, user_id) -> None:
-    """Add a user as ADMIN member of a workspace."""
-    repo = SQLAlchemyWorkspaceMemberRepository(db_session)
-    member = WorkspaceMember(workspace_id=ws_id, user_id=user_id, role=WorkspaceRole.ADMIN)
-    await repo.add(member)
-
-
 class TestExtractEndpoint:
     """POST /api/v1/workspaces/{workspace_id}/extract/"""
 
     @pytest.mark.asyncio
     async def test_extract_success(
-        self, async_client, db_session: AsyncSession, monkeypatch
+        self, async_client, db_session: AsyncSession, monkeypatch, seed_workspace
     ) -> None:
         """POST with a valid story returns 202 and persists a pending extraction."""
         user = await _create_user(db_session)
-        story, ws = await _create_story(db_session)
-        await _add_member(db_session, ws.id, user.id)
+        seeded = await seed_workspace(user=user)
+        story_id = seeded.story_id
+        ws_id = seeded.workspace_id
         headers = _auth_headers(str(user.id))
 
         # The endpoint is fire-and-forget: it persists a pending row and schedules
@@ -87,15 +52,15 @@ class TestExtractEndpoint:
         monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", scheduled)
 
         response = await async_client.post(
-            f"/api/v1/workspaces/{ws.id}/extract/",
-            json={"user_story_id": str(story.id), "model": "llama3.2"},
+            f"/api/v1/workspaces/{ws_id}/extract/",
+            json={"user_story_id": str(story_id), "model": "llama3.2"},
             headers=headers,
         )
 
         assert response.status_code == 202
         data = response.json()
         assert data["status"] == "pending"
-        assert data["user_story_id"] == str(story.id)
+        assert data["user_story_id"] == str(story_id)
 
         # The pending row is the real contract: the client polls it by this id.
         repo = SQLAlchemyExtractionRepository(db_session)
@@ -108,21 +73,25 @@ class TestExtractEndpoint:
         scheduled.assert_called_once()
         kwargs = scheduled.call_args.kwargs
         assert kwargs["extraction_id"] == pending.id
-        assert kwargs["story_id"] == story.id
-        assert kwargs["workspace_id"] == ws.id
+        assert kwargs["story_id"] == story_id
+        assert kwargs["workspace_id"] == ws_id
         assert kwargs["model"] == "llama3.2"
 
     @pytest.mark.asyncio
-    async def test_extract_story_not_found(self, async_client, db_session: AsyncSession) -> None:
+    async def test_extract_story_not_found(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
         """POST with non-existent story ID returns 404."""
         user = await _create_user(db_session)
-        ws = await create_workspace(db_session)
-        await _add_member(db_session, ws.id, user.id)
+        # An accessible workspace with no stories in it: the 404 must come from
+        # the unknown story id, not from a failed workspace membership check.
+        seeded = await seed_workspace(user=user, stories=0)
+        ws_id = seeded.workspace_id
         fake_id = uuid4()
         headers = _auth_headers(str(user.id))
 
         response = await async_client.post(
-            f"/api/v1/workspaces/{ws.id}/extract/",
+            f"/api/v1/workspaces/{ws_id}/extract/",
             json={"user_story_id": str(fake_id)},
             headers=headers,
         )
@@ -130,7 +99,7 @@ class TestExtractEndpoint:
 
     @pytest.mark.asyncio
     async def test_llm_failure_is_recorded_on_the_extraction(
-        self, test_engine: AsyncEngine, monkeypatch
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
     ) -> None:
         """An unreachable LLM is recorded as a failed extraction, never raised.
 
@@ -141,14 +110,18 @@ class TestExtractEndpoint:
         """
         factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
 
-        async with factory() as session:
-            story, ws = await _create_story(session)
+        # Seeded through the shared fixture: it writes to the same in-memory
+        # engine this test's own sessions read from, and ``member=False`` keeps
+        # this test about the background task rather than route authorization.
+        seeded = await seed_workspace(member=False)
+        story_id = seeded.story_id
+        ws_id = seeded.workspace_id
 
         async with factory() as session:
             repo = SQLAlchemyExtractionRepository(session)
             pending = await repo.save(
                 Extraction(
-                    user_story_id=story.id,
+                    user_story_id=story_id,
                     model_used="llama3.2",
                     raw_response="",
                     status=ExtractionStatus.PENDING,
@@ -170,8 +143,8 @@ class TestExtractEndpoint:
 
         await extraction_task.run_background_extraction(
             extraction_id=pending.id,
-            story_id=story.id,
-            workspace_id=ws.id,
+            story_id=story_id,
+            workspace_id=ws_id,
             model="llama3.2",
             max_retries=0,
         )
@@ -240,12 +213,16 @@ class TestExtractionStatusEndpoint:
     """GET /api/v1/workspaces/{workspace_id}/extract/status/{extraction_id}"""
 
     @pytest.mark.asyncio
-    async def test_status_completed(self, async_client, db_session: AsyncSession) -> None:
+    async def test_status_completed(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
         """GET returns extraction details for completed extraction."""
         user = await _create_user(db_session)
-        ws = await create_workspace(db_session)
-        await _add_member(db_session, ws.id, user.id)
-        story_id = uuid4()
+        # The extraction hangs off a real story in this workspace rather than a
+        # dangling id, so the seeded chain stays internally consistent.
+        seeded = await seed_workspace(user=user)
+        ws_id = seeded.workspace_id
+        story_id = seeded.story_id
         repo = SQLAlchemyExtractionRepository(db_session)
 
         extraction = Extraction(
@@ -257,7 +234,7 @@ class TestExtractionStatusEndpoint:
         saved = await repo.save(extraction)
 
         response = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/extract/status/{saved.id}",
+            f"/api/v1/workspaces/{ws_id}/extract/status/{saved.id}",
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 200
@@ -267,12 +244,14 @@ class TestExtractionStatusEndpoint:
         assert data["id"] == str(saved.id)
 
     @pytest.mark.asyncio
-    async def test_status_failed(self, async_client, db_session: AsyncSession) -> None:
+    async def test_status_failed(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
         """GET returns error_info for failed extraction."""
         user = await _create_user(db_session)
-        ws = await create_workspace(db_session)
-        await _add_member(db_session, ws.id, user.id)
-        story_id = uuid4()
+        seeded = await seed_workspace(user=user)
+        ws_id = seeded.workspace_id
+        story_id = seeded.story_id
         repo = SQLAlchemyExtractionRepository(db_session)
 
         extraction = Extraction(
@@ -285,7 +264,7 @@ class TestExtractionStatusEndpoint:
         saved = await repo.save(extraction)
 
         response = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/extract/status/{saved.id}",
+            f"/api/v1/workspaces/{ws_id}/extract/status/{saved.id}",
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 200
@@ -295,13 +274,13 @@ class TestExtractionStatusEndpoint:
 
     @pytest.mark.asyncio
     async def test_status_completed_with_confidence(
-        self, async_client, db_session: AsyncSession
+        self, async_client, db_session: AsyncSession, seed_workspace
     ) -> None:
         """GET returns confidence_score when present."""
         user = await _create_user(db_session)
-        ws = await create_workspace(db_session)
-        await _add_member(db_session, ws.id, user.id)
-        story_id = uuid4()
+        seeded = await seed_workspace(user=user)
+        ws_id = seeded.workspace_id
+        story_id = seeded.story_id
         repo = SQLAlchemyExtractionRepository(db_session)
 
         extraction = Extraction(
@@ -314,7 +293,7 @@ class TestExtractionStatusEndpoint:
         saved = await repo.save(extraction)
 
         response = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/extract/status/{saved.id}",
+            f"/api/v1/workspaces/{ws_id}/extract/status/{saved.id}",
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 200
@@ -323,15 +302,17 @@ class TestExtractionStatusEndpoint:
         assert data["raw_response"] == "Some response"
 
     @pytest.mark.asyncio
-    async def test_status_not_found(self, async_client, db_session: AsyncSession) -> None:
+    async def test_status_not_found(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
         """GET for non-existent extraction returns 404."""
         user = await _create_user(db_session)
-        ws = await create_workspace(db_session)
-        await _add_member(db_session, ws.id, user.id)
+        seeded = await seed_workspace(user=user, stories=0)
+        ws_id = seeded.workspace_id
         fake_id = uuid4()
 
         response = await async_client.get(
-            f"/api/v1/workspaces/{ws.id}/extract/status/{fake_id}",
+            f"/api/v1/workspaces/{ws_id}/extract/status/{fake_id}",
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 404

@@ -1,4 +1,9 @@
-"""Integration tests for the Extraction read-only API endpoints."""
+"""Integration tests for the Extraction read-only API endpoints.
+
+Every case here must seed the full ``workspace → project → story`` chain plus
+the caller's membership: the routes resolve an extraction's workspace by
+walking that chain and then require membership in it.
+"""
 
 from uuid import uuid4
 
@@ -14,10 +19,15 @@ class TestListExtractions:
     """GET /api/v1/extractions/"""
 
     async def test_list_extractions_by_story(
-        self, authed_client, db_session: AsyncSession
+        self, authed_client, db_session: AsyncSession, seed_workspace
     ):
-        """Save an extraction via the repository, then GET by user_story_id."""
-        story_id = uuid4()
+        """Save an extraction for a seeded story, then GET by user_story_id.
+
+        The filter branch resolves the story's project and workspace and then
+        checks the caller's membership, so the seeded chain is part of the
+        contract under test — not just the extraction row.
+        """
+        story_id = (await seed_workspace()).story_id
         repo = SQLAlchemyExtractionRepository(db_session)
 
         extraction = Extraction(
@@ -27,9 +37,7 @@ class TestListExtractions:
         )
         await repo.save(extraction)
 
-        response = await authed_client.get(
-            f"/api/v1/extractions/?user_story_id={story_id}"
-        )
+        response = await authed_client.get(f"/api/v1/extractions/?user_story_id={story_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
@@ -38,28 +46,40 @@ class TestListExtractions:
         assert data["items"][0]["user_story_id"] == str(story_id)
         assert data["page"] == 1
 
-    async def test_list_extractions_empty(self, authed_client):
-        """GET with a story_id that has no extractions returns empty."""
-        fake_story = str(uuid4())
-        response = await authed_client.get(
-            f"/api/v1/extractions/?user_story_id={fake_story}"
-        )
+    async def test_list_extractions_empty(self, authed_client, seed_workspace):
+        """GET filtered by a seeded story that has no extractions returns empty.
+
+        The contract is "a user with access but no rows sees an empty page": the
+        story must exist and the caller must be a member, otherwise the route
+        answers 404 (story not found) or 403 (not a member) instead of an empty
+        result.
+        """
+        story_id = (await seed_workspace()).story_id
+        response = await authed_client.get(f"/api/v1/extractions/?user_story_id={story_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["items"] == []
         assert data["total"] == 0
 
     async def test_list_all_extractions_without_filter(
-        self, authed_client, db_session: AsyncSession
+        self, authed_client, db_session: AsyncSession, seed_workspace
     ):
-        """GET without user_story_id returns all extractions."""
+        """GET without user_story_id returns all extractions in the user's workspaces.
+
+        This is the "no filter" branch: it fans out over the caller's
+        memberships (``member_repo.list_by_user``) and then, per workspace, over
+        extractions joined to their story and project. Both halves are needed —
+        a membership with no extractions returns 0, and an extraction whose story
+        is not in one of those workspaces is dropped by the join.
+        """
+        seeded = await seed_workspace(stories=3)
         repo = SQLAlchemyExtractionRepository(db_session)
-        for i in range(3):
+        for index, story_id in enumerate(seeded.story_ids):
             await repo.save(
                 Extraction(
-                    user_story_id=uuid4(),
+                    user_story_id=story_id,
                     model_used="test",
-                    raw_response=f"summary: Task {i}",
+                    raw_response=f"summary: Task {index}",
                 )
             )
 
@@ -72,11 +92,9 @@ class TestListExtractions:
 class TestGetExtraction:
     """GET /api/v1/extractions/{extraction_id}"""
 
-    async def test_get_extraction(
-        self, authed_client, db_session: AsyncSession
-    ):
-        """Save an extraction via the repository, then GET by id."""
-        story_id = uuid4()
+    async def test_get_extraction(self, authed_client, db_session: AsyncSession, seed_workspace):
+        """Save an extraction for a seeded story, then GET by id."""
+        story_id = (await seed_workspace()).story_id
         repo = SQLAlchemyExtractionRepository(db_session)
 
         extraction = Extraction(
@@ -88,9 +106,7 @@ class TestGetExtraction:
         )
         saved = await repo.save(extraction)
 
-        response = await authed_client.get(
-            f"/api/v1/extractions/{saved.id}"
-        )
+        response = await authed_client.get(f"/api/v1/extractions/{saved.id}")
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == str(saved.id)
