@@ -108,7 +108,7 @@ providers (`ollama`, `openai`, `anthropic`, `gemini`) — e.g. `deepseek`, `groq
 
 ### T-003 — Frontend: custom-provider model discovery UX
 
-- **Status**: in progress
+- **Status**: done (commit `5a9e395`)
 - **Files to modify**: `frontend/src/components/react/LLMConfigEditor.tsx`,
   `frontend/src/i18n/en.json`, `frontend/src/i18n/es.json`
 - **What**:
@@ -131,7 +131,7 @@ providers (`ollama`, `openai`, `anthropic`, `gemini`) — e.g. `deepseek`, `groq
 
 ### T-004 — Verification gate
 
-- **Status**: pending
+- **Status**: done
 - **What**: run the full CI-equivalent gate and record the outcome.
 - **Commands**:
   - `cd backend && .venv/bin/ruff check src tests`
@@ -163,3 +163,9 @@ _(each completed task records its commit identity here)_
 |------|--------|---------|
 | T-001 | `90b234c` | `fetch_openai_compatible_models` probes `{base}/models` then `{base}/v1/models` (guarded against a doubled `/v1`), key optional, first HTTP 200 carrying a `data` list wins, otherwise the last `httpx.HTTPError` propagates to the existing 502 mapping. `fetch_openai_models` delegates. 16 new tests. Verified: focused suite 16 passed, `ruff check` clean, `ruff format --check` clean, full backend suite 444 passed / 1 skipped. |
 | T-002 | `9b6ab1c` | Adapter selection extracted from `_run_extraction` into the pure `_build_llm_port`; `ollama` is an explicit branch, unknown names route to `OpenAIAdapter`, and a custom provider without a base URL raises `LLMError` instead of reaching Ollama. Unauthenticated custom gateways get the `no-key-required` placeholder after `openai==3.14.0` was observed to reject `""` and to read an ambient `OPENAI_API_KEY` when passed `None`. 16 new tests. Verified: focused suite 16 passed, `ruff check` clean, `ruff format --check` clean, full backend suite 460 passed / 1 skipped, and `AsyncOpenAI(api_key="no-key-required", base_url=...)` constructs under 3.14.0. |
+| T-003 | `5a9e395` | Custom mode no longer auto-probes (the provider field is free text, so a probe per keystroke reached the user's own provider) and the field resets moved to the two mode switches. The custom model field stays free text and gains the discovered ids as native `<datalist>` suggestions; the refresh button renders in custom mode and is enabled without a key; the hint chain reports a failed probe, then an empty list, then the typing hint, all behind a settled-probe flag. Custom Base URL / API Key placeholders no longer show Anthropic's. `llmCustomModelDesc` was dropped as newly dead. 10 new tests. |
+| T-004 | — | Independent verification of the final tree. `ruff check`, `ruff format --check`, `pytest -q` (460 passed / 1 skipped), `tsc --noEmit`, `vitest run` (199 passed), `pnpm run build` — all green, working tree clean before and after. The single skip is the long-standing testcontainers/Docker one. Three build warnings and one pytest `RuntimeWarning` are all reproduced from byte-identical files, so none is candidate-caused. |
+
+## Outcome
+
+All four tasks are complete and independently verified. Total diff against `f195381`: 9 files, 1080 insertions, 98 deletions — above the 400-line review threshold, so this candidate wants to be reviewed as chained slices rather than one review.
