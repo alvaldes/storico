@@ -1,7 +1,6 @@
 # ODD Feature: custom-provider-model-discovery
 
-> **Status**: in progress
-> **Branch**: `feat/custom-provider-model-discovery`
+> **Status**: done — landed on `main` as six commits (`f195381`..`3905844`); the feature branch was fast-forwarded and deleted
 > **Created**: 2026-09-17
 > **Workflow**: Organic Driven Development (ODD)
 
