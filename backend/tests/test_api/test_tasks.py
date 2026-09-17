@@ -295,6 +295,55 @@ class TestUpdateTask:
         assert data["priority"] == "high"
         assert data["id"] == task_id
 
+    async def test_update_task_rejects_invalid_transition(self, authed_client, seed_workspace):
+        """PUT with a forbidden Kanban move returns the canonical 400 payload.
+
+        ``todo -> done`` skips ``in_progress`` and ``review``, so the state machine
+        rejects it. The ``detail`` object is the client contract owned by this
+        route: the decision now lives in ``TaskService.ensure_transition_allowed``,
+        which raises ``InvalidStateTransition`` that the route translates here. This
+        pins that translation key by key and in order, and pins the sorted
+        ``allowed_transitions`` list, so the single decision site cannot drift the
+        wire format without failing this test.
+        """
+        story_id = (await seed_workspace()).story_id
+        create_resp = await authed_client.post(
+            "/api/v1/tasks/",
+            json={
+                "user_story_id": str(story_id),
+                "title": "Cannot skip review",
+                "status": "todo",
+            },
+        )
+        task_id = create_resp.json()["id"]
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{task_id}",
+            json={"status": "done"},
+        )
+
+        assert response.status_code == 400
+
+        detail = response.json()["detail"]
+        assert list(detail.keys()) == [
+            "detail",
+            "error_code",
+            "current_state",
+            "attempted_state",
+            "allowed_transitions",
+        ]
+        assert detail == {
+            "detail": "Invalid state transition",
+            "error_code": "INVALID_STATE_TRANSITION",
+            "current_state": "todo",
+            "attempted_state": "done",
+            "allowed_transitions": ["backlog", "in_progress"],
+        }
+
+        # The rejected write must not have reached persistence.
+        fetched = await authed_client.get(f"/api/v1/tasks/{task_id}")
+        assert fetched.json()["status"] == "todo"
+
     async def test_update_task_labels(self, authed_client, seed_workspace):
         """POST with labels, PUT with different labels, verify updated."""
         story_id = (await seed_workspace()).story_id

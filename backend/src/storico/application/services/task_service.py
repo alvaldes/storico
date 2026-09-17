@@ -27,6 +27,21 @@ class TaskService:
     def __init__(self, task_repo: TaskRepository) -> None:
         self._task_repo = task_repo
 
+    def ensure_transition_allowed(self, current: TaskStatus, new_status: TaskStatus) -> None:
+        """Raise InvalidStateTransition if the Kanban flow forbids this move.
+
+        The single decision site for a rejected transition: the update route
+        translates this error into its 400 payload instead of repeating the check,
+        so the rule and its error have one owner.
+        """
+        if not validate_task_transition(current, new_status):
+            allowed = VALID_TASK_TRANSITIONS.get(current, set())
+            raise InvalidStateTransition(
+                current_state=current,
+                attempted_state=new_status,
+                allowed_transitions=sorted(allowed, key=lambda s: s.value),
+            )
+
     async def update_status(
         self,
         task_id: UUID,
@@ -49,13 +64,7 @@ class TaskService:
         if task is None:
             raise EntityNotFound("Task", str(task_id))
 
-        if not validate_task_transition(task.status, new_status):
-            allowed = VALID_TASK_TRANSITIONS.get(task.status, set())
-            raise InvalidStateTransition(
-                current_state=task.status,
-                attempted_state=new_status,
-                allowed_transitions=sorted(allowed, key=lambda s: s.value),
-            )
+        self.ensure_transition_allowed(task.status, new_status)
 
         # Create updated task (Task is frozen dataclass, so we replace)
         from dataclasses import replace

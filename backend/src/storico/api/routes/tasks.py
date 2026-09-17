@@ -18,11 +18,11 @@ from storico.api.schemas.task import (
     TaskResponse,
     UpdateTaskRequest,
 )
-from storico.domain.entities import EntityNotFound, Task, User
-from storico.domain.validators.state_machine import (
-    VALID_TASK_TRANSITIONS,
-    validate_task_transition,
+from storico.application.services.task_service import (
+    InvalidStateTransition,
+    TaskService,
 )
+from storico.domain.entities import EntityNotFound, Task, User
 from storico.infrastructure.database.repositories import (
     SQLAlchemyProjectRepository,
     SQLAlchemyTaskRepository,
@@ -264,18 +264,20 @@ async def update_task(
     )
 
     # Validate status transition if status is being updated
-    if body.status is not None and not validate_task_transition(existing.status, body.status):
-        allowed = VALID_TASK_TRANSITIONS.get(existing.status, set())
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "detail": "Invalid state transition",
-                "error_code": "INVALID_STATE_TRANSITION",
-                "current_state": existing.status.value,
-                "attempted_state": body.status.value,
-                "allowed_transitions": [s.value for s in sorted(allowed, key=lambda s: s.value)],
-            },
-        )
+    if body.status is not None:
+        try:
+            TaskService(repo).ensure_transition_allowed(existing.status, body.status)
+        except InvalidStateTransition as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "detail": "Invalid state transition",
+                    "error_code": "INVALID_STATE_TRANSITION",
+                    "current_state": exc.current_state.value,
+                    "attempted_state": exc.attempted_state.value,
+                    "allowed_transitions": [s.value for s in exc.allowed_transitions],
+                },
+            ) from exc
 
     kwargs: dict = {"updated_at": datetime.now(UTC)}
     if body.title is not None:
