@@ -32,7 +32,7 @@ _CACHE: dict[str, tuple[float, User]] = {}
 _LOCK = Lock()
 
 
-def get_cached_user(user_id: UUID | str) -> "User | None":
+def get_cached_user(user_id: UUID | str) -> User | None:
     """Return the user cached for ``user_id`` if it is still fresh.
 
     Returns ``None`` if the entry does not exist or has expired. An
@@ -51,7 +51,7 @@ def get_cached_user(user_id: UUID | str) -> "User | None":
         return user
 
 
-def set_cached_user(user_id: UUID | str, user: "User") -> None:
+def set_cached_user(user_id: UUID | str, user: User) -> None:
     """Store ``user`` keyed by ``user_id`` with a fresh TTL timestamp."""
     key = str(user_id)
     with _LOCK:

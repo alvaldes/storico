@@ -19,7 +19,6 @@ from storico.api.dependencies import (
     get_current_user,
     get_repository,
     get_workspace_for_user,
-    require_admin,
 )
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.project import (
@@ -94,6 +93,7 @@ async def _verify_project_belongs_to_workspace(
     if pair is None or pair.project.workspace_id != workspace_id:
         raise EntityNotFound("Project", str(project_id))
     return pair.project, pair.story_count
+
 
 @projects_router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_project(
@@ -213,9 +213,7 @@ async def update_project(
     Response schema is unchanged.
     """
     workspace, _ = ctx
-    existing, _ = await _verify_project_belongs_to_workspace(
-        project_id, workspace.id, repo
-    )
+    existing, _ = await _verify_project_belongs_to_workspace(project_id, workspace.id, repo)
 
     kwargs: dict = {"updated_at": datetime.now(UTC)}
     if body.name is not None:

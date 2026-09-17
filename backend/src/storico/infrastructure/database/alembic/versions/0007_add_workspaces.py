@@ -6,17 +6,16 @@ Revises: 0006
 Create Date: 2026-07-13 18:00:00.000000
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0007"
-down_revision: Union[str, None] = "0006"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0006"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -31,7 +30,8 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_workspaces")),
         sa.ForeignKeyConstraint(
-            ["owner_id"], ["users.id"],
+            ["owner_id"],
+            ["users.id"],
             name=op.f("fk_workspaces_owner_id_users"),
             ondelete="CASCADE",
         ),
@@ -48,17 +48,20 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_workspace_members")),
         sa.ForeignKeyConstraint(
-            ["workspace_id"], ["workspaces.id"],
+            ["workspace_id"],
+            ["workspaces.id"],
             name=op.f("fk_workspace_members_workspace_id_workspaces"),
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
-            ["user_id"], ["users.id"],
+            ["user_id"],
+            ["users.id"],
             name=op.f("fk_workspace_members_user_id_users"),
             ondelete="CASCADE",
         ),
         sa.UniqueConstraint(
-            "workspace_id", "user_id",
+            "workspace_id",
+            "user_id",
             name=op.f("uq_workspace_members_workspace_id_user_id"),
         ),
     )
@@ -76,7 +79,8 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_workspace_llm_configs")),
         sa.ForeignKeyConstraint(
-            ["workspace_id"], ["workspaces.id"],
+            ["workspace_id"],
+            ["workspaces.id"],
             name=op.f("fk_workspace_llm_configs_workspace_id_workspaces"),
             ondelete="CASCADE",
         ),
@@ -97,7 +101,8 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_workspace_prompts")),
         sa.ForeignKeyConstraint(
-            ["workspace_id"], ["workspaces.id"],
+            ["workspace_id"],
+            ["workspaces.id"],
             name=op.f("fk_workspace_prompts_workspace_id_workspaces"),
             ondelete="CASCADE",
         ),
@@ -109,58 +114,73 @@ def upgrade() -> None:
 
     # --- migrate projects: drop owner_id, add workspace_id and created_by ---
     op.drop_constraint(
-        op.f("fk_projects_owner_id_users"), "projects", type_="foreignkey",
+        op.f("fk_projects_owner_id_users"),
+        "projects",
+        type_="foreignkey",
     )
     op.drop_column("projects", "owner_id")
     op.add_column(
         "projects",
         sa.Column(
-            "workspace_id", sa.Uuid(),
+            "workspace_id",
+            sa.Uuid(),
             nullable=True,  # nullable during migration — existing rows have no workspace
         ),
     )
     op.add_column(
         "projects",
         sa.Column(
-            "created_by", sa.Uuid(),
+            "created_by",
+            sa.Uuid(),
             nullable=True,
         ),
     )
     # Add FK constraints — server_default is kept so that NOT NULL is accepted.
     op.create_foreign_key(
         op.f("fk_projects_workspace_id_workspaces"),
-        "projects", "workspaces",
-        ["workspace_id"], ["id"],
+        "projects",
+        "workspaces",
+        ["workspace_id"],
+        ["id"],
         ondelete="CASCADE",
     )
     op.create_foreign_key(
         op.f("fk_projects_created_by_users"),
-        "projects", "users",
-        ["created_by"], ["id"],
+        "projects",
+        "users",
+        ["created_by"],
+        ["id"],
     )
 
 
 def downgrade() -> None:
     # --- reverse projects migration ---
     op.drop_constraint(
-        op.f("fk_projects_created_by_users"), "projects", type_="foreignkey",
+        op.f("fk_projects_created_by_users"),
+        "projects",
+        type_="foreignkey",
     )
     op.drop_constraint(
-        op.f("fk_projects_workspace_id_workspaces"), "projects", type_="foreignkey",
+        op.f("fk_projects_workspace_id_workspaces"),
+        "projects",
+        type_="foreignkey",
     )
     op.drop_column("projects", "created_by")
     op.drop_column("projects", "workspace_id")
     op.add_column(
         "projects",
         sa.Column(
-            "owner_id", sa.Uuid(),
+            "owner_id",
+            sa.Uuid(),
             nullable=True,  # Must be nullable — data was lost
         ),
     )
     op.create_foreign_key(
         op.f("fk_projects_owner_id_users"),
-        "projects", "users",
-        ["owner_id"], ["id"],
+        "projects",
+        "users",
+        ["owner_id"],
+        ["id"],
     )
 
     # --- drop new tables (reverse order for FK integrity) ---

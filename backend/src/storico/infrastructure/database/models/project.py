@@ -7,7 +7,6 @@ from uuid import UUID
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from uuid_utils.compat import uuid7
 
 from storico.infrastructure.database.models.base import Base
@@ -28,12 +27,8 @@ class ProjectModel(Base):
     created_by: Mapped[UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, default=None
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     workspace: Mapped["WorkspaceModel"] = relationship(lazy="selectin")  # noqa: F821, UP037
     user_stories: Mapped[list["UserStoryModel"]] = relationship(  # noqa: F821, UP037

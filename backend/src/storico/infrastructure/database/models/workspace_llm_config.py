@@ -7,7 +7,6 @@ from uuid import UUID
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
-
 from uuid_utils.compat import uuid7
 
 from storico.infrastructure.database.models.base import Base
@@ -28,6 +27,4 @@ class WorkspaceLLMConfigModel(Base):
     max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True, default=None)
     api_key: Mapped[str | None] = mapped_column(String(500), nullable=True, default=None)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

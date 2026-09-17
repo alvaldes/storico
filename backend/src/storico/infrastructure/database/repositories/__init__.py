@@ -18,17 +18,17 @@ from storico.infrastructure.database.repositories.user_repository import (
 from storico.infrastructure.database.repositories.user_story_repository import (
     SQLAlchemyUserStoryRepository,
 )
-from storico.infrastructure.database.repositories.workspace_repository import (
-    SQLAlchemyWorkspaceRepository,
+from storico.infrastructure.database.repositories.workspace_llm_config_repository import (
+    SQLAlchemyWorkspaceLLMConfigRepository,
 )
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
 )
-from storico.infrastructure.database.repositories.workspace_llm_config_repository import (
-    SQLAlchemyWorkspaceLLMConfigRepository,
-)
 from storico.infrastructure.database.repositories.workspace_prompt_repository import (
     SQLAlchemyWorkspacePromptRepository,
+)
+from storico.infrastructure.database.repositories.workspace_repository import (
+    SQLAlchemyWorkspaceRepository,
 )
 
 __all__ = [

@@ -8,24 +8,21 @@ Revises: 0009
 Create Date: 2026-07-15
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0010"
-down_revision: Union[str, None] = "0009"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0009"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
     # Truncate any existing names that exceed 100 characters before altering.
-    op.execute(
-        "UPDATE workspaces SET name = LEFT(name, 100) WHERE LENGTH(name) > 100"
-    )
+    op.execute("UPDATE workspaces SET name = LEFT(name, 100) WHERE LENGTH(name) > 100")
     op.alter_column(
         "workspaces",
         "name",

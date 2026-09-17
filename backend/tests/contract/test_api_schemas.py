@@ -3,20 +3,19 @@
 from __future__ import annotations
 
 from uuid import UUID
-from datetime import datetime
 
-from storico.api.schemas.story import UserStoryResponse
-from storico.api.schemas.task import TaskResponse, TaskStatus
 from storico.api.schemas.extraction import (
     ExtractionResponse,
-    ExtractResponse,
     ExtractRequest,
+    ExtractResponse,
     TaskSchema,
     UserStorySchema,
 )
-from storico.domain.entities.user_story import UserStoryStatus
-from storico.domain.entities.task import TaskStatus as DomainTaskStatus
+from storico.api.schemas.story import UserStoryResponse
+from storico.api.schemas.task import TaskResponse
 from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.entities.task import TaskStatus as DomainTaskStatus
+from storico.domain.entities.user_story import UserStoryStatus
 
 
 class TestUserStoryResponseContract:
@@ -95,8 +94,6 @@ class TestExtractionResponseContract:
         """ExtractionResponse.tasks uses TaskSchema with TaskStatus."""
         fields = ExtractionResponse.model_fields
         assert "tasks" in fields
-        # TaskSchema is a list element type
-        tasks_field = fields["tasks"]
         # Check TaskSchema has status field with TaskStatus
         task_schema = TaskSchema
         task_fields = task_schema.model_fields
@@ -251,8 +248,10 @@ class TestNoExtraFieldsForbidden:
 
     def test_create_user_story_request_forbids_extra(self):
         from storico.api.schemas.story import CreateUserStoryRequest
+
         assert CreateUserStoryRequest.model_config.get("extra") == "forbid"
 
     def test_create_task_request_forbids_extra(self):
         from storico.api.schemas.task import CreateTaskRequest
+
         assert CreateTaskRequest.model_config.get("extra") == "forbid"

@@ -7,17 +7,17 @@ Create Date: 2026-09-03
 
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import ENUM
 
 # revision identifiers, used by Alembic.
 revision: str = "0016"
-down_revision: Union[str, None] = "0015"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0015"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # Enum definitions matching spec
 USER_STORY_STATUS_ENUM = ENUM(
@@ -46,9 +46,7 @@ def upgrade() -> None:
     TASK_STATUS_ENUM.create(op.get_bind(), checkfirst=True)
 
     # Step 2: Add temporary columns
-    op.add_column(
-        "user_stories", sa.Column("status_new", USER_STORY_STATUS_ENUM, nullable=True)
-    )
+    op.add_column("user_stories", sa.Column("status_new", USER_STORY_STATUS_ENUM, nullable=True))
     op.add_column("tasks", sa.Column("status_new", TASK_STATUS_ENUM, nullable=True))
 
     # Step 3: Data migration - User Stories
@@ -94,9 +92,7 @@ def upgrade() -> None:
     op.alter_column("tasks", "status_new", new_column_name="status", nullable=False)
 
     # Step 7: Add defaults for future inserts
-    op.alter_column(
-        "user_stories", "status", server_default="pending_extraction"
-    )
+    op.alter_column("user_stories", "status", server_default="pending_extraction")
     op.alter_column("tasks", "status", server_default="backlog")
 
     # Step 8: Indexes for query performance

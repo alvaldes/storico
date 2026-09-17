@@ -1,6 +1,12 @@
 # Storico — Backlog
 
-> **Última actualización**: 2026-09-17 (5) — barrido de “Próximo a tratar” y “Limpieza menor”. Cerrados:
+> **Última actualización**: 2026-09-17 (6) — cerrados `TaskService` (opción (a): el único sitio de decisión
+> de la transición es `TaskService.ensure_transition_allowed` y la ruta solo **traduce** el error de dominio a
+> un 400 byte a byte idéntico) y la deuda de lint: `ruff check src tests` de **145 → 0**, más
+> `.github/workflows/ci.yml` con dos jobs (backend: `ruff check` bloqueante + `pytest`; frontend: `tsc` +
+> `vitest`). Verificado: backend **417 passed / 1 skip / 0 failed**, frontend **22 archivos / 162**, `tsc`
+> limpio, y cada comando del workflow corrido localmente.
+> Última actualización previa: 2026-09-17 (5) — barrido de “Próximo a tratar” y “Limpieza menor”. Cerrados:
 > el `catch` inalcanzable de `handleExtract` (con el toast de 504 preservado, que ahora aparece de verdad),
 > el test de componente que faltaba para la equivalencia `missing` ≡ `idle`, `ApiClient.startExtraction`,
 > el bloque no-op de `tasks-api.ts`, las 7 claves i18n muertas, el último `dangerouslySetInnerHTML` y el
@@ -198,14 +204,6 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
   design hay que realinearlo.
 - **`apply-progress.md` ausente** en `us-decomposition` (strict TDD) — excepción registrada
   (artefactos e implementación aterrizaron juntos históricamente).
-- **`TaskService` NO es código muerto (corrección de diagnóstico)** — `todo.md` decía que nadie lo
-  instanciaba; `tests/integration/test_state_machine_scenarios.py:23` lo importa y lo ejercita. El problema
-  real es otro: **la producción no lo usa** y su `update_status` duplica el chequeo de transición que
-  `update_task` hace inline (`tasks.py`), con otro tipo de error (`InvalidStateTransition` vs
-  `HTTPException(400, …)`). O sea: dos autoridades de la misma regla, y un test que testea la que no corre.
-  **Decisión pendiente**: (a) que `update_task` delegue en el servicio y mapee `InvalidStateTransition` → 400
-  (una sola autoridad, y el test pasa a ser significativo), o (b) borrar el servicio **y** su test. Toca una
-  ruta, así que es comportamiento, no limpieza.
 - **Falso positivo de pyright en `users.py` (atribución corregida)** — el diagnóstico real es
   `users.py:101:34` sobre `OnboardingRequest()` (campos con default en `schemas/user.py`, así que la llamada
   es válida), **no** sobre `RenameWorkspaceUseCase`, que la nota anterior culpaba por error: el checker ve
@@ -221,16 +219,47 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
 - **Caso no cubierto del adapter** — los tests nuevos sólo ejercitan un `workspace_id` no nulo, así que
   revertir **sólo** el adapter a `… if workspace_id is not None else None` deja la suite verde (Python permite
   pasar `None` explícito más allá de la anotación). Un test con `None` explícito lo cierra.
-- **145 errores de `ruff check src tests` (preexistentes)** — eran 151; los archivos de cada pasada quedaron
-  limpios (incluidos imports muertos que el autofix eliminó y `HEAD` sí tenía: `stories.py` E402/F401 e
-  `extraction.py` I001 + 2×F401). **Sigue sin haber CI que corra ruff ni pytest** (`.github/workflows/` sólo
-  tiene `deploy-backend.yml`): eso es lo que explica que la suite haya estado 10 tests roja durante meses y
-  que ruff llegara a 145. Decidido el 2026-09-17: primero el sweep de `ruff --fix` (~135 autofixables,
-  verificado por los 416 tests) y después el workflow con `ruff check` + pytest + vitest. **Pendiente.**
+- **Segundo round de ruff, no ejecutado**: `ruff format --check src tests` reporta **58 archivos** que
+  reformatearía. Es un reformateo masivo y merece su propio work unit, no colarse dentro del sweep de lint.
+- **El primer run del CI puede salir rojo por infraestructura, no por código**:
+  `tests/test_integration/test_projects_integration.py` se saltea **localmente** porque el daemon de Docker no
+  responde, y en los runners de GitHub Docker sí está, así que va a intentar levantar
+  `PostgresContainer("postgres:16-alpine")`: el total esperado ahí es 418, o un fallo de pull de imagen. La
+  condición del skip no se tocó a propósito para no maquillar el resultado.
+- **Warning flaky preexistente**: `PytestUnraisableExceptionWarning` (`coroutine 'Connection._cancel' was
+  never awaited`) en `test_project_repo.py`, dependiente de GC y del orden de ejecución. El archivo no está
+  tocado por ningún cambio y no se pudo A/B contra el árbol limpio sin stash: latente, sin causalidad
+  establecida.
+- **22 diagnósticos de tipado preexistentes en `api/app.py`** (rigidez de overloads de FastAPI). No hay mypy
+  ni pyright configurados, y ninguno está en el gate. Arreglarlos pide casts o `type: ignore`, o sea cambio
+  de lógica: quedan reportados.
+- **Las migraciones no las cubre ningún test** — el sweep las validó compilando en memoria y con `ruff F821`,
+  no ejecutándolas. Son 50 archivos de alembic.
 
 ---
 
 ## ✅ Completado (referencia — items eliminados del backlog)
+
+- **Una sola autoridad para la regla de transición de tasks** (2026-09-17): la regla ya vivía en
+  `domain/validators/state_machine.py`, pero **quién decidía y quién construía el error** estaba duplicado:
+  `update_task` armaba su propio `HTTPException(400, INVALID_STATE_TRANSITION)` y `TaskService.update_status`
+  levantaba `InvalidStateTransition` — y la producción nunca corría el segundo. Se extrajo
+  `TaskService.ensure_transition_allowed` como único sitio de decisión, y la ruta pasó a **traducir** el error
+  de dominio al payload 400 **byte a byte idéntico** (verificado key por key, incluido el orden de
+  `allowed_transitions`). `validate_task_transition` queda con un solo call site fuera del dominio
+  (`task_service.py`). Se agregó el test que faltaba del payload 400 (claves, orden y que el rechazo no
+  persista). No es una prueba retroactiva de que el payload viejo era igual: es un **pin** del contrato, y
+  así está dicho en el commit.
+- **Deuda de lint del backend cerrada, y con gate** (2026-09-17): `ruff check src tests` pasó de **145 errores
+  a 0**, con autofixes seguros (nunca `--unsafe-fixes`) más 15 arreglos a mano. Se auditó **cada import
+  removido** con diff de AST de los nombres importados (26 módulos / 30 símbolos) contra todos los
+  importadores: **cero violaciones, cero restauraciones**. El `F841` riesgoso de `test_user_repo.py` tenía un
+  `await repo.link_account(...)` con efectos reales: se pelaron solo las asignaciones y las llamadas quedaron.
+  Los 10 `F401` del barril `routes/__init__.py` se resolvieron con `__all__` —la convención que ya usaban
+  `domain/ports/__init__.py` y `models/__init__.py`— en lugar de borrar el barril. Y se agregó
+  `.github/workflows/ci.yml`: backend (`ruff check` bloqueante + `pytest`) y frontend (`tsc` + `vitest`), en PR
+  y push a `main`. **No se pudo ejecutar GitHub Actions**: cada comando del workflow se corrió localmente y se
+  reportó su salida.
 
 - **Limpieza de código muerto del frontend** (2026-09-17): borrado el `catch` de `handleExtract` (era
   inalcanzable: `extractTasks` se traga sus errores) con el toast de timeout **preservado** enseñándole al

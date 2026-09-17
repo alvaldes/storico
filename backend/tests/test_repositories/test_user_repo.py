@@ -145,8 +145,9 @@ async def test_find_accounts(db_session: AsyncSession) -> None:
     user = User(email="multi@example.com", name="Multi")
     await repo.save(user)
 
-    a1 = await repo.link_account(user.id, "google", "g-multi")
-    a2 = await repo.link_account(user.id, "github", "gh-multi")
+    # Linking is the behavior under test; the returned accounts are unused here.
+    await repo.link_account(user.id, "google", "g-multi")
+    await repo.link_account(user.id, "github", "gh-multi")
 
     accounts = await repo.find_accounts(user.id)
     assert len(accounts) == 2

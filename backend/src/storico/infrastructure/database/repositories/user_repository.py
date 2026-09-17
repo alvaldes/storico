@@ -7,7 +7,6 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
 
 from storico.domain.entities import DuplicateEntity, EntityNotFound, RepositoryError, User
 from storico.domain.entities.user_account import UserAccount
@@ -79,9 +78,7 @@ class SQLAlchemyUserRepository(UserRepository):
         if result.rowcount == 0:
             raise EntityNotFound("User", str(user_id))
 
-    async def link_account(
-        self, user_id: UUID, provider: str, provider_id: str
-    ) -> UserAccount:
+    async def link_account(self, user_id: UUID, provider: str, provider_id: str) -> UserAccount:
         try:
             account = UserAccount(user_id=user_id, provider=provider, provider_id=provider_id)
             self._session.add(
@@ -97,7 +94,9 @@ class SQLAlchemyUserRepository(UserRepository):
             return account
         except IntegrityError as e:
             await self._session.rollback()
-            raise DuplicateEntity("UserAccount", "provider:provider_id", f"{provider}:{provider_id}") from e
+            raise DuplicateEntity(
+                "UserAccount", "provider:provider_id", f"{provider}:{provider_id}"
+            ) from e
         except SQLAlchemyError as e:
             await self._session.rollback()
             raise RepositoryError("Database error linking account") from e

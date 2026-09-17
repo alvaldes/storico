@@ -1,6 +1,7 @@
 """FastAPI exception handlers for domain-level errors."""
 
 import logging
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 

@@ -7,7 +7,6 @@ from uuid import UUID
 
 from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from uuid_utils.compat import uuid7
 
 from storico.infrastructure.database.models.base import Base
@@ -24,14 +23,10 @@ class UserAccountModel(Base):
     )
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     provider_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint(
-            "provider", "provider_id", name="uq_user_accounts_provider_provider_id"
-        ),
+        UniqueConstraint("provider", "provider_id", name="uq_user_accounts_provider_provider_id"),
     )
 
     user: Mapped["UserModel"] = relationship(back_populates="accounts")  # noqa: F821, UP037

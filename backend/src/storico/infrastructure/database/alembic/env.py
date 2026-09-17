@@ -9,8 +9,8 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from storico.config.settings import Settings
-from storico.infrastructure.database.models import Base
 from storico.infrastructure.database.base import _normalize_db_url
+from storico.infrastructure.database.models import Base
 
 # Alembic Config object, which provides access to the values within the .ini file.
 config = context.config

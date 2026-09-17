@@ -5,10 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, JSON, String, Text, Uuid
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, Text, Uuid
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from uuid_utils.compat import uuid7
 
 from storico.domain.entities.task import TaskStatus
@@ -39,16 +38,10 @@ class TaskModel(Base):
     priority: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
     labels: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     dependencies: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    __table_args__ = (
-        Index("ix_tasks_user_story_id", "user_story_id"),
-    )
+    __table_args__ = (Index("ix_tasks_user_story_id", "user_story_id"),)
 
     user_story: Mapped["UserStoryModel"] = relationship(  # noqa: F821, UP037
         back_populates="tasks", lazy="selectin"

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import (
 from storico.config.settings import Settings
 
 _engine: AsyncEngine | None = None
-_factory: "async_sessionmaker[AsyncSession] | None" = None
+_factory: async_sessionmaker[AsyncSession] | None = None
 
 
 def _normalize_db_url(url: str) -> str:
@@ -61,7 +61,7 @@ def _add_statement_cache_size(url: str) -> str:
     handles across connection resets.
     See: https://sqlalche.me/e/20/dbapi
     """
-    from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
+    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
     parsed = urlparse(url)
     qs = parse_qs(parsed.query, keep_blank_values=True)

@@ -3,8 +3,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from uuid import UUID
-
 from storico.domain.entities.user import User
 from storico.domain.entities.user_account import UserAccount
 

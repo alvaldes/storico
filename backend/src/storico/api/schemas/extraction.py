@@ -6,8 +6,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from storico.domain.entities.extraction import ExtractionStatus
-from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.entities.task import TaskStatus
+from storico.domain.entities.user_story import UserStoryStatus
 
 
 class UserStorySchema(BaseModel):

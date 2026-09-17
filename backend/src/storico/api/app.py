@@ -31,8 +31,8 @@ from storico.api.routes import (
     stories,
     tasks,
     users,
-    workspaces,
     workspace_settings,
+    workspaces,
 )
 from storico.api.routes import (
     settings as settings_routes,

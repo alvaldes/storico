@@ -20,13 +20,17 @@ asyncpg + 1 round-trip query.
 
 from __future__ import annotations
 
-import socket
 import time
 import uuid
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from storico.domain.entities.project import Project
 from storico.domain.entities.user_story import UserStory
@@ -113,7 +117,9 @@ async def test_list_projects_with_counts_latency_under_500ms(pg_session: AsyncSe
     story_repo = SQLAlchemyUserStoryRepository(pg_session)
 
     owner_id = uuid.uuid4()
-    ws = Workspace(name=f"Perf-{uuid.uuid4().hex[:8]}", slug=f"perf-{uuid.uuid4().hex[:8]}", owner_id=owner_id)
+    ws = Workspace(
+        name=f"Perf-{uuid.uuid4().hex[:8]}", slug=f"perf-{uuid.uuid4().hex[:8]}", owner_id=owner_id
+    )
     ws = await ws_repo.save(ws)
     await member_repo.add(
         WorkspaceMember(workspace_id=ws.id, user_id=owner_id, role=WorkspaceRole.ADMIN)
@@ -139,4 +145,6 @@ async def test_list_projects_with_counts_latency_under_500ms(pg_session: AsyncSe
 
     assert len(pairs) == 50, "all 50 projects present"
     assert all(pwc.story_count == 5 for pwc in pairs), "each project has 5 stories"
-    assert elapsed_ms < 500, f"list_by_workspace_with_counts took {elapsed_ms:.1f}ms (threshold 500ms)"
+    assert elapsed_ms < 500, (
+        f"list_by_workspace_with_counts took {elapsed_ms:.1f}ms (threshold 500ms)"
+    )

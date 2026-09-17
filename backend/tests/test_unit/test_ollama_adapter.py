@@ -3,9 +3,9 @@
 Uses unittest.mock to mock httpx.AsyncClient so no real network calls happen.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from httpx import ConnectError
 
 from storico.domain.entities import LLMConnectionError, LLMModelNotFoundError, LLMResponseError
@@ -47,7 +47,9 @@ class TestOllamaAdapter:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
-        expected = "1. summary: Task one\ndescription: Do it\n2. summary: Task two\ndescription: Do that"
+        expected = (
+            "1. summary: Task one\ndescription: Do it\n2. summary: Task two\ndescription: Do that"
+        )
         mock_response.json.return_value = {"message": {"content": expected}}
         mock_client.post.return_value = mock_response
 
@@ -89,7 +91,9 @@ class TestOllamaAdapter:
             ConnectError("First attempt failed"),
             MagicMock(
                 status_code=200,
-                json=lambda: {"message": {"content": "1. summary: Retried task\ndescription: Done"}},
+                json=lambda: {
+                    "message": {"content": "1. summary: Retried task\ndescription: Done"}
+                },
             ),
         ]
 
@@ -144,9 +148,7 @@ class TestOllamaAdapter:
     async def test_build_payload(self) -> None:
         """Payload structure matches Ollama /api/chat format."""
         adapter = OllamaAdapter(base_url=self.base_url)
-        payload = adapter._build_payload(
-            "Test prompt", self.config, system_prompt="System role"
-        )
+        payload = adapter._build_payload("Test prompt", self.config, system_prompt="System role")
         assert payload["model"] == "llama3.2"
         assert len(payload["messages"]) == 2
         assert payload["messages"][0]["role"] == "system"

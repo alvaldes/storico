@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import EntityNotFound, Project, ProjectWithCount, RepositoryError
 from storico.domain.ports import ProjectRepository
-from storico.infrastructure.database.models import ProjectModel, UserStoryModel, WorkspaceModel
+from storico.infrastructure.database.models import ProjectModel, UserStoryModel
 
 
 class SQLAlchemyProjectRepository(ProjectRepository):
@@ -40,9 +40,7 @@ class SQLAlchemyProjectRepository(ProjectRepository):
         result = await self._session.get(ProjectModel, project_id)
         return self._to_domain(result) if result else None
 
-    async def find_by_id_with_count(
-        self, project_id: UUID
-    ) -> ProjectWithCount | None:
+    async def find_by_id_with_count(self, project_id: UUID) -> ProjectWithCount | None:
         """Fetch a single project plus its user-story count in one round-trip.
 
         Uses a LEFT OUTER JOIN + GROUP BY on ``ProjectModel.id`` so the
@@ -64,15 +62,11 @@ class SQLAlchemyProjectRepository(ProjectRepository):
         return ProjectWithCount(project=self._to_domain(model), story_count=story_count)
 
     async def list_by_workspace(self, workspace_id: UUID) -> list[Project]:
-        stmt = select(ProjectModel).where(
-            ProjectModel.workspace_id == workspace_id
-        )
+        stmt = select(ProjectModel).where(ProjectModel.workspace_id == workspace_id)
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
 
-    async def list_by_workspace_with_counts(
-        self, workspace_id: UUID
-    ) -> list[ProjectWithCount]:
+    async def list_by_workspace_with_counts(self, workspace_id: UUID) -> list[ProjectWithCount]:
         """List all projects in a workspace with their story counts.
 
         Replaces the N+1 pattern where ``list_by_workspace`` is followed
@@ -85,9 +79,7 @@ class SQLAlchemyProjectRepository(ProjectRepository):
         (no extra ``ORDER BY`` is added).
         """
         stmt = (
-            select(
-                ProjectModel, func.count(UserStoryModel.id).label("story_count")
-            )
+            select(ProjectModel, func.count(UserStoryModel.id).label("story_count"))
             .outerjoin(UserStoryModel, UserStoryModel.project_id == ProjectModel.id)
             .where(ProjectModel.workspace_id == workspace_id)
             .group_by(ProjectModel.id)
@@ -110,15 +102,19 @@ class SQLAlchemyProjectRepository(ProjectRepository):
             raise EntityNotFound("Project", str(project_id))
 
     async def count_stories(self, project_id: UUID) -> int:
-        stmt = select(func.count()).select_from(UserStoryModel).where(
-            UserStoryModel.project_id == project_id
+        stmt = (
+            select(func.count())
+            .select_from(UserStoryModel)
+            .where(UserStoryModel.project_id == project_id)
         )
         result = await self._session.execute(stmt)
         return result.scalar_one()
 
     async def count_by_workspace(self, workspace_id: UUID) -> int:
-        stmt = select(func.count()).select_from(ProjectModel).where(
-            ProjectModel.workspace_id == workspace_id
+        stmt = (
+            select(func.count())
+            .select_from(ProjectModel)
+            .where(ProjectModel.workspace_id == workspace_id)
         )
         result = await self._session.execute(stmt)
         return result.scalar_one()

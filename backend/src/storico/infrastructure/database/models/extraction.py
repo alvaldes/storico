@@ -5,10 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, JSON, String, Text, Uuid
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, String, Text, Uuid
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from uuid_utils.compat import uuid7
 
 from storico.domain.entities.extraction import ExtractionStatus
@@ -46,21 +45,13 @@ class ExtractionModel(Base):
         nullable=False,
         default=UserStoryStatus.PENDING_EXTRACTION,
     )
-    error_info: Mapped[str | None] = mapped_column(
-        Text, nullable=True, default=None
-    )
+    error_info: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     prompt_config: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     raw_response: Mapped[str] = mapped_column(Text, nullable=False)
-    confidence_score: Mapped[float | None] = mapped_column(
-        Float, nullable=True, default=None
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    __table_args__ = (
-        Index("ix_extractions_user_story_id", "user_story_id"),
-    )
+    __table_args__ = (Index("ix_extractions_user_story_id", "user_story_id"),)
 
     user_story: Mapped["UserStoryModel"] = relationship(  # noqa: F821, UP037
         back_populates="extractions", lazy="selectin"

@@ -9,7 +9,6 @@ from storico.infrastructure.database.repositories import SQLAlchemyUserRepositor
 from storico.infrastructure.database.repositories.workspace_repository import (
     SQLAlchemyWorkspaceRepository,
 )
-from tests.conftest import make_jwt_headers
 
 USER_ME_URL = "/api/v1/users/me"
 ONBOARDING_URL = "/api/v1/users/me/onboarding"
@@ -23,9 +22,7 @@ class TestGetUserMe:
         response = await async_client.get(USER_ME_URL)
         assert response.status_code == 401
 
-    async def test_get_user_me_wrong_token(
-        self, async_client, db_session: AsyncSession
-    ):
+    async def test_get_user_me_wrong_token(self, async_client, db_session: AsyncSession):
         """GET /me with wrong JWT token returns 401."""
         repo = SQLAlchemyUserRepository(db_session)
         user = User(
@@ -40,16 +37,12 @@ class TestGetUserMe:
         response = await async_client.get(USER_ME_URL)
         assert response.status_code == 401
 
-    async def test_get_user_me_missing_user_id(
-        self, async_client, db_session: AsyncSession
-    ):
+    async def test_get_user_me_missing_user_id(self, async_client, db_session: AsyncSession):
         """GET /me without any auth headers returns 401."""
         response = await async_client.get(USER_ME_URL)
         assert response.status_code == 401
 
-    async def test_get_user_me_valid(
-        self, authed_client, authed_user: User
-    ):
+    async def test_get_user_me_valid(self, authed_client, authed_user: User):
         """GET /me with valid JWT returns the authenticated user's profile."""
         response = await authed_client.get(USER_ME_URL)
         assert response.status_code == 200
@@ -97,9 +90,7 @@ class TestCompleteOnboarding:
         )
         await use_case.execute(name=f"{authed_user.name}'s Workspace", user_id=authed_user.id)
 
-        response = await authed_client.patch(
-            ONBOARDING_URL, json={"workspace_name": "My Team"}
-        )
+        response = await authed_client.patch(ONBOARDING_URL, json={"workspace_name": "My Team"})
         assert response.status_code == 200
         assert response.json() == {"success": True}
 
@@ -108,9 +99,7 @@ class TestCompleteOnboarding:
         assert len(workspaces) == 1
         assert workspaces[0].name == "My Team"
 
-    async def test_complete_onboarding_idempotent(
-        self, authed_client
-    ):
+    async def test_complete_onboarding_idempotent(self, authed_client):
         """PATCH /me/onboarding returns 200 on second call — idempotent."""
         # First call
         resp1 = await authed_client.patch(ONBOARDING_URL, json={})
