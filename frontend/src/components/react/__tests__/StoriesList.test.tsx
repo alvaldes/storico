@@ -51,7 +51,6 @@ describe('StoriesList — workspace scoping', () => {
       stories: [],
       loading: false,
       saving: false,
-      error: null,
       fetchStories: fetchStories as unknown as (
         projectId?: string,
         workspaceId?: string,

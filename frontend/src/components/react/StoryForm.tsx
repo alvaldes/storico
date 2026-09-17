@@ -21,24 +21,12 @@ import { Loader2, Check, X, Eye } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import { ApiRequestError } from '@/lib/api';
+import { renderBoldMarkup } from '@/lib/render-bold-markup';
 
 const ACTOR_MAX = 100;
 const FEATURE_MAX = 300;
 const BENEFIT_MAX = 300;
 const RAW_TEXT_MAX = 2000;
-
-/**
- * Renders i18n strings that author emphasis with `<strong>...</strong>` WITHOUT
- * innerHTML: text segments stay text and only the authored segments become a
- * `<strong>` element. Mirrors `renderBoldMarkup` in DeleteAccountDialog, which
- * splits that file's `<b>...</b>` strings; this file's `story_format_hint`
- * string authors `<strong>` instead.
- */
-function renderBoldMarkup(text: string): React.ReactNode {
-  return text
-    .split(/<\/?strong>/)
-    .map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : part));
-}
 
 type StoryMode = 'parts' | 'full';
 
@@ -524,7 +512,7 @@ export function StoryForm({
               </div>
 
               <p className="text-xs text-muted-foreground leading-relaxed">
-                {renderBoldMarkup(t.stories.story_format_hint)}
+                {renderBoldMarkup(t.stories.story_format_hint, 'strong')}
               </p>
             </div>
           )}

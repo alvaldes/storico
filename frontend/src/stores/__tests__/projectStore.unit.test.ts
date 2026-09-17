@@ -11,7 +11,7 @@ vi.mock('@/lib/projects-api', () => ({
 import * as api from '@/lib/projects-api';
 import { useProjectStore } from '@/stores/projectStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
-import { resetScopedWorkspace } from '@/lib/workspace-scope';
+import { getScopedWorkspaceId, resetScopedWorkspace } from '@/lib/workspace-scope';
 import type { Project } from '@/types/project';
 import type { Workspace } from '@/types/workspace';
 import type { PaginatedResponse } from '@/lib/projects-api';
@@ -305,6 +305,164 @@ describe('projectStore — updated/deleted project scope guard', () => {
     await expect(useProjectStore.getState().deleteProject('project-a')).rejects.toThrow('boom');
 
     expect(useProjectStore.getState().error).toBe('boom');
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+});
+
+describe('projectStore — scope guards with a real observed scope', () => {
+  // The describes above start from `resetScopedWorkspace()`, so the scope is unobserved and both
+  // guards take their fail-open branch. These tests observe a real id first, which is the branch
+  // production is always in after the first switch: `scopeAtCall` is then a concrete id, and the
+  // comparison has to tell "same id" from "different id" on its own.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetScopedWorkspace();
+    vi.mocked(api.listProjects).mockResolvedValue(page([]));
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace('ws-a'), makeWorkspace('ws-b')],
+      currentWorkspace: null,
+      loading: false,
+      saving: false,
+      error: null,
+    });
+    useProjectStore.setState({ projects: [], loading: false, saving: false, error: null });
+  });
+
+  // Observe `id` through the real switch path, then drain its projects fetch so it cannot land
+  // after the mutation under test and become the last write.
+  async function observeScope(id: string): Promise<void> {
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace(id));
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+  }
+
+  it('appends the created project when a real observed scope did not move', async () => {
+    await observeScope('ws-a');
+    vi.mocked(api.createProject).mockResolvedValue(projectA);
+
+    const created = await useProjectStore
+      .getState()
+      .createProject({ name: 'New project', description: '' });
+
+    expect(getScopedWorkspaceId()).toBe('ws-a');
+    expect(useProjectStore.getState().projects).toEqual([projectA]);
+    expect(created).toBe(projectA);
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('drops the created project when a real observed scope moved', async () => {
+    await observeScope('ws-a');
+    const pendingCreate = deferred<Project>();
+    vi.mocked(api.createProject).mockImplementationOnce(() => pendingCreate.promise);
+
+    const inflight = useProjectStore
+      .getState()
+      .createProject({ name: 'New project', description: '' });
+    // The scope was observed before the call, so the guard compares the real id 'ws-a'.
+    expect(getScopedWorkspaceId()).toBe('ws-a');
+
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+    expect(getScopedWorkspaceId()).toBe('ws-b');
+    // ws-b's own list lands first and leaves the new workspace with its real, empty list...
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+
+    // ...so the create response for the workspace the user left is the last write.
+    pendingCreate.resolve(projectA);
+    const created = await inflight;
+
+    expect(useProjectStore.getState().projects).toEqual([]);
+    expect(created).toBe(projectA);
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('surfaces a create failure when a real observed scope did not move', async () => {
+    await observeScope('ws-a');
+    vi.mocked(api.createProject).mockRejectedValueOnce(new Error('boom'));
+
+    await expect(
+      useProjectStore.getState().createProject({ name: 'New project', description: '' }),
+    ).rejects.toThrow('boom');
+
+    expect(useProjectStore.getState().error).toBe('boom');
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('does not surface a create failure when a real observed scope moved', async () => {
+    await observeScope('ws-a');
+    const pendingCreate = deferred<Project>();
+    vi.mocked(api.createProject).mockImplementationOnce(() => pendingCreate.promise);
+
+    const inflight = useProjectStore
+      .getState()
+      .createProject({ name: 'New project', description: '' });
+    expect(getScopedWorkspaceId()).toBe('ws-a');
+
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+
+    pendingCreate.reject(new Error('boom'));
+    await expect(inflight).rejects.toThrow('boom');
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+
+    expect(useProjectStore.getState().error).toBeNull();
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('surfaces an update failure when a real observed scope did not move', async () => {
+    await observeScope('ws-a');
+    vi.mocked(api.updateProject).mockRejectedValueOnce(new Error('boom'));
+
+    await expect(
+      useProjectStore.getState().updateProject('project-a', { name: 'Renamed' }),
+    ).rejects.toThrow('boom');
+
+    expect(getScopedWorkspaceId()).toBe('ws-a');
+    expect(useProjectStore.getState().error).toBe('boom');
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('does not surface an update failure when a real observed scope moved', async () => {
+    await observeScope('ws-a');
+    const pendingUpdate = deferred<Project>();
+    vi.mocked(api.updateProject).mockImplementationOnce(() => pendingUpdate.promise);
+
+    const inflight = useProjectStore.getState().updateProject('project-a', { name: 'Renamed' });
+
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+
+    pendingUpdate.reject(new Error('boom'));
+    await expect(inflight).rejects.toThrow('boom');
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+
+    expect(getScopedWorkspaceId()).toBe('ws-b');
+    expect(useProjectStore.getState().error).toBeNull();
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('surfaces a delete failure when a real observed scope did not move', async () => {
+    await observeScope('ws-a');
+    vi.mocked(api.deleteProject).mockRejectedValueOnce(new Error('boom'));
+
+    await expect(useProjectStore.getState().deleteProject('project-a')).rejects.toThrow('boom');
+
+    expect(getScopedWorkspaceId()).toBe('ws-a');
+    expect(useProjectStore.getState().error).toBe('boom');
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('does not surface a delete failure when a real observed scope moved', async () => {
+    await observeScope('ws-a');
+    const pendingDelete = deferred<void>();
+    vi.mocked(api.deleteProject).mockImplementationOnce(() => pendingDelete.promise);
+
+    const inflight = useProjectStore.getState().deleteProject('project-a');
+
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+
+    pendingDelete.reject(new Error('boom'));
+    await expect(inflight).rejects.toThrow('boom');
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+
+    expect(getScopedWorkspaceId()).toBe('ws-b');
+    expect(useProjectStore.getState().error).toBeNull();
     expect(useProjectStore.getState().saving).toBe(false);
   });
 });

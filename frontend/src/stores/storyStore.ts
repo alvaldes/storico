@@ -3,7 +3,6 @@ import type { UserStory } from '@/types/story';
 import type { CreateStoryParams, UpdateStoryParams } from '@/schemas';
 import * as api from '@/lib/stories-api';
 import { createInflightTracker } from '@/stores/_inflight';
-import { ApiRequestError } from '@/lib/api';
 import { getScopedWorkspaceId, isScopeUnchanged } from '@/lib/workspace-scope';
 
 // Dedupe of inflight fetchStories calls. StoriesList and Dashboard can call
@@ -28,40 +27,10 @@ let storiesRequestSeq = 0;
 // invalidates a single-story response whose workspace was discarded meanwhile.
 let storyRequestSeq = 0;
 
-export interface StoryErrorInfo {
-  friendlyMessage: string;
-  rawDetail: unknown;
-  status?: number;
-  errorCode?: string;
-}
-
-function extractStoryErrorInfo(err: unknown): StoryErrorInfo {
-  if (err instanceof ApiRequestError) {
-    return err.toErrorInfo();
-  }
-  if (err instanceof Error) {
-    return {
-      friendlyMessage: err.message,
-      rawDetail: err.message,
-    };
-  }
-  if (typeof err === 'string') {
-    return {
-      friendlyMessage: err,
-      rawDetail: err,
-    };
-  }
-  return {
-    friendlyMessage: 'An error occurred',
-    rawDetail: err,
-  };
-}
-
 interface StoryState {
   stories: UserStory[];
   loading: boolean;
   saving: boolean;
-  error: StoryErrorInfo | null;
 
   /** Fetch stories, optionally filtered by project and/or workspace. */
   fetchStories: (projectId?: string, workspaceId?: string) => Promise<void>;
@@ -86,11 +55,10 @@ export const useStoryStore = create<StoryState>((set, get) => ({
   stories: [],
   loading: false,
   saving: false,
-  error: null,
 
   fetchStories: async (projectId?: string, workspaceId?: string) => {
     const requestId = ++storiesRequestSeq;
-    set({ loading: true, stories: [], error: null });
+    set({ loading: true, stories: [] });
     try {
       const inflightKey = `stories:${projectId ?? 'all'}:${workspaceId ?? 'all'}`;
       const response = await storiesInflight.run(inflightKey, () =>
@@ -98,10 +66,9 @@ export const useStoryStore = create<StoryState>((set, get) => ({
       );
       if (requestId !== storiesRequestSeq) return;
       set({ stories: response.items, loading: false });
-    } catch (err) {
+    } catch {
       if (requestId !== storiesRequestSeq) return;
-      const errorInfo = extractStoryErrorInfo(err);
-      set({ error: errorInfo, loading: false });
+      set({ loading: false });
     }
   },
 
@@ -109,7 +76,7 @@ export const useStoryStore = create<StoryState>((set, get) => ({
     // Claimed before the request starts: this call now owns `loading`, and every
     // earlier fetchStory becomes stale for both the success and the error branch.
     const requestId = ++storyRequestSeq;
-    set({ loading: true, error: null });
+    set({ loading: true });
     try {
       const story = await api.getStory(id);
       if (requestId !== storyRequestSeq) return;
@@ -122,10 +89,9 @@ export const useStoryStore = create<StoryState>((set, get) => ({
           loading: false,
         };
       });
-    } catch (err) {
+    } catch {
       if (requestId !== storyRequestSeq) return;
-      const errorInfo = extractStoryErrorInfo(err);
-      set({ error: errorInfo, loading: false });
+      set({ loading: false });
     }
   },
 
@@ -135,7 +101,7 @@ export const useStoryStore = create<StoryState>((set, get) => ({
     // on screen. Sampled before the request and compared after it: a switch in between
     // would otherwise add the old workspace's story to the new one's list.
     const scopeAtCall = getScopedWorkspaceId();
-    set({ saving: true, error: null });
+    set({ saving: true });
     try {
       const story = await api.createStory(params);
       if (isScopeUnchanged(scopeAtCall)) {
@@ -147,10 +113,6 @@ export const useStoryStore = create<StoryState>((set, get) => ({
       }
       return story;
     } catch (err) {
-      const errorInfo = extractStoryErrorInfo(err);
-      // Same reasoning as the append above: the banner is global, but it describes a request of
-      // the workspace this call started in.
-      if (isScopeUnchanged(scopeAtCall)) set({ error: errorInfo });
       // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
       // settled — the scope decides where the *result* belongs, not whether it finished.
       set({ saving: false });
@@ -159,10 +121,7 @@ export const useStoryStore = create<StoryState>((set, get) => ({
   },
 
   updateStory: async (id, params) => {
-    // Sampled before the request, exactly like `createStory`: the catch has to be able to tell
-    // whether the scope moved while the request was inflight.
-    const scopeAtCall = getScopedWorkspaceId();
-    set({ saving: true, error: null });
+    set({ saving: true });
     try {
       const updated = await api.updateStory(id, params);
       set((state) => ({
@@ -170,10 +129,6 @@ export const useStoryStore = create<StoryState>((set, get) => ({
         saving: false,
       }));
     } catch (err) {
-      const errorInfo = extractStoryErrorInfo(err);
-      // Same as `createStory`: the banner is global, but it describes a request of the workspace
-      // this call started in.
-      if (isScopeUnchanged(scopeAtCall)) set({ error: errorInfo });
       // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
       // settled — the scope decides where the *result* belongs, not whether it finished.
       set({ saving: false });
@@ -182,10 +137,7 @@ export const useStoryStore = create<StoryState>((set, get) => ({
   },
 
   deleteStory: async (id) => {
-    // Sampled before the request, exactly like `createStory`: the catch has to be able to tell
-    // whether the scope moved while the request was inflight.
-    const scopeAtCall = getScopedWorkspaceId();
-    set({ saving: true, error: null });
+    set({ saving: true });
     try {
       await api.deleteStory(id);
       set((state) => ({
@@ -193,10 +145,6 @@ export const useStoryStore = create<StoryState>((set, get) => ({
         saving: false,
       }));
     } catch (err) {
-      const errorInfo = extractStoryErrorInfo(err);
-      // Same as `createStory`: the banner is global, but it describes a request of the workspace
-      // this call started in.
-      if (isScopeUnchanged(scopeAtCall)) set({ error: errorInfo });
       // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
       // settled — the scope decides where the *result* belongs, not whether it finished.
       set({ saving: false });
@@ -212,6 +160,6 @@ export const useStoryStore = create<StoryState>((set, get) => ({
     // fresh, empty slice.
     storiesRequestSeq++;
     storyRequestSeq++;
-    set({ stories: [], loading: false, error: null });
+    set({ stories: [], loading: false });
   },
 }));

@@ -15,14 +15,6 @@ export interface ExtractionTask {
   order_index: number;
 }
 
-/** User story info included in extraction response. */
-export interface ExtractionUserStory {
-  id: string;
-  title: string;
-  status: UserStoryStatus;
-  workspace_id: string;
-}
-
 /** Full extraction response from GET /extractions/{id}. */
 export interface ExtractionResponse {
   id: string;
@@ -37,20 +29,4 @@ export interface ExtractionResponse {
   created_at: string;
   completed_at: string | null;
   tasks: ExtractionTask[];
-}
-
-/** Response for POST /workspaces/{id}/extract (202 Accepted). */
-export interface ExtractResponse {
-  extraction_id: string;
-  status: ExtractionStatus;
-  user_story_id: string;
-  message: string;
-}
-
-/** Request body for POST /workspaces/{id}/extract. */
-export interface ExtractRequest {
-  user_story_id: string;
-  model?: string | null;
-  temperature?: number | null;
-  run_validation?: boolean;
 }

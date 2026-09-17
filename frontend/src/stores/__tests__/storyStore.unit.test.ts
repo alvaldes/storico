@@ -21,7 +21,7 @@ import * as projectsApi from '@/lib/projects-api';
 import { useStoryStore } from '@/stores/storyStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
-import { resetScopedWorkspace } from '@/lib/workspace-scope';
+import { getScopedWorkspaceId, resetScopedWorkspace } from '@/lib/workspace-scope';
 import type { UserStory } from '@/types/story';
 import type { Workspace } from '@/types/workspace';
 import type { PaginatedResponse } from '@/lib/projects-api';
@@ -73,7 +73,7 @@ const storyB = makeStory('story-ws-b');
 describe('storyStore — workspace-scoped inflight fetches', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useStoryStore.setState({ stories: [], loading: false, saving: false, error: null });
+    useStoryStore.setState({ stories: [], loading: false, saving: false });
   });
 
   it('issues one request per workspace even when the project filter is identical', async () => {
@@ -162,7 +162,7 @@ describe('storyStore — created story scope guard', () => {
       saving: false,
       error: null,
     });
-    useStoryStore.setState({ stories: [], loading: false, saving: false, error: null });
+    useStoryStore.setState({ stories: [], loading: false, saving: false });
   });
 
   it('does not append a story created in a workspace the user has left', async () => {
@@ -209,7 +209,7 @@ describe('storyStore — created story scope guard', () => {
     expect(useStoryStore.getState().saving).toBe(false);
   });
 
-  it('does not surface a create failure that landed after the workspace was left', async () => {
+  it('still releases saving when a create failure lands after the workspace was left', async () => {
     const pendingCreate = deferred<UserStory>();
     vi.mocked(api.createStory).mockImplementationOnce(() => pendingCreate.promise);
 
@@ -225,17 +225,17 @@ describe('storyStore — created story scope guard', () => {
     useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
 
     pendingCreate.reject(new Error('boom'));
+    // The failure still reaches the caller, whether or not the scope moved.
     await expect(inflight).rejects.toThrow('boom');
     // Drain the projects fetch the switch triggered, so no promise leaks into the next test.
     await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
 
-    // The global banner must not blame the new workspace for the old one's failure...
-    expect(useStoryStore.getState().error).toBeNull();
-    // ...while the store's in-flight flag still clears.
+    // `saving` says a mutation is in flight, and this one settled: the scope decides where the
+    // result belongs, never whether the request finished.
     expect(useStoryStore.getState().saving).toBe(false);
   });
 
-  it('still surfaces a create failure when the workspace did not change', async () => {
+  it('still rejects a create failure to the caller when the workspace did not change', async () => {
     vi.mocked(api.createStory).mockRejectedValueOnce(new Error('boom'));
 
     await expect(
@@ -248,8 +248,7 @@ describe('storyStore — created story scope guard', () => {
       }),
     ).rejects.toThrow('boom');
 
-    expect(useStoryStore.getState().error).not.toBeNull();
-    expect(useStoryStore.getState().error?.friendlyMessage).toBe('boom');
+    // The rejection is the whole caller-facing contract; the flag clears here too.
     expect(useStoryStore.getState().saving).toBe(false);
   });
 });
@@ -271,12 +270,11 @@ describe('storyStore — updated/deleted story scope guard', () => {
       saving: false,
       error: null,
     });
-    useStoryStore.setState({ stories: [], loading: false, saving: false, error: null });
+    useStoryStore.setState({ stories: [], loading: false, saving: false });
   });
 
-  it('does not surface an update failure that landed after the workspace was left', async () => {
-    // The switch triggers a projects fetch; it must land cleanly or its own failure would be
-    // the one this test reads from `error`.
+  it('still releases saving when an update failure lands after the workspace was left', async () => {
+    // The switch triggers a projects fetch; drain it so no promise leaks into the next test.
     const pendingUpdate = deferred<UserStory>();
     vi.mocked(api.updateStory).mockImplementationOnce(() => pendingUpdate.promise);
 
@@ -286,16 +284,16 @@ describe('storyStore — updated/deleted story scope guard', () => {
     useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
 
     pendingUpdate.reject(new Error('boom'));
+    // The failure still reaches the caller, whether or not the scope moved.
     await expect(inflight).rejects.toThrow('boom');
     await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
 
-    // The global banner must not blame the new workspace for the old one's failure...
-    expect(useStoryStore.getState().error).toBeNull();
-    // ...while the store's in-flight flag still clears.
+    // `saving` says a mutation is in flight, and this one settled: the scope decides where the
+    // result belongs, never whether the request finished.
     expect(useStoryStore.getState().saving).toBe(false);
   });
 
-  it('does not surface a delete failure that landed after the workspace was left', async () => {
+  it('still releases saving when a delete failure lands after the workspace was left', async () => {
     // Same as the update case: the switch triggers a projects fetch that must land cleanly.
     const pendingDelete = deferred<void>();
     vi.mocked(api.deleteStory).mockImplementationOnce(() => pendingDelete.promise);
@@ -306,34 +304,113 @@ describe('storyStore — updated/deleted story scope guard', () => {
     useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
 
     pendingDelete.reject(new Error('boom'));
+    // The failure still reaches the caller, whether or not the scope moved.
     await expect(inflight).rejects.toThrow('boom');
     await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
 
-    // The global banner must not blame the new workspace for the old one's failure...
-    expect(useStoryStore.getState().error).toBeNull();
-    // ...while the store's in-flight flag still clears.
+    // `saving` says a mutation is in flight, and this one settled: the scope decides where the
+    // result belongs, never whether the request finished.
     expect(useStoryStore.getState().saving).toBe(false);
   });
 
-  it('still surfaces an update failure when the workspace did not change', async () => {
+  it('still rejects an update failure to the caller when the workspace did not change', async () => {
     vi.mocked(api.updateStory).mockRejectedValueOnce(new Error('boom'));
 
     await expect(
       useStoryStore.getState().updateStory('story-ws-a', { actor: 'updated' }),
     ).rejects.toThrow('boom');
 
-    expect(useStoryStore.getState().error).not.toBeNull();
-    expect(useStoryStore.getState().error?.friendlyMessage).toBe('boom');
+    // The rejection is the whole caller-facing contract; the flag clears here too.
     expect(useStoryStore.getState().saving).toBe(false);
   });
 
-  it('still surfaces a delete failure when the workspace did not change', async () => {
+  it('still rejects a delete failure to the caller when the workspace did not change', async () => {
     vi.mocked(api.deleteStory).mockRejectedValueOnce(new Error('boom'));
 
     await expect(useStoryStore.getState().deleteStory('story-ws-a')).rejects.toThrow('boom');
 
-    expect(useStoryStore.getState().error).not.toBeNull();
-    expect(useStoryStore.getState().error?.friendlyMessage).toBe('boom');
+    // The rejection is the whole caller-facing contract; the flag clears here too.
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+});
+
+describe('storyStore — created story append guard with a real observed scope', () => {
+  // The describes above start from `resetScopedWorkspace()`, so `scopeAtCall` is `undefined` and
+  // the guard takes its fail-open branch. These tests observe a real id first — the branch
+  // production is always in after the first switch — so `scopeAtCall` is a concrete id and the
+  // comparison has to tell "same id" from "different id" by itself.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetScopedWorkspace();
+    vi.mocked(projectsApi.listProjects).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 100,
+    });
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace('ws-a'), makeWorkspace('ws-b')],
+      currentWorkspace: null,
+      loading: false,
+      saving: false,
+      error: null,
+    });
+    useStoryStore.setState({ stories: [], loading: false, saving: false });
+  });
+
+  // Observe `id` through the real switch path, then drain its projects fetch so it cannot land
+  // after the mutation under test.
+  async function observeScope(id: string): Promise<void> {
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace(id));
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+  }
+
+  it('appends the created story when a real observed scope did not move', async () => {
+    await observeScope('ws-a');
+    vi.mocked(api.createStory).mockResolvedValue(storyA);
+
+    const created = await useStoryStore.getState().createStory({
+      projectId: '11111111-1111-1111-1111-111111111111',
+      actor: 'user',
+      feature: 'log in',
+      benefit: 'access',
+      rawText: '',
+    });
+
+    expect(getScopedWorkspaceId()).toBe('ws-a');
+    expect(useStoryStore.getState().stories).toEqual([storyA]);
+    expect(created).toBe(storyA);
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+
+  it('drops the created story when a real observed scope moved', async () => {
+    await observeScope('ws-a');
+    const pendingCreate = deferred<UserStory>();
+    vi.mocked(api.createStory).mockImplementationOnce(() => pendingCreate.promise);
+
+    const inflight = useStoryStore.getState().createStory({
+      projectId: '11111111-1111-1111-1111-111111111111',
+      actor: 'user',
+      feature: 'log in',
+      benefit: 'access',
+      rawText: '',
+    });
+    // The scope was observed before the call, so the guard compares the real id 'ws-a'.
+    expect(getScopedWorkspaceId()).toBe('ws-a');
+    expect(useStoryStore.getState().saving).toBe(true);
+
+    // The user switches to ws-b while the POST is still inflight.
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+    expect(getScopedWorkspaceId()).toBe('ws-b');
+
+    pendingCreate.resolve(storyA);
+    const created = await inflight;
+    // Drain the projects fetch the switch triggered, so no promise leaks into the next test.
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+
+    expect(useStoryStore.getState().stories).toEqual([]);
+    // The caller still gets the story back, so the form can navigate to it.
+    expect(created).toBe(storyA);
     expect(useStoryStore.getState().saving).toBe(false);
   });
 });

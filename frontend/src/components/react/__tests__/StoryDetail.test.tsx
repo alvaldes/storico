@@ -124,7 +124,6 @@ describe('StoryDetail — extract control and failure toast', () => {
       stories: [story],
       loading: false,
       saving: false,
-      error: null,
       fetchStory: vi.fn().mockResolvedValue(undefined),
     });
     useWorkspaceStore.setState({

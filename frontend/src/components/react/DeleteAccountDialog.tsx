@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { api } from '@/lib/api';
+import { renderBoldMarkup } from '@/lib/render-bold-markup';
 import { useAuthStore } from '@/stores/authStore';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { TriangleAlert, LoaderCircle } from 'lucide-react';
@@ -19,20 +20,6 @@ interface DeleteAccountDialogProps {
   locale: Locale;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-}
-
-/**
- * Renders i18n strings that use <b>...</b> for emphasis WITHOUT innerHTML:
- * text segments stay text and only authored segments become <b>. With
- * `interpolate`, the value replaces the {email} placeholder as plain text
- * (never markup), so user-controlled data never reaches the HTML layer.
- */
-function renderBoldMarkup(text: string, interpolate?: string): React.ReactNode {
-  const withValue =
-    interpolate !== undefined && text.includes('{email}')
-      ? text.replace('{email}', interpolate)
-      : text;
-  return withValue.split(/<\/?b>/).map((part, i) => (i % 2 === 1 ? <b key={i}>{part}</b> : part));
 }
 
 export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccountDialogProps) {
@@ -101,7 +88,7 @@ export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccoun
           <div className="space-y-5 py-2">
             {/* Description */}
             <DialogDescription>
-              {renderBoldMarkup(t.settings.danger_delete_dialog_description_1)}
+              {renderBoldMarkup(t.settings.danger_delete_dialog_description_1, 'b')}
             </DialogDescription>
 
             {/* Warning note */}
@@ -117,7 +104,12 @@ export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccoun
             <FieldGroup>
               <Field>
                 <FieldLabel>
-                  {renderBoldMarkup(t.settings.danger_delete_dialog_email_label, user?.email ?? '')}
+                  {/* The {email} placeholder is substituted before the split, in the same order
+                      the inlined helper used, so the value can never become an authored tag. */}
+                  {renderBoldMarkup(
+                    t.settings.danger_delete_dialog_email_label.replace('{email}', user?.email ?? ''),
+                    'b',
+                  )}
                 </FieldLabel>
                 <Input
                   value={emailInput}
@@ -129,7 +121,7 @@ export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccoun
               </Field>
               <Field>
                 <FieldLabel>
-                  {renderBoldMarkup(t.settings.danger_delete_dialog_verify_label)}
+                  {renderBoldMarkup(t.settings.danger_delete_dialog_verify_label, 'b')}
                 </FieldLabel>
                 <Input
                   value={verifyInput}

@@ -96,7 +96,6 @@ describe('workspaceStore — workspace switching hygiene', () => {
       stories: [story],
       loading: false,
       saving: false,
-      error: null,
     });
     useTaskStore.setState({
       tasks: { 'story-1': [task] },
@@ -246,7 +245,6 @@ describe('projectStore / storyStore reset', () => {
       stories: [story],
       loading: true,
       saving: false,
-      error: { friendlyMessage: 'boom', rawDetail: 'boom' },
     });
   });
 
@@ -258,11 +256,138 @@ describe('projectStore / storyStore reset', () => {
     expect(useProjectStore.getState().error).toBeNull();
   });
 
-  it('storyStore.reset clears stories, loading and error', () => {
+  it('storyStore.reset clears stories and loading', () => {
     useStoryStore.getState().reset();
 
     expect(useStoryStore.getState().stories).toEqual([]);
     expect(useStoryStore.getState().loading).toBe(false);
-    expect(useStoryStore.getState().error).toBeNull();
+  });
+});
+
+describe('workspaceStore — the scoped workspace id follows currentWorkspace', () => {
+  // `projectStore.isScopedWorkspace(ws.id)` and `isScopeUnchanged` both assume the module-level
+  // scope inside `workspace-scope` always agrees with `currentWorkspace.id`. Nothing else asserts
+  // it, so every path that moves the scope is pinned here: a future path that forgets to move it
+  // fails on one of these tests instead of silently accepting another workspace's writes.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetScopedWorkspace();
+    fetchProjects = vi.fn().mockResolvedValue(undefined);
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspace: null,
+      loading: false,
+      saving: false,
+      error: null,
+    });
+    useProjectStore.setState({
+      projects: [],
+      loading: false,
+      saving: false,
+      error: null,
+      fetchProjects: fetchProjects as unknown as () => Promise<void>,
+    });
+    useStoryStore.setState({ stories: [], loading: false, saving: false });
+    useTaskStore.setState({ workspaceTasks: [], extractions: {}, loading: false });
+  });
+
+  // The invariant, stated once so each test only has to say which path it drives and the
+  // comparison itself cannot drift between tests.
+  function expectScopeMatchesCurrentWorkspace(): void {
+    expect(getScopedWorkspaceId()).toBe(useWorkspaceStore.getState().currentWorkspace?.id ?? null);
+  }
+
+  // Move to `id` through the real switch, so the scope is observed before the path under test.
+  function observeScope(id: string): void {
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace(id));
+    expectScopeMatchesCurrentWorkspace();
+  }
+
+  it('setCurrentWorkspace: the different-id switch observes the new id', () => {
+    observeScope('ws-a');
+    expect(getScopedWorkspaceId()).toBe('ws-a');
+
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+
+    expectScopeMatchesCurrentWorkspace();
+    expect(getScopedWorkspaceId()).toBe('ws-b');
+  });
+
+  it('setCurrentWorkspace: the same-id rename short-circuit keeps the observed id', () => {
+    observeScope('ws-a');
+
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-a', 'Renamed'));
+
+    expect(useWorkspaceStore.getState().currentWorkspace?.name).toBe('Renamed');
+    expectScopeMatchesCurrentWorkspace();
+    expect(getScopedWorkspaceId()).toBe('ws-a');
+  });
+
+  it('createWorkspace: observes the workspace it switches to', async () => {
+    observeScope('ws-a');
+    vi.mocked(api.createWorkspace).mockResolvedValue(makeWorkspace('ws-new'));
+
+    await useWorkspaceStore.getState().createWorkspace({ name: 'New', icon: 'building-2' });
+
+    expect(useWorkspaceStore.getState().currentWorkspace?.id).toBe('ws-new');
+    expectScopeMatchesCurrentWorkspace();
+    expect(getScopedWorkspaceId()).toBe('ws-new');
+  });
+
+  it('deleteWorkspace: observes the replacement workspace', async () => {
+    useWorkspaceStore.setState({ workspaces: [makeWorkspace('ws-a'), makeWorkspace('ws-b')] });
+    observeScope('ws-a');
+    vi.mocked(api.deleteWorkspace).mockResolvedValue(undefined);
+
+    await useWorkspaceStore.getState().deleteWorkspace('ws-a');
+
+    expect(useWorkspaceStore.getState().currentWorkspace?.id).toBe('ws-b');
+    expectScopeMatchesCurrentWorkspace();
+    expect(getScopedWorkspaceId()).toBe('ws-b');
+  });
+
+  it('deleteWorkspace: observes an explicit null when the last workspace is deleted', async () => {
+    useWorkspaceStore.setState({ workspaces: [makeWorkspace('ws-a')] });
+    observeScope('ws-a');
+    vi.mocked(api.deleteWorkspace).mockResolvedValue(undefined);
+
+    await useWorkspaceStore.getState().deleteWorkspace('ws-a');
+
+    expect(useWorkspaceStore.getState().currentWorkspace).toBeNull();
+    expectScopeMatchesCurrentWorkspace();
+    expect(getScopedWorkspaceId()).toBeNull();
+  });
+
+  it('fetchWorkspaces: keeps the observed id when hydration finds it still present', async () => {
+    observeScope('ws-a');
+    vi.mocked(api.listWorkspaces).mockResolvedValue({ workspaces: [makeWorkspace('ws-a')] });
+
+    await useWorkspaceStore.getState().fetchWorkspaces();
+
+    expect(useWorkspaceStore.getState().currentWorkspace?.id).toBe('ws-a');
+    expectScopeMatchesCurrentWorkspace();
+    expect(getScopedWorkspaceId()).toBe('ws-a');
+  });
+
+  it('fetchWorkspaces: observes the auto-selected workspace when the persisted id is gone', async () => {
+    observeScope('ws-a');
+    vi.mocked(api.listWorkspaces).mockResolvedValue({ workspaces: [makeWorkspace('ws-b')] });
+
+    await useWorkspaceStore.getState().fetchWorkspaces();
+
+    expect(useWorkspaceStore.getState().currentWorkspace?.id).toBe('ws-b');
+    expectScopeMatchesCurrentWorkspace();
+    expect(getScopedWorkspaceId()).toBe('ws-b');
+  });
+
+  it('fetchWorkspaces: observes an explicit null when the persisted id is gone and nothing remains', async () => {
+    observeScope('ws-a');
+    vi.mocked(api.listWorkspaces).mockResolvedValue({ workspaces: [] });
+
+    await useWorkspaceStore.getState().fetchWorkspaces();
+
+    expect(useWorkspaceStore.getState().currentWorkspace).toBeNull();
+    expectScopeMatchesCurrentWorkspace();
+    expect(getScopedWorkspaceId()).toBeNull();
   });
 });
