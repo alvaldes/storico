@@ -87,7 +87,7 @@ provider `<Select>` for a free-text `<Input>`. Three defects follow:
 
 ### T-001 — Backend: `custom_providers` persistence layer
 
-- **Status**: pending
+- **Status**: done (commit `7d5429c`)
 - **Files to create**:
   - `backend/src/storico/domain/entities/custom_provider.py`
   - `backend/src/storico/domain/ports/custom_provider_repository.py`
@@ -272,6 +272,9 @@ provider `<Select>` for a free-text `<Input>`. Three defects follow:
 | The 50-char DB bound drifts between `provider` and `custom_providers.name` | A row could be created that the select cannot select | Both are 50 chars; the name rule caps at 50 including the first character |
 | Deleting the `+` toggle silently removes a capability | A custom provider that was never registered in the table can no longer be typed in | Accepted: D2/D3 replace typing with create-then-select, and D7 backfills the one case that could have been stranded |
 | New table only registered in the model module, not in the migration | Tests pass, production deploy fails on a missing table | T-001 ships both, and T-006 runs the full backend suite against `create_all` |
+| The backfill runs only on deploy, where no test reaches it | A filtering bug silently registers wrong rows or none | T-001 tests the revision directly against a scratch database, DDL and backfill included |
+| The revision's SQLite-based test cannot prove Postgres-only DDL behaviour | A Postgres-specific failure reaches deploy | Accepted: Docker is unavailable here. The assertions are limited to the declarative shape, which SQLite reflects faithfully, and the residual gap is stated in the test module's docstring |
+| pi-lens' pyright probe cannot resolve modules created during the same session | New files appear as unresolved imports, obscuring real findings | Proven tooling state, not candidate-caused: a throwaway module containing only `PROBE = 1` was equally unresolvable while a pre-existing module in the same package resolved; pyright also analysed `custom_provider.py` as clean while reporting the module missing. The repo's own gate (`ruff` + `pytest`) resolves and exercises every module |
 
 ## Evidence log
 
@@ -279,3 +282,4 @@ _(each completed task records its commit identity here)_
 
 | Task | Commit | Outcome |
 |------|--------|---------|
+| T-001 | `7d5429c` | `custom_providers` (id UUID PK from `uuid7`, `workspace_id` FK → `workspaces.id` ON DELETE CASCADE indexed, `name` String(50), timestamps, `UniqueConstraint(workspace_id, name)`), the `CustomProvider` entity, the five-method port, the SQLAlchemy repository, and revision `0021` with a verbatim backfill of every config whose `provider` is not one of the four known names. 25 new tests: 12 on repository workspace scoping (including that the same name is allowed in two workspaces while a duplicate inside one is rejected, and that a constraint violation surfaces as `RepositoryError`) and 13 on the revision itself — the real DDL runs, the backfill's filter branches (known, blank, whitespace, verbatim, cross-workspace) are exercised, and the migrated table is compared against the ORM model for columns, nullability, primary key, unique constraint, index and the cascading foreign key. Verified: `ruff check` clean, `ruff format --check` clean, full backend suite 485 passed / 1 skipped. Two environment notes: the test database is in-memory SQLite, so the cascade is asserted on declared metadata rather than by deleting a workspace (SQLite ignores `ON DELETE CASCADE` without `PRAGMA foreign_keys=ON`), and the `RuntimeWarning: coroutine 'Connection._cancel' was never awaited` seen in full-suite runs was reproduced on a stashed base tree, so it is pre-existing and its attribution simply moves with GC timing. |
