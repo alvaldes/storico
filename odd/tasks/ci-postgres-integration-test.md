@@ -1,6 +1,6 @@
 # ODD Feature: ci-postgres-integration-test
 
-> **Status**: round 2 in progress — `2e729ae..70be4bc` merged into `main` and pushed (CI still red for two new causes); fixes for those two on `fix/ci-postgres-followups`
+> **Status**: round 3 in progress — round 2 pushed; CI run `35362039719` reached the test body (526 passed) and stopped on a foreign key, fixed on `fix/ci-postgres-fk-seed`
 > **Created**: 2026-09-18
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -202,6 +202,22 @@ loop. Fixing only the probe would have moved the red line, not removed it.
   Sibling tests read at `10**9 + 31` and were immune — that asymmetry is why only
   this one failed.
 
+### T-007 — Seed the workspace owner so Postgres accepts the insert
+
+- **Status**: done (commit `a318ccf`)
+- **Files to modify**:
+  - `backend/tests/test_integration/test_projects_integration.py`
+  - `docs/testing.md`
+- **What**: the test saves a real `User` first and uses `owner.id` for both
+  `workspaces.owner_id` and `workspace_members.user_id`.
+- **Why**: those two columns are real foreign keys into `users`, and SQLite does
+  not enforce foreign keys by default. Postgres rejected the insert with
+  `fk_workspaces_owner_id_users`.
+- **Evidence**: replaying the same insert against `sqlite+aiosqlite://` with
+  `PRAGMA foreign_keys=ON` makes the old shape fail with `RepositoryError` caused
+  by `FOREIGN KEY constraint failed` (the CI failure, reproduced locally) while
+  the real test body passes unchanged.
+
 ## Risks
 
 - The `<500ms` assertion can fail on a slow shared runner. Pre-existing and out
@@ -220,6 +236,7 @@ loop. Fixing only the probe would have moved the red line, not removed it.
 | T-006 | merge + push | Merged into `main` by fast-forward and pushed (`6515308..70be4bc`); deploy workflow succeeded. First real CI run of the integration test: the `MissingGreenlet` error is **gone** — the fixture starts the container, passes the probe, connects with asyncpg and reaches the DDL. That confirms the T-001 diagnosis. CI then reported two new causes, which became T-004 and T-005. |
 | T-004 | `757ab72` | `create_all` now runs after the three enum types exist. Offline Postgres-dialect DDL dump is the evidence: 0 CREATE TYPE before, 3 after. |
 | T-005 | `65a8a3f` | The cache TTL test no longer depends on host uptime; the old shape's failure is reproduced against a simulated 200s uptime. `ruff` clean; `pytest -q` → 526 passed, 1 skipped, 1 warning on both work units. |
+| T-007 | `a318ccf` | Second CI run (`35362039719`): the enum and cache fixes held — **526 passed**, the container test ran and reached its body — and it stopped on `fk_workspaces_owner_id_users`. Fixed by seeding the owner row. Local proof via SQLite with `PRAGMA foreign_keys=ON`: old shape fails, real test body passes. |
 
 Two verification limits, stated rather than smoothed over:
 
@@ -240,12 +257,19 @@ and the module-scoped fixtures share the loop that owns the engine. CI confirmed
 both — the integration test executed for the first time instead of erroring at
 setup, then failed at the DDL, which is a genuine finding the test exists to make.
 
-Round 2 (this branch): the enum types are created before `create_all`, and the
-cache TTL test no longer depends on the host's uptime. Both verified offline on
-this machine; the container path still needs CI, which is the next step.
+Round 2 (merged and pushed): `create_all` now runs after the enum types exist,
+and the cache test no longer depends on the host clock. CI confirmed both (526
+passed) and then reported the last layer this file was hiding: the seeded owner
+was not a real user row, and Postgres enforces the foreign key that SQLite
+ignores.
 
-No local run can execute the integration fixture (no Docker daemon here), so for
-that one file CI is not a formality — it is the only executable check.
+Round 3 (this branch): the owner is a real row. Three Postgres-only traps have
+now surfaced through this one test — an async driver handed to a sync probe, enum
+types that only Alembic creates, and a foreign key that SQLite never checked —
+which is the case for keeping it in CI rather than skipping it.
+
+The container path still cannot run on this machine (no Docker daemon), so CI
+remains its only executable check.
 
 ## Follow-ups (not part of this fix)
 
