@@ -23,6 +23,24 @@ class ModelInfo(BaseModel):
     name: str
 
 
+class LLMModelProbeRequest(BaseModel):
+    """Optional selection the model list must describe.
+
+    The settings form probes the provider the user has *chosen*, which is not
+    necessarily the one already saved. When ``provider`` is present the body
+    describes the probe entirely: a key or base URL left out is missing for this
+    probe and is never borrowed from the saved row, because borrowing would send
+    one provider's credential to another provider's endpoint. An absent body (or
+    one without a provider) keeps the other reading — probe what is saved.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str | None = Field(None, max_length=50)
+    base_url: str | None = Field(None, max_length=500)
+    api_key: str | None = Field(None, max_length=500)
+
+
 class LLMConfigResponse(BaseModel):
     """Response body representing workspace LLM config with resolved defaults."""
 

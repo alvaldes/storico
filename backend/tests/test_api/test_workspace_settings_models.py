@@ -9,17 +9,21 @@ providers through it. The prober is exercised with an injected
 from __future__ import annotations
 
 from collections.abc import Callable
+from uuid import uuid4
 
 import httpx
 import jwt as pyjwt
 import pytest
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.api.routes import workspace_settings
 from storico.api.routes.workspace_settings import (
+    _resolve_probe,
     fetch_openai_compatible_models,
     fetch_openai_models,
 )
+from storico.api.schemas.workspace_llm_config import LLMModelProbeRequest
 from storico.config.settings import Settings
 from storico.domain.entities.user import User
 from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
@@ -312,7 +316,7 @@ class TestCustomProviderModelDiscovery:
             WorkspaceLLMConfig(workspace_id=ws_id, provider="deepseek", api_key="secret")
         )
 
-        response = await async_client.get(
+        response = await async_client.post(
             f"/api/v1/workspaces/{ws_id}/settings/llm/models",
             headers=_auth_headers(str(user.id)),
         )
@@ -344,7 +348,7 @@ class TestCustomProviderModelDiscovery:
             )
         )
 
-        response = await async_client.get(
+        response = await async_client.post(
             f"/api/v1/workspaces/{ws_id}/settings/llm/models",
             headers=_auth_headers(str(user.id)),
         )
@@ -352,3 +356,199 @@ class TestCustomProviderModelDiscovery:
         assert response.status_code == 200
         assert requested == [("https://api.deepseek.com/models", "Bearer secret")]
         assert response.json() == [{"id": "deepseek-chat", "name": "deepseek-chat"}]
+
+
+@pytest.mark.unit
+class TestProbeResolution:
+    """``_resolve_probe`` decides which provider the list must describe.
+
+    The rule is the whole point of the endpoint's body: a request that names a
+    provider describes the probe entirely, and an absent one falls back to the
+    saved row so the persisted state stays observable.
+    """
+
+    def test_missing_body_falls_back_to_the_saved_row(self) -> None:
+        """No body means "describe what is saved"."""
+        saved = WorkspaceLLMConfig(
+            workspace_id=uuid4(),
+            provider="gemini",
+            base_url=None,
+            api_key="saved-key",
+        )
+
+        probe = _resolve_probe(None, saved)
+
+        assert probe is not None
+        assert (probe.provider, probe.base_url, probe.api_key) == ("gemini", None, "saved-key")
+
+    def test_missing_body_without_a_saved_row_has_nothing_to_probe(self) -> None:
+        """An unconfigured workspace has no provider to ask."""
+        assert _resolve_probe(None, None) is None
+
+    def test_body_provider_is_taken_whole(self) -> None:
+        """A named provider is described by the body, not by the saved row."""
+        probe = _resolve_probe(
+            LLMModelProbeRequest(
+                provider="deepseek",
+                base_url="https://api.deepseek.com",
+                api_key="pending-key",
+            ),
+            WorkspaceLLMConfig(workspace_id=uuid4(), provider="gemini", api_key="saved-key"),
+        )
+
+        assert probe is not None
+        assert (probe.provider, probe.base_url, probe.api_key) == (
+            "deepseek",
+            "https://api.deepseek.com",
+            "pending-key",
+        )
+
+    def test_body_without_a_key_never_borrows_the_saved_one(self) -> None:
+        """A key left out is missing for this probe, never the other provider's.
+
+        Borrowing it would send the workspace's Gemini credential to whichever
+        endpoint the pending provider names.
+        """
+        probe = _resolve_probe(
+            LLMModelProbeRequest(provider="gemini", base_url=None, api_key=None),
+            WorkspaceLLMConfig(
+                workspace_id=uuid4(),
+                provider="anthropic",
+                base_url="https://api.anthropic.com",
+                api_key="saved-anthropic-key",
+            ),
+        )
+
+        assert probe is not None
+        assert (probe.provider, probe.base_url, probe.api_key) == ("gemini", None, None)
+
+    def test_empty_body_is_a_saved_row_probe(self) -> None:
+        """An empty object carries no selection, so it is not a pending one."""
+        probe = _resolve_probe(
+            LLMModelProbeRequest(provider=None, base_url=None, api_key=None),
+            WorkspaceLLMConfig(workspace_id=uuid4(), provider="ollama"),
+        )
+
+        assert probe is not None
+        assert probe.provider == "ollama"
+
+    def test_unknown_body_fields_are_rejected(self) -> None:
+        """A typo in the payload must fail loudly, not probe the wrong provider."""
+        with pytest.raises(ValidationError):
+            LLMModelProbeRequest.model_validate({"provider": "gemini", "apiKey": "x"})
+
+
+@pytest.mark.integration
+class TestPendingSelectionProbe:
+    """The endpoint probes the selection posted by the client.
+
+    The workspace config is deliberately saved against a *different* provider in
+    these cases: the request must win, which is exactly what the reported bug got
+    wrong — the select showed one provider and the answer described another.
+    """
+
+    @pytest.mark.asyncio
+    async def test_pending_provider_overrides_the_saved_row(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """A posted provider reaches its own endpoint while the saved row is ignored."""
+        requested: list[tuple[str, str | None]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requested.append((str(request.url), request.headers.get("Authorization")))
+            return httpx.Response(200, json={"data": [{"id": "deepseek-chat"}]})
+
+        _patch_client_factory(monkeypatch, handler)
+
+        user = await _create_user(db_session)
+        ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
+        # The saved row points somewhere unreachable; only the posted values may run.
+        await SQLAlchemyWorkspaceLLMConfigRepository(db_session).upsert(
+            WorkspaceLLMConfig(
+                workspace_id=ws_id,
+                provider="NaN",
+                base_url="http://localhost:11434",
+                api_key="saved-key",
+            )
+        )
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{ws_id}/settings/llm/models",
+            headers=_auth_headers(str(user.id)),
+            json={
+                "provider": "deepseek",
+                "base_url": "https://api.deepseek.com",
+                "api_key": "pending-key",
+            },
+        )
+
+        assert response.status_code == 200
+        assert requested == [("https://api.deepseek.com/models", "Bearer pending-key")]
+
+    @pytest.mark.asyncio
+    async def test_pending_provider_without_a_key_probes_nothing(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """A keyless cloud provider has nothing to ask, and borrows no credential."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError(f"unexpected request to {request.url}")
+
+        _patch_client_factory(monkeypatch, handler)
+
+        user = await _create_user(db_session)
+        ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
+        await SQLAlchemyWorkspaceLLMConfigRepository(db_session).upsert(
+            WorkspaceLLMConfig(
+                workspace_id=ws_id,
+                provider="gemini",
+                api_key="saved-gemini-key",
+            )
+        )
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{ws_id}/settings/llm/models",
+            headers=_auth_headers(str(user.id)),
+            json={"provider": "anthropic"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+    @pytest.mark.asyncio
+    async def test_pending_custom_provider_without_a_base_url_probes_nothing(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """An endpoint-less custom name has no host to ask.
+
+        The saved row holds a reachable base URL, so an implementation that fell
+        back to it would probe and be caught here.
+        """
+        requested: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requested.append(str(request.url))
+            return httpx.Response(200, json={"data": [{"id": "deepseek-chat"}]})
+
+        _patch_client_factory(monkeypatch, handler)
+
+        user = await _create_user(db_session)
+        ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
+        await SQLAlchemyWorkspaceLLMConfigRepository(db_session).upsert(
+            WorkspaceLLMConfig(
+                workspace_id=ws_id,
+                provider="deepseek",
+                base_url="https://api.deepseek.com",
+                api_key="saved-key",
+            )
+        )
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{ws_id}/settings/llm/models",
+            headers=_auth_headers(str(user.id)),
+            json={"provider": "groq"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == []
+        assert requested == []

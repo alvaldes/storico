@@ -6,7 +6,7 @@ admin role for the target workspace.
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
@@ -23,6 +23,7 @@ from storico.api.schemas.custom_provider import (
 from storico.api.schemas.workspace_llm_config import (
     LLMConfigRequest,
     LLMConfigResponse,
+    LLMModelProbeRequest,
     ModelInfo,
 )
 from storico.api.schemas.workspace_prompt import PromptRequest, PromptResponse
@@ -471,48 +472,110 @@ async def fetch_gemini_models(api_key: str) -> list[ModelInfo]:
     ]
 
 
-@router.get("/llm/models")
+@dataclass(frozen=True)
+class _ProbeInputs:
+    """Fully resolved inputs for one model-list probe.
+
+    Holds the provider name and *its own* endpoint and credential, kept together so
+    no call can pair one provider with another's fields halfway through.
+    """
+
+    provider: str
+    base_url: str | None
+    api_key: str | None
+
+
+def _resolve_probe(
+    body: LLMModelProbeRequest | None,
+    saved: WorkspaceLLMConfig | None,
+) -> _ProbeInputs | None:
+    """Decide which provider the model list must describe.
+
+    A body that names a provider describes the probe entirely: the key and base URL
+    come from the body alone, and one left out is *missing* rather than borrowed
+    from the saved row. Borrowing would send the saved workspace credential to
+    whichever endpoint the pending provider names.
+
+    A body without a provider carries no selection, so it falls back to the saved
+    row and the endpoint keeps answering for the persisted state. Nothing saved and
+    nothing posted leaves no provider to ask, which is ``None``.
+    """
+    if body is not None and body.provider is not None:
+        return _ProbeInputs(
+            provider=body.provider,
+            base_url=body.base_url,
+            api_key=body.api_key,
+        )
+
+    if saved is None:
+        return None
+
+    return _ProbeInputs(
+        provider=saved.provider,
+        base_url=saved.base_url,
+        api_key=saved.api_key,
+    )
+
+
+async def _probe_models(probe: _ProbeInputs) -> list[ModelInfo]:
+    """Ask the resolved provider for its model list.
+
+    Kept separate from the route so the per-provider routing rule is testable
+    without a request, and so the 502 mapping names the provider that was actually
+    asked rather than the one that happened to be saved.
+    """
+    if probe.provider == "ollama":
+        base_url = probe.base_url or "http://localhost:11434"
+        return await fetch_ollama_models(base_url)
+
+    if probe.provider == "openai":
+        if not probe.api_key:
+            return []
+        return await fetch_openai_models(probe.api_key, probe.base_url)
+
+    if probe.provider == "anthropic":
+        if not probe.api_key:
+            return []
+        return await fetch_anthropic_models(probe.api_key)
+
+    if probe.provider == "gemini":
+        if not probe.api_key:
+            return []
+        return await fetch_gemini_models(probe.api_key)
+
+    # Anything else is a custom provider assumed to speak the OpenAI wire format.
+    if not probe.base_url:
+        return []
+    return await fetch_openai_compatible_models(probe.base_url, probe.api_key)
+
+
+@router.post("/llm/models")
 async def list_available_models(
     config_repo: LLMConfigRepoDep,
     ctx: tuple[Workspace, WorkspaceRole] = Depends(require_admin),
+    body: LLMModelProbeRequest | None = None,
 ) -> list[ModelInfo]:
-    """List available models from the workspace's configured LLM provider.
+    """List available models from an LLM provider.
 
-    Proxies the request to the provider's model list API. Requires the
-    workspace LLM config to have the necessary credentials saved first.
+    Proxies the request to the provider's model list API. The body optionally
+    carries the selection the settings form has in hand so the answer describes
+    the provider the user just picked; without one the saved workspace config is
+    probed, which is what keeps the persisted state observable.
+
+    ``POST`` rather than ``GET`` with query parameters because the pending
+    selection carries an API key, and a query string writes it into access logs.
+    The sibling ``POST /api/v1/llm/test`` carries pending credentials the same way.
     """
     workspace, _ = ctx
-    config = await config_repo.get(workspace.id)
+    probe = _resolve_probe(body, await config_repo.get(workspace.id))
 
-    if config is None:
+    if probe is None:
         return []
 
     try:
-        if config.provider == "ollama":
-            base_url = config.base_url or "http://localhost:11434"
-            return await fetch_ollama_models(base_url)
-
-        if config.provider == "openai":
-            if not config.api_key:
-                return []
-            return await fetch_openai_models(config.api_key, config.base_url)
-
-        if config.provider == "anthropic":
-            if not config.api_key:
-                return []
-            return await fetch_anthropic_models(config.api_key)
-
-        if config.provider == "gemini":
-            if not config.api_key:
-                return []
-            return await fetch_gemini_models(config.api_key)
-
-        # Anything else is a custom provider assumed to speak the OpenAI wire format.
-        if not config.base_url:
-            return []
-        return await fetch_openai_compatible_models(config.base_url, config.api_key)
+        return await _probe_models(probe)
     except httpx.HTTPError as e:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to fetch models from {config.provider}: {e}",
+            detail=f"Failed to fetch models from {probe.provider}: {e}",
         )
