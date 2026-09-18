@@ -14,18 +14,23 @@ Autenticación vía header `Authorization: Bearer <token>`. El token se obtiene 
 
 ## Endpoints
 
+Las rutas de colección terminan en `/` — es la forma canónica que expone FastAPI, y
+pedirlas sin la barra responde un redirect `307`. Las tablas de abajo usan la forma
+canónica.
+
 ### Health
 
 | Método | Path | Descripción |
 |--------|------|-------------|
-| GET | `/health` | Health check del servicio |
+| GET | `/api/v1/health` | Health check: base de datos (la única dependencia requerida) |
+| GET | `/api/v1/health/services` | Diagnóstico completo: base de datos, Ollama y Qdrant |
 
 ### Workspaces
 
 | Método | Path | Descripción |
 |--------|------|-------------|
-| GET | `/api/v1/workspaces` | Listar workspaces |
-| POST | `/api/v1/workspaces` | Crear workspace |
+| GET | `/api/v1/workspaces/` | Listar workspaces |
+| POST | `/api/v1/workspaces/` | Crear workspace |
 | GET | `/api/v1/workspaces/{id}` | Obtener workspace |
 | PUT | `/api/v1/workspaces/{id}` | Actualizar workspace |
 | DELETE | `/api/v1/workspaces/{id}` | Eliminar workspace |
@@ -39,8 +44,8 @@ Autenticación vía header `Authorization: Bearer <token>`. El token se obtiene 
 
 | Método | Path | Descripción |
 |--------|------|-------------|
-| GET | `/api/v1/workspaces/{wsId}/projects` | Listar proyectos (paginado) |
-| POST | `/api/v1/workspaces/{wsId}/projects` | Crear proyecto |
+| GET | `/api/v1/workspaces/{wsId}/projects/` | Listar proyectos (paginado) |
+| POST | `/api/v1/workspaces/{wsId}/projects/` | Crear proyecto |
 | GET | `/api/v1/workspaces/{wsId}/projects/{id}` | Obtener proyecto |
 | PUT | `/api/v1/workspaces/{wsId}/projects/{id}` | Actualizar proyecto |
 | DELETE | `/api/v1/workspaces/{wsId}/projects/{id}` | Eliminar proyecto |
@@ -49,8 +54,8 @@ Autenticación vía header `Authorization: Bearer <token>`. El token se obtiene 
 
 | Método | Path | Descripción |
 |--------|------|-------------|
-| GET | `/api/v1/stories` | Listar stories (filtro `?project_id=`) |
-| POST | `/api/v1/stories` | Crear story |
+| GET | `/api/v1/stories/` | Listar stories (filtro `?project_id=`) |
+| POST | `/api/v1/stories/` | Crear story |
 | GET | `/api/v1/stories/{id}` | Obtener story |
 | PUT | `/api/v1/stories/{id}` | Actualizar story |
 | DELETE | `/api/v1/stories/{id}` | Eliminar story |
@@ -59,8 +64,8 @@ Autenticación vía header `Authorization: Bearer <token>`. El token se obtiene 
 
 | Método | Path | Descripción |
 |--------|------|-------------|
-| GET | `/api/v1/tasks` | Listar tasks (filtro `?user_story_id=`) |
-| POST | `/api/v1/tasks` | Crear task |
+| GET | `/api/v1/tasks/` | Listar tasks (filtro `?user_story_id=`) |
+| POST | `/api/v1/tasks/` | Crear task |
 | GET | `/api/v1/tasks/{id}` | Obtener task |
 | PUT | `/api/v1/tasks/{id}` | Actualizar task |
 | DELETE | `/api/v1/tasks/{id}` | Eliminar task |
@@ -69,9 +74,13 @@ Autenticación vía header `Authorization: Bearer <token>`. El token se obtiene 
 
 | Método | Path | Descripción |
 |--------|------|-------------|
-| POST | `/api/v1/extract` | Extraer tareas de una user story |
-| GET | `/api/v1/extractions` | Listar extracciones |
-| GET | `/api/v1/extractions/{id}` | Obtener extracción |
+| POST | `/api/v1/workspaces/{wsId}/extract/` | Iniciar la extracción (asíncrona: responde `202`) |
+| GET | `/api/v1/workspaces/{wsId}/extract/status/{extractionId}` | Estado de una extracción de ese workspace |
+| GET | `/api/v1/extractions/` | Listar extracciones (filtros `?user_story_id=`, `?workspace_id=`) |
+| GET | `/api/v1/extractions/{id}` | Obtener una extracción |
+
+`POST /api/v1/extract` (sin workspace) ya no existe: responde `410 Gone` y apunta a la
+ruta workspace-scoped, que es la única vigente.
 
 ### Users
 
@@ -80,7 +89,7 @@ Autenticación vía header `Authorization: Bearer <token>`. El token se obtiene 
 | GET | `/api/v1/users/me` | Perfil del usuario actual |
 | GET | `/api/v1/users/me/settings` | Configuración del usuario |
 | PUT | `/api/v1/users/me/settings` | Guardar configuración |
-| POST | `/api/v1/users/me/onboarding` | Completar onboarding |
+| PATCH | `/api/v1/users/me/onboarding` | Completar onboarding (opcionalmente renombra el workspace) |
 
 ### LLM Config (scoped a workspace)
 
@@ -125,11 +134,14 @@ llevar una API Key, y una query string la escribe en los logs de acceso; `POST
 | POST | `/api/v1/workspaces/{wsId}/settings/providers` | Registrar un proveedor personalizado |
 | PATCH | `/api/v1/workspaces/{wsId}/settings/providers/{providerId}` | Renombrar un proveedor personalizado |
 
-Todos requieren rol admin. El nombre se normaliza (recorte y minúsculas) y se valida
-contra `^[a-z0-9][a-z0-9._-]{0,49}$`; un nombre de proveedor integrado o ya registrado
-en el mismo workspace responde `409`, y un `providerId` de otro workspace responde
-`404`. Al renombrar el proveedor que el workspace tiene seleccionado, también se
-actualiza `workspace_llm_configs.provider`.
+Todos requieren rol admin. El nombre se recorta y se guarda **tal como se escribe**: de 1
+a 50 caracteres después del recorte, cualquier carácter permitido (mayúsculas, espacios,
+acentos), y `Groq` y `groq` son dos proveedores distintos. Responde `409` si el nombre ya
+existe en el workspace, si es uno de los cuatro proveedores integrados (en cualquier
+combinación de mayúsculas) o si es el valor reservado del selector
+(`__add_custom_provider__`); un `providerId` de otro workspace responde `404`. Al renombrar
+el proveedor que el workspace tiene seleccionado, también se actualiza
+`workspace_llm_configs.provider`.
 
 ### Prompts (scoped a workspace)
 
@@ -179,26 +191,57 @@ actualiza `workspace_llm_configs.provider`.
 
 ### Extracción
 
-```json
-POST /api/v1/extract
+```http
+POST /api/v1/workspaces/{wsId}/extract/
+Content-Type: application/json
+
 {
   "user_story_id": "uuid",
-  "raw_text": "As a user, I want..."
-}
-
-Response 201:
-{
-  "tasks": [
-    {
-      "title": "Implement login form",
-      "description": "Create a login form with email and password fields",
-      "labels": ["frontend", "auth"],
-      "status": "backlog",
-      "priority": "high"
-    }
-  ]
+  "model": null,
+  "temperature": null,
+  "run_validation": false
 }
 ```
+
+Responde **`202 Accepted`** de inmediato: la extracción corre en segundo plano y el cliente
+consulta su estado hasta que pasa a `completed` o `failed`.
+
+```json
+{
+  "extraction_id": "uuid",
+  "status": "pending",
+  "user_story_id": "uuid",
+  "message": "Extraction started. Poll GET /extractions/{extraction_id} for progress."
+}
+```
+
+Si la configuración del LLM del workspace está incompleta para el proveedor elegido, la
+ruta responde `400` con `error_code: "LLM_CONFIG_INCOMPLETE"` y la lista `missing`, **sin
+crear ninguna extracción**.
+
+```http
+GET /api/v1/workspaces/{wsId}/extract/status/{extractionId}
+```
+
+```json
+{
+  "id": "uuid",
+  "user_story_id": "uuid",
+  "model_used": "llama3.2",
+  "status": "completed",
+  "user_story_status": "extracted",
+  "error_info": null,
+  "prompt_config": { "validate": false, "temperature": null },
+  "raw_response": "1. summary: Set up the database schema\ndescription: Create the tables...",
+  "confidence_score": null,
+  "created_at": "2026-07-15T12:00:00Z",
+  "completed_at": "2026-07-15T12:00:05Z",
+  "tasks": []
+}
+```
+
+Las tareas generadas no viajan en la respuesta de estado: se leen con
+`GET /api/v1/tasks/?user_story_id=...` una vez que la extracción pasó a `completed`.
 
 ## Especificaciones Completas
 
