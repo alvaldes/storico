@@ -834,8 +834,16 @@ describe('LLMConfigEditor custom provider', () => {
 
     // The field already holds `deepseek-chat`. A popup that filtered itself against that
     // text would list one entry and hide the rest, which is the complaint this replaces.
-    expect(await screen.findByRole('option', { name: /deepseek-chat/ })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /deepseek-reasoner/ })).toBeInTheDocument();
+    //
+    // Each entry's accessible name is asserted exactly: the id that gets saved followed by
+    // the readable name. The fixtures deliberately pair a distinct id and name, so dropping
+    // the name suffix, or rendering the name as the text that gets filled, both fail here.
+    expect(
+      await screen.findByRole('option', { name: 'deepseek-chat DeepSeek Chat' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'deepseek-reasoner DeepSeek Reasoner' }),
+    ).toBeInTheDocument();
   });
 
   it('reveals the catalogue by clicking the field itself', async () => {

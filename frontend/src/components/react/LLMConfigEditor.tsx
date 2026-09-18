@@ -619,8 +619,14 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                             // id the provider expects, never the readable name.
                             <AutocompleteItem key={m.id} value={m.id}>
                               {m.id}
+                              {/* The space is an explicit text node: JSX drops the
+                                  whitespace around a line break, which would jam the id
+                                  and the readable name together in the accessible name. */}
                               {m.name !== m.id && (
-                                <span className="text-(--color-text-tertiary)">{m.name}</span>
+                                <>
+                                  {' '}
+                                  <span className="text-(--color-text-tertiary)">{m.name}</span>
+                                </>
                               )}
                             </AutocompleteItem>
                           ))}
