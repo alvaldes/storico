@@ -115,28 +115,50 @@ describe('hand-kept LLM config mirrors', () => {
   });
 
   describe('the accepted lengths', () => {
-    /** The declared `max_length` of each request field, keyed by field name. */
-    const declaredLengths = new Map(
-      [
-        ...requestSchemaSource.matchAll(
-          // Indented inside the model class, so the anchor is the line start plus the
-          // indentation rather than `^\w`; no line-end anchor, so trailing whitespace
-          // cannot turn a real declaration into a missing one.
-          /^[ \t]*(\w+): str \| None = Field\(None, max_length=(\d+)\)/gm,
-        ),
-      ].map(([, field, maxLength]) => [field, maxLength]),
-    );
+    /**
+     * Every `max_length` the request schemas declare, as (field, length) pairs.
+     *
+     * A list and not a map: `api_key` and `base_url` are declared twice — once on the
+     * request body and once on the model probe — and a map keyed by field would let the
+     * last copy hide a drift in the first, which is the copy that governs what the API
+     * actually accepts.
+     */
+    const declaredLengths = [
+      ...requestSchemaSource.matchAll(
+        // Indented inside a model class, so the anchor is the line start plus the
+        // indentation rather than `^\w`; no line-end anchor, so trailing whitespace
+        // cannot turn a real declaration into a missing one.
+        /^[ \t]*(\w+): str \| None = Field\(None, max_length=(\d+)\)/gm,
+      ),
+    ].map(([, field, maxLength]) => ({ field, maxLength }));
+
+    it('declares a length for exactly the fields this client mirrors', () => {
+      // A new bounded string field is either a rule this client has to mirror or one it
+      // does not know about. Either way a human decides, which is what failing asks for.
+      expect([...new Set(declaredLengths.map((entry) => entry.field))].sort()).toEqual([
+        'api_key',
+        'base_url',
+        'model',
+        'provider',
+      ]);
+    });
 
     it.each([
       ['provider', PROVIDER_NAME_MAX_LENGTH],
       ['model', LLM_MODEL_MAX_LENGTH],
       ['base_url', LLM_ENDPOINT_MAX_LENGTH],
       ['api_key', LLM_API_KEY_MAX_LENGTH],
-    ])('matches the backend maximum for %s', (field, frontendValue) => {
-      const declared = declaredLengths.get(field);
+    ])('matches every backend maximum for %s', (field, frontendValue) => {
+      const declared = declaredLengths.filter((entry) => entry.field === field);
 
-      expect(declared, `the backend declares a max_length for ${field}`).not.toBeUndefined();
-      expect(declared).toBe(String(frontendValue));
+      expect(
+        declared,
+        `the backend declares at least one max_length for ${field}`,
+      ).not.toHaveLength(0);
+      // Every declaration, not just the last one the source happens to hold.
+      for (const entry of declared) {
+        expect(entry.maxLength).toBe(String(frontendValue));
+      }
     });
   });
 });

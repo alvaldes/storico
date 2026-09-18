@@ -436,7 +436,11 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
         model: parsed.data.model || undefined,
         temperature: parsed.data.temperature,
         maxTokens: parsed.data.maxTokens,
-        baseUrl: parsed.data.baseUrl || undefined,
+        // Trimmed before it is stored: an all-whitespace endpoint means "use the
+        // provider's default" to the completeness rule, so persisting it verbatim
+        // would store a value that rule reads as absent while the provider is handed
+        // it as a URL made of spaces.
+        baseUrl: parsed.data.baseUrl.trim() || undefined,
         apiKey: parsed.data.apiKey || undefined,
       });
       setLlmSaveResult('success');

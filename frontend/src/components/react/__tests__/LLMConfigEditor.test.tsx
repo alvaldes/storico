@@ -1313,4 +1313,25 @@ describe('LLMConfigEditor save gate', () => {
     );
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  it('stores no endpoint when the field holds only spaces', async () => {
+    const user = userEvent.setup();
+    const save = await renderWith({ provider: 'ollama', model: 'llama3.2', baseUrl: '   ' });
+
+    await user.click(save);
+
+    // The completeness rule reads a blank endpoint as "use the provider's default", so
+    // a value made of spaces must not be stored where the provider would be handed it
+    // as a URL of spaces.
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ baseUrl: undefined }),
+      ),
+    );
+    expect(upsertLLMConfig).not.toHaveBeenCalledWith(
+      WORKSPACE_ID,
+      expect.objectContaining({ baseUrl: '   ' }),
+    );
+  });
 });
