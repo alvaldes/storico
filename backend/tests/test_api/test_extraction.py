@@ -18,6 +18,7 @@ from storico.domain.ports import LLMConfig, LLMPort
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyUserRepository,
+    SQLAlchemyUserStoryRepository,
 )
 from storico.infrastructure.tasks import extraction_task
 
@@ -406,3 +407,170 @@ class TestExtractionStatusEndpoint:
             headers=headers,
         )
         assert response.status_code == 401
+
+
+async def _seed_llm_config(
+    db_session: AsyncSession,
+    workspace_id: UUID,
+    *,
+    provider: str,
+    model: str | None = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
+) -> None:
+    """Persist the workspace's LLM row exactly as the settings form would."""
+    from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
+    from storico.infrastructure.database.repositories import (
+        SQLAlchemyWorkspaceLLMConfigRepository,
+    )
+
+    await SQLAlchemyWorkspaceLLMConfigRepository(db_session).upsert(
+        WorkspaceLLMConfig(
+            workspace_id=workspace_id,
+            provider=provider,
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+        )
+    )
+
+
+class TestExtractionRefusesAnIncompleteConfig:
+    """POST refuses before creating anything when the configuration cannot extract.
+
+    The old behaviour created the pending row first and let the missing credential
+    surface inside the background task, which dragged the story into
+    ``failed_extraction`` for a configuration that was never usable. These tests pin
+    the refusal *and* the absence of its previous side effects.
+    """
+
+    @pytest.mark.asyncio
+    async def test_an_unconfigured_workspace_is_refused_with_the_missing_model(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """No row and no body model leaves exactly one gap, and nothing is created."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        headers = _auth_headers(str(user.id))
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=headers,
+        )
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert detail["error_code"] == "LLM_CONFIG_INCOMPLETE"
+        assert detail["missing"] == ["model"]
+        assert detail["provider"] == "ollama"
+
+        # The side effects the refusal exists to prevent: no extraction record, and
+        # a story still sitting in its pre-extraction status.
+        assert await SQLAlchemyExtractionRepository(db_session).list_by_story(seeded.story_id) == []
+        story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
+        assert story is not None
+        assert story.status == UserStoryStatus.PENDING_EXTRACTION
+
+    @pytest.mark.asyncio
+    async def test_a_cloud_provider_with_a_model_but_no_key_is_refused(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """The gap the background task used to discover, reported before any work."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(
+            db_session, seeded.workspace_id, provider="openai", model="gpt-4o-mini"
+        )
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert detail["error_code"] == "LLM_CONFIG_INCOMPLETE"
+        assert detail["missing"] == ["api_key"]
+        assert detail["provider"] == "openai"
+
+    @pytest.mark.asyncio
+    async def test_a_custom_provider_without_an_endpoint_is_refused(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """A custom provider is unusable without the endpoint it should be called at."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(
+            db_session, seeded.workspace_id, provider="deepseek", model="deepseek-chat"
+        )
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["missing"] == ["base_url"]
+
+    @pytest.mark.asyncio
+    async def test_a_body_model_cannot_complete_a_workspace_missing_its_key(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """The body override fills the model field only; the credential still has to exist."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(db_session, seeded.workspace_id, provider="anthropic")
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id), "model": "claude-3-haiku"},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["missing"] == ["api_key"]
+
+    @pytest.mark.asyncio
+    async def test_an_ollama_workspace_with_only_a_model_is_accepted(
+        self, async_client, db_session: AsyncSession, seed_workspace, monkeypatch
+    ) -> None:
+        """Ollama's host is not a gap, so the model alone is a complete configuration."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(db_session, seeded.workspace_id, provider="ollama", model="llama3.2")
+        monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", AsyncMock())
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 202
+
+    @pytest.mark.asyncio
+    async def test_a_custom_provider_without_a_key_is_accepted(
+        self, async_client, db_session: AsyncSession, seed_workspace, monkeypatch
+    ) -> None:
+        """A self-hosted gateway commonly accepts unauthenticated requests."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(
+            db_session,
+            seeded.workspace_id,
+            provider="deepseek",
+            model="deepseek-chat",
+            base_url="https://api.deepseek.com/v1",
+        )
+        monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", AsyncMock())
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 202

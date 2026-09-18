@@ -34,6 +34,10 @@ from storico.api.schemas.extraction import (
 from storico.domain.entities import EntityNotFound, Extraction, Workspace, WorkspaceRole
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
+from storico.domain.services.llm_config_readiness import (
+    LLM_CONFIG_INCOMPLETE_CODE,
+    missing_llm_config_fields,
+)
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
@@ -159,6 +163,11 @@ async def extract_tasks(
 
     If ``body.model`` is ``None``, the model is resolved from the
     workspace's LLM config.
+
+    The workspace's LLM configuration must be complete for its provider before
+    anything is created. When it is not, this answers ``400`` with
+    ``error_code: "LLM_CONFIG_INCOMPLETE"`` and the missing field names, leaving the
+    story and the extraction table untouched.
     """
     workspace, _ = ctx
 
@@ -176,18 +185,33 @@ async def extract_tasks(
     api_key = ws_config.api_key if ws_config and ws_config.api_key else None
     base_url = ws_config.base_url if ws_config and ws_config.base_url else None
 
-    # The user must pick a model (body override or workspace config)
-    if model is None:
+    # Provider: workspace config, fallback ollama
+    provider = ws_config.provider if ws_config and ws_config.provider else "ollama"
+
+    # Refuse before creating anything.
+    #
+    # An extraction against an incomplete configuration can only fail. It used to
+    # fail *after* this route had already created a pending row and dragged the
+    # story into ``failed_extraction`` — a state the user then had to repair. The
+    # rule read here is the same one the settings form and
+    # ``GET /settings/llm/status`` read, so the client is told which fields to fix
+    # instead of only that something went wrong.
+    missing = missing_llm_config_fields(provider, model=model, api_key=api_key, base_url=base_url)
+    # ``model`` is named in the condition as well as carried by ``missing``: every
+    # provider family requires it (pinned by
+    # ``test_llm_config_readiness.test_every_provider_family_requires_a_model``), so
+    # the two are equivalent — and naming it is what lets the type checker see that
+    # the value below is no longer ``str | None``.
+    if missing or model is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No LLM model configured for this workspace. "
-            "Please configure a model in Workspace Settings before extracting.",
+            detail={
+                "detail": "This workspace's LLM configuration is incomplete.",
+                "error_code": LLM_CONFIG_INCOMPLETE_CODE,
+                "provider": provider,
+                "missing": list(missing),
+            },
         )
-
-    # Provider: body has precedence, then workspace config, fallback ollama
-    provider = "ollama"
-    if ws_config and ws_config.provider:
-        provider = ws_config.provider
 
     # 1. Create pending extraction record — gives the client something to poll
     pending = Extraction(

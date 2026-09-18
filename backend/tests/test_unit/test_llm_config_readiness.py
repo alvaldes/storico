@@ -152,6 +152,17 @@ class TestVocabulary:
         assert declared <= set(READINESS_FIELDS)
 
     @pytest.mark.unit
+    def test_every_provider_family_requires_a_model(self) -> None:
+        """``model`` is the one field no provider can be called without.
+
+        The extraction route relies on this: it narrows the model away from
+        ``str | None`` by checking the gap list, which is only sound while every
+        family requires it.
+        """
+        assert all("model" in fields for fields in REQUIRED_FIELDS_BY_PROVIDER.values())
+        assert "model" in CUSTOM_PROVIDER_REQUIRED_FIELDS
+
+    @pytest.mark.unit
     def test_the_error_code_is_the_one_the_frontend_maps(self) -> None:
         """The spelling is wire vocabulary; the mirror guard pins the frontend's copy."""
         assert LLM_CONFIG_INCOMPLETE_CODE == "LLM_CONFIG_INCOMPLETE"
