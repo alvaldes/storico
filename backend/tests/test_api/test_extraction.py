@@ -574,3 +574,62 @@ class TestExtractionRefusesAnIncompleteConfig:
         )
 
         assert response.status_code == 202
+
+    @pytest.mark.asyncio
+    async def test_a_blank_stored_endpoint_reaches_the_task_as_absent(
+        self, async_client, db_session: AsyncSession, seed_workspace, monkeypatch
+    ) -> None:
+        """A row holding spaces for its endpoint hands the task ``None``.
+
+        The adapter would otherwise be built with a URL of spaces and fail *inside* the
+        background task, after this route had already created the pending extraction.
+        """
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(
+            db_session,
+            seeded.workspace_id,
+            provider="ollama",
+            model="llama3.2",
+            base_url="   ",
+        )
+        scheduled = AsyncMock()
+        monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", scheduled)
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 202
+        await asyncio.sleep(0)
+        assert scheduled.call_args.kwargs["base_url"] is None
+
+    @pytest.mark.asyncio
+    async def test_a_blank_stored_credential_reaches_the_task_as_absent(
+        self, async_client, db_session: AsyncSession, seed_workspace, monkeypatch
+    ) -> None:
+        """Same for the credential: the task is handed ``None``, not whitespace."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(
+            db_session,
+            seeded.workspace_id,
+            provider="deepseek",
+            model="deepseek-chat",
+            api_key="   ",
+            base_url="https://api.deepseek.com/v1",
+        )
+        scheduled = AsyncMock()
+        monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", scheduled)
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 202
+        await asyncio.sleep(0)
+        assert scheduled.call_args.kwargs["api_key"] is None

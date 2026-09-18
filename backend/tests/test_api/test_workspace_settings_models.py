@@ -552,3 +552,72 @@ class TestPendingSelectionProbe:
         assert response.status_code == 200
         assert response.json() == []
         assert requested == []
+
+
+class TestBlankEndpointOnTheProbe:
+    """A stored blank endpoint probes like an absent one.
+
+    The blank string used to be truthy, so Ollama's branch skipped its own default host
+    and httpx raised ``UnsupportedProtocol`` — which the route mapped to a 502 that reads
+    as "the provider could not be reached", for what is really an empty stored value.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_blank_ollama_endpoint_falls_back_to_the_default_host(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The request goes to Ollama's default, not to a URL made of spaces."""
+        requested: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requested.append(str(request.url))
+            return httpx.Response(200, json={"models": [{"name": "llama3.2"}]})
+
+        _patch_client_factory(monkeypatch, handler)
+
+        models = await workspace_settings._probe_models(
+            workspace_settings._ProbeInputs(provider="ollama", base_url="   ", api_key=None)
+        )
+
+        assert requested == ["http://localhost:11434/api/tags"]
+        assert [model.id for model in models] == ["llama3.2"]
+
+    @pytest.mark.asyncio
+    async def test_a_blank_custom_endpoint_is_not_probed_at_all(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A custom provider with no endpoint has nothing to ask, so nothing is asked."""
+        requested: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requested.append(str(request.url))
+            return httpx.Response(200, json={"data": []})
+
+        _patch_client_factory(monkeypatch, handler)
+
+        models = await workspace_settings._probe_models(
+            workspace_settings._ProbeInputs(provider="deepseek", base_url="  \t ", api_key="k")
+        )
+
+        assert models == []
+        assert requested == []
+
+    @pytest.mark.asyncio
+    async def test_a_blank_cloud_credential_asks_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A key made of spaces is not a key, so the provider is not called with one."""
+        requested: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requested.append(str(request.url))
+            return httpx.Response(200, json={"data": []})
+
+        _patch_client_factory(monkeypatch, handler)
+
+        models = await workspace_settings._probe_models(
+            workspace_settings._ProbeInputs(provider="openai", base_url=None, api_key="   ")
+        )
+
+        assert models == []
+        assert requested == []

@@ -162,6 +162,50 @@ class TestOllamaProvider:
         assert result._base_url == OLLAMA_HOST
         assert adapter_spies["OllamaAdapter"][0]["kwargs"] == {"base_url": OLLAMA_HOST}
 
+    @pytest.mark.unit
+    @pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
+    def test_a_blank_endpoint_is_the_default_not_a_url_of_spaces(
+        self, adapter_spies: dict[str, list[dict[str, Any]]], blank: str
+    ) -> None:
+        """A blank endpoint is absent, so the host default wins.
+
+        Before this, the spaces were truthy: the adapter was built with a URL of spaces and
+        the call failed inside the background task, after the extraction record existed.
+        """
+        result = extraction_task._build_llm_port("ollama", base_url=blank, ollama_host=OLLAMA_HOST)
+
+        assert isinstance(result, OllamaAdapter)
+        assert result._base_url == OLLAMA_HOST
+        assert adapter_spies["OllamaAdapter"][0]["kwargs"] == {"base_url": OLLAMA_HOST}
+
+
+class TestBlankCredentials:
+    """A credential made of whitespace is a missing credential, at the last boundary."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini"])
+    @pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
+    def test_a_blank_credential_is_refused(self, provider: str, blank: str) -> None:
+        """It used to build an adapter with a blank key and fail on the call instead."""
+        with pytest.raises(LLMError):
+            extraction_task._build_llm_port(provider, api_key=blank)
+
+    @pytest.mark.unit
+    def test_a_blank_credential_on_a_custom_provider_uses_the_placeholder(
+        self, adapter_spies: dict[str, list[dict[str, Any]]]
+    ) -> None:
+        """A custom provider's key is optional, so blank means "no key", not "a blank key"."""
+        result = extraction_task._build_llm_port(
+            "deepseek", api_key="   ", base_url=CUSTOM_BASE_URL
+        )
+
+        assert isinstance(result, OpenAIAdapter)
+        # The placeholder the port substitutes when a gateway needs no credential.
+        assert (
+            adapter_spies["OpenAIAdapter"][0]["kwargs"]["api_key"]
+            == extraction_task._CUSTOM_PROVIDER_PLACEHOLDER_KEY
+        )
+
 
 class TestCustomProviders:
     """Workspace-defined providers are OpenAI-compatible endpoints."""

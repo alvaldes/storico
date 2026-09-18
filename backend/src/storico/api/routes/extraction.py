@@ -37,6 +37,7 @@ from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.services.llm_config_readiness import (
     LLM_CONFIG_INCOMPLETE_CODE,
     missing_llm_config_fields,
+    normalize_optional,
 )
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
@@ -182,8 +183,11 @@ async def extract_tasks(
     ws_config = await llm_config_repo.get(workspace.id)
 
     model = body.model or (ws_config.model if ws_config else None)
-    api_key = ws_config.api_key if ws_config and ws_config.api_key else None
-    base_url = ws_config.base_url if ws_config and ws_config.base_url else None
+    # Normalized so the value that travels to the background task is the same one the
+    # completeness rule below reasons about: a blank endpoint or credential is "not
+    # configured", and the adapter must receive ``None`` rather than a string of spaces.
+    api_key = normalize_optional(ws_config.api_key) if ws_config else None
+    base_url = normalize_optional(ws_config.base_url) if ws_config else None
 
     # Provider: workspace config, fallback ollama
     provider = ws_config.provider if ws_config and ws_config.provider else "ollama"

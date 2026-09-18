@@ -40,7 +40,10 @@ from storico.domain.entities.workspace import Workspace
 from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
 from storico.domain.entities.workspace_member import WorkspaceRole
 from storico.domain.entities.workspace_prompt import WorkspacePrompt
-from storico.domain.services.llm_config_readiness import missing_llm_config_fields
+from storico.domain.services.llm_config_readiness import (
+    missing_llm_config_fields,
+    normalize_optional,
+)
 from storico.infrastructure.database.repositories.custom_provider_repository import (
     SQLAlchemyCustomProviderRepository,
 )
@@ -112,9 +115,12 @@ async def resolve_llm_config(
         model=ws_config.model,
         temperature=ws_config.temperature if ws_config.temperature is not None else 0.1,
         max_tokens=ws_config.max_tokens or 2048,
-        base_url=ws_config.base_url
+        # Normalized on the way out: a stored value made of spaces is "not configured",
+        # which is what the completeness rule already says about it. Handing the spaces on
+        # would put a URL of spaces in the form, in the probe and in the extraction.
+        base_url=normalize_optional(ws_config.base_url)
         or (settings.ollama_host if ws_config.provider == "ollama" else None),
-        api_key=ws_config.api_key,
+        api_key=normalize_optional(ws_config.api_key),
     )
 
 
@@ -205,6 +211,12 @@ async def upsert_llm_config(
     # Read existing config — if present, merge; otherwise start fresh
     existing = await config_repo.get(workspace.id)
 
+    # A blank endpoint or credential is stored as ``None``, never as a string of spaces.
+    # "Not configured" then has one representation in the table, and it is the one every
+    # reader already understands — the completeness rule reads a whitespace-only value as
+    # absent, so storing the spaces was a value only the consumers could disagree about.
+    # The value carried over from the existing row is normalized too, so any save also
+    # cleans a legacy blank instead of preserving it.
     merged = WorkspaceLLMConfig(
         workspace_id=workspace.id,
         provider=body.provider
@@ -217,12 +229,12 @@ async def upsert_llm_config(
         max_tokens=body.max_tokens
         if body.max_tokens is not None
         else (existing.max_tokens if existing else None),
-        base_url=body.base_url
+        base_url=normalize_optional(body.base_url)
         if body.base_url is not None
-        else (existing.base_url if existing else None),
-        api_key=body.api_key
+        else (normalize_optional(existing.base_url) if existing else None),
+        api_key=normalize_optional(body.api_key)
         if body.api_key is not None
-        else (existing.api_key if existing else None),
+        else (normalize_optional(existing.api_key) if existing else None),
     )
 
     await config_repo.upsert(merged)
@@ -586,29 +598,35 @@ async def _probe_models(probe: _ProbeInputs) -> list[ModelInfo]:
     without a request, and so the 502 mapping names the provider that was actually
     asked rather than the one that happened to be saved.
     """
+    # Read once, normalized: a blank endpoint or credential means "not configured" here
+    # exactly as it does for the completeness rule. Before this, the spaces were truthy, so
+    # Ollama's branch skipped its default host and httpx raised ``UnsupportedProtocol``,
+    # which the route mapped to a 502 that reads as "the provider is unreachable".
+    base_url = normalize_optional(probe.base_url)
+    api_key = normalize_optional(probe.api_key)
+
     if probe.provider == "ollama":
-        base_url = probe.base_url or "http://localhost:11434"
-        return await fetch_ollama_models(base_url)
+        return await fetch_ollama_models(base_url or "http://localhost:11434")
 
     if probe.provider == "openai":
-        if not probe.api_key:
+        if not api_key:
             return []
-        return await fetch_openai_models(probe.api_key, probe.base_url)
+        return await fetch_openai_models(api_key, base_url)
 
     if probe.provider == "anthropic":
-        if not probe.api_key:
+        if not api_key:
             return []
-        return await fetch_anthropic_models(probe.api_key)
+        return await fetch_anthropic_models(api_key)
 
     if probe.provider == "gemini":
-        if not probe.api_key:
+        if not api_key:
             return []
-        return await fetch_gemini_models(probe.api_key)
+        return await fetch_gemini_models(api_key)
 
     # Anything else is a custom provider assumed to speak the OpenAI wire format.
-    if not probe.base_url:
+    if not base_url:
         return []
-    return await fetch_openai_compatible_models(probe.base_url, probe.api_key)
+    return await fetch_openai_compatible_models(base_url, api_key)
 
 
 @router.post("/llm/models")

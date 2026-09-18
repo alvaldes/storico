@@ -35,6 +35,7 @@ from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
 from storico.domain.services.extraction_judge_service import LLMJudgeService
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
+from storico.domain.services.llm_config_readiness import normalize_optional
 from storico.infrastructure.database.base import create_session_factory, get_engine
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
@@ -225,6 +226,13 @@ def _build_llm_port(
         LLMError: If the selected provider is missing workspace-provided
             credentials, or a custom provider has no base URL to call.
     """
+    # A blank endpoint or credential is not a value, and this is the last boundary before an
+    # SDK is constructed: without it, ``base_url="   "`` reached the adapter as a URL of
+    # spaces and the call failed inside the background task, after the extraction record
+    # existed. Normalizing here makes the checks below mean what they read as.
+    api_key = normalize_optional(api_key)
+    base_url = normalize_optional(base_url)
+
     if provider == "gemini":
         if not api_key:
             raise LLMError(
