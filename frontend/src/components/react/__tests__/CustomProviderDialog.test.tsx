@@ -57,14 +57,24 @@ describe('CustomProviderDialog name field', () => {
     expect(screen.getByText('0/50')).toBeDefined();
   });
 
-  it('counts what is typed and caps the field at the limit', async () => {
+  it('counts what is typed', async () => {
     const user = userEvent.setup();
     const { field } = renderDialog();
 
     await user.type(field, 'Ünïcode');
 
     expect(screen.getByText('7/50')).toBeDefined();
+  });
+
+  it('stops the field at the limit and shows it full', async () => {
+    const user = userEvent.setup();
+    const { field } = renderDialog();
+
+    await user.type(field, 'a'.repeat(60));
+
     expect(field).toHaveAttribute('maxlength', '50');
+    expect((field as HTMLInputElement).value).toHaveLength(50);
+    expect(screen.getByText('50/50')).toBeDefined();
   });
 
   it('saves a name with an uppercase letter and a space exactly as typed', async () => {

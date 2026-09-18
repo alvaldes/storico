@@ -8,6 +8,8 @@ follow the workspace's own provider selection.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import jwt as pyjwt
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from storico.config.settings import Settings
 from storico.domain.entities.user import User
 from storico.domain.entities.workspace_member import WorkspaceRole
+from storico.infrastructure.database.models import CustomProviderModel
 from storico.infrastructure.database.repositories import SQLAlchemyUserRepository
 
 
@@ -45,6 +48,23 @@ def _llm_url(workspace_id) -> str:
 async def _seed(seed_workspace, user: User, role: WorkspaceRole = WorkspaceRole.ADMIN):
     """Seed an accessible workspace for ``user`` with the given role."""
     return await seed_workspace(user=user, stories=0, role=role)
+
+
+async def _seed_legacy_row(
+    db_session: AsyncSession, workspace_id, name: str
+) -> CustomProviderModel:
+    """Insert the row migration 0021 would have backfilled, bypassing the name rule.
+
+    The API cannot create this row: the name is reserved now. The migration could,
+    because it compares against the built-in names by exact match — so a stored
+    ``Ollama`` became a row named ``Ollama``.
+    """
+    now = datetime.now(UTC)
+    row = CustomProviderModel(workspace_id=workspace_id, name=name, created_at=now, updated_at=now)
+    db_session.add(row)
+    await db_session.commit()
+    await db_session.refresh(row)
+    return row
 
 
 @pytest.mark.integration
@@ -317,6 +337,56 @@ class TestCustomProviderRegistry:
         )
 
         assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_renaming_a_legacy_reserved_row_to_itself_is_a_no_op(
+        self, async_client, db_session, seed_workspace
+    ) -> None:
+        """A row registered before the case-insensitive guard can submit its own name.
+
+        Migration 0021 backfilled one row per config whose provider was not one of
+        the four names, by exact match: a stored ``Ollama`` became a row named
+        ``Ollama``. Refusing that row's unchanged submit would break the admin's only
+        rename affordance for it, so the no-op is answered before the reservation.
+        """
+        user = await _create_user(db_session)
+        ws_id = (await _seed(seed_workspace, user)).workspace_id
+        headers = _auth_headers(str(user.id))
+        legacy = await _seed_legacy_row(db_session, ws_id, "Ollama")
+
+        renamed = await async_client.patch(
+            f"{_providers_url(ws_id)}/{legacy.id}",
+            json={"name": "Ollama"},
+            headers=headers,
+        )
+
+        assert renamed.status_code == 200
+        assert renamed.json()["name"] == "Ollama"
+
+    @pytest.mark.asyncio
+    async def test_a_legacy_reserved_row_can_still_be_renamed_away_and_not_into(
+        self, async_client, db_session, seed_workspace
+    ) -> None:
+        """The reservation still binds a row that carries a reserved name."""
+        user = await _create_user(db_session)
+        ws_id = (await _seed(seed_workspace, user)).workspace_id
+        headers = _auth_headers(str(user.id))
+        legacy = await _seed_legacy_row(db_session, ws_id, "Ollama")
+
+        into_reserved = await async_client.patch(
+            f"{_providers_url(ws_id)}/{legacy.id}",
+            json={"name": "ollama"},
+            headers=headers,
+        )
+        away = await async_client.patch(
+            f"{_providers_url(ws_id)}/{legacy.id}",
+            json={"name": "Ollama remote"},
+            headers=headers,
+        )
+
+        assert into_reserved.status_code == 409
+        assert away.status_code == 200
+        assert away.json()["name"] == "Ollama remote"
 
     @pytest.mark.asyncio
     async def test_rename_returns_the_new_name(

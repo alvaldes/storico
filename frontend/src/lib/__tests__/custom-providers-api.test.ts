@@ -8,7 +8,6 @@ import {
 import {
   ADD_CUSTOM_PROVIDER_VALUE,
   KNOWN_PROVIDERS,
-  PROVIDER_NAME_MAX_LENGTH,
   isKnownProvider,
   isReservedProviderName,
   isValidProviderName,
@@ -136,10 +135,6 @@ describe('provider vocabulary', () => {
     expect(normalizeProviderName('  Groq  ')).toBe('Groq');
     expect(normalizeProviderName('DEEPSEEK')).toBe('DEEPSEEK');
     expect(normalizeProviderName('My Gateway v2')).toBe('My Gateway v2');
-  });
-
-  it('caps the name at the width of the column it is stored in', () => {
-    expect(PROVIDER_NAME_MAX_LENGTH).toBe(50);
   });
 
   it.each([

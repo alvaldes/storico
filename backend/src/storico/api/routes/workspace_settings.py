@@ -296,7 +296,6 @@ async def rename_custom_provider(
     also rewrites the selection, so the two cannot drift apart.
     """
     workspace, _ = ctx
-    _reject_reserved_provider_name(body.name)
 
     existing = await provider_repo.get(provider_id)
     if existing is None or existing.workspace_id != workspace.id:
@@ -306,9 +305,15 @@ async def rename_custom_provider(
         )
 
     # A rename to the name it already has is a no-op, not a duplicate: reporting a
-    # conflict here would make the pencil fail on an unchanged submit.
+    # conflict here would make the pencil fail on an unchanged submit. It is also
+    # checked *before* the reserved-name guard, for the same reason: migration 0021
+    # backfilled a row per existing config whose provider was not one of the four
+    # names — by exact match, so a stored `Ollama` became a row named `Ollama` — and
+    # such a row has to be able to submit its own name back.
     if existing.name == body.name:
         return CustomProviderResponse.model_validate(existing)
+
+    _reject_reserved_provider_name(body.name)
 
     duplicate = await provider_repo.find_by_workspace_and_name(workspace.id, body.name)
     if duplicate is not None:
