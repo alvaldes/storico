@@ -1,7 +1,8 @@
 # ODD Feature: custom-model-list-visibility
 
-> **Status**: in progress — implementation landed and verified; the fix is on
-> `fix/custom-model-list-visibility`, not yet merged
+> **Status**: done — 3 commits on `fix/custom-model-list-visibility`
+> (`6938dd9`, `15ac9ab`, + the evidence commit that carries this line); not
+> merged, not pushed
 > **Created**: 2026-09-17
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/custom-model-list-visibility`
@@ -77,7 +78,7 @@ box. The models loaded; nothing told them so.
 
 ### T-001 — Frontend: always-visible discovered-model list in custom mode
 
-- **Status**: done (commit `TBD`)
+- **Status**: done (commit `15ac9ab`)
 - **Files to modify**: `frontend/src/components/react/LLMConfigEditor.tsx`,
   `frontend/src/i18n/en.json`, `frontend/src/i18n/es.json`,
   `frontend/src/components/react/__tests__/LLMConfigEditor.test.tsx`
@@ -103,7 +104,7 @@ box. The models loaded; nothing told them so.
 
 ### T-002 — Verification gate
 
-- **Status**: pending
+- **Status**: done
 - **What**: run the repo gate and record the outcome.
 - **Commands**:
   - `cd frontend && pnpm exec tsc --noEmit`
@@ -129,14 +130,41 @@ its command has actually run)_
 
 | Task | Commit | Outcome |
 |------|--------|---------|
-| T-001 | `TBD` | Custom mode now renders the discovered models as an always-visible list of `type="button"` entries below the field row; the entry text is the model `name`, the click writes the `id`, and the entry matching the saved model carries `aria-pressed="true"`. The `<Input>` and its `<datalist>` remain. New key `llmCustomModelsDiscovered` in both locales. 3 new tests. |
+| T-001 | `15ac9ab` | Custom mode now renders the discovered models as an always-visible list of `type="button"` entries below the field row; the entry text is the model `name`, the click writes the `id`, and the entry matching the saved model carries `aria-pressed="true"`. The `<Input>` and its `<datalist>` remain. New key `llmCustomModelsDiscovered` in both locales. 3 new tests; `git diff main...HEAD -- LLMConfigEditor.tsx` is a pure insertion (31 added, 0 removed). |
+| T-002 | — | Independent verification of the candidate on a clean tree. `tsc --noEmit` exit 0, no diagnostics. `vitest run` exit 0, **24 files / 253 tests passed** — matching the recorded pre-change baseline of 24/250 plus exactly the 3 added cases, with no previously-passing test regressed. `pnpm run build` exit 0, `[build] Complete!`. No backend file is in the diff. |
+
+## Verification findings
+
+The gate is green, with two things recorded rather than smoothed over:
+
+1. **2 of the 3 new tests are load-bearing, the third is a guard.** The
+   verifier judged from the source and the diff that the visible-list cases
+   cannot pass on `main` (no such button exists in the custom branch there),
+   while `renders no discovered-models list when the probe returns nothing`
+   asserts an *absence* and would pass unchanged on `main`. It is kept as a
+   regression guard against a future "Discovered models (0)" label, and it is
+   not counted as evidence of the fix. Neither the verifier nor the writer ran
+   the tests against pre-change code — the red run for that file was observed by
+   the writer before the implementation existed (`2 failed | 46 passed`), which
+   is the TDD witness.
+2. **Three build warnings and no new one.** They come from `ErrorDisplay.tsx`
+   (untouched, byte-identical to `main`) and from `zod@4.6.4` in
+   `node_modules`.
 
 ## Outcome
 
-_pending the T-002 gate_
+Fix verified end to end: the models the probe returns are on screen with no
+interaction, and the field still accepts a typed id. RDD is off in this clone,
+so no native review ran; the candidate is the `15ac9ab` work unit.
 
 ## Follow-ups (not part of this fix)
 
+- The list offers whatever the provider serves, unfiltered by design. The
+  reporting provider (`nan`) answers with 12 entries that include embedding,
+  reranking and media models (`qwen3-embedding`, `rerank`, `whisper`,
+  `kokoro`, `flux-2-klein`), so a capability filter or a chat-model-first
+  ordering is a plausible next decision — not taken here, because guessing which
+  ids a provider can chat with is exactly the kind of list the provider owns.
 - `frontend/src/components/react/LLMConfigEditor.tsx:676` is not
   `prettier`-clean at `HEAD`: the multiline `title={` prop collapses to one line
   under the repo's printWidth 100. Measured with
