@@ -10,6 +10,13 @@ export {
   addMemberSchema,
   transferOwnershipSchema,
   llmConfigSchema,
+  llmConfigDraftSchema,
+  LLM_TEMPERATURE_RANGE,
+  LLM_MAX_TOKENS_RANGE,
+  LLM_MODEL_MAX_LENGTH,
+  LLM_ENDPOINT_MAX_LENGTH,
+  LLM_API_KEY_MAX_LENGTH,
+  LLM_CONFIG_ISSUE_CODES,
   promptConfigSchema,
   customProviderNameSchema,
 } from './workspace';
@@ -19,6 +26,8 @@ export type {
   AddMemberParams,
   TransferOwnershipParams,
   LLMConfigParams,
+  LLMConfigDraft,
+  LLMConfigIssueCode,
   PromptConfigParams,
   CustomProviderNameParams,
 } from './workspace';
