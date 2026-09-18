@@ -1,6 +1,6 @@
 # ODD Feature: workspace-custom-providers
 
-> **Status**: in progress
+> **Status**: done — landed on `feat/workspace-custom-providers` as seven commits (`ad269bc`..`42d53e1`)
 > **Created**: 2026-09-18
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -159,7 +159,7 @@ provider `<Select>` for a free-text `<Input>`. Three defects follow:
 
 ### T-003 — Frontend: custom providers data layer and i18n
 
-- **Status**: pending
+- **Status**: done (commit `72e57de`)
 - **Files to create**:
   - `frontend/src/lib/custom-providers-api.ts`
 - **Files to modify**:
@@ -191,7 +191,7 @@ provider `<Select>` for a free-text `<Input>`. Three defects follow:
 
 ### T-004 — Frontend: provider select with add option and rename pencil
 
-- **Status**: pending
+- **Status**: done (commit `2631f8d`)
 - **Files to create**:
   - `frontend/src/components/react/CustomProviderDialog.tsx`
 - **Files to modify**:
@@ -232,7 +232,7 @@ provider `<Select>` for a free-text `<Input>`. Three defects follow:
 
 ### T-005 — Docs: API and database reference
 
-- **Status**: pending
+- **Status**: done (commit `42d53e1`)
 - **Files to modify**:
   - `docs/api.md`
   - `docs/database.md`
@@ -247,7 +247,7 @@ provider `<Select>` for a free-text `<Input>`. Three defects follow:
 
 ### T-006 — Verification gate
 
-- **Status**: pending
+- **Status**: done
 - **What**: run the full CI-equivalent gate on the final tree and record the outcome.
 - **Commands**:
   - `cd backend && .venv/bin/ruff check src tests`
@@ -276,6 +276,8 @@ provider `<Select>` for a free-text `<Input>`. Three defects follow:
 | The revision's SQLite-based test cannot prove Postgres-only DDL behaviour | A Postgres-specific failure reaches deploy | Accepted: Docker is unavailable here. The assertions are limited to the declarative shape, which SQLite reflects faithfully, and the residual gap is stated in the test module's docstring |
 | pi-lens' pyright probe cannot resolve modules created during the same session | New files appear as unresolved imports, obscuring real findings | Proven tooling state, not candidate-caused. A throwaway module containing only `PROBE = 1` was equally unresolvable while a pre-existing module in the same package resolved; pyright analysed `custom_provider.py` as clean while reporting the module missing; and adding an explicit `pyrightconfig.json` declaring the backend's `src` layout and execution root changed nothing while the same root resolved older files. Downstream, the unresolvable import degrades `CustomProviderRepoDep` and pyright reports `Variable not allowed in type expression` on the three route signatures — yet FastAPI resolved those exact annotations for 28 passing HTTP requests, and `ruff check src tests` is clean. The repo's gate is `ruff` + `pytest`; both are green. Not worked around in code: contorting verified code to satisfy a stale index would be the wrong trade. A fresh LSP process should clear it. |
 
+| The provider icons carry their own `<title>` | A screen reader announces the label twice | Surfaced while writing the option-list assertion: the Anthropic option's text read `AnthropicAnthropic`. Only the Anthropic SVGs embed a title, and in the select the icon is decorative, so the fix marks the icons `aria-hidden` rather than editing shared assets that may be wanted where a title is meaningful |
+
 ## Evidence log
 
 _(each completed task records its commit identity here)_
@@ -283,4 +285,28 @@ _(each completed task records its commit identity here)_
 | Task | Commit | Outcome |
 |------|--------|---------|
 | T-001 | `7d5429c` | `custom_providers` (id UUID PK from `uuid7`, `workspace_id` FK → `workspaces.id` ON DELETE CASCADE indexed, `name` String(50), timestamps, `UniqueConstraint(workspace_id, name)`), the `CustomProvider` entity, the five-method port, the SQLAlchemy repository, and revision `0021` with a verbatim backfill of every config whose `provider` is not one of the four known names. 25 new tests: 12 on repository workspace scoping (including that the same name is allowed in two workspaces while a duplicate inside one is rejected, and that a constraint violation surfaces as `RepositoryError`) and 13 on the revision itself — the real DDL runs, the backfill's filter branches (known, blank, whitespace, verbatim, cross-workspace) are exercised, and the migrated table is compared against the ORM model for columns, nullability, primary key, unique constraint, index and the cascading foreign key. Verified: `ruff check` clean, `ruff format --check` clean, full backend suite 485 passed / 1 skipped. Two environment notes: the test database is in-memory SQLite, so the cascade is asserted on declared metadata rather than by deleting a workspace (SQLite ignores `ON DELETE CASCADE` without `PRAGMA foreign_keys=ON`), and the `RuntimeWarning: coroutine 'Connection._cancel' was never awaited` seen in full-suite runs was reproduced on a stashed base tree, so it is pre-existing and its attribution simply moves with GC timing. |
-| T-002 | `b302ff6` | `GET`/`POST`/`PATCH` on `settings/providers`, all `require_admin`, plus `CustomProviderRequest`/`CustomProviderResponse` and the name rule in one place (trim + lowercase + `^[a-z0-9][a-z0-9._-]{0,49}$`). Cross-workspace ids read as 404; known names and duplicates are 409; a rename onto the unchanged name is a 200 no-op rather than a self-conflict. `_repoint_selected_provider` rewrites `workspace_llm_configs.provider` only when the renamed row is the selected one. 28 new tests, including both directions of the cascade and both directions of workspace isolation. Verified: `ruff check` clean, `ruff format --check` clean, full backend suite 513 passed / 1 skipped. |
+| T-002 | `b302ff6` | `GET`/`POST`/`PATCH` on `settings/providers`, all `require_admin`, plus `CustomProviderRequest`/`CustomProviderResponse` and the name rule in one place (trim + lowercase + `^[a-z0-9][a-z0-9._-]{0,49}$`). Cross-workspace ids read as 404; known names and duplicates are 409; a rename onto the unchanged name is a 200 no-op rather than a self-conflict. `_repoint_selected_provider` rewrites `workspace_llm_configs.provider` only when the renamed row is the selected one. 28 new tests, including both directions of the cascade and both directions of workspace isolation. Verified: `ruff check` clean, `ruff format --check` clean, full backend suite 513 passed / 1 skipped. A follow-up commit `c778fbd` converted the three `Annotated` dependency aliases to PEP 695 `type` statements: they were plain assignments, which leaves a type checker to infer aliasing, and the ambiguity was reported as `Variable not allowed in type expression` on the new route signatures. 49 settings tests confirm FastAPI still resolves them. |
+| T-003 | `72e57de` | `listCustomProviders`/`createCustomProvider`/`renameCustomProvider`, the `CustomProvider` type, the name schema, and `lib/llm-providers.ts` as the single home for the four first-class names, the slug rule and the select's add sentinel — so the editor and the dialog cannot drift. The sentinel is spelled so the slug rule rejects it, which is what keeps a registered provider from colliding with it. 31 new tests over the three request paths, the snake_case round trip, the accept/reject boundary and the schema's normalize-then-validate order; `llmUseKnownProvider` was dropped as newly dead. Verified: `tsc --noEmit` clean, prettier clean, frontend suite 230 passed. |
+| T-004 | `2631f8d` | The provider field is a select at all times; its last option opens the add dialog through a controlled popup that leaves the selection untouched, and the pencil renders only for a registered custom provider. Adding selects the new name and clears the model, key and endpoint; renaming keeps them and follows the rename into the field. `isCustomProvider` became derived rather than stored, and the registry list stays optional — a failed load leaves the known providers and the saved selection usable, silently for a member who cannot read the admin-only endpoint. The select's provider icons are now `aria-hidden`: the Anthropic SVGs carry their own `<title>`, which contributed a second copy of the label to the option's accessible name. 12 new tests, including that no text field answers to the `Provider` label and both conflict messages. Verified: `tsc --noEmit` clean, prettier clean, frontend suite 240 passed. |
+| T-005 | `42d53e1` | The three `settings/providers` endpoints and the `custom_providers` table, including the composite unique constraint, the 1:N relation against the two 1:1 workspace tables, and the `0021` backfill rule. Read back from the route decorators and the migration rather than from memory. |
+| T-006 | — | Independent verification of the final tree. `ruff check src tests` — All checks passed; `ruff format --check src tests` — 206 files already formatted; `pytest -q` — 513 passed, 1 skipped; `tsc --noEmit` — clean; `vitest run` — 240 passed across 24 files; `pnpm run build` — Complete. The single skip is the long-standing testcontainers/Docker one. Three build warnings — two zod source-map comments from `node_modules`, and unused `ChevronDown`/`Copy` imports in `src/components/react/ErrorDisplay.tsx` — all come from files this branch never touched (`git diff --name-only main...HEAD` excludes `ErrorDisplay.tsx`), so none is candidate-caused. The one pytest `RuntimeWarning` was reproduced on a stashed base tree. |
+
+## Outcome
+
+All six tasks are complete and independently verified. Total diff against `main`:
+28 files, 2701 insertions, 172 deletions across seven commits (`ad269bc`..`42d53e1`)
+plus the evidence commits — well above the 400-line review threshold, so this
+candidate wants to be reviewed as chained slices rather than as one review.
+
+The user-visible outcome: the provider field in workspace settings is a select
+that cannot be typed into, its last option opens a modal to register a provider
+name, and a pencil beside it renames the selected custom provider through the same
+modal. Provider names are owned by the workspace that created them, validated as
+slugs, and never shared across workspaces.
+
+Residual gaps, stated rather than implied: the migration's Postgres-specific DDL
+behaviour is not covered, because Docker is unavailable here and the revision is
+exercised against SQLite; and pyright's probe in this session cannot resolve files
+created after the LSP started, so six `reportMissingImports`-family findings remain
+reported against modules that `ruff` and `pytest` both resolve and exercise. A
+fresh LSP process should clear them.
