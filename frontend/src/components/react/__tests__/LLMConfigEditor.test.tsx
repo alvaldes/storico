@@ -563,6 +563,32 @@ describe('LLMConfigEditor custom provider', () => {
     await screen.findByDisplayValue('deepseek');
   }
 
+  it('renders every provider option with the same glyph the trigger shows', async () => {
+    const user = userEvent.setup();
+    await renderCustomEditor();
+
+    // The glyph of the provider this editor is on. The row that lists it must show the
+    // same one, or the list disagrees with the field right above it. Read from the
+    // trigger's own markup: the provider icons are a shared component, so this compares
+    // the rendering rather than hard-coding a path that a redraw would change.
+    const selectionGlyph = screen.getByLabelText('Provider').querySelector('svg')?.innerHTML;
+    expect(selectionGlyph).toBeTruthy();
+
+    await user.click(screen.getByLabelText('Provider'));
+    await screen.findByRole('option', { name: 'Add custom provider' });
+
+    // `div > svg` is the label row's icon: the check mark of the selection indicator
+    // sits in a `<span>`, so it cannot satisfy this. Custom rows used to be the only
+    // bare names in a list of icon+label rows, which is what pulled them out of the
+    // component's alignment.
+    for (const option of screen.getAllByRole('option')) {
+      expect(option.querySelector('div > svg')).not.toBeNull();
+    }
+    expect(screen.getByRole('option', { name: 'deepseek' }).querySelector('div')?.innerHTML).toContain(
+      selectionGlyph,
+    );
+  });
+
   it('never makes the provider field editable', async () => {
     await renderCustomEditor();
 

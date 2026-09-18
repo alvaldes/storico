@@ -537,6 +537,17 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       {customProviderNames.length > 0 && <SelectSeparator />}
                       {customProviderNames.map((name) => (
                         <SelectItem key={name} value={name}>
+                          {/* The same component the trigger above uses, which falls back
+                              to a neutral server glyph for anything outside the four
+                              built-ins: that is what a custom selection already shows in
+                              the collapsed field, so the item and the trigger cannot
+                              disagree about the same provider. */}
+                          <ProviderIcon
+                            provider={name}
+                            theme={resolvedTheme}
+                            className="mr-2 h-4 w-4 shrink-0"
+                            aria-hidden="true"
+                          />
                           {name}
                         </SelectItem>
                       ))}
