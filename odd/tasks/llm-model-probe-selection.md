@@ -1,9 +1,8 @@
 # ODD Feature: llm-model-probe-selection
 
-> **Status**: done — T-001..T-006 complete, independently verified
+> **Status**: done — landed on `main` as five commits (`cc9018b`..`e402026`); the feature branch was fast-forwarded and deleted
 > **Created**: 2026-09-18
 > **Workflow**: Organic Driven Development (ODD)
-> **Branch**: `feat/workspace-custom-providers`
 
 ## Problem
 
@@ -125,7 +124,7 @@ wrong-endpoint bug for another.
 
 ### T-001 — Backend: let the probe describe the pending selection
 
-- **Status**: pending
+- **Status**: done (commit `cc9018b`)
 - **Files to modify**:
   `backend/src/storico/api/routes/workspace_settings.py`,
   `backend/tests/test_api/test_workspace_settings_models.py`
@@ -150,7 +149,7 @@ wrong-endpoint bug for another.
 
 ### T-002 — Frontend: probe the selection in the form, and re-probe after a save
 
-- **Status**: pending
+- **Status**: done (commit `fa0e130`)
 - **Files to modify**:
   `frontend/src/lib/llm-config-api.ts`,
   `frontend/src/components/react/LLMConfigEditor.tsx`,
@@ -162,10 +161,10 @@ wrong-endpoint bug for another.
   - A single `canProbe` predicate replaces `refreshModelsNeedsApiKey`: `ollama`
     always, a known cloud provider with a non-empty key, a custom provider with a
     non-empty base URL.
-  - The auto-probe effect probes the **form's** selection, debounced so a credential
-    typed one character at a time does not reach the provider once per keystroke,
-    and no longer skips custom providers (the reason for that skip was the very
-    coupling this feature removes).
+  - The auto-probe effect probes the **form's** selection and fires once per provider
+    selection, so typing a credential or a Base URL never reaches the provider — those
+    fields are probed through the refresh action. The custom path is no longer skipped:
+    the saved-config coupling that motivated that skip is gone.
   - The model list is cleared when the provider changes, so one provider's list is
     never shown under another provider's name.
   - A successful save re-probes, so the list reconciles with what was persisted.
@@ -183,7 +182,7 @@ wrong-endpoint bug for another.
 
 ### T-003 — Docs: the endpoint contract in `docs/api.md`
 
-- **Status**: pending
+- **Status**: done (commit `937f116`)
 - **Files to modify**: `docs/api.md`
 - **What**: the model-list row becomes `POST`, its body is documented, and the
   pending-selection rule (D4) is stated.
@@ -192,7 +191,7 @@ wrong-endpoint bug for another.
 
 ### T-004 — Data cleanup for the reported workspace
 
-- **Status**: pending (operational step, no commit)
+- **Status**: done (operational step, no commit)
 - **What**: delete the phantom `custom_providers` row `name = 'NaN'` in workspace
   `019f9114-0a75-7be1-8649-69e8e6def0fe`, and repoint that workspace's LLM config to
   `provider = 'gemini'`, `model = 'gemini-2.5-flash'`, `base_url = NULL`, keeping the
@@ -225,7 +224,7 @@ wrong-endpoint bug for another.
 
 ### T-006 — Verification gate
 
-- **Status**: pending
+- **Status**: done (verification only, no commit)
 - **Commands**:
   - `cd backend && .venv/bin/ruff check src tests`
   - `cd backend && .venv/bin/ruff format --check src tests`
@@ -248,7 +247,7 @@ wrong-endpoint bug for another.
 | Probing the form's selection sends a key the user has not saved yet | An outbound request the user did not expect | The probe already sent the stored key on the same user action; the request is unchanged in kind, only in source of truth |
 | A custom provider saved with an unreachable base URL now auto-probes on load | A 502 surfaces at page load instead of after a click | The list is cleared and the failure is reported by the existing hint; this is the state the reported workspace was in, and T-004 removes that instance |
 | `canProbe` for a custom provider requires a base URL, but the previous gate did not | A refresh that used to be clickable is now disabled | Correct: the backend returns `[]` without a base URL, so the click could never answer. The disabled title names the missing field |
-| Debounce fights the test suite's default 1000 ms `waitFor` | Flaky frontend tests | Debounce is short (300 ms) and every affected assertion already awaits |
+| Keying the auto-probe on the credential fields would reach the provider with a half-typed key or a partial URL | A rejected request per keystroke, and a spurious error mid-typing | The auto-probe is keyed on the provider selection alone; those fields are probed only through the refresh action. Locked by `does not probe while the API key is being typed` and `does not probe while the Base URL is being typed` |
 
 ## Evidence log
 
@@ -287,3 +286,15 @@ Two facts worth carrying forward:
 
 Diff against `cc9018b^`: 8 files. The review candidate wants to be the work-unit
 commits, not the branch tip.
+
+## Corrections after landing
+
+Recorded so a later reader is not misled by this document's own history:
+
+- The per-task statuses still read `pending` when the branch landed; the evidence log
+  below was written and the status bullets were missed. Fixed here.
+- Two passages described a **debounce** on the credential fields that was designed
+  and then deliberately not built (the auto-probe is keyed on the provider selection
+  instead, which reaches no provider while a key or a URL is being typed). Those
+  passages contradicted this document's own Non-goals and were rewritten to match the
+  code that shipped.
