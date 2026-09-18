@@ -1,6 +1,6 @@
 # ODD Feature: ci-postgres-integration-test
 
-> **Status**: round 3 in progress — round 2 pushed; CI run `35362039719` reached the test body (526 passed) and stopped on a foreign key, fixed on `fix/ci-postgres-fk-seed`
+> **Status**: done — green CI run `35362462180` (backend + frontend success, 527 passed). Commits `2e729ae`, `0dc0e89`, `70be4bc`, `757ab72`, `65a8a3f`, `65ff243`, `a318ccf`, `6004f55` on `main`, pushed.
 > **Created**: 2026-09-18
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -237,6 +237,7 @@ loop. Fixing only the probe would have moved the red line, not removed it.
 | T-004 | `757ab72` | `create_all` now runs after the three enum types exist. Offline Postgres-dialect DDL dump is the evidence: 0 CREATE TYPE before, 3 after. |
 | T-005 | `65a8a3f` | The cache TTL test no longer depends on host uptime; the old shape's failure is reproduced against a simulated 200s uptime. `ruff` clean; `pytest -q` → 526 passed, 1 skipped, 1 warning on both work units. |
 | T-007 | `a318ccf` | Second CI run (`35362039719`): the enum and cache fixes held — **526 passed**, the container test ran and reached its body — and it stopped on `fk_workspaces_owner_id_users`. Fixed by seeding the owner row. Local proof via SQLite with `PRAGMA foreign_keys=ON`: old shape fails, real test body passes. |
+| T-008 | CI `35362462180` | **Green.** Backend and frontend both success; the backend reports **527 passed, 1 warning, 0 skipped** — 527 and not 526 because the integration test executed for real instead of erroring at setup, and no skip because the runner has a Docker daemon. The `<500ms` assertion held. |
 
 Two verification limits, stated rather than smoothed over:
 
@@ -263,13 +264,19 @@ passed) and then reported the last layer this file was hiding: the seeded owner
 was not a real user row, and Postgres enforces the foreign key that SQLite
 ignores.
 
-Round 3 (this branch): the owner is a real row. Three Postgres-only traps have
-now surfaced through this one test — an async driver handed to a sync probe, enum
-types that only Alembic creates, and a foreign key that SQLite never checked —
-which is the case for keeping it in CI rather than skipping it.
+Round 3 (merged and pushed): the owner is a real row. CI is green —
+`35362462180`, backend and frontend success, **527 passed, 0 skipped**, with the
+integration test executing against a real Postgres container and its `<500ms`
+assertion holding.
 
-The container path still cannot run on this machine (no Docker daemon), so CI
-remains its only executable check.
+One integration test surfaced three Postgres-only traps that SQLite had hidden
+the whole time: an async driver handed to a sync readiness probe, enum types only
+Alembic creates, and a foreign key SQLite never enforced. That is the argument
+for keeping this test in CI instead of skipping it — and, in the other direction,
+for distrusting a green local suite as evidence about Postgres.
+
+The residual cost is honest and small: the backend job now pulls
+`postgres:16-alpine` and takes ~33s instead of ~18s.
 
 ## Follow-ups (not part of this fix)
 
