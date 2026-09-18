@@ -1,6 +1,10 @@
 # ODD Feature: normalize-blank-llm-fields
 
-> **Status**: in progress
+> **Status**: done — three commits on `feat/normalize-blank-llm-fields` (`17e8e6f`..
+> `7bd4ce0`), plus the evidence commit that carries this line (four against the parent
+> branch); nothing was pushed. Receipt-driven development is **off** in this clone, so no
+> native review ran; one independent verification did, recorded below with its findings and
+> their disposition.
 > **Created**: 2026-06-30
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `feat/normalize-blank-llm-fields`, stacked on
@@ -100,7 +104,7 @@ in the routes (blank is set), and `if not base_url` in `_build_llm_port` (blank 
 
 ### T-002 — Stop storing blanks
 
-- **Status**: pending
+- **Status**: done (commit `bb6e742`, together with T-003 — see the note below)
 - **Files to modify**: `backend/src/storico/api/routes/workspace_settings.py`,
   `backend/tests/test_api/test_workspace_settings_llm_config.py`
 - **What**: `upsert_llm_config` normalizes `base_url` and `api_key` before merging (D2/D3),
@@ -115,7 +119,13 @@ in the routes (blank is set), and `if not base_url` in `_build_llm_port` (blank 
 
 ### T-003 — Treat blanks as absent everywhere the value is read
 
-- **Status**: pending
+- **Status**: done (commit `bb6e742`)
+
+> T-002 and T-003 landed in **one commit**, which deviates from the plan. Both changes are
+> edits to the same three files (`workspace_settings.py` holds the write path *and* one read
+> path, and the tests for both live in the same two test files), so separating them would
+> have needed partial-file staging for no review benefit. Each half is independently
+> testable and was run green on its own.
 - **Files to modify**: `backend/src/storico/api/routes/workspace_settings.py` (resolve +
   probe), `backend/src/storico/api/routes/extraction.py`,
   `backend/src/storico/infrastructure/tasks/extraction_task.py`,
@@ -156,7 +166,7 @@ in the routes (blank is set), and `if not base_url` in `_build_llm_port` (blank 
 
 ### T-005 — Close the feature
 
-- **Status**: pending
+- **Status**: done (this document's commit)
 - **What**: flip the status line, write the evidence log with real commit identities and
   observed output, and record the follow-ups.
 - **Depends on**: T-004
@@ -177,16 +187,83 @@ command has actually run)_
 
 | Task | Commit | Outcome |
 |------|--------|---------|
-| T-001 | | |
-| T-002 | | |
-| T-003 | | |
-| T-004 | | |
-| T-005 | | |
+| T-001 | `17e8e6f` | `normalize_optional` added as the single definition, with `_is_set` re-expressed through it. 13 new unit cases (**41 passed** in the file), including one that pins the two cannot disagree by asserting the derivation through the public rule. `ruff check` and `ruff format --check` clean. |
+| T-002 | `bb6e742` | `upsert_llm_config` normalizes `base_url`/`api_key` both from the body and from the value carried over, so a save also repairs a legacy blank. 5 new API cases. Red run with the source reverted to the parent: included in the 22 failures below. |
+| T-003 | `bb6e742` | Normalization applied at the four read boundaries: `resolve_llm_config`, `_probe_models`, the extraction route, and `_build_llm_port`. 34 new cases across four suites. Whole backend suite **624 passed, 1 skipped**; red run with the three consumer files reverted: **22 failed**, and the empty-string case correctly did **not** fail. |
+| T-004 | `7bd4ce0` | Gate and independent verification, below. Its finding — a fifth boundary the slice had missed — is fixed there, with the first tests the connection route has ever had. |
+| T-005 | this document | Status, evidence, the verification record and the dispositions. |
+
+## Verification (RDD off — independent verification, not native review)
+
+One `gentle-ai-verify` run over `841f66e..bb6e742`, read-only, with every probe in a `/tmp`
+copy and `PYTHONPATH` pointed at it (it verified `storico.__file__` resolved to the /tmp
+tree, and that `normalize_optional` was absent from the reverted one). Gate it observed:
+backend **624 passed, 1 skipped**, `ruff check` clean, `ruff format --check` clean over 210
+files; frontend **30 files / 351 passed**, `tsc` exit 0 — and it correctly flagged that the
+frontend numbers are baseline evidence, since this slice touches no frontend file.
+
+What it confirmed independently:
+
+- **The before/after table re-measured row by row, in both trees**, using the real
+  `_build_llm_port`: all four rows as claimed, with the fixed values *byte-identical to
+  passing no `base_url` at all* — which is the strongest form of "blank equals absent".
+- **The blank credential is refused** for openai/anthropic/gemini, where the parent built
+  an SDK client with `'   '`; and a custom provider's blank key still collapses to the
+  placeholder, as intended.
+- **The completeness rule is behaviourally identical**: over a generated grid of 8
+  providers × 17 values³ = **39,304 rows**, `differing rows: 0`.
+- **The write path does not over-reach**: internal spaces preserved, omitted fields still
+  untouched, a single-character value and a path-bearing endpoint preserved, all six fields
+  replaced byte-identically to the parent.
+- **`provider`/`model`/`temperature`/`max_tokens` unchanged**, and a whitespace provider is
+  treated as a custom provider consistently by all three consumers, so no new disagreement.
+- **The new tests are load-bearing**: with only the source reverted, **22 tests failed and
+  zero pre-existing tests failed** (624 − 561 = 22 + the 41 uncollected from the
+  import error). No failing test name exists in the parent tree.
+- **The defect was specifically whitespace**: under the reverted source,
+  `test_a_blank_endpoint_is_the_default_not_a_url_of_spaces[""]` **passed** while
+  `["   "]` and `["\t\n"]` failed. An empty string was never the bug.
+
+### Findings and disposition
+
+- **F1 (fixed in `7bd4ce0`) — pre-existing, low, and the one boundary the slice missed.**
+  `POST /api/v1/llm/test` (`api/routes/settings.py`) reads `base_url`/`api_key` from the
+  **request body** and never normalized them: a blank endpoint reached the adapter as
+  `'   '` (Ollama's branch kept spaces because they are truthy), and a blank cloud
+  credential passed the `if not body.api_key` guard to build an SDK client with it. The
+  verifier judged it out of the slice's stated scope (a stored workspace row) but exactly
+  the defect class the slice exists to remove — in a **documented** public endpoint. Fixed
+  by normalizing once at the top of the handler, and it now has the first tests that route
+  has ever had: **7 cases**, all 7 failing against the parent's route.
+- **F2 (accepted, informational) — the empty string is now also stored as `None`.** The
+  parent stored `""` for these two fields and `resolve_llm_config` returned `""`. The
+  literal claim was "`None` where it used to store spaces"; the empty string now collapses
+  too. That is the defined rule and is consistent with the read side, where `""` was
+  already treated as absent — recorded so the change is not discovered later as a surprise.
+- **F3 (accepted, informational) — the ambient endpoint.** The verifier noted this
+  environment has `OPENAI_BASE_URL`/`ANTHROPIC_BASE_URL` set, so a blank endpoint now
+  resolves to the SDK's ambient value. It confirmed the candidate does **not** create a new
+  ambient path: `base_url=None` already meant "use the provider's default" at the parent,
+  an unconfigured workspace already resolved to `None`, and the parent's blank case sent a
+  broken URL (`'%20%20%20/'`) that never reached the ambient value. The changed case is the
+  blank-stored one, which is this slice's stated semantics.
+- **F4 (accepted, out of scope) — the connection route's only client is dead.**
+  `testLLMConnection` in `frontend/src/lib/settings-api.ts` has no importer, so the route
+  this slice just fixed is reachable only by a direct API caller. Removing the dead helper
+  belongs to slice 4 (the per-user LLM cleanup), not here.
+- **Not verified:** the route probes were in-process with monkeypatched adapters (no ASGI
+  stack, no network), and the write path was probed with a fake repository rather than
+  against Postgres — the real repository stores the dataclass fields verbatim, but the DB
+  round-trip was not exercised.
 
 ## Follow-ups (not part of this change)
 
+- `testLLMConnection` (`frontend/src/lib/settings-api.ts`) is dead: no importer, and it is
+  the only client of the connection-test route. Slice 4 territory.
 - A blank `provider` name written through the API still resolves to a custom provider
   instead of Ollama (D3). Unreachable from the UI, which offers a select.
+- The empty string is now stored as `None` for `base_url`/`api_key` (F2). Deliberate, and
+  recorded so it is not read later as an unintended write-path change.
 - `GET /users/me/settings` still round-trips a per-user `llm` slice with plaintext keys
   (slice 4).
 - `ErrorDisplay` still renders `null` (slice 3).
