@@ -88,8 +88,18 @@ Autenticación vía header `Authorization: Bearer <token>`. El token se obtiene 
 |--------|------|-------------|
 | GET | `/api/v1/workspaces/{wsId}/settings/llm` | Obtener config LLM |
 | PUT | `/api/v1/workspaces/{wsId}/settings/llm` | Actualizar config LLM |
-| GET | `/api/v1/workspaces/{wsId}/settings/llm/models` | Modelos disponibles |
+| POST | `/api/v1/workspaces/{wsId}/settings/llm/models` | Modelos disponibles del proveedor |
 | POST | `/api/v1/llm/test` | Test de conexión LLM |
+
+`POST /settings/llm/models` acepta un body opcional con la selección que el formulario
+tiene en pantalla (`provider`, `base_url`, `api_key`), para que la respuesta describa el
+proveedor **elegido** y no el que ya estaba guardado. Un body que nombra un proveedor
+describe esa consulta por completo: una `api_key` o `base_url` omitida queda *ausente*
+para esa consulta y nunca se toma de la fila guardada —tomarla enviaría la credencial de
+un proveedor al endpoint de otro—. Sin body (o sin `provider`) se responde por la config
+guardada del workspace. Es `POST` y no `GET` con query string porque la selección puede
+llevar una API Key, y una query string la escribe en los logs de acceso; `POST
+/api/v1/llm/test` transporta credenciales pendientes de la misma forma. Requiere admin.
 
 ### Proveedores personalizados (scoped a workspace)
 
