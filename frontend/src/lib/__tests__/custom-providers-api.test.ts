@@ -8,7 +8,9 @@ import {
 import {
   ADD_CUSTOM_PROVIDER_VALUE,
   KNOWN_PROVIDERS,
+  PROVIDER_NAME_MAX_LENGTH,
   isKnownProvider,
+  isReservedProviderName,
   isValidProviderName,
   normalizeProviderName,
 } from '@/lib/llm-providers';
@@ -128,53 +130,79 @@ describe('provider vocabulary', () => {
     expect(isKnownProvider('')).toBe(false);
   });
 
-  it('normalizes a submitted name the way the backend does', () => {
-    expect(normalizeProviderName('  Groq  ')).toBe('groq');
-    expect(normalizeProviderName('DEEPSEEK')).toBe('deepseek');
+  it('trims a submitted name and keeps its casing', () => {
+    // The name is the user's label for the provider, stored as typed. Only the
+    // surrounding whitespace is not part of it.
+    expect(normalizeProviderName('  Groq  ')).toBe('Groq');
+    expect(normalizeProviderName('DEEPSEEK')).toBe('DEEPSEEK');
+    expect(normalizeProviderName('My Gateway v2')).toBe('My Gateway v2');
   });
 
-  it.each(['deepseek', 'groq', 'a', 'my-gateway', 'vendor.v2', 'local_llm'])(
-    'accepts the slug %s',
-    (name) => {
-      expect(isValidProviderName(name)).toBe(true);
-    },
-  );
-
-  it('accepts a trailing separator', () => {
-    // The rule constrains the character set, length and first character, not the
-    // last one. Tightening that is a backend decision this copy must not make alone.
-    expect(isValidProviderName('my-gateway-')).toBe(true);
+  it('caps the name at the width of the column it is stored in', () => {
+    expect(PROVIDER_NAME_MAX_LENGTH).toBe(50);
   });
 
-  it.each(['', '   ', 'DeepSeek', 'has space', '-leading', 'a'.repeat(51), 'ünicode'])(
-    'rejects %s',
-    (name) => {
-      expect(isValidProviderName(name)).toBe(false);
-    },
-  );
+  it.each([
+    'deepseek',
+    'groq',
+    'Groq',
+    'has space',
+    'My Gateway v2',
+    'Ünïcode',
+    '-leading',
+    'UPPER!',
+    'a',
+    'a'.repeat(50),
+  ])('accepts the free-form name %s', (name) => {
+    expect(isValidProviderName(name)).toBe(true);
+  });
+
+  it.each(['', '   ', 'a'.repeat(51)])('rejects %s', (name) => {
+    expect(isValidProviderName(name)).toBe(false);
+  });
+
+  it('keeps the four built-ins out of the name space, in any casing', () => {
+    for (const provider of KNOWN_PROVIDERS) {
+      expect(isValidProviderName(provider)).toBe(false);
+      expect(isValidProviderName(provider.toUpperCase())).toBe(false);
+      expect(isReservedProviderName(provider.toUpperCase())).toBe(true);
+    }
+  });
+
+  it('keeps the exact-match membership test free of the reservation rule', () => {
+    // `isKnownProvider` derives routing and UI state from a value that is already
+    // stored, and `_build_llm_port` compares exactly; absorbing the case-insensitive
+    // reservation here would make a legacy `Ollama` row read as the built-in and
+    // lose the base URL that its custom entry owns.
+    expect(isKnownProvider('OLLAMA')).toBe(false);
+    expect(isReservedProviderName('OLLAMA')).toBe(true);
+  });
 
   it('keeps the add option out of the name space', () => {
     // The sentinel travels through the select's value, so it must be impossible for
-    // a registered provider to collide with it.
+    // a registered provider to collide with it. The old slug pattern kept it out by
+    // accident, by forbidding a leading underscore.
     expect(isValidProviderName(ADD_CUSTOM_PROVIDER_VALUE)).toBe(false);
+    expect(isReservedProviderName(ADD_CUSTOM_PROVIDER_VALUE)).toBe(true);
   });
 });
 
 describe('customProviderNameSchema', () => {
-  it('normalizes the submitted name', () => {
-    expect(customProviderNameSchema.parse({ name: '  Groq  ' })).toEqual({ name: 'groq' });
+  it('trims the submitted name and keeps its casing', () => {
+    expect(customProviderNameSchema.parse({ name: '  Groq  ' })).toEqual({ name: 'Groq' });
   });
 
-  it.each(['', '   ', 'has space', '-leading', 'a'.repeat(51)])(
-    'rejects %s before the round trip',
-    (name) => {
-      expect(customProviderNameSchema.safeParse({ name }).success).toBe(false);
-    },
-  );
+  it.each(['', '   ', 'a'.repeat(51)])('rejects %s before the round trip', (name) => {
+    expect(customProviderNameSchema.safeParse({ name }).success).toBe(false);
+  });
 
-  it('accepts a name that only becomes valid after normalization', () => {
-    // The backend normalizes before validating, so the frontend must too; otherwise
-    // a user typing `Groq` would be told the name is invalid.
-    expect(customProviderNameSchema.safeParse({ name: 'Groq' }).success).toBe(true);
+  it.each(['Groq', 'has space', 'My Gateway v2'])('accepts %s', (name) => {
+    // The backend trims before validating, so the frontend must too; otherwise a
+    // user typing `  Groq  ` would be told the name is invalid.
+    expect(customProviderNameSchema.safeParse({ name }).success).toBe(true);
+  });
+
+  it.each(['OpenAI', 'gemini', ADD_CUSTOM_PROVIDER_VALUE])('rejects the reserved %s', (name) => {
+    expect(customProviderNameSchema.safeParse({ name }).success).toBe(false);
   });
 });

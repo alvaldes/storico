@@ -42,9 +42,10 @@ export const promptConfigSchema = z.object({
 /**
  * A custom provider name, validated before the round trip.
  *
- * The name is normalized the way the backend normalizes it, then checked against the
- * same slug rule, so a rejected name never costs a request. The backend remains
- * authoritative — this only spares the user the wait.
+ * The name is normalized the way the backend normalizes it (trimmed, casing kept),
+ * then measured against the same rule — length and the two reserved names — so a
+ * rejected name never costs a request. The backend remains authoritative; this only
+ * spares the user the wait.
  */
 export const customProviderNameSchema = z.object({
   name: z
