@@ -26,6 +26,8 @@ from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import Connection
+from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -81,6 +83,27 @@ pytestmark = [
 ]
 
 
+def _create_pg_enum_types(connection: Connection) -> None:
+    """Create the Postgres enum types the models deliberately do not create.
+
+    Every status column is declared ``PGEnum(..., create_type=False)`` because
+    the Alembic migrations own the ``CREATE TYPE`` statements (0016 for
+    ``user_story_status_new``/``task_status_new``, 0017 for
+    ``extraction_status_new``) and must not have them re-emitted behind their
+    back. SQLite reduces those columns to VARCHAR and never notices; Postgres
+    fails outright with ``type "..." does not exist`` when ``create_all``
+    reaches the tables. Production migrates, so only a schema built with
+    ``create_all`` needs this -- which is exactly what this test does.
+    """
+    created: set[str | None] = set()
+    for table in Base.metadata.tables.values():
+        for column in table.columns:
+            enum_type = column.type
+            if isinstance(enum_type, PGEnum) and enum_type.name not in created:
+                enum_type.create(connection, checkfirst=True)
+                created.add(enum_type.name)
+
+
 # loop_scope="module" keeps the fixtures on the loop that owns the engine;
 # pytest-asyncio otherwise gives every single test a fresh loop, and asyncpg
 # connections created on one loop cannot be awaited from another.
@@ -104,6 +127,9 @@ async def pg_engine() -> AsyncGenerator[AsyncEngine, None]:
         url = make_url(pg.get_connection_url()).set(drivername="postgresql+asyncpg")
         engine = create_async_engine(url, pool_size=5, max_overflow=10, pool_pre_ping=True)
         async with engine.begin() as conn:
+            # Types before tables: the models' PGEnum columns name types that
+            # create_all never emits (see _create_pg_enum_types).
+            await conn.run_sync(_create_pg_enum_types)
             await conn.run_sync(Base.metadata.create_all)
         yield engine
         await engine.dispose()
