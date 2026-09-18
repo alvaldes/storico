@@ -693,17 +693,21 @@ describe('LLMConfigEditor custom provider', () => {
     expect(createCustomProvider).not.toHaveBeenCalled();
   });
 
-  it('refuses a name that is not a slug before sending it', async () => {
+  it('refuses the selector control value before sending it', async () => {
     const user = userEvent.setup();
     await renderCustomEditor();
 
     await user.click(screen.getByLabelText('Provider'));
     await user.click(await screen.findByRole('option', { name: 'Add custom provider' }));
-    await user.type(await screen.findByLabelText('Provider name'), 'has space');
+    await user.type(await screen.findByLabelText('Provider name'), '__add_custom_provider__');
     await user.click(screen.getByRole('button', { name: 'Add provider' }));
 
+    // The value that opens this dialog is not a provider a workspace can register:
+    // it would occupy the select's "Add custom provider…" slot and be unselectable.
     expect(
-      await screen.findByText(/Use lowercase letters, digits, dots, dashes or underscores/),
+      await screen.findByText(
+        'That name is reserved by the provider selector. Choose a different name.',
+      ),
     ).toBeInTheDocument();
     expect(createCustomProvider).not.toHaveBeenCalled();
   });

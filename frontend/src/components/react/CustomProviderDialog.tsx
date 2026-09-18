@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LoaderCircle, TriangleAlert } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -10,11 +10,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { ApiRequestError } from '@/lib/api';
 import { createCustomProvider, renameCustomProvider } from '@/lib/custom-providers-api';
-import { isKnownProvider, isValidProviderName, normalizeProviderName } from '@/lib/llm-providers';
+import {
+  PROVIDER_NAME_MAX_LENGTH,
+  isKnownProvider,
+  isReservedProviderName,
+  isValidProviderName,
+  normalizeProviderName,
+} from '@/lib/llm-providers';
 import type { CustomProvider } from '@/types/workspace';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
@@ -40,8 +46,12 @@ interface CustomProviderDialogProps {
  * Modal for registering or renaming a workspace custom provider.
  *
  * The name is validated here as well as by the backend so the specific reason
- * survives: a 409 from the server does not say whether it was the built-in guard or
- * a duplicate in this workspace.
+ * survives: a 409 from the server does not say whether it was the reserved-name
+ * guard or a duplicate in this workspace.
+ *
+ * The name is free-form text, stored as typed: the field caps it at
+ * ``PROVIDER_NAME_MAX_LENGTH`` and shows the count, so the limit is visible instead
+ * of arriving as a rejection.
  */
 export function CustomProviderDialog({
   locale,
@@ -67,9 +77,23 @@ export function CustomProviderDialog({
     setSaving(false);
   }, [open, provider]);
 
-  const normalized = normalizeProviderName(name);
-  const unchanged = isRename && normalized === provider.name;
-  const canSubmit = !saving && normalized.length > 0 && !unchanged;
+  const trimmed = normalizeProviderName(name);
+  const unchanged = isRename && trimmed === provider.name;
+  const canSubmit = !saving && trimmed.length > 0 && !unchanged;
+
+  /**
+   * Which rule a refused name broke, in the user's language.
+   *
+   * Ordered so the message names the rule that was actually broken: a built-in name
+   * is not "already registered", and a name that is only too long is not "reserved".
+   * The built-in comparison is case-insensitive, matching the backend, because the
+   * name keeps its casing now.
+   */
+  const nameError = (value: string): string => {
+    if (isKnownProvider(value.toLowerCase())) return t.workspace.llmCustomProviderNameKnown;
+    if (isReservedProviderName(value)) return t.workspace.llmCustomProviderNameReserved;
+    return t.workspace.llmCustomProviderNameInvalid;
+  };
 
   const handleOpenChange = (next: boolean) => {
     if (saving) return;
@@ -81,12 +105,8 @@ export function CustomProviderDialog({
 
     // Checked before the request so the user is told which rule they hit rather
     // than a generic conflict.
-    if (!isValidProviderName(normalized)) {
-      setError(t.workspace.llmCustomProviderNameInvalid);
-      return;
-    }
-    if (isKnownProvider(normalized)) {
-      setError(t.workspace.llmCustomProviderNameKnown);
+    if (!isValidProviderName(trimmed)) {
+      setError(nameError(trimmed));
       return;
     }
 
@@ -94,8 +114,8 @@ export function CustomProviderDialog({
     setError(null);
     try {
       const saved = provider
-        ? await renameCustomProvider(workspaceId, provider.id, { name: normalized })
-        : await createCustomProvider(workspaceId, { name: normalized });
+        ? await renameCustomProvider(workspaceId, provider.id, { name: trimmed })
+        : await createCustomProvider(workspaceId, { name: trimmed });
       onSaved(saved);
       onOpenChange(false);
     } catch (err) {
@@ -142,23 +162,22 @@ export function CustomProviderDialog({
               setError(null);
             }}
             placeholder={t.workspace.llmCustomProviderPlaceholder}
+            maxLength={PROVIDER_NAME_MAX_LENGTH}
             autoComplete="off"
             spellCheck={false}
             disabled={saving}
             aria-invalid={error ? true : undefined}
           />
+          <div className="flex items-center text-xs">
+            <div className="flex-1">
+              <FieldError>{error}</FieldError>
+            </div>
+            <span className="text-muted-foreground">
+              {name.length}/{PROVIDER_NAME_MAX_LENGTH}
+            </span>
+          </div>
           <FieldDescription>{t.workspace.llmCustomProviderNameHint}</FieldDescription>
         </Field>
-
-        {error && (
-          <p
-            role="alert"
-            className="flex items-start gap-1.5 text-sm text-red-600 dark:text-red-400"
-          >
-            <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            {error}
-          </p>
-        )}
 
         <DialogFooter>
           <Button
