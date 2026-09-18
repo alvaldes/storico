@@ -1,89 +1,24 @@
-import type { KnownProvider } from '@/lib/llm-providers';
-
-/**
- * The four first-class providers, under the name this settings surface uses.
- *
- * An alias, not a retyped union: the frontend already keeps `KNOWN_PROVIDERS` in step
- * with the backend by hand, and a second hand-kept copy of the same list is one more
- * place to forget.
- */
-export type LLMProvider = KnownProvider;
-
-export interface OllamaConfig {
-  baseUrl: string;
-  model: string;
-  temperature: number;
-  maxTokens: number;
-}
-
-export interface OpenAIConfig {
-  apiKey: string;
-  model: string;
-  temperature: number;
-  maxTokens: number;
-}
-
-export interface AnthropicConfig {
-  apiKey: string;
-  model: string;
-  temperature: number;
-  maxTokens: number;
-}
-
-export interface GeminiConfig {
-  apiKey: string;
-  model: string;
-  temperature: number;
-  maxTokens: number;
-}
-
-export interface LLMConfig {
-  provider: LLMProvider;
-  ollama: OllamaConfig;
-  openai: OpenAIConfig;
-  anthropic: AnthropicConfig;
-  gemini: GeminiConfig;
-}
-
 export type ExportFormat = 'trello' | 'json' | 'markdown';
 
 export interface ExportConfig {
   defaultFormat: ExportFormat;
 }
 
+/**
+ * The user's application preferences, as the API carries them.
+ *
+ * Deliberately holds no LLM configuration. This type used to mirror a per-user `llm` block —
+ * a provider selection plus a `model`/`api_key`/`base_url` per provider — which the
+ * preferences endpoint round-tripped and nothing ever read: the live configuration is per
+ * *workspace* (`workspace_llm_configs`), a different row with a different owner. The backend
+ * removed the field from its schema and from storage (revision `0022`), and its
+ * `extra="forbid"` is what keeps a credential from being posted back through that endpoint.
+ */
 export interface AppSettings {
-  llm: LLMConfig;
   export: ExportConfig;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  llm: {
-    provider: 'ollama',
-    ollama: {
-      baseUrl: 'http://localhost:11434',
-      model: 'llama3.2',
-      temperature: 0.1,
-      maxTokens: 2048,
-    },
-    openai: {
-      apiKey: '',
-      model: 'gpt-4o-mini',
-      temperature: 0.1,
-      maxTokens: 2048,
-    },
-    anthropic: {
-      apiKey: '',
-      model: 'claude-3-haiku',
-      temperature: 0.1,
-      maxTokens: 2048,
-    },
-    gemini: {
-      apiKey: '',
-      model: 'gemini-2.0-flash',
-      temperature: 0.1,
-      maxTokens: 2048,
-    },
-  },
   export: {
     defaultFormat: 'json',
   },

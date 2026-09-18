@@ -26,11 +26,10 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
-import { Field, FieldLabel, FieldDescription } from '@/components/ui/field';
+import { Field, FieldLabel } from '@/components/ui/field';
 import { SegmentedControl } from '@/components/react/SegmentedControl';
 import { GithubLight } from '@/components/ui/svgs/githubLight';
 import { GithubDark } from '@/components/ui/svgs/githubDark';
@@ -58,7 +57,7 @@ interface AccountPageProps {
 
 export function AccountPage({ locale }: AccountPageProps) {
   const t = useTranslations(locale);
-  const { settings, setExportFormat, loadFromApi } = useSettingsStore();
+  const { settings, setExportFormat, loadFromApi, syncToApi } = useSettingsStore();
   const { user, loading: authLoading } = useAuthStore();
   const { theme, setTheme } = useUIStore();
   const [mounted, setMounted] = useState(false);
@@ -68,6 +67,32 @@ export function AccountPage({ locale }: AccountPageProps) {
     setMounted(true);
     loadFromApi();
   }, [loadFromApi]);
+
+  /**
+   * Change the default export format, and actually save it.
+   *
+   * The select used to call `setExportFormat` alone, which updated this store and nothing
+   * else: the choice looked saved and came back to its previous value on the next visit,
+   * because the only writer of these preferences had no caller.
+   */
+  const handleExportFormatChange = (value: string | null) => {
+    // The select reports `null` when it is cleared, and there is nothing to save then: the
+    // inline handler this replaced cast that straight to `ExportFormat`.
+    if (value === null) return;
+    setExportFormat(value as ExportFormat);
+    void syncToApi({
+      loading: t.settings.preferences_saving,
+      success: t.settings.preferences_saved,
+      successDesc: t.settings.preferences_saved_description,
+      error: t.settings.preferences_save_error,
+    });
+  };
+
+  const exportFormatLabels: Record<ExportFormat, string> = {
+    trello: t.settings.export_format_trello,
+    json: t.settings.export_format_json,
+    markdown: t.settings.export_format_markdown,
+  };
 
   if (!mounted) {
     return (
@@ -199,10 +224,13 @@ export function AccountPage({ locale }: AccountPageProps) {
             <FieldLabel htmlFor="export-format">{t.settings.export_format}</FieldLabel>
             <Select
               value={settings.export.defaultFormat}
-              onValueChange={(value) => setExportFormat(value as ExportFormat)}
+              onValueChange={handleExportFormatChange}
             >
               <SelectTrigger id="export-format" className="w-full">
-                <SelectValue />
+                {/* The label, not `<SelectValue />`: with no `items` on the root that renders the
+                    raw value, so the control read "trello" instead of "Trello". The provider
+                    select in the workspace editor renders its label the same way. */}
+                <span>{exportFormatLabels[settings.export.defaultFormat]}</span>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="trello">{t.settings.export_format_trello}</SelectItem>
