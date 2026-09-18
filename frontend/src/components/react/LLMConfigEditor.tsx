@@ -682,6 +682,37 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                   </Button>
                 </div>
               </div>
+              {/* The always-on half of the suggestions. Firefox draws no dropmarker for a
+                  native `input[list]` and only opens it on a second click or a typed
+                  prefix (bugs 1575444 and 1882075), so a loaded list would look like a
+                  plain text box. Both layers offer the same ids and keep distinct roles:
+                  the datalist filters while typing, this list is the one always on
+                  screen. */}
+              {isCustomProvider && availableModels.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-(--color-text-secondary)">
+                    {t.workspace?.llmCustomModelsDiscovered ?? 'Discovered models'} (
+                    {availableModels.length})
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {availableModels.map((model) => (
+                      <button
+                        key={model.id}
+                        type="button"
+                        // The visible text is the readable name, while the click writes the
+                        // id the provider expects. A name that differs from the id is
+                        // surfaced so the user can tell what will actually be saved.
+                        title={model.name !== model.id ? model.id : undefined}
+                        aria-pressed={llmConfig.model === model.id}
+                        onClick={() => setLlmConfig((prev) => ({ ...prev, model: model.id }))}
+                        className="rounded-md border border-(--color-border) px-2 py-0.5 text-left text-sm text-(--color-text-tertiary) transition-colors hover:text-(--color-text-secondary) aria-pressed:font-medium aria-pressed:text-(--color-text-secondary)"
+                      >
+                        {model.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <FieldDescription>
                 {isCustomProvider ? (
                   /* Custom hints report real state in priority order: a failed probe,

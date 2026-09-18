@@ -436,6 +436,7 @@
     "llmCustomModelPlaceholder": "e.g. deepseek-chat, groq-llama-3.3-70b",
     "llmCustomModelHint": "Type the model id the provider expects, or load the provider's list for suggestions.",
     "llmCustomModelsEmpty": "The provider returned no models. Type the model id manually.",
+    "llmCustomModelsDiscovered": "Discovered models",
     "llmSaveButton": "Save LLM Configuration",
     "promptTitle": "Prompt Configuration",
     "promptDescription": "Customize the prompts used for task extraction in this workspace",

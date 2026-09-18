@@ -910,6 +910,61 @@ describe('LLMConfigEditor custom provider', () => {
     await user.click(screen.getByRole('button', { expanded: false }));
     expect(await screen.findByRole('option', { name: 'DeepSeek Chat' })).toBeInTheDocument();
   });
+
+  it('shows the discovered models as buttons without touching the field', async () => {
+    await renderCustomEditor();
+
+    // Firefox draws no dropmarker for `input[list]` and only opens the list on a second
+    // click or a typed prefix, so a loaded list has to be on screen on its own. The
+    // names come from the probe that settles by itself.
+    expect(await screen.findByRole('button', { name: 'DeepSeek Chat' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'DeepSeek Reasoner' })).toBeInTheDocument();
+    expect(screen.getByText(/Discovered models \(2\)/)).toBeInTheDocument();
+
+    // The visible entry carries the id it would save when that differs from the name.
+    expect(screen.getByRole('button', { name: 'DeepSeek Chat' })).toHaveAttribute(
+      'title',
+      'deepseek-chat',
+    );
+
+    // The native pairing stays: it is the type-time filter beside the always-on list.
+    const modelInput = screen.getByLabelText('Model');
+    const datalist = document.getElementById(modelInput.getAttribute('list') ?? '');
+    expect(datalist?.tagName).toBe('DATALIST');
+  });
+
+  it('fills the field with the model id when an entry is chosen', async () => {
+    const user = userEvent.setup();
+    await renderCustomEditor();
+
+    await user.click(await screen.findByRole('button', { name: 'DeepSeek Reasoner' }));
+
+    // The entry shows the readable name; the field has to carry the id the provider
+    // expects, not the name on the button.
+    expect(screen.getByLabelText('Model')).toHaveValue('deepseek-reasoner');
+
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ model: 'deepseek-reasoner' }),
+      ),
+    );
+  });
+
+  it('renders no discovered-models list when the probe returns nothing', async () => {
+    vi.mocked(fetchAvailableModels).mockResolvedValue([]);
+    await renderCustomEditor();
+    await waitFor(() => expect(fetchAvailableModels).toHaveBeenCalled());
+
+    // An empty answer is a hint, never a list: a labelled list with no entries would
+    // claim the models arrived.
+    expect(screen.queryByText(/Discovered models/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'DeepSeek Chat' })).not.toBeInTheDocument();
+    // The field stays free text, which is what typing an unlisted id relies on.
+    expect(screen.getByLabelText('Model')).not.toHaveAttribute('readonly');
+  });
 });
 
 /**

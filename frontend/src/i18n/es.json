@@ -436,6 +436,7 @@
     "llmCustomModelPlaceholder": "ej. deepseek-chat, groq-llama-3.3-70b",
     "llmCustomModelHint": "Escribe el identificador del modelo que espera el proveedor, o carga la lista del proveedor para ver sugerencias.",
     "llmCustomModelsEmpty": "El proveedor no devolvió modelos. Escribe el identificador del modelo manualmente.",
+    "llmCustomModelsDiscovered": "Modelos descubiertos",
     "llmSaveButton": "Guardar Configuración del LLM",
     "promptTitle": "Configuración de Prompts",
     "promptDescription": "Personaliza los prompts usados para la extracción de tareas en este espacio",
