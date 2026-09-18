@@ -52,3 +52,20 @@ class LLMConfigResponse(BaseModel):
     max_tokens: int | None = None
     base_url: str | None = None
     api_key: str | None = None
+
+
+class LLMConfigStatusResponse(BaseModel):
+    """Whether this workspace can extract, and which fields it is still missing.
+
+    Deliberately narrow, because it is deliberately member-readable: it answers with
+    the missing *field names* — ``model``, ``api_key``, ``base_url``
+    (:data:`storico.domain.services.llm_config_readiness.READINESS_FIELDS`) — and
+    never with the credential or the endpoint those fields would carry. A member can
+    learn the workspace is not ready without being handed its configuration.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    configured: bool
+    provider: str
+    missing: list[str]

@@ -1,7 +1,11 @@
 """Workspace settings API routes — LLM config and prompt management.
 
-All routes under ``/api/v1/workspaces/{workspace_id}/settings`` require
-admin role for the target workspace.
+Every route under ``/api/v1/workspaces/{workspace_id}/settings`` requires the admin
+role for the target workspace, with one deliberate exception: ``GET /llm/status`` is
+member-readable. A member has no business reading the credential or the endpoint, but
+they are the ones who attempt the extraction that depends on them, so they need to
+learn the workspace is not ready *before* the attempt fails. That route answers with
+the missing field names and never with a value.
 """
 
 from __future__ import annotations
@@ -14,7 +18,7 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from storico.api.dependencies import get_repository, require_admin
+from storico.api.dependencies import get_repository, get_workspace_for_user, require_admin
 from storico.api.schemas.custom_provider import (
     KNOWN_PROVIDERS,
     SELECT_CONTROL_VALUE,
@@ -24,6 +28,7 @@ from storico.api.schemas.custom_provider import (
 from storico.api.schemas.workspace_llm_config import (
     LLMConfigRequest,
     LLMConfigResponse,
+    LLMConfigStatusResponse,
     LLMModelProbeRequest,
     ModelInfo,
 )
@@ -35,6 +40,7 @@ from storico.domain.entities.workspace import Workspace
 from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
 from storico.domain.entities.workspace_member import WorkspaceRole
 from storico.domain.entities.workspace_prompt import WorkspacePrompt
+from storico.domain.services.llm_config_readiness import missing_llm_config_fields
 from storico.infrastructure.database.repositories.custom_provider_repository import (
     SQLAlchemyCustomProviderRepository,
 )
@@ -151,6 +157,35 @@ async def get_llm_config(
     workspace, _ = ctx
     settings = Settings.load()
     return await resolve_llm_config(workspace.id, config_repo, settings)
+
+
+@router.get("/llm/status")
+async def get_llm_config_status(
+    config_repo: LLMConfigRepoDep,
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
+) -> LLMConfigStatusResponse:
+    """Report whether this workspace can extract, and what it is still missing.
+
+    Readable by any member, unlike every other route in this module. The member who
+    cannot read the configuration is exactly the one who meets the failed extraction,
+    so this is the one piece of it they are entitled to: the missing field names,
+    never the key or the endpoint those fields hold.
+
+    An unconfigured workspace resolves to Ollama, so its single gap is the model.
+    """
+    workspace, _ = ctx
+    resolved = await resolve_llm_config(workspace.id, config_repo, Settings.load())
+    missing = missing_llm_config_fields(
+        resolved.provider,
+        model=resolved.model,
+        api_key=resolved.api_key,
+        base_url=resolved.base_url,
+    )
+    return LLMConfigStatusResponse(
+        configured=not missing,
+        provider=resolved.provider,
+        missing=list(missing),
+    )
 
 
 @router.put("/llm")

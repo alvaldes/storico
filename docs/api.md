@@ -84,10 +84,26 @@ Autenticación vía header `Authorization: Bearer <token>`. El token se obtiene 
 
 ### LLM Config (scoped a workspace)
 
+`GET` y `PUT /settings/llm` requieren admin. `GET /settings/llm/status` es la excepción
+legible por cualquier miembro: responde `{configured, provider, missing}` con los
+**nombres de los campos** que faltan (`model`, `api_key`, `base_url`) y nunca con la
+credencial ni el endpoint, porque el miembro que no puede leer la configuración es
+justamente quien choca con la extracción que depende de ella. Un workspace sin fila
+resuelve a `ollama`, cuyo único requisito es el modelo.
+
+La regla de completitud vive una sola vez, en
+`storico/domain/services/llm_config_readiness.py`: `ollama` necesita `model`;
+`openai`, `anthropic` y `gemini` necesitan `model` y `api_key`; cualquier otro nombre
+es un proveedor personalizado compatible con OpenAI y necesita `model` y `base_url`
+(la `api_key` queda opcional). `POST /workspaces/{wsId}/extract/` aplica esa misma
+regla **antes** de crear la extracción y responde `400` con
+`error_code: "LLM_CONFIG_INCOMPLETE"` y la lista `missing`.
+
 | Método | Path | Descripción |
 |--------|------|-------------|
 | GET | `/api/v1/workspaces/{wsId}/settings/llm` | Obtener config LLM |
 | PUT | `/api/v1/workspaces/{wsId}/settings/llm` | Actualizar config LLM |
+| GET | `/api/v1/workspaces/{wsId}/settings/llm/status` | ¿Está completa la config LLM? |
 | POST | `/api/v1/workspaces/{wsId}/settings/llm/models` | Modelos disponibles del proveedor |
 | POST | `/api/v1/llm/test` | Test de conexión LLM |
 
