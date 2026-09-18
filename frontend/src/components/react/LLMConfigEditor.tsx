@@ -673,10 +673,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     // A stable name: the button is always the refresh action, and its
                     // title carries the reason when it cannot run.
                     aria-label={t.workspace?.llmRefreshModels ?? 'Refresh models'}
-                    title={
-                      probeBlockedReason ??
-                      (t.workspace?.llmRefreshModels ?? 'Refresh models')
-                    }
+                    title={probeBlockedReason ?? t.workspace?.llmRefreshModels ?? 'Refresh models'}
                   >
                     <RotateCw className={`h-4 w-4 ${modelsLoading ? 'animate-spin' : ''}`} />
                   </Button>
