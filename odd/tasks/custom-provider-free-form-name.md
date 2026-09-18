@@ -1,9 +1,10 @@
 # ODD Feature: custom-provider-free-form-name
 
-> **Status**: done — six commits on `feat/custom-provider-free-form-name`
-> (`0d5de36`, `0bf40e5`, `709a9c6`, `a3e3288`, `8e7573f`, `2e47993`), not pushed and not
-> merged. Receipt-driven development is **off** in this clone, so no native review
-> ran; three independent verifications did, recorded below with their findings.
+> **Status**: done — landed on `main` by fast-forward as eight commits (`0d5de36`..
+> `2e47993`, plus the evidence commit that carries this line); the feature branch was
+> deleted, and nothing was pushed. Receipt-driven development is **off** in this clone,
+> so no native review ran; three independent verifications did, recorded below with
+> their findings.
 > **Created**: 2026-09-18
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `feat/custom-provider-free-form-name`
@@ -306,5 +307,7 @@ without weakening it. Two guards that watched nothing were replaced by one that 
 either side of the mirror, and a third copy of the vocabulary was deleted rather than
 watched.
 
-Nothing was pushed and nothing was merged: the branch is the user's to land. RDD is off
-in this clone, so the delivery decision is ordinary repository policy.
+Nothing was pushed: the branch was landed locally at the user's explicit request and
+the delivery decision beyond that is ordinary repository policy. RDD is off in this
+clone, so no native review ran — the three independent verifications are the review
+this candidate got.
