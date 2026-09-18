@@ -19,8 +19,9 @@ import { readFileSync } from 'node:fs';
  * check keyed by object *path* would report on every element.
  *
  * Names are compared as decoded text, so two different escapes spelling one key
- * (`\u0061` and `a`) would not compare equal. Locale keys are plain ASCII and the
- * scanner tracks positions exactly, so that limit cannot hide a real duplicate here.
+ * (`\u0061` and `a`) would not compare equal — and that pair is a real duplicate this
+ * guard reports as clean. Locale keys are plain ASCII, so the hole is not reachable in
+ * these two files; it is written down because it is a hole, not a guarantee.
  */
 function memberNames(text: string): { object: number; key: string }[] {
   const found: { object: number; key: string }[] = [];

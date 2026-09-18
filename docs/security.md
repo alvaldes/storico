@@ -85,7 +85,7 @@ protectedPaths = ['/dashboard', '/stories', '/kanban', '/export', '/account']
 - **CORS** — Configurable vía `STORICO_CORS_ORIGINS`. Default `"*"` en desarrollo.
 - **Extra fields rechazados** — Schemas Pydantic usan `extra="forbid"`
 - **SQL Injection** — SQLAlchemy con parametrización (no raw SQL)
-- **API keys de LLM** — Almacenadas en DB (campo `api_key` en `workspace_llm_configs`), nunca expuestas al frontend
+- **API keys de LLM** — Almacenadas **sin cifrado en reposo** en la base de datos (campo `api_key` en `workspace_llm_configs`). La key sí se devuelve al **admin** del workspace: `GET /settings/llm` la incluye para que el formulario pueda mostrarla y probar el proveedor. El endpoint de estado (`GET /settings/llm/status`), legible por cualquier miembro, nunca devuelve valores — solo los nombres de los campos que faltan.
 
 ### Frontend
 
@@ -95,6 +95,7 @@ protectedPaths = ['/dashboard', '/stories', '/kanban', '/export', '/account']
 
 ### Producción (pendiente)
 
+- [ ] Cifrado en reposo de las API keys de LLM (hoy se guardan en claro en `workspace_llm_configs`)
 - [ ] Rate limiting (Vercel WAF o slowapi)
 - [ ] Error monitoring (Sentry)
 - [ ] Auditoría de variables de entorno en Vercel

@@ -79,8 +79,9 @@ canónica.
 | GET | `/api/v1/extractions/` | Listar extracciones (filtros `?user_story_id=`, `?workspace_id=`) |
 | GET | `/api/v1/extractions/{id}` | Obtener una extracción |
 
-`POST /api/v1/extract` (sin workspace) ya no existe: responde `410 Gone` y apunta a la
-ruta workspace-scoped, que es la única vigente.
+`POST /api/v1/extract` (sin workspace) ya no existe: el router legacy responde `410 Gone`
+en `/api/v1/extract/` y en cualquiera de sus subrutas — la forma sin barra redirige ahí,
+como toda ruta de colección. La única ruta vigente es la workspace-scoped.
 
 ### Users
 
@@ -142,6 +143,12 @@ combinación de mayúsculas) o si es el valor reservado del selector
 (`__add_custom_provider__`); un `providerId` de otro workspace responde `404`. Al renombrar
 el proveedor que el workspace tiene seleccionado, también se actualiza
 `workspace_llm_configs.provider`.
+
+Una excepción a los `409`: renombrar una fila **a su propio nombre** responde `200` sin
+cambiar nada, y esa comprobación corre antes que la de nombres reservados y que la de
+duplicados. Es lo que permite que una fila heredada llamada `Ollama` —creada por la
+migración `0021`, cuando el registro permitía ese nombre— reenvíe su propio nombre sin
+chocar contra la regla que ahora lo reserva.
 
 ### Prompts (scoped a workspace)
 
@@ -235,10 +242,13 @@ GET /api/v1/workspaces/{wsId}/extract/status/{extractionId}
   "raw_response": "1. summary: Set up the database schema\ndescription: Create the tables...",
   "confidence_score": null,
   "created_at": "2026-07-15T12:00:00Z",
-  "completed_at": "2026-07-15T12:00:05Z",
+  "completed_at": null,
   "tasks": []
 }
 ```
+
+`completed_at` viaja siempre en `null`: la ruta de estado no lo completa, aunque la
+extracción haya terminado.
 
 Las tareas generadas no viajan en la respuesta de estado: se leen con
 `GET /api/v1/tasks/?user_story_id=...` una vez que la extracción pasó a `completed`.

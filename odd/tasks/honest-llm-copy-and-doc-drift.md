@@ -47,7 +47,7 @@ whether to trust the tool with a credential.
 | D1 | Scope | Exactly these four. The blank-endpoint normalization (C), `ErrorDisplay` (B) and the dead per-user LLM slice (G) are their own slices and are **not** touched here. |
 | D2 | The encryption claim | **Tell the truth in the copy now; treat real encryption as its own decision.** The replacement states only verifiable facts: the key lives with the workspace on the server, is readable by its admins, and is never saved in the browser. No security promise is made in either direction. |
 | D3 | The onboarding note | Fix the **copy** (keep step 3 collecting only the provider). It stops claiming the workspace is ready and names the missing step. Collecting the model in onboarding is a product change, not this slice. |
-| D4 | `docs/api.md` boundary | Fix the **false** statements the audit found and add the workspace-scoped extraction routes the corrected example depends on. Two adjacent corrections rode along, because leaving them would have left the same file still wrong: the eight collection paths got the trailing slash FastAPI actually exposes (without it the documented path answers a redirect), and the two health routes are now documented because the `/health` correction landed on that row. The three **omissions** left over are gaps, not lies, and stay as follow-ups. |
+| D4 | `docs/api.md` boundary | Fix the **false** statements the audit found and add the workspace-scoped extraction routes the corrected example depends on. Two adjacent corrections rode along, because leaving them would have left the same file still wrong: the nine collection rows (five distinct base paths) got the trailing slash FastAPI actually exposes (without it the documented path answers a redirect), and the two health routes are now documented because the `/health` correction landed on that row. The three **omissions** left over are gaps, not lies, and stay as follow-ups. |
 | D5 | Duplicate keys | Remove the **later** occurrence of each pair — the ones that read as strays from a later append — keeping the copy where it belongs. Behaviour-neutral: the values are byte-identical, and today the *first* copy is the shadowed one. |
 | D6 | A permanent guard | Add a duplicate-key guard to the frontend suite. Without one this is tidying that regresses, and CI has no JSON linter. It has to read the raw text: `JSON.parse` collapses duplicates before a reviver can see them. |
 
@@ -118,7 +118,7 @@ whether to trust the tool with a credential.
 
 ### T-002 — Onboarding step 3 stops promising a ready workspace
 
-- **Status**: pending
+- **Status**: done (commit `5251cc1`, extended in `afe763a`)
 - **Files to modify**: `frontend/src/i18n/en.json`, `frontend/src/i18n/es.json`
 - **What**: rewrite `onboarding.step3_note` (D3) so the Ollama fact is paired with the
   step it does not cover: every provider still needs a model, chosen later in Settings
@@ -130,7 +130,7 @@ whether to trust the tool with a credential.
 
 ### T-003 — Remove the duplicate keys, and stop the next one
 
-- **Status**: pending
+- **Status**: done (commit `144f0df`)
 - **Files to modify**: `frontend/src/i18n/en.json`, `frontend/src/i18n/es.json`,
   `frontend/src/i18n/__tests__/no-duplicate-keys.test.ts` (new)
 - **What**: drop the later occurrence of `stories.create_error` and of
@@ -149,7 +149,7 @@ whether to trust the tool with a credential.
 
 ### T-004 — `docs/api.md` true against the running app
 
-- **Status**: pending
+- **Status**: done (commit `5737085`)
 - **Files to modify**: `docs/api.md`
 - **What**: five corrections (D4): the health path, the extraction routes (replacing the
   410 legacy entry and adding the workspace-scoped POST plus its status route), the
@@ -211,8 +211,40 @@ command has actually run)_
 - **Real encryption for workspace API keys** (D2's other half): key management, at-rest
   encryption, migration of existing plaintext rows, and a decision about whether the
   credential may keep being returned to admins in cleartext. A feature of its own.
+- The stale provider enumerations this slice found but deliberately did **not** sweep:
+  `pages.docs.llm_runner_desc` ("Ollama / OpenAI / Anthropic"), `landing` FAQ `a6`
+  ("Cloud models (OpenAI, Anthropic)"), and the two privacy-policy sentences
+  `collection_llm` and `transfers_body` (both "a cloud LLM provider (OpenAI,
+  Anthropic)"). Each omits Gemini. `pages.docs.step_2` was the one of these that sat in
+  the sentence being corrected, so it was fixed there; the rest are a copy sweep of
+  their own, and the privacy-policy pair deserves its own review rather than riding on
+  this slice.
+- `pages.docs.llm_backend_openai` still advertises "GPT-3.5, GPT-4" while the app's
+  default OpenAI model is `gpt-4o-mini`; a support list that is a subset is not false,
+  but it is stale.
 - The omitted-but-real operations `GET /api/v1/workspaces/{id}/export/tasks`,
   `POST /api/v1/auth/sync` and `DELETE /api/v1/users/me` are still undocumented (D4).
+- The omitted-but-real operations `GET /api/v1/workspaces/{id}/export/tasks`,
+  `POST /api/v1/auth/sync` and `DELETE /api/v1/users/me` are still undocumented, and so is
+  the legacy projects pair `GET|POST /api/v1/projects` (which answers `307` → `410`), even
+  though the analogous legacy extract route is now documented (D4).
+- **The legacy localStorage key is never removed.** `settingsStore` persists under
+  `storico-settings-v2` and its comment says the old `storico-settings` still has API keys
+  in it, but nothing calls `removeItem`. So "never saved in your browser" is exactly true
+  of the current code and *not* unconditionally true of a browser upgraded from a build
+  that still had the per-user LLM editor. A one-line `removeItem` on load would close it;
+  it is a behaviour change, so it does not belong in a copy-only slice.
+- **`completed_at` is never set.** The status route passes `completed_at=None`
+  (`api/routes/extraction.py`), so a finished extraction reports `null`. The doc now says
+  so; fixing the route is app work.
+- **Stale build artifacts still carry the old false claim.** `frontend/dist/` and
+  `frontend/.vercel/output/` hold pre-change bundles with *"Stored encrypted at rest"*.
+  They are gitignored and regenerated by a build, but a deploy that reuses them would
+  still serve it — regenerate before shipping.
+- The landing FAQ `a6` still says *"Storico supports Ollama out of the box"*. Judged a
+  **capability** claim rather than a readiness one (support is built in), so it was left;
+  it is nevertheless the same phrase this slice removed elsewhere, and it sits next to the
+  stale provider list below.
 - Slice 2 (blank `base_url`/`api_key` reaching the adapter), slice 3 (`ErrorDisplay`
   renders `null` — six call sites, one of them a blank page), slice 4 (the dead per-user
   LLM slice and the plaintext keys it may still hold) remain open.
