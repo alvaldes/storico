@@ -18,6 +18,7 @@ import { useStoryStore } from '@/stores/storyStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { getProject } from '@/lib/projects-api';
+import { getLLMConfigStatus, type LLMConfigStatus } from '@/lib/llm-config-api';
 import { StoryForm } from '@/components/react/StoryForm';
 import { TaskEditor } from '@/components/react/TaskEditor';
 import { Button } from '@/components/ui/button';
@@ -33,7 +34,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import type { ExtractionErrorInfo } from '@/stores/taskStore';
 
@@ -52,6 +53,7 @@ interface StoryDetailProps {
 export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const t = useTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
+  const workspaceRole = useWorkspaceStore((s) => s.currentWorkspace?.role);
   const { stories, loading: storyLoading, fetchStory, updateStory, deleteStory } = useStoryStore();
   const {
     tasks,
@@ -71,6 +73,11 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const [resolvingProject, setResolvingProject] = useState(false);
   // Track previous extraction status to detect failure transitions during polling
   const [prevExtractionStatus, setPrevExtractionStatus] = useState<string | null>(null);
+  // Whether this workspace can extract at all. `null` is "not answered yet", and it is
+  // also what an unreachable status route leaves behind: both let the action through,
+  // because the API still refuses a configuration that cannot work. Failing closed here
+  // would lock the user out of the attempt over a hiccup in the answer.
+  const [llmStatus, setLlmStatus] = useState<LLMConfigStatus | null>(null);
 
   const story = stories.find((s) => s.id === storyId);
   const storyTasks = tasks[storyId] ?? [];
@@ -93,6 +100,26 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
     };
   }, [storyId, resetExtraction]);
 
+  // Ask once per workspace whether extraction is possible here, so the refusal can be
+  // shown before the attempt instead of only after it fails.
+  useEffect(() => {
+    if (!workspaceId) {
+      setLlmStatus(null);
+      return;
+    }
+    let active = true;
+    getLLMConfigStatus(workspaceId)
+      .then((status) => {
+        if (active) setLlmStatus(status);
+      })
+      .catch(() => {
+        if (active) setLlmStatus(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [workspaceId]);
+
   // Show a toast when extraction fails, or an auth-themed toast when the
   // session expired (HTTP 401) — the latter is not an extraction failure.
   // `extractTasks` never rejects, so this effect is the single authority for
@@ -103,6 +130,10 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       if (settled && prevExtractionStatus === 'pending') {
         if (extraction.status === 'unauthorized') {
           toast.error(t.stories.extractionUnauthorized);
+        } else if (extraction.errorCode === 'config') {
+          // The API refused because the configuration cannot extract. Not a failure of
+          // the extraction, and not something to retry: it is a prerequisite.
+          toast.error(t.stories.extractionNeedsConfig);
         } else if (extraction.errorCode === 'timeout') {
           toast.error(t.stories.extractionTimeout);
         } else {
@@ -220,6 +251,27 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   };
 
   const extractButton = getExtractButtonProps();
+
+  /* ── Configuration gate ── */
+
+  // A disabled control that explains itself: the configuration is a prerequisite, so
+  // the refusal has to be visible before the click rather than only after it.
+  const configIncomplete = llmStatus !== null && !llmStatus.configured;
+  const extractDisabled = !extractButton.enabled || configIncomplete;
+  const settingsHref = workspaceId
+    ? localizedPath(`/workspaces/${workspaceId}/settings`, locale)
+    : null;
+
+  // The status route answers with field codes (`model`, `api_key`, `base_url`) and the
+  // copy lives here, which is why the two are mapped rather than concatenated.
+  const missingConfigLabels: Record<string, string> = {
+    model: t.settings?.llm_ollama_model ?? 'Model',
+    api_key: t.settings?.llm_openai_api_key ?? 'API Key',
+    base_url: t.settings?.llm_base_url ?? 'Base URL',
+  };
+  const missingConfigNames = (llmStatus?.missing ?? [])
+    .map((field) => missingConfigLabels[field] ?? field)
+    .join(', ');
 
   // ── Render ──
 
@@ -348,8 +400,8 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
           <Button
             size="sm"
             variant={extractButton.variant}
-            onClick={extractButton.enabled ? handleExtract : undefined}
-            disabled={!extractButton.enabled}
+            onClick={extractDisabled ? undefined : handleExtract}
+            disabled={extractDisabled}
           >
             <extractButton.icon
               className={'mr-2 h-4 w-4' + (extraction?.status === 'pending' ? ' animate-spin' : '')}
@@ -357,6 +409,43 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
             {extractButton.label}
           </Button>
         </div>
+
+        {configIncomplete && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/30"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                {t.stories.extractionBlockedTitle}
+              </p>
+              <p className="text-sm text-red-700 dark:text-red-300">
+                {t.stories.extractionBlockedDesc}
+              </p>
+              {missingConfigNames !== '' && (
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  {t.stories.extractionBlockedMissing.replace('{fields}', missingConfigNames)}
+                </p>
+              )}
+              {/* Who can act on it differs, so say which: an admin is sent to the fix,
+                  a member is told whose job it is instead of being pointed at a page
+                  that refuses them. */}
+              {workspaceRole === 'admin' && settingsHref ? (
+                <a
+                  href={settingsHref}
+                  className="inline-block text-sm text-red-700 underline hover:text-red-900 dark:text-red-300 dark:hover:text-red-100"
+                >
+                  {t.stories.extractionBlockedAction}
+                </a>
+              ) : (
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  {t.stories.extractionBlockedAskAdmin}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {tasksLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -416,7 +505,9 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
                   friendlyMessage={
                     extraction?.status === 'unauthorized'
                       ? t.stories.extractionUnauthorized
-                      : (extraction?.error?.friendlyMessage ?? t.stories.extractionFailed)
+                      : extraction?.errorCode === 'config'
+                        ? t.stories.extractionNeedsConfig
+                        : (extraction?.error?.friendlyMessage ?? t.stories.extractionFailed)
                   }
                   rawDetail={extraction?.error?.rawDetail}
                   status={extraction?.error?.status}

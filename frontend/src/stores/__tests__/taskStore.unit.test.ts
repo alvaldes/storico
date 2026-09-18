@@ -168,6 +168,27 @@ describe('taskStore — extraction error handling', () => {
     expect(extraction.errorCode).toBe('timeout');
     expect(extraction.userStoryStatus).toBe('failed_extraction');
   });
+
+  it('categorizes a refused extraction with an incomplete configuration as a config problem', async () => {
+    // Exactly what the API sends when it refuses before creating anything: a 400 whose
+    // detail object carries the machine-readable code alongside the fields to fix. The
+    // status alone would read as a generic server failure, which is the copy the user
+    // cannot act on.
+    vi.mocked(api.startExtraction).mockRejectedValue(
+      new ApiRequestError(400, 'Bad Request', {
+        detail: "This workspace's LLM configuration is incomplete.",
+        error_code: 'LLM_CONFIG_INCOMPLETE',
+        provider: 'openai',
+        missing: ['api_key'],
+      }),
+    );
+
+    await useTaskStore.getState().extractTasks('story-config', 'ws-1');
+
+    const extraction = useTaskStore.getState().extractions['story-config'];
+    expect(extraction.status).toBe('failed');
+    expect(extraction.errorCode).toBe('config');
+  });
 });
 
 describe('taskStore — stale workspace continuations', () => {

@@ -3,6 +3,7 @@ import { getAllowedTaskTransitions, type Task, type TaskStatus } from '@/types/t
 import type { UserStory, UserStoryStatus } from '@/types/story';
 import * as api from '@/lib/tasks-api';
 import { ApiRequestError, type RawBackendError } from '@/lib/api';
+import { LLM_CONFIG_INCOMPLETE_CODE } from '@/lib/llm-config-readiness';
 import { isScopedWorkspace, setScopedWorkspaceId } from '@/lib/workspace-scope';
 import { useStoryStore } from '@/stores/storyStore';
 
@@ -16,7 +17,14 @@ let workspaceTasksRequestSeq = 0;
 // ── Types ──
 
 export type ExtractionStatus = 'idle' | 'pending' | 'completed' | 'failed' | 'unauthorized';
-export type ExtractionErrorCode = 'unauthorized' | 'network' | 'timeout' | 'server' | null;
+export type ExtractionErrorCode =
+  | 'unauthorized'
+  | 'network'
+  | 'timeout'
+  | 'server'
+  /** The workspace's LLM configuration cannot extract. The user can fix it. */
+  | 'config'
+  | null;
 
 export interface ExtractionErrorInfo {
   friendlyMessage: string;
@@ -89,8 +97,19 @@ export interface TaskState {
 
 function categorizeExtractionError(err: unknown): ExtractionErrorCode {
   if (!err) return 'server';
-  // Shapes thrown by `lib/api.ts`: { status?: number; code?: number|string; message?: string }
-  const anyErr = err as { status?: number; code?: number | string; message?: string };
+  // Shapes thrown by `lib/api.ts`: { status?: number; code?: number|string; message?: string;
+  // errorCode?: string }
+  const anyErr = err as {
+    status?: number;
+    code?: number | string;
+    message?: string;
+    errorCode?: string;
+  };
+  // A refused extraction whose configuration cannot work is not a server failure: the
+  // API sends a machine-readable code with the missing fields, and the user can act on
+  // it. Checked before the status codes because the refusal carries the code, not the
+  // status.
+  if (anyErr.errorCode === LLM_CONFIG_INCOMPLETE_CODE) return 'config';
   const status = anyErr.status ?? (typeof anyErr.code === 'number' ? anyErr.code : null);
   if (status === 401 || status === 403) return 'unauthorized';
   if (status === 504) return 'timeout';
