@@ -1,6 +1,10 @@
 # ODD Feature: honest-llm-copy-and-doc-drift
 
-> **Status**: in progress
+> **Status**: done — six commits on `feat/honest-llm-copy-and-doc-drift` (`7617b08`..
+> `da673e8`), plus the evidence commit that carries this line (seven against the parent
+> branch); nothing was pushed. Receipt-driven development is **off** in this clone, so no
+> native review ran; one independent verification did, recorded below with its findings and
+> their disposition.
 > **Created**: 2026-06-30
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `feat/honest-llm-copy-and-doc-drift`, stacked on
@@ -162,7 +166,9 @@ whether to trust the tool with a credential.
 
 ### T-005 — Verification gate
 
-- **Status**: pending
+- **Status**: done (one independent `gentle-ai-verify` run over `c1a60a0..afe763a`; its
+  findings are fixed in `da673e8`, and the gate was re-run green on the corrected
+  candidate — see the verification section below)
 - **What**: run the repo gate on the candidate and record the outcome; delegate an
   independent verification of the two claims a test cannot fully assert (that no
   encryption claim survives anywhere in the repo, and that `docs/api.md` has no remaining
@@ -177,7 +183,7 @@ whether to trust the tool with a credential.
 
 ### T-006 — Close the feature
 
-- **Status**: pending
+- **Status**: done (this document's commit)
 - **What**: flip the status line, write the evidence log with real commit identities and
   observed output, and record the follow-ups this slice creates.
 - **Depends on**: T-005
@@ -199,12 +205,96 @@ command has actually run)_
 
 | Task | Commit | Outcome |
 |------|--------|---------|
-| T-001 | | |
-| T-002 | | |
-| T-003 | | |
-| T-004 | | |
-| T-005 | | |
-| T-006 | | |
+| T-001 | `7617b08` | `llmApiKeyDesc` rewritten in both locales and in the editor's hardcoded fallback. A repo-wide grep for the encryption claim, in English and Spanish, returns nothing outside the change record that quotes it. `tsc` exit 0; the i18n suites pass. |
+| T-002 | `5251cc1`, extended in `afe763a` | `onboarding.step3_note` no longer claims a working setup. The gate re-run at T-005 found the **same false promise in a second surface** — `pages.docs.step_2`, the public docs page — which `afe763a` fixes too, along with the provider list in that same sentence (it omitted Gemini). Repo-wide grep for the promise now returns nothing. |
+| T-003 | `144f0df` | The later copy of `stories.create_error` and of `kanban.invalid_drop` removed from both files — behaviour-neutral, and proven so: the pairs were byte-identical before the edit and the effective values are unchanged after it. New `no-duplicate-keys.test.ts` with a raw-text scanner and 12 cases. Red run with a planted duplicate: **1 failed** naming `llmSaved`, green when restored. Full frontend suite **30 files / 351 passed**, `tsc` exit 0. |
+| T-004 | `5737085` | Five false statements corrected plus the two workspace-scoped extraction routes, the canonical trailing slash on nine collection rows, and both health routes. Acceptance is mechanical and was re-run after every later edit: **zero documented-but-absent operations** against `create_app().openapi()`, and both JSON examples match `ExtractResponse`/`ExtractionResponse` field for field. |
+| T-005 | `da673e8` | Gate and independent verification, below. Six findings addressed: one medium falsehood in `docs/security.md` that the slice had missed, four imprecisions in what this slice had just written, and an overclaiming code comment. |
+| T-006 | this document | Status, evidence, the verification record and the dispositions, written after every command above ran. |
+
+## Verification (RDD off — independent verification, not native review)
+
+One `gentle-ai-verify` run over `c1a60a0..afe763a`, read-only, with its mutations in a
+`/tmp` copy. Gate it observed: frontend **30 files / 351 passed**, `tsc --noEmit` exit 0;
+backend **585 passed, 1 skipped**, `ruff check` and `ruff format --check` clean over 210
+files. Gate re-run by me on the corrected candidate (`da673e8`): same numbers.
+
+What it confirmed independently, by driving real code rather than reading the tests:
+
+- **Every clause of the replacement copy is true.** The key is written to
+  `workspace_llm_configs.api_key`; the only schema carrying it is `LLMConfigResponse`,
+  returned by `GET`/`PUT /settings/llm`, both `require_admin`; and no storage API in the
+  client touches it (`partialize` persists only `settings.export`).
+- **The old claim was indeed false**: `grep -rniE "cryptography|fernet|nacl|AES|kms|encrypt"
+  backend/src` → 0 matches.
+- **The range changed exactly three keys per locale and nothing else.** It compared the
+  *effective parsed values* (not the diff): `base keys=663 head keys=663` on both files,
+  three changed keys, and the removed duplicates left the effective value untouched —
+  which is the independent proof of this slice's "no behaviour change" property.
+- **`docs/api.md`: zero documented-but-absent**, every documented path's trailing slash
+  matching the live route, both examples field-for-field, every enum value a real member,
+  and the error envelope real.
+- **The guard has teeth and no false positives** across 12 crafted shapes, including the
+  array-of-objects shape that a path-keyed check would wrongly flag, and it reports the
+  original duplicates at the parent commit (`['create_error', 'invalid_drop']`).
+- **The documented custom-provider rule matches the route clause by clause** (trim, 1–50
+  after trim, stored verbatim, `Groq ≠ groq`, case-insensitive built-in refusal, sentinel
+  refusal, 409 duplicate, 404 foreign id), and `PATCH` really is the onboarding method
+  (`POST` → 405).
+
+### Findings and disposition
+
+- **F1 (fixed in `da673e8`) — pre-existing, medium, and the one that mattered.**
+  `docs/security.md:88` claimed the LLM API keys are *"nunca expuestas al frontend"*.
+  They are: `GET /settings/llm` returns `api_key` in `LLMConfigResponse` and the editor
+  loads it into the form (`LLMConfigEditor.tsx:123,271`). A security document asserting
+  non-exposure of a credential is the same defect class this slice exists to fix, and the
+  replacement copy this slice wrote ("readable only by its admins") contradicted it. The
+  bullet now states the real posture — plaintext at rest, returned to the workspace admin,
+  never returned by the member-readable status route — and the pending-work list gains the
+  at-rest encryption item.
+- **F2 (fixed in `da673e8`) — candidate-caused, low.** The `410 Gone` sentence I wrote for
+  the legacy extract route contradicted the trailing-slash rule I had written two
+  paragraphs above: the exact no-slash path answers `307` to the slashed form, which is
+  what answers `410`. The sentence now says that.
+- **F3 (accepted, not a defect) — pre-existing, low.** The landing FAQ `a6` still says
+  *"Storico supports Ollama out of the box"*. It is a **capability** claim (Ollama support
+  is built in) and not a readiness claim, which is the distinction that makes the removed
+  `step3_note` a defect. Left as is, recorded with the reasoning and with the stale
+  provider list it sits beside.
+- **F4 (accepted as a follow-up) — pre-existing, low.** `frontend/dist/` and
+  `frontend/.vercel/output/` still contain pre-change bundles with the old encryption
+  claim. Gitignored and regenerated by a build; a deploy reusing those artifacts would
+  still serve it, so it is recorded as a shipping note rather than a source fix.
+- **F5 (fixed in `da673e8`) — candidate-caused, low.** The extraction example showed
+  `completed_at` with a timestamp, but the status route passes `completed_at=None`. The
+  example now shows `null` with a sentence saying so, and the app-side gap is a follow-up.
+- **F6 (fixed in `da673e8`) — candidate-caused incompleteness, low.** The custom-provider
+  rules I rewrote stated the `409`s unconditionally, omitting the deliberate no-op: a row
+  renamed to its own name answers `200` before the reserved-name and duplicate checks, so
+  a migration-`0021` row named `Ollama` can resubmit its own name. That carve-out is now
+  documented.
+- **F7 (fixed in `da673e8`) — informational.** My guard's comment claimed the
+  escape-spelling limit "cannot hide a real duplicate here". It can: `{"a": 1,
+  "\u0061": 2}` is a duplicate the guard reports as clean. Not reachable in these two
+  ASCII-key files, but the comment now states the hole instead of dismissing it.
+- **F8 (recorded) — informational.** More live operations are undocumented than the three
+  the slice listed: the legacy projects pair `GET|POST /api/v1/projects` also answers
+  `307` → `410` and is not documented, while the analogous extract route now is. Recorded
+  as a follow-up rather than swept in — the boundary is "false statements", not "complete
+  coverage".
+- **F9 (fixed in this document) — informational.** My own D4 note said "eight collection
+  paths"; it is nine rows across five distinct base paths. Corrected.
+- **F10 (recorded) — informational, and the one hole in the new sentence.** The store's
+  comment says the pre-refactor `storico-settings` key still holds API keys, and nothing
+  ever calls `removeItem`. So "never saved in your browser" is exactly true of current code
+  and not unconditionally true of a browser upgraded from the older build. A one-line
+  `removeItem` would close it; being a behaviour change, it is a follow-up, not part of a
+  copy-only slice.
+
+Not verified: the authenticated custom-provider create/rename calls live (source and
+routing probes only, no session), `docs/api/spec-api-endpoints.md` (out of scope), and the
+E2E suite (already recorded in this repo as not runnable).
 
 ## Follow-ups (not part of this change)
 
