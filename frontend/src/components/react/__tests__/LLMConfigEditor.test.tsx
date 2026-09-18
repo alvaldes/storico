@@ -799,6 +799,9 @@ describe('LLMConfigEditor custom provider', () => {
     const modelInput = screen.getByLabelText('Model');
     await user.clear(modelInput);
     await user.type(modelInput, 'deepseek-reasoner');
+    // Typing opens the catalogue, and an open catalogue makes the rest of the page
+    // inert. Close it before reaching the save button.
+    await user.keyboard('{Escape}');
 
     await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
 
@@ -810,23 +813,41 @@ describe('LLMConfigEditor custom provider', () => {
     );
   });
 
-  it('offers the discovered model ids as native suggestions', async () => {
+  it('renders the saved model as the field text behind a named chevron trigger', async () => {
     await renderCustomEditor();
 
     const modelInput = screen.getByLabelText('Model');
-    // A saved custom endpoint is complete, so its list arrives from the auto-probe
-    // rather than from a click. Either way the ids must reach the field as native
-    // suggestions.
-    await waitFor(() => expect(modelInput).toHaveAttribute('list'));
+    await waitFor(() => expect(modelInput).toHaveValue('deepseek-chat'));
 
-    // The native pairing is only real if the attribute names a datalist that holds the
-    // ids, so assert the link rather than the attribute alone.
-    const listId = modelInput.getAttribute('list');
-    const datalist = document.getElementById(listId ?? '');
-    expect(datalist?.tagName).toBe('DATALIST');
+    // The field is typed text, and the chevron is the affordance that reveals the
+    // provider's catalogue in one click — a plain text input offered no way to see one.
     expect(
-      Array.from(datalist?.querySelectorAll('option') ?? []).map((o) => o.getAttribute('value')),
-    ).toEqual(['deepseek-chat', 'deepseek-reasoner']);
+      await screen.findByRole('button', { name: 'Discovered models (2)' }),
+    ).toBeInTheDocument();
+  });
+
+  it('reveals every discovered model in one click, unfiltered by the saved value', async () => {
+    const user = userEvent.setup();
+    await renderCustomEditor();
+
+    await user.click(await screen.findByRole('button', { name: 'Discovered models (2)' }));
+
+    // The field already holds `deepseek-chat`. A popup that filtered itself against that
+    // text would list one entry and hide the rest, which is the complaint this replaces.
+    expect(await screen.findByRole('option', { name: /deepseek-chat/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /deepseek-reasoner/ })).toBeInTheDocument();
+  });
+
+  it('reveals the catalogue by clicking the field itself', async () => {
+    const user = userEvent.setup();
+    await renderCustomEditor();
+
+    // `Autocomplete.Root` defaults `openOnInputClick` to `false`, which would make the
+    // field look like a dead text box — the original complaint. A click in the text must
+    // open the list, the way the known providers' model field and a plain select behave.
+    await user.click(screen.getByLabelText('Model'));
+
+    expect(await screen.findByRole('option', { name: /deepseek-reasoner/ })).toBeInTheDocument();
   });
 
   it('shows the typing hint and no empty-list warning before any probe runs', async () => {
@@ -911,37 +932,17 @@ describe('LLMConfigEditor custom provider', () => {
     expect(await screen.findByRole('option', { name: 'DeepSeek Chat' })).toBeInTheDocument();
   });
 
-  it('shows the discovered models as buttons without touching the field', async () => {
-    await renderCustomEditor();
-
-    // Firefox draws no dropmarker for `input[list]` and only opens the list on a second
-    // click or a typed prefix, so a loaded list has to be on screen on its own. The
-    // names come from the probe that settles by itself.
-    expect(await screen.findByRole('button', { name: 'DeepSeek Chat' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'DeepSeek Reasoner' })).toBeInTheDocument();
-    expect(screen.getByText(/Discovered models \(2\)/)).toBeInTheDocument();
-
-    // The visible entry carries the id it would save when that differs from the name.
-    expect(screen.getByRole('button', { name: 'DeepSeek Chat' })).toHaveAttribute(
-      'title',
-      'deepseek-chat',
-    );
-
-    // The native pairing stays: it is the type-time filter beside the always-on list.
-    const modelInput = screen.getByLabelText('Model');
-    const datalist = document.getElementById(modelInput.getAttribute('list') ?? '');
-    expect(datalist?.tagName).toBe('DATALIST');
-  });
-
-  it('fills the field with the model id when an entry is chosen', async () => {
+  it('writes the model id, not the displayed name, when an entry is chosen', async () => {
     const user = userEvent.setup();
     await renderCustomEditor();
 
-    await user.click(await screen.findByRole('button', { name: 'DeepSeek Reasoner' }));
+    await user.click(await screen.findByRole('button', { name: 'Discovered models (2)' }));
+    await user.click(await screen.findByRole('option', { name: /deepseek-reasoner/ }));
 
-    // The entry shows the readable name; the field has to carry the id the provider
-    // expects, not the name on the button.
-    expect(screen.getByLabelText('Model')).toHaveValue('deepseek-reasoner');
+    const modelInput = screen.getByLabelText('Model');
+    // The entry renders the id followed by its readable name; the field must end up with
+    // the id alone, because that is the value the provider is asked for.
+    await waitFor(() => expect(modelInput).toHaveValue('deepseek-reasoner'));
 
     await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
 
@@ -953,17 +954,48 @@ describe('LLMConfigEditor custom provider', () => {
     );
   });
 
-  it('renders no discovered-models list when the probe returns nothing', async () => {
+  it('keeps an id the provider never listed, even after blur', async () => {
+    const user = userEvent.setup();
+    await renderCustomEditor();
+
+    const modelInput = screen.getByLabelText('Model');
+    await user.clear(modelInput);
+    await user.type(modelInput, 'totally-unlisted-model');
+    // Typing opens the catalogue, and an open catalogue makes the rest of the page
+    // inert. Close it before leaving the field so the save button stays reachable.
+    await user.keyboard('{Escape}');
+    await user.tab();
+
+    // In an autocomplete the typed text *is* the value, so there is nothing to revert
+    // to. The Combobox this replaces reverted exactly here.
+    await waitFor(() => expect(modelInput).toHaveValue('totally-unlisted-model'));
+
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ model: 'totally-unlisted-model' }),
+      ),
+    );
+  });
+
+  it('keeps the field editable and names the empty list when nothing is discovered', async () => {
+    const user = userEvent.setup();
     vi.mocked(fetchAvailableModels).mockResolvedValue([]);
     await renderCustomEditor();
     await waitFor(() => expect(fetchAvailableModels).toHaveBeenCalled());
 
-    // An empty answer is a hint, never a list: a labelled list with no entries would
-    // claim the models arrived.
-    expect(screen.queryByText(/Discovered models/)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'DeepSeek Chat' })).not.toBeInTheDocument();
-    // The field stays free text, which is what typing an unlisted id relies on.
-    expect(screen.getByLabelText('Model')).not.toHaveAttribute('readonly');
+    const modelInput = screen.getByLabelText('Model');
+    // An empty catalogue is not a dead end: the id stays typable, which is the whole
+    // point of keeping this field free text.
+    expect(modelInput).not.toHaveAttribute('readonly');
+
+    await user.click(screen.getByRole('button', { name: 'Discovered models (0)' }));
+
+    expect(
+      await screen.findByText('The provider returned no models. Type the model id manually.'),
+    ).toBeInTheDocument();
   });
 });
 

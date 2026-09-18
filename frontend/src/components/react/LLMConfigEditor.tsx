@@ -25,6 +25,14 @@ import {
   ComboboxItem,
   ComboboxEmpty,
 } from '@/components/ui/combobox';
+import {
+  Autocomplete,
+  AutocompleteInput,
+  AutocompletePopup,
+  AutocompleteList,
+  AutocompleteItem,
+  AutocompleteEmpty,
+} from '@/components/ui/autocomplete';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
@@ -45,12 +53,6 @@ import { ADD_CUSTOM_PROVIDER_VALUE, KNOWN_PROVIDERS, isKnownProvider } from '@/l
 import type { CustomProvider, WorkspaceLLMConfig, WorkspacePrompt } from '@/types/workspace';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
-
-/**
- * Id of the `<datalist>` that backs the custom model field's native suggestions. The
- * field stays a free-text input: the list only offers ids, it never constrains them.
- */
-const CUSTOM_MODEL_LIST_ID = 'llm-custom-model-list';
 
 interface LLMConfigEditorProps {
   locale: 'en' | 'es';
@@ -579,37 +581,64 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               <div className="flex items-start gap-2">
                 <div className="flex-1">
                   {isCustomProvider ? (
-                    /* Custom provider — free text input, optionally suggested from the
-                       provider's own list. */
-                    <>
-                      <Input
+                    /* Custom provider — the typed text is the model, and the popup is a
+                       catalogue of everything the provider reported. */
+                    <Autocomplete
+                      value={llmConfig.model ?? ''}
+                      onValueChange={(val) =>
+                        setLlmConfig((prev) => ({
+                          ...prev,
+                          model: val,
+                        }))
+                      }
+                      // No built-in filtering. The popup opens as a complete catalogue:
+                      // narrowing it against the field's current text would hide every
+                      // other model, which is the complaint this field exists to fix.
+                      filter={null}
+                      // `Autocomplete.Root` hard-codes this to `false`, so a click in the
+                      // text would reveal nothing. Turned back on so the field behaves
+                      // like the known providers' model field and like a plain select:
+                      // one click anywhere in it opens the catalogue.
+                      openOnInputClick
+                    >
+                      <AutocompleteInput
                         id="llm-model"
-                        type="text"
-                        value={llmConfig.model ?? ''}
-                        onChange={(e) =>
-                          setLlmConfig((prev) => ({
-                            ...prev,
-                            model: e.target.value,
-                          }))
-                        }
                         placeholder={
                           t.workspace?.llmCustomModelPlaceholder ??
                           'e.g. deepseek-chat, groq-llama-3.3-70b'
                         }
-                        // Native suggestions, not a selection: `list` only offers the ids
-                        // a probe found, and typing an unlisted id still saves.
-                        list={availableModels.length > 0 ? CUSTOM_MODEL_LIST_ID : undefined}
+                        // The chevron is the explicit affordance for the catalogue, so its
+                        // name carries what the list holds.
+                        triggerLabel={`${t.workspace?.llmCustomModelsDiscovered ?? 'Discovered models'} (${availableModels.length})`}
                       />
-                      {availableModels.length > 0 && (
-                        <datalist id={CUSTOM_MODEL_LIST_ID}>
+                      <AutocompletePopup>
+                        <AutocompleteList>
                           {availableModels.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.name}
-                            </option>
+                            // The item's `value` is the model id, and its rendered text
+                            // starts with that same id: pressing the entry must write the
+                            // id the provider expects, never the readable name.
+                            <AutocompleteItem key={m.id} value={m.id}>
+                              {m.id}
+                              {m.name !== m.id && (
+                                <span className="text-(--color-text-tertiary)">{m.name}</span>
+                              )}
+                            </AutocompleteItem>
                           ))}
-                        </datalist>
-                      )}
-                    </>
+                        </AutocompleteList>
+                        {modelsLoading ? (
+                          <AutocompleteEmpty>
+                            {t.workspace?.llmModelsLoading ?? 'Loading models...'}
+                          </AutocompleteEmpty>
+                        ) : availableModels.length === 0 ? (
+                          <AutocompleteEmpty>
+                            {modelsError
+                              ? modelsError
+                              : (t.workspace?.llmCustomModelsEmpty ??
+                                'The provider returned no models. Type the model id manually.')}
+                          </AutocompleteEmpty>
+                        ) : null}
+                      </AutocompletePopup>
+                    </Autocomplete>
                   ) : (
                     /* Known providers — Combobox with auto-populated suggestions */
                     <Combobox
@@ -679,37 +708,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                   </Button>
                 </div>
               </div>
-              {/* The always-on half of the suggestions. Firefox draws no dropmarker for a
-                  native `input[list]` and only opens it on a second click or a typed
-                  prefix (bugs 1575444 and 1882075), so a loaded list would look like a
-                  plain text box. Both layers offer the same ids and keep distinct roles:
-                  the datalist filters while typing, this list is the one always on
-                  screen. */}
-              {isCustomProvider && availableModels.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-(--color-text-secondary)">
-                    {t.workspace?.llmCustomModelsDiscovered ?? 'Discovered models'} (
-                    {availableModels.length})
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {availableModels.map((model) => (
-                      <button
-                        key={model.id}
-                        type="button"
-                        // The visible text is the readable name, while the click writes the
-                        // id the provider expects. A name that differs from the id is
-                        // surfaced so the user can tell what will actually be saved.
-                        title={model.name !== model.id ? model.id : undefined}
-                        aria-pressed={llmConfig.model === model.id}
-                        onClick={() => setLlmConfig((prev) => ({ ...prev, model: model.id }))}
-                        className="rounded-md border border-(--color-border) px-2 py-0.5 text-left text-sm text-(--color-text-tertiary) transition-colors hover:text-(--color-text-secondary) aria-pressed:font-medium aria-pressed:text-(--color-text-secondary)"
-                      >
-                        {model.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* A single suggestion mechanism: one dropdown. A native `datalist` was
+                  invisible in Firefox, and an always-visible button block flooded the
+                  card once a provider answered with a dozen models. */}
               <FieldDescription>
                 {isCustomProvider ? (
                   /* Custom hints report real state in priority order: a failed probe,
