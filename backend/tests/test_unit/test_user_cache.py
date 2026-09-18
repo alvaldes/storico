@@ -89,6 +89,13 @@ def test_cache_survives_within_ttl_window() -> None:
     """A read inside the TTL window still returns the cached user."""
     user_cache._reset_user_cache()
     user = _fake_user("u5")
-    user_cache.set_cached_user("u5", user)
-    with patch.object(user_cache.time, "monotonic", return_value=10 * 29):  # < 30s
+    # The clock is frozen for the write *and* the read. Patching only the read
+    # made the assertion depend on the machine's uptime: the stored timestamp is
+    # whatever the real monotonic() returned, so on a freshly booted CI runner
+    # (uptime well under 260s) a read at t=290 looked more than one TTL old and
+    # the entry expired. Sibling tests read at 10**9 + 31, which is above any real
+    # uptime and therefore immune; this one was not.
+    with patch.object(user_cache.time, "monotonic", return_value=10**6):
+        user_cache.set_cached_user("u5", user)
+    with patch.object(user_cache.time, "monotonic", return_value=10**6 + 29):  # < 30s
         assert user_cache.get_cached_user("u5") is user
