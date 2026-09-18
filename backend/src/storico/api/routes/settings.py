@@ -18,6 +18,7 @@ from storico.api.schemas.settings import (
 )
 from storico.config.settings import Settings
 from storico.domain.entities import User
+from storico.domain.services.llm_config_readiness import normalize_optional
 from storico.infrastructure.database.repositories import (
     SQLAlchemyUserPreferencesRepository,
     SQLAlchemyUserRepository,
@@ -110,8 +111,14 @@ async def test_llm_connection(
 
     start = time.monotonic()
 
+    # This route takes the endpoint and the credential from the request body, so a blank one
+    # has to mean "absent" here too — otherwise a string of spaces is handed to an adapter,
+    # which is the disagreement the workspace row used to have (see ``normalize_optional``).
+    base_url = normalize_optional(body.base_url)
+    api_key = normalize_optional(body.api_key)
+
     if body.provider == "ollama":
-        base_url = body.base_url or Settings.load().ollama_host
+        base_url = base_url or Settings.load().ollama_host
         from storico.infrastructure.llm import OllamaAdapter
 
         adapter = OllamaAdapter(base_url=base_url)
@@ -140,12 +147,11 @@ async def test_llm_connection(
             )
 
     if body.provider == "gemini":
-        if not body.api_key:
+        if not api_key:
             return LLMTestResponse(
                 success=False,
                 message="Gemini API key is required. Set it in workspace settings.",
             )
-        api_key = body.api_key
         from storico.infrastructure.llm import GeminiAdapter
 
         adapter = GeminiAdapter(api_key=api_key)
@@ -174,15 +180,14 @@ async def test_llm_connection(
             )
 
     if body.provider == "openai":
-        if not body.api_key:
+        if not api_key:
             return LLMTestResponse(
                 success=False,
                 message="OpenAI API key is required. Set it in workspace settings.",
             )
-        api_key = body.api_key
         from storico.infrastructure.llm import OpenAIAdapter
 
-        adapter = OpenAIAdapter(api_key=api_key, base_url=body.base_url)
+        adapter = OpenAIAdapter(api_key=api_key, base_url=base_url)
         config = LLMConfig(
             model=body.model,
             temperature=0.1,
@@ -208,15 +213,14 @@ async def test_llm_connection(
             )
 
     if body.provider == "anthropic":
-        if not body.api_key:
+        if not api_key:
             return LLMTestResponse(
                 success=False,
                 message="Anthropic API key is required. Set it in workspace settings.",
             )
-        api_key = body.api_key
         from storico.infrastructure.llm import AnthropicAdapter
 
-        adapter = AnthropicAdapter(api_key=api_key, base_url=body.base_url)
+        adapter = AnthropicAdapter(api_key=api_key, base_url=base_url)
         config = LLMConfig(
             model=body.model,
             temperature=0.1,
