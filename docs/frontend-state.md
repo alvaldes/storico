@@ -115,11 +115,11 @@ updateTask(taskId, updates)
 
 ### settingsStore
 
-Configuración del workspace (LLM, exportación).
+Preferencias del usuario. Una sola: el formato de exportación por defecto.
 
 ```typescript
 interface SettingsState {
-  settings: AppSettings;         // { llm: LLMConfig, export: ExportConfig }
+  settings: AppSettings;         // { export: ExportConfig }
   apiLoaded: boolean;
   apiSaving: boolean;
   lastSaveResult: SaveResult;   // 'idle' | 'success' | 'error'
@@ -127,14 +127,19 @@ interface SettingsState {
 
 // Acciones
 loadFromApi()                   // GET /api/v1/users/me/settings
-syncToApi(toastLabels?)         // PUT /api/v1/users/me/settings
-setLLMProvider(provider)
-setOllamaConfig(config)
-setOpenAIConfig(config)
-setAnthropicConfig(config)
+syncToApi(toastLabels)          // PUT /api/v1/users/me/settings
 setExportFormat(format)
 resetSettings()
 ```
+
+**Sin configuración de LLM por usuario**: este store ya no lleva un bloque `llm` —ni por lo
+tanto ninguna API key— porque nada lo leía: la configuración de LLM es por **workspace**
+(`workspace_llm_configs`, vía `LLMConfigEditor`). El backend removió el campo de su schema y
+de lo guardado (revisión `0022`), y rechaza con `422` un `PUT` que traiga un bloque `llm`.
+
+`syncToApi` recibe las etiquetas del toast **del llamador**: el store no tiene copy propia (sus
+defaults eran strings en inglés sobre una configuración de LLM que ya no existe).
+`AccountPage` es quien lo llama, al cambiar el formato de exportación.
 
 **Persistencia parcial**: Solo `settings.export` en localStorage (key: `storico-settings-v2`).
 **No persiste**: API keys en localStorage.

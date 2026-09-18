@@ -43,7 +43,6 @@ __all__ = [
     "PaginatedResponse",
     "PaginationParams",
     "ExtractionResponse",
-    "ExtractionResultResponse",
     "CreateProjectRequest",
     "UpdateProjectRequest",
     "ProjectResponse",

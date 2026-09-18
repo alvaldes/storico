@@ -10,6 +10,12 @@ stores the key would fail validation on read.
 This revision removes exactly that key from every stored document and leaves the rest
 of it (today, ``export``) alone.
 
+**Run it after the release that refuses the key is deployed.** ``PUT /users/me/settings``
+answers ``422`` for an ``llm`` block only once the new schema is live. Migrating first opens a
+window in which the previous release — which still accepts the block — can store it again,
+and this revision will not run a second time to clean that up. The new read tolerates such a
+row instead of failing, so the residue would be invisible rather than loud.
+
 Revision ID: 0022
 Revises: 0021
 Create Date: 2026-06-30
@@ -27,8 +33,10 @@ down_revision: str | None = "0021"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-# The key this revision deletes. It is a name, not a schema object: the point is that the
-# document stops carrying it.
+# The key this revision deletes, spelled here rather than imported from
+# ``api.schemas.settings``: a migration has to keep working against the schema as it was when
+# the revision was written, after that module has moved on. The duplication is the price of
+# that, which is why this name lives in two places instead of one shared constant.
 _REMOVED_KEY = "llm"
 
 

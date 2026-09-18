@@ -67,15 +67,23 @@ async def get_settings(
             preferences=AppSettings(),
             updated_at=current_user.created_at,
         )
-    stored = {
-        key: value
-        for key, value in existing.preferences.items()
-        if key not in REMOVED_PREFERENCE_KEYS
-    }
     return UserPreferencesResponse(
-        preferences=AppSettings(**stored),
+        preferences=AppSettings(**_for_schema(existing.preferences)),
         updated_at=existing.updated_at,
     )
+
+
+def _for_schema(stored: dict) -> dict:
+    """A stored document minus the keys the schema no longer declares.
+
+    Applied on both directions of the contract, not only where it is needed today. The read
+    needs it (a row written before the removal must not 500 the endpoint); the write response
+    does not, because ``PUT`` validates the body against ``AppSettings`` and a removed key is
+    refused there. Going through the same helper anyway is what keeps the invariant "anything
+    this endpoint hands to ``AppSettings`` from storage has the removed keys dropped" true by
+    construction, rather than by one call site remembering it.
+    """
+    return {key: value for key, value in stored.items() if key not in REMOVED_PREFERENCE_KEYS}
 
 
 @settings_router.put(
@@ -94,7 +102,7 @@ async def update_settings(
         body.preferences.model_dump(),
     )
     return UserPreferencesResponse(
-        preferences=AppSettings(**prefs.preferences),
+        preferences=AppSettings(**_for_schema(prefs.preferences)),
         updated_at=prefs.updated_at,
     )
 
