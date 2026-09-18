@@ -1,8 +1,8 @@
 # ODD Feature: custom-model-list-visibility
 
-> **Status**: done — 3 commits on `fix/custom-model-list-visibility`
-> (`6938dd9`, `15ac9ab`, + the evidence commit that carries this line); not
-> merged, not pushed
+> **Status**: done — merged into `main` by fast-forward as five commits
+> (`6938dd9`, `15ac9ab`, `f1b0531`, `65ddc4a`, + the evidence commit that carries
+> this line); the feature branch was deleted. Not pushed.
 > **Created**: 2026-09-17
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/custom-model-list-visibility`
@@ -48,13 +48,14 @@ box. The models loaded; nothing told them so.
 | D2 | Field contract | The field stays free text, so D3 of `custom-provider-model-discovery` holds: never selection-only. An id absent from the list must remain typeable. |
 | D3 | What a click means | Clicking an entry writes the model **id** into the field; the entry's visible text is the human-readable **name**. A differing id is surfaced on the entry. |
 | D4 | Suggestion layers | The native `<datalist>` stays: it is the type-time filter, while the visible list is the always-on surface. Two roles, one list. |
+| D5 | The provider's catalogue | The list stays **raw**. Asked at review time whether to filter or group the non-chat entries, the user chose to show all 12. The provider owns its catalogue, and any id heuristic is a guess about what can chat that can also hide a model the workspace wants. A visible filter can be added later, once the noise is a real complaint. |
 
 ## Non-goals
 
 - No change to the probe, the endpoint, or the backend.
 - No change to the known-provider `Combobox` path.
 - No provider-specific filtering of the returned list (it is whatever the
-  provider serves, `rerank`/`whisper`/`flux-2-klein` included).
+  provider serves, `rerank`/`whisper`/`flux-2-klein` included — see D5).
 - No persisted-list cache, no new state.
 
 ## Established facts (verified in code)
@@ -114,6 +115,28 @@ box. The models loaded; nothing told them so.
   never as a done task.
 - **Depends on**: T-001
 
+### T-003 — Formatter cleanup of the pre-existing `title` prop
+
+- **Status**: done (commit `65ddc4a`)
+- **Files to modify**: `frontend/src/components/react/LLMConfigEditor.tsx`
+- **What**: collapse the refresh button's multi-line `title` prop, which was
+  already not `prettier`-clean at `HEAD`, so the touched file is formatter-clean.
+  Requested by the user as part of "fix everything" before the merge.
+- **Acceptance**: `npx prettier@3.9.8 --check` exits 0 on the file, and the only
+  change is the parenthesization and line breaks of that one prop.
+- **Allowed edit surfaces**: `frontend/src/components/react/LLMConfigEditor.tsx`
+
+### T-004 — Final pre-merge gate
+
+- **Status**: done
+- **What**: re-run the gate on the candidate that is about to fast-forward into
+  `main`, because a source commit landed after T-002.
+- **Commands**: T-002's list plus
+  `npx prettier@3.9.8 --check src/components/react/LLMConfigEditor.tsx src/i18n/en.json src/i18n/es.json`.
+- **Acceptance**: every command passes and the test count is unchanged from
+  T-002, since the added commit is formatting-only.
+- **Depends on**: T-003
+
 ## Risks
 
 | Risk | Impact | Mitigation |
@@ -132,6 +155,8 @@ its command has actually run)_
 |------|--------|---------|
 | T-001 | `15ac9ab` | Custom mode now renders the discovered models as an always-visible list of `type="button"` entries below the field row; the entry text is the model `name`, the click writes the `id`, and the entry matching the saved model carries `aria-pressed="true"`. The `<Input>` and its `<datalist>` remain. New key `llmCustomModelsDiscovered` in both locales. 3 new tests; `git diff main...HEAD -- LLMConfigEditor.tsx` is a pure insertion (31 added, 0 removed). |
 | T-002 | — | Independent verification of the candidate on a clean tree. `tsc --noEmit` exit 0, no diagnostics. `vitest run` exit 0, **24 files / 253 tests passed** — matching the recorded pre-change baseline of 24/250 plus exactly the 3 added cases, with no previously-passing test regressed. `pnpm run build` exit 0, `[build] Complete!`. No backend file is in the diff. |
+| T-003 | `65ddc4a` | The refresh button's `title` prop is now one line. `prettier --check` exits 0 on the file where it previously exited 1. One hunk, 1 insertion and 4 deletions. |
+| T-004 | — | Re-verification of the 4-commit candidate on a clean tree. `prettier --check` exit 0 on all three touched frontend files. `tsc --noEmit` exit 0. `vitest run` exit 0, **24 files / 253 tests** — count unchanged, as a formatting-only commit requires. `pnpm run build` exit 0 with no new warning. Removal of the parentheses was proven value-equivalent, not assumed: `??` is associative, and the verifier tabulated all 8 nullish/non-nullish combinations of the three operands with identical results. |
 
 ## Verification findings
 
@@ -155,19 +180,14 @@ The gate is green, with two things recorded rather than smoothed over:
 
 Fix verified end to end: the models the probe returns are on screen with no
 interaction, and the field still accepts a typed id. RDD is off in this clone,
-so no native review ran; the candidate is the `15ac9ab` work unit.
+so no native review ran; the candidate is the `15ac9ab` work unit plus the
+`65ddc4a` formatter cleanup. Fast-forwarded into `main` at the user's explicit
+request, and the feature branch deleted.
 
 ## Follow-ups (not part of this fix)
 
-- The list offers whatever the provider serves, unfiltered by design. The
-  reporting provider (`nan`) answers with 12 entries that include embedding,
-  reranking and media models (`qwen3-embedding`, `rerank`, `whisper`,
-  `kokoro`, `flux-2-klein`), so a capability filter or a chat-model-first
-  ordering is a plausible next decision — not taken here, because guessing which
-  ids a provider can chat with is exactly the kind of list the provider owns.
-- `frontend/src/components/react/LLMConfigEditor.tsx:676` is not
-  `prettier`-clean at `HEAD`: the multiline `title={` prop collapses to one line
-  under the repo's printWidth 100. Measured with
-  `npx prettier@3.9.8 --check` against the `HEAD` blob, so it predates this
-  change. Left untouched to keep this work unit reviewable; it is a one-line
-  cleanup for whoever wants a green formatter on that file.
+- D5 leaves the list raw on purpose. If the noise is ever reported as a problem,
+  the fix is a visible, explicit filter — never a silent id heuristic.
+- The verifier's stated coverage limit: the list is only exercised in `jsdom`.
+  No one has watched the real page in Firefox, so the browser-level claim rests
+  on the Mozilla bug reports cited above, not on an observed render.
