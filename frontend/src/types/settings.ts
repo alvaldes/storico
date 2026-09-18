@@ -1,4 +1,13 @@
-export type LLMProvider = 'ollama' | 'openai' | 'anthropic' | 'gemini';
+import type { KnownProvider } from '@/lib/llm-providers';
+
+/**
+ * The four first-class providers, under the name this settings surface uses.
+ *
+ * An alias, not a retyped union: the frontend already keeps `KNOWN_PROVIDERS` in step
+ * with the backend by hand, and a second hand-kept copy of the same list is one more
+ * place to forget.
+ */
+export type LLMProvider = KnownProvider;
 
 export interface OllamaConfig {
   baseUrl: string;

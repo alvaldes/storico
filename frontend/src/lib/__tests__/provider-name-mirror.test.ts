@@ -47,9 +47,12 @@ describe('hand-kept provider vocabulary mirrors', () => {
     const declared = extract(/^KNOWN_PROVIDERS: tuple\[str, \.\.\.\] = \(([^)]*)\)$/m);
 
     expect(declared, 'the backend declares KNOWN_PROVIDERS').not.toBeUndefined();
-    expect(declared?.match(/"([^"]*)"/g)?.map((quoted) => quoted.slice(1, -1))).toEqual([
-      ...KNOWN_PROVIDERS,
-    ]);
+    // Compared as a set of names, not as a sequence: the backend only tests
+    // membership (``name.lower() in KNOWN_PROVIDERS``), and each side renders its own
+    // order, so a backend-only reorder is not a drift this guard should cry about.
+    expect(declared?.match(/"([^"]*)"/g)?.map((quoted) => quoted.slice(1, -1)).sort()).toEqual(
+      [...KNOWN_PROVIDERS].sort(),
+    );
   });
 
   it("matches the backend's reserved select control value", () => {

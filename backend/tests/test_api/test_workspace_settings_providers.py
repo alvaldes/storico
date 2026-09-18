@@ -502,8 +502,10 @@ class TestCustomProviderRegistry:
 
         The reservation answers "what may a name be registered as", which is not a
         question about a row that does not exist. The repository's contract reads
-        ``404`` as "that row does not exist" and ``403`` as "it exists but is not
-        reachable", so this pins the side of that split the rename path is on.
+        ``404`` as "that row does not exist or is not reachable", and ``403`` as
+        "authenticated but not a member or an admin" — an existing row in another
+        workspace reads as absent on purpose, so that it cannot be probed for
+        existence. This pins which side of that split the rename path is on.
         """
         from uuid import uuid4
 
