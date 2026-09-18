@@ -669,7 +669,7 @@
       "welcome": "Welcome to Storico's documentation. This section will be expanded with detailed guides, tutorials, and reference materials.",
       "getting_started_title": "Getting started",
       "step_1": "Run Storico locally \u2014 clone the repository and follow the setup guide in the README.",
-      "step_2": "Configure your LLM \u2014 choose between Ollama (local), OpenAI, or Anthropic. Ollama works out of the box with no API key.",
+      "step_2": "Configure your LLM \u2014 choose between Ollama (local), OpenAI, Anthropic, or Gemini. Ollama needs no API key, but every provider still needs a model.",
       "step_3": "Create a project \u2014 organize your user stories into projects.",
       "step_4": "Paste a user story \u2014 use the standard \u201cAs a\u2026 I want\u2026 so that\u2026\u201d format.",
       "step_5": "Extract tasks \u2014 let AI break down your story into structured tasks.",

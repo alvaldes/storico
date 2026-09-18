@@ -669,7 +669,7 @@
       "welcome": "Bienvenido a la documentación de Storico. Esta sección se ampliará con guías detalladas, tutoriales y materiales de referencia.",
       "getting_started_title": "Primeros pasos",
       "step_1": "Ejecuta Storico localmente — clona el repositorio y sigue la guía de instalación en el README.",
-      "step_2": "Configura tu LLM — elige entre Ollama (local), OpenAI o Anthropic. Ollama funciona de fábrica sin API key.",
+      "step_2": "Configura tu LLM — elige entre Ollama (local), OpenAI, Anthropic o Gemini. Ollama no necesita API key, pero todos los proveedores necesitan un modelo.",
       "step_3": "Crea un proyecto — organiza tus historias de usuario en proyectos.",
       "step_4": "Pega una historia de usuario — usa el formato estándar \"As a… I want… so that…\".",
       "step_5": "Extrae tareas — deja que la IA descomponga tu historia en tareas estructuradas.",
