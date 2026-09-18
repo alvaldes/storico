@@ -1,9 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, AlertCircle, X, Copy, Check } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, Copy, RotateCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { type Locale } from '@/i18n/utils';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import { useTranslations, type Locale } from '@/i18n/utils';
 
 export interface BackendError {
   /** Friendly/user-facing message (can be translated) */
@@ -28,9 +33,95 @@ export interface BackendError {
 }
 
 /**
- * Placeholder ErrorDisplay component.
- * Keep this file in the codebase for future implementation.
- * Currently renders nothing to avoid breaking imports.
+ * The collapsible raw response, with its own copy affordance.
+ *
+ * Its own component so the copy state lives with the thing it reports on, and so the card
+ * above stays a short render instead of one block of nested conditionals.
+ */
+function RawDetail({ detail, locale }: { detail: string; locale: Locale }) {
+  const t = useTranslations(locale);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      // Straight to the browser API: a function whose whole body is this one call would be
+      // a seam with nothing behind it.
+      await navigator.clipboard.writeText(detail);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // The clipboard API is not available in every context; the detail stays readable.
+    }
+  };
+
+  return (
+    <Collapsible className="group/collapsible space-y-2 border-t border-destructive/20 pt-3">
+      <CollapsibleTrigger
+        // A stable name and `aria-expanded` from the primitive, rather than a label that
+        // swaps with the state: a disclosure button's name describes what it discloses, and
+        // two labels in the DOM (one hidden by CSS, which jsdom cannot see) would be read as
+        // one concatenated name wherever the stylesheet is not applied.
+        aria-label={t.errorDisplay.raw_response}
+        render={
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start px-0 text-xs text-destructive/80 hover:text-destructive"
+          />
+        }
+      >
+        <ChevronDown className="mr-1 h-3.5 w-3.5 transition-transform group-data-open/collapsible:rotate-180" />
+        <span aria-hidden="true" className="group-data-open/collapsible:hidden">
+          {t.errorDisplay.show_details}
+        </span>
+        <span aria-hidden="true" className="hidden group-data-open/collapsible:inline">
+          {t.errorDisplay.hide_details}
+        </span>
+      </CollapsibleTrigger>
+
+      <CollapsibleContent>
+        <div
+          role="region"
+          aria-label={t.errorDisplay.raw_response}
+          className="space-y-2 rounded bg-background/50 p-3"
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              {t.errorDisplay.raw_response}
+            </p>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleCopy}
+              aria-label={copied ? t.errorDisplay.copied : t.errorDisplay.copy}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-emerald-500" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </div>
+          <pre className="max-h-60 overflow-auto font-mono text-[10px] break-all whitespace-pre-wrap text-foreground/90">
+            {detail}
+          </pre>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/**
+ * The card a failed operation shows: what went wrong, what to do about it, and the raw
+ * response behind it.
+ *
+ * It was parked as a placeholder that rendered `null` (`353224f`), which left every call
+ * site blank — including the Kanban board, where the error state replaces the whole page.
+ * The render below is that prior implementation (`dad9039`) plus the retry action the
+ * interface already promised and the call sites already pass: it did not render one.
+ *
+ * The message itself belongs to the caller: this component only renders its own chrome.
  */
 export function ErrorDisplay({
   friendlyMessage,
@@ -42,7 +133,58 @@ export function ErrorDisplay({
   onDismiss,
   locale = 'en',
 }: BackendError) {
-  return null;
+  const t = useTranslations(locale);
+
+  const formattedDetail = formatRawDetail(rawDetail);
+  // A detail worth showing: `undefined`/`null` have nothing, and the placeholder string is
+  // what `formatRawDetail` returns for them, so the toggle never opens onto nothing.
+  const hasDetail =
+    rawDetail !== undefined && rawDetail !== null && formattedDetail !== '(no detail provided)';
+
+  return (
+    <div
+      // Announced: the banner appears in response to a failure, so a screen reader has to
+      // hear it rather than let it materialize silently in the middle of the page.
+      role="alert"
+      data-slot="error-display"
+      className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4"
+    >
+      <div className="flex items-start gap-3">
+        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-destructive">{friendlyMessage}</p>
+          {(status || errorCode) && (
+            <p className="mt-1 font-mono text-xs text-destructive/70">
+              {status ? `HTTP ${status}` : null}
+              {status && errorCode ? ' • ' : null}
+              {errorCode ?? null}
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {onRetry && (
+            <Button variant="outline" size="sm" onClick={onRetry}>
+              <RotateCw className="mr-1 h-3.5 w-3.5" />
+              {retryLabel ?? t.common.retry}
+            </Button>
+          )}
+          {onDismiss && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onDismiss}
+              aria-label={t.errorDisplay.dismiss}
+              className="text-destructive/60 hover:text-destructive"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {hasDetail && <RawDetail detail={formattedDetail} locale={locale} />}
+    </div>
+  );
 }
 
 /**
@@ -66,13 +208,6 @@ function formatRawDetail(detail: unknown): string {
     }
   }
   return String(detail);
-}
-
-/**
- * Copy text to clipboard.
- */
-function copyToClipboard(text: string): Promise<void> {
-  return navigator.clipboard.writeText(text);
 }
 
 /**

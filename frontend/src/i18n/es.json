@@ -46,7 +46,8 @@
     "hide_details": "Ocultar detalles del error del backend",
     "raw_response": "Respuesta cruda del backend",
     "copy": "Copiar detalles del error",
-    "copied": "¡Copiado!"
+    "copied": "¡Copiado!",
+    "dismiss": "Descartar"
   },
   "landing": {
     "hero_title": "Storico",

@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import type { Task, TaskStatus } from '@/types/task';
 import { getAllowedTaskTransitions, TASK_STATUSES } from '@/types/task';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
-import { ApiRequestError } from '@/lib/api';
 
 const COLUMNS = TASK_STATUSES;
 type ColumnId = TaskStatus;
@@ -28,7 +27,17 @@ interface InvalidDropToast {
 export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   const t = useTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
-  const { workspaceTasks, loading, fetchTasksForWorkspace, updateTaskStatus } = useTaskStore();
+  const {
+    workspaceTasks,
+    loading,
+    // The failure the store actually records. This page used to keep its own `loadError`
+    // state set from a `.catch()` on `fetchTasksForWorkspace` — a promise that never rejects
+    // (the store swallows the error and records it here), so the error branch below was
+    // unreachable and a failed load showed the empty board with no explanation.
+    error: loadError,
+    fetchTasksForWorkspace,
+    updateTaskStatus,
+  } = useTaskStore();
 
   const [initialLoad, setInitialLoad] = useState(true);
   const [localTasks, setLocalTasks] = useState<Record<ColumnId, Task[]>>({
@@ -43,31 +52,15 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     message: '',
     allowed: [],
   });
-  const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
 
-  // Fetch tasks on mount
+  // Fetch tasks on mount.
+  //
+  // `fetchTasksForWorkspace` never rejects: the store swallows the failure and records it
+  // in `error`, which is the channel rendered above. The `.catch()` that used to live here
+  // could not run, which is why the board had an error branch nothing could reach.
   useEffect(() => {
     if (workspaceId) {
-      fetchTasksForWorkspace(workspaceId)
-        .then(() => {
-          setInitialLoad(false);
-          setLoadError(null);
-        })
-        .catch((err) => {
-          setInitialLoad(false);
-          if (err instanceof ApiRequestError) {
-            setLoadError(err);
-          } else {
-            setLoadError(
-              new ApiRequestError(
-                0,
-                'Unknown Error',
-                err instanceof Error ? err.message : 'Unknown error',
-                err,
-              ),
-            );
-          }
-        });
+      fetchTasksForWorkspace(workspaceId).then(() => setInitialLoad(false));
     } else {
       setInitialLoad(false);
     }
@@ -213,13 +206,12 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   if (loadError) {
     return (
       <ErrorDisplay
-        friendlyMessage={loadError.message}
-        rawDetail={loadError.rawError.rawBody}
-        status={loadError.status}
-        errorCode={loadError.errorCode}
+        // The store records a message rather than the `ApiRequestError`, so there is no
+        // status, code or raw body to disclose on this page.
+        friendlyMessage={loadError}
         retryLabel={t.common.retry}
+        // A refetch is the retry: it clears the recorded error before it starts.
         onRetry={() => workspaceId && fetchTasksForWorkspace(workspaceId)}
-        onDismiss={() => setLoadError(null)}
         locale={locale}
       />
     );

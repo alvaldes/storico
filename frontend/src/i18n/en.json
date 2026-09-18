@@ -46,7 +46,8 @@
     "hide_details": "Hide backend error details",
     "raw_response": "Raw backend response",
     "copy": "Copy error details",
-    "copied": "Copied!"
+    "copied": "Copied!",
+    "dismiss": "Dismiss"
   },
   "landing": {
     "hero_title": "Storico",

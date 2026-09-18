@@ -5,8 +5,11 @@ import { KanbanBoard } from '@/components/react/KanbanBoard';
 import * as api from '@/lib/tasks-api';
 import { useTaskStore } from '@/stores/taskStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useTranslations } from '@/i18n/utils';
 import type { Task } from '@/types/task';
 import type { Workspace } from '@/types/workspace';
+
+const t = useTranslations('en');
 
 // Mock the api module — the store consumes these mocks.
 vi.mock('@/lib/tasks-api', () => ({
@@ -110,5 +113,33 @@ describe('KanbanBoard', () => {
     // The locked card has no drag handle, so it cannot be re-dragged.
     const handles = document.querySelectorAll('[data-rfd-drag-handle-draggable-id]');
     expect(handles).toHaveLength(mockTasks.length - 1);
+  });
+
+  it('shows an announced error and a retry when the board cannot load', async () => {
+    const user = userEvent.setup();
+    // Mimic the real store action, which never rejects: it records the failure in `error`.
+    // Driving this path through a rejected promise is what the old board did, and it is why
+    // the branch was unreachable — nothing could ever reject.
+    const fetchTasksForWorkspace = vi.fn().mockImplementation(async () => {
+      useTaskStore.setState({ error: 'the board is unavailable', loading: false });
+    });
+    useTaskStore.setState({ fetchTasksForWorkspace, error: null });
+
+    render(<KanbanBoard locale="en" />);
+
+    // This state replaces the whole page, so before the component rendered something a
+    // failed load left the board empty with no explanation at all.
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('the board is unavailable');
+    expect(screen.queryByText('Backlog')).not.toBeInTheDocument();
+
+    // And the board can be brought back without leaving the page.
+    fetchTasksForWorkspace.mockImplementation(async () => {
+      useTaskStore.setState({ error: null, loading: false });
+    });
+    await user.click(screen.getByRole('button', { name: t.common.retry }));
+
+    await waitFor(() => expect(fetchTasksForWorkspace).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText('Backlog')).toBeInTheDocument());
   });
 });
