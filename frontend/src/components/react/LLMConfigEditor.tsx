@@ -145,7 +145,10 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
           model: llm.model ?? '',
           temperature: llm.temperature ?? 0.1,
           maxTokens: llm.maxTokens ?? 2048,
-          baseUrl: llm.baseUrl ?? 'http://localhost:11434',
+          // Never default to the Ollama host: it is Ollama's endpoint, and every other
+          // provider has its own. The field's placeholder names the provider's default,
+          // and an empty value is what tells the backend to use it.
+          baseUrl: llm.baseUrl ?? '',
           apiKey: llm.apiKey ?? '',
         });
       }

@@ -473,13 +473,40 @@ describe('LLMConfigEditor model field', () => {
     // refresh action instead of chasing every keystroke.
     expect(fetchAvailableModels).toHaveBeenCalledTimes(1);
   });
+
+  it('never hands a cloud provider the Ollama endpoint', async () => {
+    vi.mocked(getLLMConfig).mockResolvedValue({
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      temperature: 0.1,
+      maxTokens: 2048,
+      // The API answers a cloud provider with no configured endpoint as null, because
+      // the Ollama host is Ollama's default and nobody else's.
+      baseUrl: null,
+      apiKey: 'sk-test',
+    });
+
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    await screen.findByLabelText('Model');
+
+    // Filling the field with the Ollama host would point OpenAI's probe and its
+    // extraction at a local Ollama instead of the provider's own default endpoint.
+    await waitFor(() =>
+      expect(fetchAvailableModels).toHaveBeenCalledWith(WORKSPACE_ID, {
+        provider: 'openai',
+        baseUrl: '',
+        apiKey: 'sk-test',
+      }),
+    );
+    expect(screen.getByLabelText('Base URL')).toHaveValue('');
+  });
 });
 
 /**
- * The custom-provider path is free text, so it cannot inherit the known providers'
- * auto-probe contract: there the provider changes once per selection, here it changes
- * on every keystroke and each probe reaches the user's external provider. These tests
- * pin the explicit contract instead — a custom list is loaded only on demand.
+ * The custom-provider path keeps its list on demand for the free-text fields — the
+ * Base URL is typed there, and a probe per keystroke would reach the user's external
+ * provider with a partial URL. The provider itself is chosen from the registry list, so
+ * a saved custom endpoint with a Base URL is probed on load like any other provider.
  */
 describe('LLMConfigEditor custom provider', () => {
   const CUSTOM_MODELS = [

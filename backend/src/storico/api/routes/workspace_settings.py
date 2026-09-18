@@ -82,6 +82,14 @@ async def resolve_llm_config(
     If no workspace-specific config exists, returns the global defaults
     from ``Settings``. Otherwise merges workspace overrides on top of
     sensible defaults (workspace ``None`` fields fall back to defaults).
+
+    The Ollama host is the default endpoint for Ollama alone. It is *not* a
+    universal fallback, because this response is what the settings form loads into
+    its fields and posts back as the pending selection: handing a cloud provider
+    the Ollama host would point its model probe and its extraction at a local
+    Ollama. A cloud provider with no configured ``base_url`` therefore resolves to
+    ``None``, which every consumer already reads as "use this provider's own
+    default".
     """
     ws_config = await config_repo.get(workspace_id)
     if ws_config is None:
@@ -97,7 +105,8 @@ async def resolve_llm_config(
         model=ws_config.model,
         temperature=ws_config.temperature if ws_config.temperature is not None else 0.1,
         max_tokens=ws_config.max_tokens or 2048,
-        base_url=ws_config.base_url or settings.ollama_host,
+        base_url=ws_config.base_url
+        or (settings.ollama_host if ws_config.provider == "ollama" else None),
         api_key=ws_config.api_key,
     )
 
