@@ -37,7 +37,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
-import { Field, FieldLabel, FieldDescription } from '@/components/ui/field';
+import { Field, FieldLabel, FieldDescription, FieldError } from '@/components/ui/field';
 import {
   Select,
   SelectContent,
@@ -49,6 +49,12 @@ import { ProviderIcon } from '@/components/ui/provider-icon';
 import { FewShotConfigEditor } from '@/components/react/FewShotConfigEditor';
 import { CustomProviderDialog } from '@/components/react/CustomProviderDialog';
 import { listCustomProviders } from '@/lib/custom-providers-api';
+import {
+  READINESS_FIELD_TO_FORM_KEY,
+  missingLLMConfigFields,
+} from '@/lib/llm-config-readiness';
+import { llmConfigDraftSchema } from '@/schemas/workspace';
+import type { LLMConfigIssueCode } from '@/schemas/workspace';
 import { ADD_CUSTOM_PROVIDER_VALUE, KNOWN_PROVIDERS, isKnownProvider } from '@/lib/llm-providers';
 import type { CustomProvider, WorkspaceLLMConfig, WorkspacePrompt } from '@/types/workspace';
 import en from '@/i18n/en.json';
@@ -57,6 +63,14 @@ import es from '@/i18n/es.json';
 interface LLMConfigEditorProps {
   locale: 'en' | 'es';
   workspaceId: string;
+}
+
+/** One draft-validation failure, in the two facts the form needs to render it. */
+interface DraftIssue {
+  /** The form field it belongs to, as the schema reports it. */
+  field: string;
+  /** The stable message code, translated where it is rendered. */
+  code: LLMConfigIssueCode;
 }
 
 export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
@@ -89,6 +103,74 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   // Derived, never a stored flag: whether the provider is custom follows from the name
   // itself, so a second source of truth cannot fall out of step with the saved config.
   const isCustomProvider = !isKnownProvider(llmConfig.provider);
+
+  /* ── Draft validation ── */
+
+  /**
+   * The draft exactly as `llmConfigDraftSchema` reads it.
+   *
+   * The form holds what the API would store as `null` in an empty string, and always
+   * holds a number for the two numeric controls, so this is the one place that maps
+   * form state to the validated shape. Both the save path and the red messages parse
+   * this same object, which is why they can never disagree.
+   */
+  const draftToValidate = {
+    provider: llmConfig.provider,
+    model: llmConfig.model ?? '',
+    temperature: llmConfig.temperature ?? 0.1,
+    maxTokens: llmConfig.maxTokens ?? 2048,
+    baseUrl: llmConfig.baseUrl ?? '',
+    apiKey: llmConfig.apiKey ?? '',
+  };
+
+  // Recomputed on every render, never stored: an error disappears the moment the value
+  // that caused it is fixed, instead of when some handler remembers to clear it.
+  const draftIssues: DraftIssue[] = (() => {
+    const parsed = llmConfigDraftSchema.safeParse(draftToValidate);
+    if (parsed.success) return [];
+    return parsed.error.issues.map((issue) => ({
+      field: String(issue.path[0] ?? ''),
+      code: issue.message as LLMConfigIssueCode,
+    }));
+  })();
+
+  // Before the first save attempt the form explains itself with the summary below
+  // rather than painting every empty field of a fresh workspace red.
+  const [llmSaveAttempted, setLlmSaveAttempted] = useState(false);
+
+  /**
+   * What this workspace cannot extract without, read from the values on screen.
+   *
+   * Derived, so it describes the form as it is right now rather than as the last save
+   * left it — which is what makes the summary trustworthy before anything is attempted.
+   */
+  const missingFields = missingLLMConfigFields(llmConfig);
+
+  // Labels the summary points with. Reused from the fields already on screen so the
+  // summary and the input it names cannot disagree.
+  const fieldLabels: Record<string, string> = {
+    model: t.settings?.llm_ollama_model ?? 'Model',
+    apiKey: t.settings?.llm_openai_api_key ?? 'API Key',
+    baseUrl: t.settings?.llm_base_url ?? 'Base URL',
+  };
+  const labelFor = (field: string) => fieldLabels[field] ?? field;
+
+  // `zod`'s own prose is not UI copy — it would arrive in English inside a Spanish
+  // page — so the schema carries these codes and the translation happens here.
+  const issueCopy: Record<LLMConfigIssueCode, string> = {
+    required: t.workspace?.llmErrorRequired ?? 'This field is required.',
+    too_long: t.workspace?.llmErrorTooLong ?? 'This value is too long.',
+    invalid_url:
+      t.workspace?.llmErrorInvalidUrl ?? 'Enter a full URL, for example https://api.example.com/v1',
+    out_of_range: t.workspace?.llmErrorOutOfRange ?? 'This value is out of the allowed range.',
+  };
+
+  /** The red message for one field, or nothing when that field is fine. */
+  const fieldErrorFor = (field: string) => {
+    if (!llmSaveAttempted) return null;
+    const issue = draftIssues.find((candidate) => candidate.field === field);
+    return issue ? <FieldError>{issueCopy[issue.code]}</FieldError> : null;
+  };
 
   /* ── Prompt Config State ── */
   const [prompts, setPrompts] = useState<WorkspacePrompt>({
@@ -323,16 +405,39 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
 
   /* ── LLM Save Handler ── */
   const handleLLMSave = async () => {
+    const parsed = llmConfigDraftSchema.safeParse(draftToValidate);
+
+    if (!parsed.success) {
+      // Nothing is persisted. An incomplete configuration is exactly what leaves the
+      // workspace unable to extract, so saving it would only make that state durable.
+      setLlmSaveAttempted(true);
+      setLlmSaveResult('error');
+      // Name what still has to be defined, preferring the missing fields: a value out
+      // of range is already pointed at under its own input.
+      const missing = draftIssues.filter((issue) => issue.code === 'required');
+      const named = Array.from(
+        new Set((missing.length > 0 ? missing : draftIssues).map((issue) => labelFor(issue.field))),
+      );
+      toast.error(t.workspace?.llmValidationBlocked ?? 'The LLM configuration is not complete', {
+        description: (
+          t.workspace?.llmValidationBlockedDesc ??
+          'Extraction stays disabled until you complete these fields: {fields}'
+        ).replace('{fields}', named.join(', ')),
+      });
+      setTimeout(() => setLlmSaveResult('idle'), 3000);
+      return;
+    }
+
     setLlmSaving(true);
     setLlmSaveResult('idle');
     try {
       await upsertLLMConfig(workspaceId, {
-        provider: llmConfig.provider,
-        model: llmConfig.model || undefined,
-        temperature: llmConfig.temperature ?? undefined,
-        maxTokens: llmConfig.maxTokens ?? undefined,
-        baseUrl: llmConfig.baseUrl || undefined,
-        apiKey: llmConfig.apiKey || undefined,
+        provider: parsed.data.provider,
+        model: parsed.data.model || undefined,
+        temperature: parsed.data.temperature,
+        maxTokens: parsed.data.maxTokens,
+        baseUrl: parsed.data.baseUrl || undefined,
+        apiKey: parsed.data.apiKey || undefined,
       });
       setLlmSaveResult('success');
       toast.success(t.settings?.llm_saved ?? 'LLM configuration saved');
@@ -474,6 +579,33 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
+            {/* The workspace's readiness, stated before anything is attempted. Shown
+                while the values on screen cannot extract — which is what makes a fresh
+                workspace explain itself here instead of only after a refused save. */}
+            {missingFields.length > 0 && (
+              <div
+                role="alert"
+                className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/30"
+              >
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                    {t.workspace?.llmMissingSummaryTitle ??
+                      'This workspace cannot extract tasks yet'}
+                  </p>
+                  <p className="text-sm text-red-700 dark:text-red-300">
+                    {t.workspace?.llmMissingSummaryDesc ??
+                      'Complete these fields to enable extraction:'}
+                  </p>
+                  <ul className="list-disc pl-5 text-sm text-red-700 dark:text-red-300">
+                    {missingFields.map((field) => (
+                      <li key={field}>{labelFor(READINESS_FIELD_TO_FORM_KEY[field])}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+
             {/* Provider */}
             <Field>
               <FieldLabel htmlFor="llm-provider">
@@ -778,6 +910,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                   "The model to use for task extraction, picked from the provider's list.")
                 )}
               </FieldDescription>
+              {fieldErrorFor('model')}
             </Field>
 
             {/* Temperature */}
@@ -808,6 +941,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                 {t.workspace?.llmTemperatureDesc ??
                   'Lower values = more consistent output. Higher values = more creative.'}
               </FieldDescription>
+              {fieldErrorFor('temperature')}
             </Field>
 
             {/* Max Tokens */}
@@ -833,6 +967,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                 {t.workspace?.llmMaxTokensDesc ??
                   'Maximum number of tokens the model can generate per response.'}
               </FieldDescription>
+              {fieldErrorFor('maxTokens')}
             </Field>
 
             {/* ── Provider-specific fields ── */}
@@ -857,6 +992,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                 <FieldDescription>
                   {t.workspace?.llmBaseUrlDesc ?? 'The URL where your Ollama instance is running.'}
                 </FieldDescription>
+                {fieldErrorFor('baseUrl')}
               </Field>
             ) : (
               <>
@@ -891,6 +1027,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     {t.workspace?.llmApiKeyDesc ??
                       'Your API key for this provider. Stored encrypted at rest.'}
                   </FieldDescription>
+                  {fieldErrorFor('apiKey')}
                 </Field>
 
                 {/* Base URL — optional for cloud providers (proxy/custom endpoint) */}
@@ -918,6 +1055,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     {t.workspace?.llmBaseUrlCloudDesc ??
                       'Optional. Leave empty to use the default API endpoint.'}
                   </FieldDescription>
+                  {fieldErrorFor('baseUrl')}
                 </Field>
               </>
             )}

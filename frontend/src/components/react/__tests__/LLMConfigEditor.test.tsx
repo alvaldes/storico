@@ -11,7 +11,8 @@ import {
   renameCustomProvider,
 } from '@/lib/custom-providers-api';
 import { ApiRequestError } from '@/lib/api';
-import type { CustomProvider } from '@/types/workspace';
+import { toast } from 'sonner';
+import type { CustomProvider, WorkspaceLLMConfig } from '@/types/workspace';
 
 vi.mock('@/lib/llm-config-api', () => ({
   getLLMConfig: vi.fn(),
@@ -30,6 +31,13 @@ vi.mock('@/lib/custom-providers-api', () => ({
   listCustomProviders: vi.fn().mockResolvedValue([]),
   createCustomProvider: vi.fn(),
   renameCustomProvider: vi.fn(),
+}));
+
+// The toast is part of the contract under test — the save gate has to *tell* the user
+// what is missing, not only refuse — so it is mocked to be assertable rather than
+// rendered.
+vi.mock('sonner', () => ({
+  toast: { loading: vi.fn(() => 'toast-id'), success: vi.fn(), error: vi.fn() },
 }));
 
 const WORKSPACE_ID = 'ws-1';
@@ -1127,5 +1135,182 @@ describe('LLMConfigEditor known provider', () => {
     await waitFor(() => expect(screen.getByLabelText('Provider')).toHaveTextContent('groq'));
     expect(createCustomProvider).not.toHaveBeenCalled();
     expect(renameCustomProvider).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The save gate.
+ *
+ * An incomplete LLM configuration is the one state in which this product cannot do the
+ * thing it exists to do, so the form refuses to persist it: the draft is parsed with the
+ * same zod schema the readiness answer mirrors, each offending field gets a red message,
+ * and the toast names what is still missing.
+ */
+describe('LLMConfigEditor save gate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    vi.mocked(getPrompts).mockResolvedValue({
+      systemPrompt: 'You are an expert software development lead.',
+      instructionTemplate: 'Break this user story into smaller development tasks.',
+      fewShotEnabled: true,
+      fewShotLimit: 3,
+      fewShotThreshold: 0.85,
+    });
+    vi.mocked(fetchAvailableModels).mockResolvedValue([]);
+    vi.mocked(upsertPrompts).mockResolvedValue({});
+    vi.mocked(upsertLLMConfig).mockResolvedValue({
+      provider: 'ollama',
+      model: 'llama3.2',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: 'http://localhost:11434',
+      apiKey: '',
+    });
+  });
+
+  /** Render the editor with a stored configuration the caller chooses. */
+  async function renderWith(config: Partial<WorkspaceLLMConfig> = {}) {
+    vi.mocked(getLLMConfig).mockResolvedValue({
+      provider: 'ollama',
+      model: 'llama3.2',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: 'http://localhost:11434',
+      apiKey: '',
+      ...config,
+    });
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    // The editor renders a loading placeholder until both requests settle.
+    return screen.findByRole('button', { name: 'Save LLM Configuration' });
+  }
+
+  it('states what is missing before anything is attempted', async () => {
+    await renderWith({ provider: 'openai', model: '', apiKey: '' });
+
+    const summary = await screen.findByRole('alert');
+    expect(
+      within(summary).getByText('This workspace cannot extract tasks yet'),
+    ).toBeInTheDocument();
+    expect(within(summary).getByText('Model')).toBeInTheDocument();
+    expect(within(summary).getByText('API Key')).toBeInTheDocument();
+    expect(
+      within(summary).getByText('Complete these fields to enable extraction:'),
+    ).toBeInTheDocument();
+
+    // The summary explains the state without painting every empty field of a fresh
+    // workspace red; the per-field messages come from a refused save.
+    expect(screen.queryByText('This field is required.')).not.toBeInTheDocument();
+  });
+
+  it('refuses to save an incomplete draft and names the gaps in a toast', async () => {
+    const user = userEvent.setup();
+    const save = await renderWith({ provider: 'openai', model: '', apiKey: '' });
+
+    await user.click(save);
+
+    expect(upsertLLMConfig).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      'The LLM configuration is not complete',
+      expect.objectContaining({
+        description: 'Extraction stays disabled until you complete these fields: Model, API Key',
+      }),
+    );
+  });
+
+  it('puts a red message under each field that is missing', async () => {
+    const user = userEvent.setup();
+    const save = await renderWith({ provider: 'openai', model: '', apiKey: '' });
+
+    await user.click(save);
+
+    // One per gap, so the count itself is the assertion that nothing else was flagged.
+    expect(await screen.findAllByText('This field is required.')).toHaveLength(2);
+  });
+
+  it('clears the red message once the missing value is provided', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchAvailableModels).mockResolvedValue([
+      { id: 'llama3.2', name: 'llama3.2' },
+    ]);
+    const save = await renderWith({ provider: 'ollama', model: '' });
+
+    await user.click(save);
+    expect(await screen.findAllByText('This field is required.')).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { expanded: false }));
+    await user.click(await screen.findByRole('option', { name: 'llama3.2' }));
+
+    // Live, not cleared by the next save: the message belongs to the value.
+    await waitFor(() =>
+      expect(screen.queryByText('This field is required.')).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('refuses an endpoint that is not a full URL and points at that field', async () => {
+    const user = userEvent.setup();
+    const save = await renderWith({
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      apiKey: 'sk-test',
+      baseUrl: 'localhost:11434',
+    });
+
+    await user.click(save);
+
+    expect(upsertLLMConfig).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText('Enter a full URL, for example https://api.example.com/v1'),
+    ).toBeInTheDocument();
+    // A malformed value is not a missing one, so the toast names the field rather than
+    // claiming something has to be defined.
+    expect(toast.error).toHaveBeenCalledWith(
+      'The LLM configuration is not complete',
+      expect.objectContaining({
+        description: 'Extraction stays disabled until you complete these fields: Base URL',
+      }),
+    );
+  });
+
+  it('saves a complete configuration', async () => {
+    const user = userEvent.setup();
+    const save = await renderWith({ provider: 'ollama', model: 'llama3.2' });
+
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(WORKSPACE_ID, {
+        provider: 'ollama',
+        model: 'llama3.2',
+        temperature: 0.1,
+        maxTokens: 2048,
+        baseUrl: 'http://localhost:11434',
+        apiKey: undefined,
+      }),
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('accepts a custom provider with no credential', async () => {
+    const user = userEvent.setup();
+    const save = await renderWith({
+      provider: 'deepseek',
+      model: 'deepseek-chat',
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: '',
+    });
+
+    await user.click(save);
+
+    // A self-hosted gateway commonly accepts unauthenticated requests, so the key is
+    // not a gap and the save goes through.
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ provider: 'deepseek', model: 'deepseek-chat' }),
+      ),
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
