@@ -1,6 +1,10 @@
 # ODD Feature: llm-config-validation-gate
 
-> **Status**: in progress
+> **Status**: done — eight commits on `feat/llm-config-validation-gate` (`cc22a0c`..
+> `5e60f42`), plus the evidence commit that carries this line (nine against `main`);
+> nothing was pushed.
+> Receipt-driven development is **off** in this clone, so no native review ran; one
+> independent verification did, recorded below with its findings and their disposition.
 > **Created**: 2026-06-30
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `feat/llm-config-validation-gate`
@@ -99,7 +103,7 @@ that fire after the user has already committed to an action.
 
 ### T-001 — Backend: the completeness rule, declared once
 
-- **Status**: pending
+- **Status**: done (commit `c4103ec`)
 - **Files to modify**: `backend/src/storico/domain/services/llm_config_readiness.py` (new),
   `backend/tests/test_unit/test_llm_config_readiness.py` (new)
 - **What**: a pure domain module holding `REQUIRED_FIELDS_BY_PROVIDER`,
@@ -114,7 +118,7 @@ that fire after the user has already committed to an action.
 
 ### T-002 — Backend: member-readable config status
 
-- **Status**: pending
+- **Status**: done (commit `3c9a323`)
 - **Files to modify**: `backend/src/storico/api/routes/workspace_settings.py`,
   `backend/tests/test_api/test_workspace_settings_llm_status.py` (new), `docs/api.md`
 - **What**: `GET /api/v1/workspaces/{workspace_id}/settings/llm/status` guarded by
@@ -134,7 +138,7 @@ that fire after the user has already committed to an action.
 
 ### T-003 — Backend: extraction refuses to start on an incomplete config
 
-- **Status**: pending
+- **Status**: done (commit `1feff25`)
 - **Files to modify**: `backend/src/storico/api/routes/extraction.py`,
   `backend/tests/test_api/test_extraction.py`, `docs/api.md`
 - **What**: before creating the pending extraction, validate the resolved selection with
@@ -154,7 +158,7 @@ that fire after the user has already committed to an action.
 
 ### T-004 — Frontend: readiness mirror and the zod schemas that consume it
 
-- **Status**: pending
+- **Status**: done (commit `3babb08`)
 - **Files to modify**: `frontend/src/lib/llm-config-readiness.ts` (new),
   `frontend/src/schemas/workspace.ts`, `frontend/src/schemas/index.ts`,
   `frontend/src/lib/__tests__/llm-config-readiness.test.ts` (new),
@@ -186,7 +190,7 @@ that fire after the user has already committed to an action.
 
 ### T-005 — Frontend: the editor validates, shows red and refuses to save
 
-- **Status**: pending
+- **Status**: done (commit `7b5821a`, corrected in `5e60f42`)
 - **Files to modify**: `frontend/src/components/react/LLMConfigEditor.tsx`,
   `frontend/src/i18n/en.json`, `frontend/src/i18n/es.json`,
   `frontend/src/components/react/__tests__/LLMConfigEditor.test.tsx`
@@ -207,7 +211,7 @@ that fire after the user has already committed to an action.
 
 ### T-006 — Frontend: the extraction action is gated
 
-- **Status**: pending
+- **Status**: done (commit `6052224`)
 - **Files to modify**: `frontend/src/lib/llm-config-api.ts`,
   `frontend/src/components/react/StoryDetail.tsx`, `frontend/src/stores/taskStore.ts`,
   `frontend/src/i18n/en.json`, `frontend/src/i18n/es.json`,
@@ -235,7 +239,8 @@ that fire after the user has already committed to an action.
 
 ### T-007 — Verification gate
 
-- **Status**: pending
+- **Status**: done (one independent `gentle-ai-verify` run over `67b996a..6052224`,
+  whose two findings are fixed in `5e60f42`; see the verification section below)
 - **What**: run the repo gate on the candidate and record the outcome.
 - **Commands**:
   - `cd backend && .venv/bin/pytest` and `.venv/bin/ruff check src tests` and
@@ -247,7 +252,7 @@ that fire after the user has already committed to an action.
 
 ### T-008 — Close the feature
 
-- **Status**: pending
+- **Status**: done (this document's commit)
 - **What**: flip the status line, write the evidence log with real commit identities and
   observed output, and record the follow-ups this change creates.
 - **Depends on**: T-007
@@ -270,19 +275,124 @@ command has actually run)_
 
 | Task | Commit | Outcome |
 |------|--------|---------|
-| T-001 | | |
-| T-002 | | |
-| T-003 | | |
-| T-004 | | |
-| T-005 | | |
-| T-006 | | |
-| T-007 | | |
-| T-008 | | |
+| T-001 | `c4103ec` | `llm_config_readiness.py` with `READINESS_FIELDS`, `LLM_CONFIG_INCOMPLETE_CODE`, `REQUIRED_FIELDS_BY_PROVIDER`, `CUSTOM_PROVIDER_REQUIRED_FIELDS`, `required_fields_for`, `missing_llm_config_fields`, `llm_config_is_complete`. 28 unit cases in `tests/test_unit/test_llm_config_readiness.py`: **28 passed**. `ruff check` clean; `ruff format` reformatted the two new files, then `--check` clean. |
+| T-002 | `3c9a323` | `GET /settings/llm/status` guarded by `get_workspace_for_user`, plus `LLMConfigStatusResponse` and the module docstring's admin-only exception. `tests/test_api/test_workspace_settings_llm_status.py`: **10 passed**, including the no-disclosure case and a 403 for a non-member. Neighbouring settings suites together: **86 passed**. `docs/api.md` updated. |
+| T-003 | `1feff25` | The route resolves the provider first, asks `missing_llm_config_fields`, and answers `400` `{detail, error_code, provider, missing}` before creating anything. Red run against the pre-change route (restored from `HEAD`): **4 failed \| 2 passed** — the two that passed are the accepting cases, which is the witness that the gate does not over-block. Green after: **49 passed**. |
+| T-004 | `3babb08` | `llm-config-readiness.ts` (mirror) + `llmConfigDraftSchema` and tightened `llmConfigSchema` bounds in `schemas/workspace.ts`. Full frontend suite **28 files / 319 passed**, `tsc --noEmit` exit 0. The mirror guard was mutation-tested in six directions (backend table member dropped, backend vocabulary renamed, backend `max_length` changed, backend refusal code changed, frontend row extended, frontend custom row changed): each failed exactly one case, and the restored file was green — with the file diffed against a backup to prove the restore. |
+| T-005 | `7b5821a` | The editor parses the draft before the PUT, renders a red `FieldError` per offending field (only after a save attempt), an always-live summary of the missing fields, and one toast naming them; a complete config saves from the validated data. Eight new keys in both locales. New cases: **58 passed** in that file. Red run with the guard disabled (`if (false && !parsed.success)`): **4 of the 7 new cases failed** — exactly the four that assert the refusal. |
+| T-006 | `6052224` | `getLLMConfigStatus`, the `StoryDetail` gate (disabled button, admin link, member sentence, fail-open on an unreadable status), `ExtractionErrorCode` gaining `config`, and the toast/`ErrorDisplay` copy branch. Full frontend suite **29 files / 337 passed**, `tsc` exit 0. Red run with `configIncomplete = false`: **2 failed** (the two blocked-state cases) while the three availability cases still passed. Two pre-existing `StoryDetail` cases broke mid-task when the new status mock was left unset — they are green again because the default now lives in the shared `resetStores()`. `taskStore.unit.test.ts` gained the categorization case (a file outside the surfaces this task named: the mapping is tested where the other codes are). |
+| T-007 | `5e60f42` | Gate and independent verification, below. The verifier's candidate-caused finding (F1) and its pre-existing follow-up whose reachability this feature's own schema blessed (F2) are both fixed in `5e60f42`; the corrected candidate re-ran the whole gate green. |
+| T-008 | this document | Status, evidence, the verification record and the dispositions, written after every command above ran. |
+
+## Verification (RDD off — independent verification, not native review)
+
+One `gentle-ai-verify` run over `67b996a..6052224`, read-only inside the repository, with
+every mutation probe in a `/tmp` copy. It wrote its own probes rather than reading the
+candidate's test assertions. Gate it observed: backend **585 passed, 1 skipped** (the
+skip is the pre-existing Docker-dependent integration test), `ruff check` and
+`ruff format --check` clean over 210 files; frontend **29 files / 337 passed**,
+`tsc --noEmit` exit 0.
+
+What it confirmed by driving real code, not by reading tests:
+
+- **The two implementations of the rule agree over 576 generated cases, 0 mismatches**
+  (9 provider names × 4³ values, including whitespace-only), tables, vocabulary, refusal
+  code and the exact-match classification included.
+- **The status route**: member `200`; non-member `403`; unknown workspace `404`;
+  unauthenticated `401`; and neither the stored `api_key` nor the stored `base_url`
+  appears in the serialized body. Its explicit regression check: as a member,
+  `GET`/`PUT /settings/llm` still return `403`, and another workspace's status is `403` —
+  adding one member-readable route did not loosen the module.
+- **The hazard the gate closes is real**: driving the real background path with a missing
+  key produced one `failed` extraction row and left the story at `failed_extraction`; the
+  gate then produced `400`, **0** extraction rows, and a story whose status it first
+  forced to `extracted` so "unchanged" had teeth.
+- **The mirror guard fails on drift** across seven mutations of the Python files.
+- **The editor gate**: incomplete drafts perform 0 PUTs and raise the toast; out-of-range
+  and malformed values get their own copy after the attempt; the pre-attempt summary
+  renders without painting fields red.
+- **The action gate**: disabled button, correct admin link in both locales, fall-open on
+  a rejected status request, an unknown field code dropped rather than rendered, and
+  `LLM_CONFIG_INCOMPLETE` → `config` end-to-end through a real `fetch` 400 body.
+- **i18n**: `en`/`es` key sets at 663/663 with zero drift; the new Spanish strings use
+  neutral *tú*, no voseo.
+
+### Findings and disposition
+
+- **F1 (fixed in `5e60f42`) — candidate-caused, low.** The length mirror built a `Map`
+  keyed by field name, so the **last** `max_length` declaration won. `api_key` and
+  `base_url` are each declared twice (the request body and the model probe), and mutating
+  only the request-body copy passed the guard — the copy that governs what the API
+  accepts. The guard now collects every declaration and asserts each one, and a new case
+  fails when the declared field set changes at all. Re-probed after the fix: mutating
+  only line 16 (`api_key`) and only line 15 (`base_url`) each now fails exactly one case,
+  and adding a new bounded field fails too.
+- **F2 (fixed in `5e60f42`) — pre-existing passthrough that this change made incoherent.**
+  A whitespace-only `base_url` was reachable from the editor (the new field rule trims
+  before deciding, so it read the value as "empty") and reached the adapter as a URL of
+  spaces (`'%20%20%20/'` for the OpenAI SDK). The save path now trims the endpoint, so a
+  value the rule reads as absent is never stored; a case pins it and fails without the
+  trim. The backend passthrough for a row written through the API is a follow-up.
+- **F3 (accepted, not a defect) — a correction to my probe, not to the code.** I asked
+  for "non-empty `missing` ⇒ `_build_llm_port` raises". That cannot hold: the port takes
+  no `model` argument. The verifier measured the asymmetry — the rule is *stricter* than
+  the port in 188 of 384 combinations, all of them the blank-`model` and whitespace
+  cases, which is the safe direction — and probed the real counterpart instead (the
+  route's own guard): **0 counterexamples over 384 rows** for "the route accepts ⇒ the
+  port builds".
+
+Not verified by the run: the Playwright suite (already recorded in this repo as not
+runnable), any real network call to a provider (adapter probing stopped at
+construction), and the origin of the one pre-existing pytest resource warning.
 
 ## Follow-ups (not part of this change)
 
 - The dead per-user `settingsStore.llm` slice (and its `AppSettings.llm` schema) still
   duplicates the vocabulary and stores API keys; the live UI only reads `export`.
-- `llmConfigSchema.provider` mirrors the 50-character bound by hand, unguarded.
 - `PUT /settings/llm` still measures the raw value for `max_length` while the provider
   registry measures the trimmed one (carried over from `custom-provider-free-form-name`).
+- A whitespace-only `base_url` or `api_key` written through the API (not through the
+  editor, which now trims the endpoint) is passed to the adapter verbatim. The route
+  normalizes nothing; `_build_llm_port` only checks truthiness (F2).
+- `docs/api.md` still describes the custom-provider name rule as a lowercase slug
+  (`^[a-z0-9][a-z0-9._-]{0,49}$`), which `custom-provider-free-form-name` reversed. Same
+  file, unrelated paragraph — left alone rather than bundled into this change.
+- `frontend/src/i18n/en.json` and `es.json` carry pre-existing duplicate keys
+  (`stories.create_error` ×2, `taskEditor.invalid_drop` ×2) that a JSON-aware linter
+  flags. JSON keeps the last one, so nothing is broken today; the counts are unchanged
+  by this feature.
+- `StoryDetail.tsx` imports `ExtractionErrorInfo` without reading it — pre-existing, and
+  reported by `tsc` as an unused-import hint.
+- `ErrorDisplay` is still the placeholder that renders `null`, so the failed-extraction
+  panel shows nothing; the toast is the only observable failure channel. The
+  configuration branch added to its `friendlyMessage` prop is therefore correct but
+  currently unobservable, which is why the test asserts the toast and not the panel.
+
+## Outcome
+
+A workspace's LLM configuration now has a declared completeness rule, and the three
+surfaces that need it read the same one: the settings form refuses to persist a draft
+that cannot extract and says which field is missing, the extraction route refuses before
+it creates anything, and any member can ask whether the workspace is ready before
+attempting the action. The late, dirty failure is gone — a missing cloud key or a custom
+provider's endpoint no longer produces a pending extraction row and a story dragged into
+`failed_extraction`.
+
+The rule is declared twice, in two languages, and that is the change's main structural
+risk. It is guarded in the two places this repository already accepts for hand-kept
+mirrors: a node-environment test that reads the Python file and fails on drift, plus an
+API test that pins enforcement independently of the table. The verification round is
+what made the guard honest: it found that the length half of it let a duplicate
+declaration hide a drift, and that finding is fixed and re-probed rather than merely
+reported.
+
+Two naming deviations from the plan, both deliberate: the frontend function is
+`missingLLMConfigFields` (the plan said `describeLLMConfigGaps`) so its name mirrors
+`missing_llm_config_fields` on the other side of the guard, and the classification lives
+in `requiredFieldsFor` rather than inline. The mirror guard also covers the four
+`max_length` declarations, which closes the unguarded-50 symptom the previous feature
+recorded as a follow-up.
+
+Nothing was pushed: the branch is local, and the delivery decision beyond that is
+ordinary repository policy. RDD is off in this clone, so no native review ran — the
+independent verification above is the review this candidate got.
