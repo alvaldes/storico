@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useResolvedTheme } from '@/stores/uiStore';
 import {
   Bot,
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getLLMConfig, upsertLLMConfig, fetchAvailableModels } from '@/lib/llm-config-api';
-import type { AvailableModel } from '@/lib/llm-config-api';
+import type { AvailableModel, ModelProbe } from '@/lib/llm-config-api';
 import { getPrompts, upsertPrompts } from '@/lib/prompts-api';
 import { Button } from '@/components/ui/button';
 import {
@@ -169,27 +169,66 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   }, [workspaceId]);
 
   /* ── Fetch Available Models ── */
-  const loadModels = useCallback(async () => {
-    setModelsLoading(true);
-    setModelsError(null);
-    try {
-      const models = await fetchAvailableModels(workspaceId);
-      setAvailableModels(models);
-    } catch (err) {
-      setAvailableModels([]);
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('502') || msg.includes('Failed to fetch')) {
-        setModelsError(
-          t.workspace?.llmModelsFetchError ??
-            'Could not reach the provider. Check your API key and Base URL.',
-        );
-      } else {
-        setModelsError(msg);
+
+  /**
+   * The selection the form holds right now.
+   *
+   * Memoised on the three scalars so it keeps its identity across unrelated renders:
+   * the auto-probe effect depends on it, and a fresh object every render would restart
+   * that effect continuously.
+   */
+  const pendingProbe = useMemo<ModelProbe>(
+    () => ({
+      provider: llmConfig.provider,
+      baseUrl: llmConfig.baseUrl ?? '',
+      apiKey: llmConfig.apiKey ?? '',
+    }),
+    [llmConfig.provider, llmConfig.baseUrl, llmConfig.apiKey],
+  );
+
+  // `loadModels` keeps a stable identity by taking the selection as an argument. Were
+  // the selection a dependency instead, every keystroke in the API key or the Base URL
+  // would give this callback a new identity and drag the auto-probe effect along.
+  const loadModels = useCallback(
+    async (probe: ModelProbe) => {
+      setModelsLoading(true);
+      setModelsError(null);
+      try {
+        setAvailableModels(await fetchAvailableModels(workspaceId, probe));
+      } catch (err) {
+        setAvailableModels([]);
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('502') || msg.includes('Failed to fetch')) {
+          setModelsError(
+            t.workspace?.llmModelsFetchError ??
+              'Could not reach the provider. Check your API key and Base URL.',
+          );
+        } else {
+          setModelsError(msg);
+        }
+      } finally {
+        setModelsLoading(false);
       }
-    } finally {
-      setModelsLoading(false);
-    }
-  }, [workspaceId, t]);
+    },
+    [workspaceId, t],
+  );
+
+  // Whether the selection holds enough to ask the provider anything. Ollama needs
+  // nothing, a cloud provider needs a key, and a custom provider needs the endpoint to
+  // ask — its key stays optional because self-hosted gateways commonly accept
+  // unauthenticated requests.
+  const canProbe =
+    llmConfig.provider === 'ollama' ||
+    (isCustomProvider
+      ? (llmConfig.baseUrl ?? '').trim() !== ''
+      : (llmConfig.apiKey ?? '').trim() !== '');
+
+  /** Why the refresh action is unavailable, or `null` when it is available. */
+  const probeBlockedReason = canProbe
+    ? null
+    : isCustomProvider
+      ? (t.workspace?.llmModelsNoBaseUrl ?? 'Add the Base URL first')
+      : (t.workspace?.llmModelsNoApiKey ?? 'Add your API key first');
 
   /* ── Custom Provider Registry ── */
   const loadCustomProviders = useCallback(async () => {
@@ -212,10 +251,10 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
 
   /* ── Explicit Model Refresh ── */
   const handleRefreshModels = useCallback(async () => {
-    await loadModels();
+    await loadModels(pendingProbe);
     // `loadModels` never rejects, so this records a settled probe on failure too.
     setCustomModelsProbed(true);
-  }, [loadModels]);
+  }, [loadModels, pendingProbe]);
 
   useEffect(() => {
     setMounted(true);
@@ -226,18 +265,30 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     loadCustomProviders();
   }, [loadCustomProviders]);
 
-  // Auto-fetch models when the provider changes, for known providers only. The gate on
-  // `loading` keeps the probe off until the saved config lands: probing earlier would
-  // query the default provider for a workspace that may not use it, and its result
-  // would then sit in the field after the real provider takes over. In custom mode the
-  // provider name is free text, so an auto-probe would fire one external request per
-  // keystroke, and the backend reads the *saved* workspace config: probing before a save
-  // has nothing to read. Custom mode therefore loads its list only from the explicit
-  // refresh button.
+  // The provider whose list the field currently stands for. It also gates the probe, so
+  // it is a ref: remembering it must not render anything.
+  const probedProviderRef = useRef<string | null>(null);
+
+  // Auto-probe the selected provider's list, once per provider.
+  //
+  // The probe carries the *pending* selection, so the answer describes the provider the
+  // user picked instead of whichever one happens to be saved — the coupling that used to
+  // make every provider answer for the saved one. Free-text fields are deliberately not
+  // a trigger: probing per keystroke would reach the provider with a half-typed key or a
+  // partial URL, so the refresh action is the affordance for those.
   useEffect(() => {
-    if (!mounted || loading || isCustomProvider) return;
-    loadModels();
-  }, [loadModels, llmConfig.provider, mounted, loading, isCustomProvider]);
+    if (!mounted || loading) return;
+    if (probedProviderRef.current === llmConfig.provider) return;
+    probedProviderRef.current = llmConfig.provider;
+
+    // A list describes exactly one provider. The new one has no list until its own probe
+    // answers, so the previous provider's models must not keep standing in for them.
+    setAvailableModels([]);
+    setModelsError(null);
+
+    if (!canProbe) return;
+    void loadModels(pendingProbe);
+  }, [canProbe, loadModels, pendingProbe, llmConfig.provider, mounted, loading]);
 
   /* ── Provider Saved (create or rename) ── */
   const handleProviderSaved = (saved: CustomProvider) => {
@@ -281,6 +332,10 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
       setLlmSaveResult('success');
       toast.success(t.settings?.llm_saved ?? 'LLM configuration saved');
       setTimeout(() => setLlmSaveResult('idle'), 3000);
+      // The saved row is what the next visit loads, so the list on screen has to be the
+      // one that row describes. Without this the field keeps the pre-save answer until
+      // the user happens to press refresh.
+      if (canProbe) await loadModels(pendingProbe);
     } catch (err) {
       setLlmSaveResult('error');
       const message =
@@ -396,12 +451,6 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   const modelListUnavailable = !modelsLoading && availableModels.length === 0;
   const noModelsMessage =
     t.workspace?.llmModelsEmpty ?? 'No models available. Check the provider then refresh.';
-
-  // A known cloud provider cannot be probed without a key, but a custom provider's key
-  // is optional: the backend treats it as optional and a local gateway serves `/models`
-  // without one, so custom mode is gated on the request in flight alone.
-  const refreshModelsNeedsApiKey =
-    !isCustomProvider && llmConfig.provider !== 'ollama' && !llmConfig.apiKey;
 
   return (
     <div className="space-y-6">
@@ -617,11 +666,13 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     variant="outline"
                     size="icon"
                     onClick={handleRefreshModels}
-                    disabled={modelsLoading || refreshModelsNeedsApiKey}
+                    disabled={modelsLoading || !canProbe}
+                    // A stable name: the button is always the refresh action, and its
+                    // title carries the reason when it cannot run.
+                    aria-label={t.workspace?.llmRefreshModels ?? 'Refresh models'}
                     title={
-                      refreshModelsNeedsApiKey
-                        ? (t.workspace?.llmModelsNoApiKey ?? 'Add your API key first')
-                        : (t.workspace?.llmRefreshModels ?? 'Refresh models')
+                      probeBlockedReason ??
+                      (t.workspace?.llmRefreshModels ?? 'Refresh models')
                     }
                   >
                     <RotateCw className={`h-4 w-4 ${modelsLoading ? 'animate-spin' : ''}`} />

@@ -359,6 +359,120 @@ describe('LLMConfigEditor model field', () => {
       ),
     );
   });
+
+  it('probes the provider picked in the form, never the saved one', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    await screen.findByLabelText('Model');
+
+    await waitFor(() =>
+      expect(fetchAvailableModels).toHaveBeenCalledWith(WORKSPACE_ID, {
+        provider: 'gemini',
+        baseUrl: '',
+        apiKey: 'AIza-test',
+      }),
+    );
+
+    await user.click(screen.getByLabelText('Provider'));
+    await user.click(await screen.findByRole('option', { name: 'Ollama (Local)' }));
+
+    // Ollama needs no credential, so the probe runs and must describe Ollama while
+    // carrying nothing that belonged to Gemini. Answering for the saved row here is the
+    // reported bug: the select showed one provider and the endpoint answered for another.
+    await waitFor(() =>
+      expect(fetchAvailableModels).toHaveBeenLastCalledWith(WORKSPACE_ID, {
+        provider: 'ollama',
+        baseUrl: 'http://localhost:11434',
+        apiKey: '',
+      }),
+    );
+  });
+
+  it('probes nothing for a cloud provider the form has no key for', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    await screen.findByLabelText('Model');
+
+    await waitFor(() => expect(fetchAvailableModels).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByLabelText('Provider'));
+    await user.click(await screen.findByRole('option', { name: 'Anthropic' }));
+
+    // Switching clears the Gemini key, so there is nothing to ask Anthropic with. A
+    // probe here would only send an empty credential and come back rejected.
+    expect(fetchAvailableModels).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Refresh models' })).toBeDisabled();
+  });
+
+  it('drops the previous provider\u2019s list when the provider changes', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    await screen.findByLabelText('Model');
+
+    await waitFor(() =>
+      expect(fetchAvailableModels).toHaveBeenCalledWith(WORKSPACE_ID, {
+        provider: 'gemini',
+        baseUrl: '',
+        apiKey: 'AIza-test',
+      }),
+    );
+
+    await user.click(screen.getByLabelText('Provider'));
+    await user.click(await screen.findByRole('option', { name: 'Anthropic' }));
+
+    // A key makes the model field usable again. It must not bring Gemini's models back
+    // with it: those were never Anthropic's, and offering them would invite the user to
+    // save a model id this provider cannot serve.
+    await user.type(screen.getByLabelText('API Key'), 'sk-ant-test');
+    await user.click(screen.getByRole('button', { expanded: false }));
+
+    expect(
+      await screen.findByText('No models available. Check the provider then refresh.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Gemini 2.5 Flash' })).not.toBeInTheDocument();
+  });
+
+  it('re-probes after a successful save', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    await screen.findByLabelText('Model');
+
+    await waitFor(() => expect(fetchAvailableModels).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    // A saved config is the state a later visit loads, so the list the user sees now has
+    // to be the one that config describes — not the pre-save answer.
+    await waitFor(() => expect(fetchAvailableModels).toHaveBeenCalledTimes(2));
+  });
+
+  it('does not probe while the API key is being typed', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    await screen.findByLabelText('Model');
+
+    await waitFor(() => expect(fetchAvailableModels).toHaveBeenCalledTimes(1));
+
+    await user.type(screen.getByLabelText('API Key'), 'added-chars');
+
+    // One request per keystroke would reach the provider with a half-typed credential
+    // and a partial key would only ever be rejected.
+    expect(fetchAvailableModels).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not probe while the Base URL is being typed', async () => {
+    const user = userEvent.setup();
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    await screen.findByLabelText('Model');
+
+    await waitFor(() => expect(fetchAvailableModels).toHaveBeenCalledTimes(1));
+
+    await user.type(screen.getByLabelText('Base URL'), 'https://proxy.internal/v1');
+
+    // A partial URL names a host that does not exist yet, so the probe waits for the
+    // refresh action instead of chasing every keystroke.
+    expect(fetchAvailableModels).toHaveBeenCalledTimes(1);
+  });
 });
 
 /**
@@ -431,12 +545,19 @@ describe('LLMConfigEditor custom provider', () => {
     expect(screen.queryByRole('textbox', { name: 'Provider' })).not.toBeInTheDocument();
   });
 
-  it('issues no provider probe while the saved provider is a custom one', async () => {
+  it('probes a custom provider saved with a complete endpoint', async () => {
     await renderCustomEditor();
 
-    // A custom workspace never auto-probes: the backend reads the *saved* config, so a
-    // probe here would query a provider the workspace may not be saved against yet.
-    expect(fetchAvailableModels).not.toHaveBeenCalled();
+    // The probe carries the selection the form holds, so a custom workspace can be
+    // answered for the provider it is actually saved against — which is the whole
+    // reason the old saved-config-only endpoint made this path unusable.
+    await waitFor(() =>
+      expect(fetchAvailableModels).toHaveBeenCalledWith(WORKSPACE_ID, {
+        provider: 'deepseek',
+        baseUrl: 'https://api.deepseek.com/v1',
+        apiKey: 'sk-deepseek',
+      }),
+    );
   });
 
   it('offers the rename action only for a custom provider', async () => {
@@ -570,7 +691,55 @@ describe('LLMConfigEditor custom provider', () => {
     await waitFor(() =>
       expect(vi.mocked(fetchAvailableModels).mock.calls.length).toBe(callsBefore + 1),
     );
-    expect(fetchAvailableModels).toHaveBeenLastCalledWith(WORKSPACE_ID);
+    // The refresh is the affordance for the free-text fields, so it must carry what
+    // they hold right now rather than only what was saved.
+    expect(fetchAvailableModels).toHaveBeenLastCalledWith(WORKSPACE_ID, {
+      provider: 'deepseek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: 'sk-deepseek',
+    });
+  });
+
+  it('sends a Base URL typed but not yet saved', async () => {
+    const user = userEvent.setup();
+    await renderCustomEditor();
+
+    const baseUrlInput = screen.getByLabelText('Base URL');
+    await user.clear(baseUrlInput);
+    await user.type(baseUrlInput, 'http://localhost:8000/v1');
+
+    const callsBefore = vi.mocked(fetchAvailableModels).mock.calls.length;
+    await user.click(screen.getByRole('button', { name: 'Refresh models' }));
+
+    await waitFor(() =>
+      expect(vi.mocked(fetchAvailableModels).mock.calls.length).toBe(callsBefore + 1),
+    );
+    expect(fetchAvailableModels).toHaveBeenLastCalledWith(WORKSPACE_ID, {
+      provider: 'deepseek',
+      baseUrl: 'http://localhost:8000/v1',
+      apiKey: 'sk-deepseek',
+    });
+  });
+
+  it('probes nothing while a custom provider has no Base URL to ask', async () => {
+    vi.mocked(getLLMConfig).mockResolvedValue({
+      provider: 'deepseek',
+      model: 'deepseek-chat',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: '',
+      apiKey: 'sk-deepseek',
+    });
+    await renderCustomEditor();
+
+    expect(fetchAvailableModels).not.toHaveBeenCalled();
+    // An endpoint-less provider has nothing to ask, so the control that would ask must
+    // say which field is missing instead of offering a request that cannot answer.
+    expect(screen.getByRole('button', { name: 'Refresh models' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Refresh models' })).toHaveAttribute(
+      'title',
+      'Add the Base URL first',
+    );
   });
 
   it('refreshes without an API key, because a local gateway needs none', async () => {
@@ -615,14 +784,12 @@ describe('LLMConfigEditor custom provider', () => {
   });
 
   it('offers the discovered model ids as native suggestions', async () => {
-    const user = userEvent.setup();
     await renderCustomEditor();
 
     const modelInput = screen.getByLabelText('Model');
-    // No probe has run in custom mode, so there are no ids to offer yet.
-    expect(modelInput).not.toHaveAttribute('list');
-
-    await user.click(screen.getByRole('button', { name: 'Refresh models' }));
+    // A saved custom endpoint is complete, so its list arrives from the auto-probe
+    // rather than from a click. Either way the ids must reach the field as native
+    // suggestions.
     await waitFor(() => expect(modelInput).toHaveAttribute('list'));
 
     // The native pairing is only real if the attribute names a datalist that holds the
@@ -667,14 +834,22 @@ describe('LLMConfigEditor custom provider', () => {
   });
 
   it('reports a failed custom probe with the fetch error', async () => {
-    const user = userEvent.setup();
     vi.mocked(fetchAvailableModels).mockRejectedValue(new Error('502 Bad Gateway'));
     await renderCustomEditor();
 
+    // The saved endpoint is complete, so the failure reaches the field without waiting
+    // for a click: the auto-probe is the same request the refresh button makes.
     expect(
-      screen.queryByText('Could not reach the provider. Check your API key and Base URL.'),
-    ).not.toBeInTheDocument();
+      await screen.findByText('Could not reach the provider. Check your API key and Base URL.'),
+    ).toBeInTheDocument();
+  });
 
+  it('reports a failure from an explicit refresh', async () => {
+    const user = userEvent.setup();
+    await renderCustomEditor();
+    await waitFor(() => expect(fetchAvailableModels).toHaveBeenCalled());
+
+    vi.mocked(fetchAvailableModels).mockRejectedValueOnce(new Error('502 Bad Gateway'));
     await user.click(screen.getByRole('button', { name: 'Refresh models' }));
 
     expect(
@@ -696,9 +871,15 @@ describe('LLMConfigEditor custom provider', () => {
     render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
     await screen.findByLabelText('Model');
 
-    // The custom path probes only on demand; a gate that leaked into the known path
-    // would leave this list empty until the user pressed refresh.
-    await waitFor(() => expect(fetchAvailableModels).toHaveBeenCalledWith(WORKSPACE_ID));
+    // The probe describes the provider the form holds, not whichever one happens to be
+    // saved: that coupling is exactly what answered for the wrong provider.
+    await waitFor(() =>
+      expect(fetchAvailableModels).toHaveBeenCalledWith(WORKSPACE_ID, {
+        provider: 'gemini',
+        baseUrl: '',
+        apiKey: 'AIza-test',
+      }),
+    );
     await user.click(screen.getByRole('button', { expanded: false }));
     expect(await screen.findByRole('option', { name: 'DeepSeek Chat' })).toBeInTheDocument();
   });

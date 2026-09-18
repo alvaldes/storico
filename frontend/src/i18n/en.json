@@ -415,6 +415,7 @@
     "llmModelsFetchError": "Could not reach the provider. Check your API key and Base URL.",
     "llmModelsNoConfig": "Save the LLM configuration first to enable model suggestions.",
     "llmModelsNoApiKey": "Add your API key and save to enable model suggestions.",
+    "llmModelsNoBaseUrl": "Add the Base URL first",
     "llmRefreshModels": "Refresh models",
     "llmAddCustomProvider": "Add custom provider",
     "llmCustomProviderPlaceholder": "e.g. together, deepseek, groq",

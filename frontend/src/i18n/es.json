@@ -415,6 +415,7 @@
     "llmModelsFetchError": "No se pudo conectar con el proveedor. Revisa tu API Key y URL Base.",
     "llmModelsNoConfig": "Guarda la configuración del LLM primero para habilitar sugerencias de modelos.",
     "llmModelsNoApiKey": "Agrega tu API Key y guarda para habilitar sugerencias de modelos.",
+    "llmModelsNoBaseUrl": "Agrega la URL Base primero",
     "llmRefreshModels": "Recargar modelos",
     "llmAddCustomProvider": "Agregar proveedor personalizado",
     "llmCustomProviderPlaceholder": "ej. together, deepseek, groq",
