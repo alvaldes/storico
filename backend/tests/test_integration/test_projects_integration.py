@@ -37,12 +37,16 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from storico.domain.entities.project import Project
+from storico.domain.entities.user import User
 from storico.domain.entities.user_story import UserStory
 from storico.domain.entities.workspace import Workspace
 from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
 from storico.infrastructure.database.models import Base
 from storico.infrastructure.database.repositories.project_repository import (
     SQLAlchemyProjectRepository,
+)
+from storico.infrastructure.database.repositories.user_repository import (
+    SQLAlchemyUserRepository,
 )
 from storico.infrastructure.database.repositories.user_story_repository import (
     SQLAlchemyUserStoryRepository,
@@ -155,14 +159,22 @@ async def test_list_projects_with_counts_latency_under_500ms(pg_session: AsyncSe
     member_repo = SQLAlchemyWorkspaceMemberRepository(pg_session)
     project_repo = SQLAlchemyProjectRepository(pg_session)
     story_repo = SQLAlchemyUserStoryRepository(pg_session)
+    user_repo = SQLAlchemyUserRepository(pg_session)
 
-    owner_id = uuid.uuid4()
+    # The owner has to exist as a row: workspaces.owner_id and
+    # workspace_members.user_id are real foreign keys into users. SQLite never
+    # enforced them (foreign keys are off by default there), so passing a bare
+    # random UUID was enough for every other test; Postgres rejects the insert
+    # with fk_workspaces_owner_id_users.
+    owner = await user_repo.save(
+        User(email=f"perf-owner-{uuid.uuid4().hex[:8]}@test.example", name="Perf Owner")
+    )
     ws = Workspace(
-        name=f"Perf-{uuid.uuid4().hex[:8]}", slug=f"perf-{uuid.uuid4().hex[:8]}", owner_id=owner_id
+        name=f"Perf-{uuid.uuid4().hex[:8]}", slug=f"perf-{uuid.uuid4().hex[:8]}", owner_id=owner.id
     )
     ws = await ws_repo.save(ws)
     await member_repo.add(
-        WorkspaceMember(workspace_id=ws.id, user_id=owner_id, role=WorkspaceRole.ADMIN)
+        WorkspaceMember(workspace_id=ws.id, user_id=owner.id, role=WorkspaceRole.ADMIN)
     )
 
     for _ in range(50):

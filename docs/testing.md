@@ -97,6 +97,14 @@ normal y también significa que un error ahí solo aparece en CI.
 - Los fixtures async de scope `module` declaran `loop_scope="module"` (igual que
   el marker del test que los usa), porque pytest-asyncio le da un event loop
   nuevo a cada test y las conexiones de asyncpg quedan atadas a un loop muerto.
+- SQLite **no** hace cumplir las foreign keys (el `PRAGMA foreign_keys` viene
+  apagado), así que un dato sembrado que no respeta una FK pasa en los 526 tests
+  y falla en Postgres. Para reproducirlo localmente sin Docker, corré el cuerpo
+  del test contra `sqlite+aiosqlite://` con un listener `connect` que ejecute
+  `PRAGMA foreign_keys=ON`; el error aparece idéntico.
+- Los tipos enum de Postgres los crea Alembic (`0016`, `0017`) y los modelos los
+  declaran con `create_type=False`, así que un esquema armado con `create_all`
+  necesita crearlos antes: eso hace `_create_pg_enum_types` en el fixture.
 
 ### Convenciones
 
