@@ -1,6 +1,6 @@
 # ODD Feature: ci-postgres-integration-test
 
-> **Status**: implemented — two work units on `fix/ci-postgres-integration-test` plus this evidence commit; not pushed
+> **Status**: round 2 in progress — `2e729ae..70be4bc` merged into `main` and pushed (CI still red for two new causes); fixes for those two on `fix/ci-postgres-followups`
 > **Created**: 2026-09-18
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -171,6 +171,37 @@ loop. Fixing only the probe would have moved the red line, not removed it.
   venvs need `pip uninstall testcontainers-postgres testcontainers-core` first;
   CI builds a fresh venv and is unaffected.
 
+### T-004 — Create the PG enum types before `create_all`
+
+- **Status**: done (commit `757ab72`)
+- **Files to modify**:
+  - `backend/tests/test_integration/test_projects_integration.py`
+- **What**: `_create_pg_enum_types(connection)` walks `Base.metadata.tables`,
+  creates every named `ENUM` column type with `checkfirst=True` and runs before
+  `Base.metadata.create_all` inside the same transaction.
+- **Why**: the models declare `PGEnum(..., create_type=False)` because Alembic
+  0016/0017 own the `CREATE TYPE` statements, so `create_all` never emits them.
+  SQLite does not care; real Postgres fails with `type "..." does not exist`.
+- **Evidence**: mock-engine dump against the Postgres dialect — `create_all`
+  alone → 12 CREATE TABLE / **0 CREATE TYPE**; helper → **3 CREATE TYPE** with
+  the migration's exact labels (`extraction_status_new`, `user_story_status_new`,
+  `task_status_new`).
+
+### T-005 — Freeze the clock on both sides of the cache TTL test
+
+- **Status**: done (commit `65a8a3f`)
+- **Files to modify**:
+  - `backend/tests/test_unit/test_user_cache.py`
+- **What**: `test_cache_survives_within_ttl_window` patches `monotonic` for the
+  write as well as the read.
+- **Why**: the write stamped the *real* clock and the read was patched to `290`,
+  so the assertion held only while the host's uptime exceeded 260s. GitHub
+  runners boot fresh; laptops do not.
+- **Evidence**: the old shape returns `None` against a simulated 200s uptime (the
+  CI failure reproduced deterministically); the new shape returns the cached user.
+  Sibling tests read at `10**9 + 31` and were immune — that asymmetry is why only
+  this one failed.
+
 ## Risks
 
 - The `<500ms` assertion can fail on a slow shared runner. Pre-existing and out
@@ -185,7 +216,10 @@ loop. Fixing only the probe would have moved the red line, not removed it.
 |------|--------|---------|
 | T-001 | `2e729ae` | Container keeps its sync driver; app engine gets asyncpg via `make_url().set()`. Both fixtures and the marker declare `loop_scope="module"`. `docs/testing.md` documents the module's CI-vs-laptop behaviour and both conventions. `ruff` clean; `pytest -q` → **526 passed, 1 skipped, 1 warning**, identical to the stashed pre-change tree. Probe simulation reproduces the CI error on the old URL and shows a sync `PGDialect_psycopg2` engine on the new one. |
 | T-002 | `0dc0e89` | `testcontainers>=4.9.0` replaces `testcontainers-postgres>=0.0.1rc1`. Clean venv: only `testcontainers 4.15.0`, import resolves to `community.postgres`, `_connect` is `psql`-based. In a psycopg2-free venv the URL rewrite still builds the asyncpg engine, so no sync DBAPI is required. |
-| T-003 | this commit | Evidence log, verification limits and follow-ups recorded. Post-change LSP check on the touched file: **0 diagnostics** after restarting the language server (it had cached import search paths from before the dependency was installed). |
+| T-003 | `70be4bc` | Evidence log, verification limits and follow-ups recorded. Post-change LSP check on the touched file: **0 diagnostics** after restarting the language server (it had cached import search paths from before the dependency was installed). |
+| T-006 | merge + push | Merged into `main` by fast-forward and pushed (`6515308..70be4bc`); deploy workflow succeeded. First real CI run of the integration test: the `MissingGreenlet` error is **gone** — the fixture starts the container, passes the probe, connects with asyncpg and reaches the DDL. That confirms the T-001 diagnosis. CI then reported two new causes, which became T-004 and T-005. |
+| T-004 | `757ab72` | `create_all` now runs after the three enum types exist. Offline Postgres-dialect DDL dump is the evidence: 0 CREATE TYPE before, 3 after. |
+| T-005 | `65a8a3f` | The cache TTL test no longer depends on host uptime; the old shape's failure is reproduced against a simulated 200s uptime. `ruff` clean; `pytest -q` → 526 passed, 1 skipped, 1 warning on both work units. |
 
 Two verification limits, stated rather than smoothed over:
 
@@ -201,11 +235,17 @@ Two verification limits, stated rather than smoothed over:
 
 ## Outcome
 
-Root cause fixed on both fronts: the readiness probe never sees an async driver,
-and the module-scoped fixtures share the loop that owns the engine. The
-integration test is expected to execute for real on the next CI run instead of
-erroring at setup; until that run exists, that expectation is a prediction, not
-an observation. Two work units, both green locally; not pushed, not merged.
+Round 1 (merged and pushed): the readiness probe no longer sees an async driver,
+and the module-scoped fixtures share the loop that owns the engine. CI confirmed
+both — the integration test executed for the first time instead of erroring at
+setup, then failed at the DDL, which is a genuine finding the test exists to make.
+
+Round 2 (this branch): the enum types are created before `create_all`, and the
+cache TTL test no longer depends on the host's uptime. Both verified offline on
+this machine; the container path still needs CI, which is the next step.
+
+No local run can execute the integration fixture (no Docker daemon here), so for
+that one file CI is not a formality — it is the only executable check.
 
 ## Follow-ups (not part of this fix)
 
