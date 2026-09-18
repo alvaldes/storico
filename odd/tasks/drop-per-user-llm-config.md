@@ -1,6 +1,10 @@
 # ODD Feature: drop-per-user-llm-config
 
-> **Status**: in progress
+> **Status**: done — five commits on `feat/drop-per-user-llm-config` (`711d9cd`..
+> `a4c92f9`), plus the evidence commit that carries this line (six against the parent
+> branch); nothing was pushed. Receipt-driven development is **off** in this clone, so no
+> native review ran; one independent verification did, recorded below with its findings and
+> their disposition.
 > **Created**: 2026-06-30
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `feat/drop-per-user-llm-config`, stacked on `feat/error-display`.
@@ -95,7 +99,7 @@ With `syncToApi` uncalled, the app currently has **no** working path to write pr
 
 ### T-001 — Strip the stored per-user LLM slice
 
-- **Status**: pending
+- **Status**: done (commit `711d9cd`)
 - **Files to modify**:
   `backend/src/storico/infrastructure/database/alembic/versions/0022_drop_user_preference_llm.py`
   (new), `backend/tests/test_unit/test_drop_user_preference_llm_migration.py` (new)
@@ -112,7 +116,7 @@ With `syncToApi` uncalled, the app currently has **no** working path to write pr
 
 ### T-002 — The preferences contract loses `llm`, and tolerates it in storage
 
-- **Status**: pending
+- **Status**: done (commit `82f0129`)
 - **Files to modify**: `backend/src/storico/api/schemas/settings.py`,
   `backend/src/storico/api/routes/settings.py`,
   `backend/tests/test_api/test_user_settings.py` (new)
@@ -130,7 +134,7 @@ With `syncToApi` uncalled, the app currently has **no** working path to write pr
 
 ### T-003 — The client stops carrying a per-user LLM config
 
-- **Status**: pending
+- **Status**: done (commit `52d8a6f`)
 - **Files to modify**: `frontend/src/types/settings.ts`,
   `frontend/src/stores/settingsStore.ts`, `frontend/src/lib/settings-api.ts`,
   `frontend/src/components/react/AccountPage.tsx`,
@@ -154,7 +158,7 @@ With `syncToApi` uncalled, the app currently has **no** working path to write pr
 
 ### T-004 — Say what the endpoint now carries
 
-- **Status**: pending
+- **Status**: done (commit `ba3f975`, corrected in `a4c92f9`)
 - **Files to modify**: `docs/api.md`, `docs/security.md`
 - **What**: state that the user-preferences payload carries no LLM configuration and no
   credential, and update the security note so it describes where a key *is* stored (the
@@ -165,7 +169,8 @@ With `syncToApi` uncalled, the app currently has **no** working path to write pr
 
 ### T-005 — Verification gate
 
-- **Status**: pending
+- **Status**: done (one independent `gentle-ai-verify` run; its findings are fixed in
+  `a4c92f9`)
 - **What**: run the repo gate and record it; delegate an independent verification that looks
   for **any** remaining reader or writer of a per-user LLM setting (backend, frontend,
   scripts, e2e), exercises the legacy-row path and the migration, and checks the `422`.
@@ -177,7 +182,7 @@ With `syncToApi` uncalled, the app currently has **no** working path to write pr
 
 ### T-006 — Close the feature
 
-- **Status**: pending
+- **Status**: done (this document's commit)
 - **Depends on**: T-005
 
 ## Risks
@@ -194,17 +199,110 @@ With `syncToApi` uncalled, the app currently has **no** working path to write pr
 
 | Task | Commit | Outcome |
 |------|--------|---------|
-| T-001 | | |
-| T-002 | | |
-| T-003 | | |
-| T-004 | | |
-| T-005 | | |
-| T-006 | | |
+| T-001 | `711d9cd` | Revision `0022` removes the key from every stored document, leaves `updated_at` alone (it answers *when the user last saved*), and is idempotent. 7 cases in `test_drop_user_preference_llm_migration.py`, including non-object documents. Chain checked mechanically: 22 revisions, one head (`0022`), no branch points. |
+| T-002 | `82f0129` | `AppSettings` keeps only `export`; `LLMSettings`/`LLMProviderConfig` and their re-exports deleted; the read drops the removed key; the two routes get their first tests (8 cases). Red run: **4 of 8 fail** against the previous schema — exactly the four that assert the credential is gone. |
+| T-003 | `52d8a6f` | `AppSettings`/`DEFAULT_SETTINGS` lose `llm`; the store loses its `llm` state and four setters and takes its toast copy from the caller; `testLLMConnection` and its two types deleted; the export select now **persists** and shows the localized label instead of the raw value. 10 new cases. Full frontend suite **33 files / 382 passed**. |
+| T-004 | `ba3f975`, fixed in `a4c92f9` | `docs/api.md` and `docs/security.md` updated — and the verification caught that `docs/frontend-state.md` had been missed (F1 below). |
+| T-005 | `a4c92f9` | Gate and independent verification, below. Six findings addressed. |
+| T-006 | this document | Status, evidence, the verification record and the dispositions. Final gate: backend **646 passed, 1 skipped**, `ruff` clean; frontend **33 files / 382 passed**, `tsc` exit 0. |
+
+## Verification (RDD off — independent verification, not native review)
+
+One `gentle-ai-verify` run, read-only, probes in `/tmp` copies. It first corrected the range:
+the branch had accumulated the previous feature's commits, so it verified `c02ec63..ba3f975`
+instead of the four it was given. Gate it observed: backend **646 passed, 1 skipped**, `ruff
+check` and `ruff format --check` clean over 214 files; frontend **33 files / 382 passed**,
+`tsc` exit 0.
+
+What it confirmed independently:
+
+- **No reachable survivor** of a per-user LLM setting anywhere — backend, frontend, `scripts/`,
+  `e2e/`, config, gitignored paths — with the deliberate exception of `POST /api/v1/llm/test`,
+  whose credential arrives in the request body and belongs to no stored preference.
+- **The legacy path end to end**: a document in the old shape (with a real-looking key) answers
+  `200`, and the **raw response text** contains no `llm`, no `sk-`, no `AIza`. The read is
+  tolerant, not a migration: storage is byte-identical afterwards.
+- **The migration in isolation** over nine seeded shapes: exactly five `UPDATE`s — only the
+  dict rows carrying the key — with `updated_at` and the row count unchanged, `downgrade()`
+  issuing **zero** statements, and a second `upgrade()` a no-op.
+- **Both deploy orders are functionally safe** (old code + migrated data → `200`; new code +
+  unmigrated data → `200`), which is what the shim is for.
+- **The `PUT` refusal is bounded**: `llm`, an unknown key, a nested extra, a top-level extra, a
+  `LLM`-cased variant and a missing `preferences` all answer `422`. The tolerance did not become
+  a general ignore-extras.
+- **The bundled frontend fix, both ways**: with the old `AccountPage` restored the trigger read
+  `trello▼` and `saveSettings` was called **0** times; with the candidate it reads `Trello▼`
+  (and `Trello` in Spanish) and saves once with the right payload. A raw-value audit of every
+  other `Select` found `AccountPage` was the only one using `<SelectValue />` without `items`.
+- **Teeth, in both directions**: reverting only the backend schema+route fails **4** tests with
+  zero pre-existing failures; reverting only the frontend types+store fails **4** more.
+
+### Findings and disposition
+
+- **F1 (fixed in `a4c92f9`) — candidate-caused drift, low, and a miss against my own acceptance
+  criterion.** `docs/frontend-state.md` still documented the removed store shape
+  (`settings: AppSettings // { llm: LLMConfig, … }`, `syncToApi(toastLabels?)`, the four
+  `set*Config` setters). T-004 claimed no document still implied a per-user LLM configuration;
+  this one did. Updated.
+- **F3 (addressed in `a4c92f9`) — candidate-caused, medium: the deploy-order hazard.** With the
+  migration applied and the *previous* release still serving, an old-client `PUT` re-stores the
+  whole `llm` block including the credential; the revision never runs again, and the new read
+  hides it, so the residue would be silent. Migrating first is therefore the wrong order. The
+  migration's docstring now says so where an operator will look; there is no code fix, because
+  the acceptance of that block belongs to the old release.
+- **F4 (fixed in `a4c92f9`) — candidate-caused, low.** `llm_saving`, `llm_save_error` and
+  `llm_saved_description` became unreferenced when the store stopped hardcoding its copy. This
+  slice created that dead copy, so it removes it from both locales (`llm_saved` stays: the
+  workspace editor still uses it).
+- **F6 (fixed in `a4c92f9`) — candidate-caused, informational.** The read dropped the removed
+  keys while the `PUT` response did not, an asymmetry that is unreachable today but latent. Both
+  now go through one `_for_schema` helper, so the invariant holds by construction instead of by
+  one call site remembering it.
+- **F7 (fixed in `a4c92f9`) — candidate-caused, informational.** The removed key name exists as
+  two literals. The migration now says why it does not import the schema's constant — a
+  migration must keep working against the schema as it was when written — which turns a latent
+  drift risk into a stated decision.
+- **Plus an eighth, found while settling the analyzer question**: `schemas/__init__.py`'s
+  `__all__` listed `ExtractionResultResponse`, a name that does not exist anywhere (a leftover
+  from an old rename, pre-existing). Removed; it was the only warning a cold Pyright run
+  reported.
+- **F2 (recorded) — pre-existing, informational.** `frontend/.vercel/output` and `dist` hold a
+  pre-change bundle that still contains the API-key fields; gitignored and regenerated by a
+  build, but a deploy reusing them would ship the old contract.
+- **F5 (recorded) — pre-existing, low.** No code removes the legacy `storico-settings`
+  localStorage key, so a browser upgraded from the release that persisted API keys keeps them.
+  Out of scope here (a behaviour change of its own), and already in the follow-ups below.
+- **Not verified:** the migration against Postgres — no Docker here, and the CLI cannot be
+  pointed at SQLite, so a bound `Operations` over a scratch database was used instead. On
+  SQLite the JSON round-trip is exact; Postgres-specific typing of the column is untested.
+
+### The `ExportSettings is unknown import symbol` report
+
+An automated analyzer repeatedly reported that `api/schemas/settings.py` did not define
+`ExportSettings`/`AppSettings`. That was true for a few minutes: a backup-and-restore script I
+wrote during a red run keyed its temporary files by **basename**, and both
+`api/schemas/settings.py` and `api/routes/settings.py` are named `settings.py`, so the second
+backup overwrote the first and the restore copied the *routes* content into the schema module —
+a file importing itself, which is exactly the fingerprint the analyzer showed (`Module cannot be
+used as a type` for every imported name). It was repaired immediately; a **cold Pyright 1.1.408
+run reports `errorCount: 0`** on those files, `typing.get_type_hints` resolves the annotations to
+classes (not modules), and `create_app().openapi()` builds with `AppSettings.properties:
+['export']`. The analyzer kept serving the cached analysis; clearing
+`~/.cache/opencode/packages/pyright` is the likely fix and needs the user's go-ahead, since it is
+a destructive command outside the repository. **Lesson recorded: never key a temporary backup by
+basename when two paths can share it.**
 
 ## Follow-ups (not part of this change)
 
 - **`removeItem('storico-settings')`** so a browser upgraded from the build that had the
-  per-user LLM editor drops the keys it may still hold (D7).
-- `ErrorDisplay`? No. The open slices from earlier are done; the remaining review follow-ups
-  are the at-rest encryption decision, the stale provider enumerations, the undocumented
-  operations, `TaskEditor`'s `getSnapshot` loop and the store's flattened `error`.
+  per-user LLM editor drops the keys it may still hold (D7, confirmed by the verification).
+- **Stale build artifacts**: `frontend/.vercel/output` and `frontend/dist` still contain the
+  pre-change bundle with the API-key fields. Regenerate before any deploy that reuses them.
+- **Deploy order**: run revision `0022` **after** the release that refuses the `llm` block.
+  Stated in the migration's own docstring (F3); it is a process constraint, not a code one.
+- The comment on `AccountPage`'s label fix says the other selects "render an explicit label
+  span"; two of them actually use `<SelectValue />` **with** `items` on the root. The conclusion
+  holds (`AccountPage` was the only one without `items`), the wording is imprecise.
+- The remaining review follow-ups from earlier slices: at-rest encryption for workspace keys,
+  the stale provider enumerations, the undocumented operations, `TaskEditor`'s `getSnapshot`
+  loop, and the store's flattened `error`.
