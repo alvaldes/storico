@@ -1,6 +1,7 @@
 # ODD Feature: custom-model-picker
 
-> **Status**: in progress
+> **Status**: done — 3 commits on `fix/custom-model-picker` (`353f1ac`,
+> `9f3a3af`, `2a41fdc`); verified, NOT merged, not pushed
 > **Created**: 2026-09-17
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/custom-model-picker`
@@ -32,9 +33,10 @@ collapsed, scrollable dropdown — a select — not an inline block.
 | D1 | Primitive | base-ui **`Autocomplete`**, not the `Combobox` and not a native `<select>`. A native `<select>` is selection-only, which breaks the user-approved D3 of `custom-provider-model-discovery` (an id absent from the list, or a provider that exposes no `/models`, must stay configurable). An autocomplete is by definition "the typed text is the value, the list is a suggestion", so free text survives a dropdown. |
 | D2 | Why not `Combobox` | The installed `@base-ui/react` 1.8.0 has no `allowCustomValue` anywhere (verified by grep of the whole package), and the previous feature **observed** typed text reverting on blur in the Combobox. `Autocomplete.Root` sets `selectionMode: "none"` (`autocomplete/root/AutocompleteRoot.js:80`), so there is no selected value to revert to — the revert risk is structurally absent rather than worked around. |
 | D3 | No popup filtering | `filter={null}`. With the built-in filter, the popup narrows to the current value, so a workspace holding a saved model would open the list and see one entry — reintroducing the "I cannot see the models" complaint this whole thread started with. The popup is a catalogue browser; the list is always complete and scrolls. Trade-off accepted: typing does not narrow the list. |
-| D4 | Item text is the id | An item's rendered text is what base-ui fills the input with when the item is pressed. Rendering the friendly `name` would write the name into the model field, so the item's text is the **id**, with the `name` appended as a muted hint only when the two differ. This keeps the previous feature's D3 (entry shows the name, the saved value is the id) without a fill race. |
+| D4 | Item text is the id | The item's `value` is the id, and the rendered text is that same id, with the readable `name` appended as a muted suffix only when the two differ. **Corrected after verification:** the original rationale claimed the rendered text is what base-ui fills into the input. It is not — the fill goes through `stringifyValueLabel(item.value)` (`combobox/root/AriaCombobox.js:645-657`, `internals/resolveValueLabel.js`), so the `value` prop is authoritative and the rendered children never enter that path. The choice stands; the mechanism originally written here was wrong. |
 | D5 | The trigger is the affordance | `Autocomplete` forces `openOnInputClick = false` and omits the prop from its public type (`AutocompleteRoot.js:24`, `AutocompleteRootProps`), so a click on the text does not open the list. A visible chevron `Autocomplete.Trigger` gives the one-click reveal the previous bug was about. |
 | D6 | The datalist and the buttons are deleted | The native `<datalist>` caused the original invisibility in Firefox, and the button block caused this one. A single dropdown replaces both, so the count of suggestion mechanisms goes from three to one. |
+| D7 | A separator in the entry's accessible name | An explicit `{' '}` text node sits between the id and the name suffix. JSX drops the whitespace around a line break, so the two text nodes ran together and the computed name was `deepseek-reasonerDeepSeek Reasoner`, which a screen reader would read as one word. **Honest limit:** `jsdom` computes `display: ""` for a `span`, and `dom-accessibility-api` inserts a separator around every non-inline element child, so the test suite cannot demonstrate the difference — removing the node keeps those assertions green there. It is kept as an explicit, harmless correction, not as something a test proves. |
 
 ## Non-goals
 
@@ -61,7 +63,7 @@ collapsed, scrollable dropdown — a select — not an inline block.
 
 ### T-001 — Frontend: the discovered models become a dropdown
 
-- **Status**: pending
+- **Status**: done (commits `9f3a3af`, `2a41fdc`)
 - **Files to create**: `frontend/src/components/ui/autocomplete.tsx`,
   `frontend/src/components/react/__tests__/` cases only in the existing editor suite
 - **Files to modify**: `frontend/src/components/react/LLMConfigEditor.tsx`,
@@ -90,7 +92,7 @@ collapsed, scrollable dropdown — a select — not an inline block.
 
 ### T-002 — Verification gate
 
-- **Status**: pending
+- **Status**: done
 - **What**: run the repo gate and record the outcome.
 - **Commands**:
   - `cd frontend && npx prettier@3.9.8 --check <every touched file>`
@@ -118,8 +120,33 @@ its command has actually run)_
 
 | Task | Commit | Outcome |
 |------|--------|---------|
-| — | — | — |
+| T-001 | `9f3a3af` | The custom model field is one base-ui `Autocomplete` backed by a new `ui/autocomplete.tsx` that mirrors `ui/combobox.tsx`'s class strings. `value`/`onValueChange` make the typed text the model; `filter={null}` keeps the popup a complete catalogue; `openOnInputClick` is turned back on because `Autocomplete.Root` defaults it to `false`. The `<datalist>`, its `CUSTOM_MODEL_LIST_ID` constant and the 31-line button block are gone. 4 obsolete tests deleted, 5 added. |
+| T-001 | `2a41fdc` | The exact accessible-name assertion that replaced two regexes failed, and the failure was a real (if latent) defect: the id and the name suffix ran together as one accessible-name string. An explicit `{' '}` node separates them. Test file reflowed to satisfy prettier. |
+| T-002 | — | Independent verification, twice. Final artifact: `prettier --check` exit 0, `tsc --noEmit` exit 0, `vitest run` **24 files / 255 tests passed** (baseline 253, minus 4 deleted plus 6 added), `pnpm run build` complete with the 3 known warnings from untouched `ErrorDisplay.tsx` and `zod@4.6.4`. Clean tree, 4 paths in scope, no backend file. |
+
+## Verification findings
+
+1. **The first gate failed, and it was the candidate's fault.** `LLMConfigEditor.test.tsx:844` was 108 characters against the repo's printWidth 100 — introduced by the very commit that added the exact-name assertion, because that edit was validated with `vitest` alone and never run through prettier. Reflowed; `prettier --check` now exits 0 on all three touched frontend files.
+2. **The fill path is value-based, confirmed in source.** `stringifyAsLabel(item.value, itemToStringLabel)` with no `itemToStringValue` passed means the saved model is the item's `value` prop. The passing `writes the model id, not the displayed name` test is therefore backed by the mechanism, not only by its own assertion.
+3. **Typing an unlisted id costs one extra click before Save.** `ComboboxInput.js:82` computes `focusManagerModal = !isInsidePopup || modal`, which is `true` here because the input sits outside the portal, so the popup's focus manager consumes the first outside click. This is **pre-existing on the known-provider `Combobox` path** — the test suite already carried an `{Escape}` workaround there — but it is **new for the custom field**, which used to be a plain `Input` with no popup. Accepted as parity with the sibling field; recorded because the main flow (click the field, pick an entry) closes the popup on selection and is unaffected.
+4. **The name suffix is unreachable today.** `workspace_settings.py` builds `ModelInfo(id=..., name=...)` with `name == id` for both the Ollama path (line 389) and the OpenAI-compatible path (line 431) — which is the one every custom provider uses. Only Anthropic (`display_name`) and Gemini (`displayName`) return distinct names, and those render the known-provider field. So the id-vs-name distinction and D7's separator are latent in this branch: correct, tested, and currently invisible in production.
+5. **A test that cannot fail is not evidence.** The three button tests deleted here included one that asserted an absence and would have passed on the pre-change code; it was kept as a guard last round and is now superseded. The two exact-name assertions added in `2a41fdc` do fail if the name suffix is removed, but they do **not** fail if only the separator space is removed (see D7) — stated so nobody reads them as more than they prove.
 
 ## Outcome
 
-_pending_
+Done and independently verified on `fix/custom-model-picker`: the twelve models are
+now a collapsed, scrollable dropdown instead of a block that flooded the card, the
+field still accepts an id the provider never listed, and one click anywhere in the
+field opens the catalogue. RDD is off in this clone, so no native review ran. Not
+merged — the merge is the user's decision.
+
+## Follow-ups (not part of this fix)
+
+- The two-click-to-save behavior from finding 3 is parity with the known-provider
+  field, but it is new for this one. If it is ever reported, the fix is not in this
+  component: it comes from base-ui's focus manager for an input outside its portal.
+- No test asserts the popup's scroll cap or the empty state's flex layout: `jsdom`
+  has no layout engine, so both rest on the mirrored class strings.
+- `npx prettier@3.9.8 --check` is not part of the repo gate (prettier is not an
+  installed dependency). Every file touched here is clean, but nothing enforces it —
+  which is exactly how finding 1 got through.
