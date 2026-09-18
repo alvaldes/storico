@@ -17,6 +17,7 @@ from storico.domain.services.llm_config_readiness import (
     REQUIRED_FIELDS_BY_PROVIDER,
     llm_config_is_complete,
     missing_llm_config_fields,
+    normalize_optional,
     required_fields_for,
 )
 
@@ -132,6 +133,51 @@ class TestMissingFields:
             assert llm_config_is_complete(provider, **values) is (
                 missing_llm_config_fields(provider, **values) == ()
             )
+
+
+class TestNormalizeOptional:
+    """The one definition of "blank means absent".
+
+    It exists because that comparison used to be made three times with three different
+    meanings, and the disagreement is what let an endpoint of spaces reach a provider.
+    """
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("blank", [None, "", "   ", "\t", "\n", " \t\n "])
+    def test_a_blank_value_is_absent(self, blank: str | None) -> None:
+        """Nothing, and anything made only of whitespace, means "not configured"."""
+        assert normalize_optional(blank) is None
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("configured", "expected"),
+        [
+            ("llama3.2", "llama3.2"),
+            ("  llama3.2  ", "llama3.2"),
+            ("http://localhost:11434", "http://localhost:11434"),
+            ("  https://api.example.com/v1  ", "https://api.example.com/v1"),
+        ],
+    )
+    def test_a_configured_value_keeps_its_content(self, configured: str, expected: str) -> None:
+        """A real value survives; only the surrounding whitespace goes."""
+        assert normalize_optional(configured) == expected
+
+    @pytest.mark.unit
+    def test_internal_characters_are_not_touched(self) -> None:
+        """A credential is returned as configured, spaces inside it included."""
+        assert normalize_optional("  sk-a b c  ") == "sk-a b c"
+
+    @pytest.mark.unit
+    def test_the_rule_and_the_normalization_cannot_disagree(self) -> None:
+        """``_is_set`` is a projection of this function, so the two cannot drift.
+
+        Asserted through the public rule: a value the normalizer calls absent must be a
+        value the completeness rule reports as missing.
+        """
+        for candidate in (None, "", "   ", "\t\n", "real-key"):
+            absent = normalize_optional(candidate) is None
+            missing = missing_llm_config_fields("openai", model="m", api_key=candidate)
+            assert ("api_key" in missing) is absent
 
 
 class TestVocabulary:

@@ -58,6 +58,24 @@ def required_fields_for(provider: str) -> tuple[ReadinessField, ...]:
     return REQUIRED_FIELDS_BY_PROVIDER.get(provider, CUSTOM_PROVIDER_REQUIRED_FIELDS)
 
 
+def normalize_optional(value: str | None) -> str | None:
+    """Return a configured value, or ``None`` when it is blank.
+
+    The one definition of "blank means absent". That comparison used to exist three times
+    with three different meanings: :func:`missing_llm_config_fields` read a
+    whitespace-only value as unset, while the API routes and ``_build_llm_port`` read it as
+    a value and handed it to a provider — where an endpoint made of spaces fails inside the
+    background task, after the extraction record has already been created.
+
+    A value with content keeps it, minus its surrounding whitespace. Nothing else is
+    touched: a credential is returned exactly as it was configured, internal characters
+    included.
+    """
+    if value is None:
+        return None
+    return value.strip() or None
+
+
 def missing_llm_config_fields(
     provider: str,
     *,
@@ -99,5 +117,5 @@ def llm_config_is_complete(
 
 
 def _is_set(value: str | None) -> bool:
-    """Whether a configured value is actually present."""
-    return bool(value and value.strip())
+    """Whether a configured value is actually present, by the one definition there is."""
+    return normalize_optional(value) is not None
