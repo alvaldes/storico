@@ -1,11 +1,11 @@
 """Integration test against a real Postgres via testcontainers.
 
-This test is NOT executed by default — it is marked
-``@pytest.mark.integration`` and additionally disabled unless the Docker
-daemon is reachable. ``docker is not running`` is exactly the scenario
-the plan flagged as the honest-skip case: rather than forcing a docker
-pull in CI/local runs that are not prepared for it, we fail-open with a
-skip.
+This test is marked ``@pytest.mark.integration`` and disabled unless the
+Docker daemon is reachable, so it skips on a laptop without a daemon and
+runs for real on GitHub runners, which do have one. ``docker is not
+running`` is exactly the scenario the plan flagged as the honest-skip
+case: rather than forcing a docker pull in runs that are not prepared for
+it, we fail-open with a skip.
 
 To run manually (docker daemon up):
 
@@ -22,9 +22,11 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -79,15 +81,27 @@ pytestmark = [
 ]
 
 
-@pytest_asyncio.fixture(scope="module")
-async def pg_engine() -> AsyncEngine:
+# loop_scope="module" keeps the fixtures on the loop that owns the engine;
+# pytest-asyncio otherwise gives every single test a fresh loop, and asyncpg
+# connections created on one loop cannot be awaited from another.
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def pg_engine() -> AsyncGenerator[AsyncEngine, None]:
     """Startup Postgres 16 in a testcontainer and wire an async engine."""
     # Import lazily so the module import itself never blocks on testcontainers —
     # testcontainers imports docker, which is heavy and may pull images.
+    # ``testcontainers.postgres`` is the one path that exists across the >=4.9
+    # range; on 4.15+ it re-exports ``community.postgres`` with a
+    # DeprecationWarning, which pytest.ini does not turn into a failure.
     from testcontainers.postgres import PostgresContainer
 
-    with PostgresContainer("postgres:16-alpine", driver="asyncpg") as pg:
-        url = pg.get_connection_url()
+    # The container keeps its own *sync* driver, and only the app engine moves to
+    # asyncpg. Older testcontainers releases probe readiness by running
+    # ``create_engine(get_connection_url()).connect()``, which is a legacy sync
+    # Engine over whatever driver the URL names -- hand it an async one and the
+    # probe dies with MissingGreenlet before this fixture yields anything. Kept
+    # version-independent rather than relying on newer releases probing with psql.
+    with PostgresContainer("postgres:16-alpine") as pg:
+        url = make_url(pg.get_connection_url()).set(drivername="postgresql+asyncpg")
         engine = create_async_engine(url, pool_size=5, max_overflow=10, pool_pre_ping=True)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -95,14 +109,14 @@ async def pg_engine() -> AsyncEngine:
         await engine.dispose()
 
 
-@pytest_asyncio.fixture
-async def pg_session(pg_engine: AsyncEngine) -> AsyncSession:
+@pytest_asyncio.fixture(loop_scope="module")
+async def pg_session(pg_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
     factory = async_sessionmaker(pg_engine, expire_on_commit=False)
     async with factory() as session:
         yield session
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_list_projects_with_counts_latency_under_500ms(pg_session: AsyncSession) -> None:
     """Seed 50 projects×5 stories, measure list_by_workspace_with_counts wall time.
 

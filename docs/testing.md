@@ -9,7 +9,7 @@
 
 - **Runner**: pytest + pytest-asyncio
 - **HTTP client**: httpx (AsyncClient con ASGI transport)
-- **Database**: SQLite in-memory via aiosqlite
+- **Database**: SQLite in-memory via aiosqlite; Postgres 16 real solo en los tests de integración
 - **Auth token**: `dev-insecure-token-change-in-production`
 
 ### Cómo correr tests
@@ -21,7 +21,7 @@ make test-backend
 # Tests unitarios (rápidos, sin servicios externos)
 cd backend && .venv/bin/pytest -v -m unit
 
-# Tests de integración (requieren DB)
+# Tests de integración (requieren Docker)
 cd backend && .venv/bin/pytest -v -m integration
 
 # Tests de API
@@ -56,6 +56,8 @@ backend/tests/
 │   └── test_extraction_repository.py
 ├── test_services/                     # Tests de servicios
 │   └── test_extraction_service.py
+├── test_integration/                  # Tests contra servicios reales (Docker)
+│   └── test_projects_integration.py   # Postgres 16 en testcontainer
 └── test_unit/                         # Tests unitarios
     ├── test_embedding_service.py
     ├── test_ollama_adapter.py
@@ -79,6 +81,22 @@ backend/tests/
 |--------|-----------|
 | `unit` | Tests rápidos sin dependencias externas |
 | `integration` | Tests que requieren DB u otros servicios |
+
+### Tests de integración (Docker)
+
+`tests/test_integration/` levanta servicios reales con `testcontainers`. Se
+ejecutan solos cuando hay un daemon de Docker accesible: en GitHub Actions el
+runner lo tiene, así que **corren en CI**; en una máquina sin Docker el módulo se
+salta (no falla) según `_docker_reachable()`. Que se salten en tu máquina es
+normal y también significa que un error ahí solo aparece en CI.
+
+- El contenedor usa su driver **sincrónico** y el test convierte la URL a
+  `postgresql+asyncpg` por su cuenta. Las versiones de `testcontainers` que
+  verifican readiness con un engine síncrono de SQLAlchemy se rompen
+  (`MissingGreenlet`) si el contenedor recibe un driver async.
+- Los fixtures async de scope `module` declaran `loop_scope="module"` (igual que
+  el marker del test que los usa), porque pytest-asyncio le da un event loop
+  nuevo a cada test y las conexiones de asyncpg quedan atadas a un loop muerto.
 
 ### Convenciones
 
