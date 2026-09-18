@@ -91,8 +91,10 @@ class TestCustomProviderRegistry:
         assert [p["name"] for p in listed.json()] == ["deepseek"]
 
     @pytest.mark.asyncio
-    async def test_name_is_normalized(self, async_client, db_session, seed_workspace) -> None:
-        """Casing and padding are folded so one name cannot become two rows."""
+    async def test_padding_is_trimmed_and_casing_is_kept(
+        self, async_client, db_session, seed_workspace
+    ) -> None:
+        """The stored name is what the user typed, minus the surrounding padding."""
         user = await _create_user(db_session)
         ws_id = (await _seed(seed_workspace, user)).workspace_id
 
@@ -103,7 +105,79 @@ class TestCustomProviderRegistry:
         )
 
         assert created.status_code == 201
-        assert created.json()["name"] == "groq"
+        assert created.json()["name"] == "Groq"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "name", ["Groq", "has space", "Ünïcode", "-leading", "UPPER!", "My Gateway v2"]
+    )
+    async def test_free_form_names_are_stored_verbatim(
+        self, async_client, db_session, seed_workspace, name: str
+    ) -> None:
+        """Only emptiness and the 50-character cap constrain the name.
+
+        Routing does not need a slug: ``_build_llm_port`` sends every name outside
+        the four built-ins to the OpenAI-compatible adapter.
+        """
+        user = await _create_user(db_session)
+        ws_id = (await _seed(seed_workspace, user)).workspace_id
+
+        created = await async_client.post(
+            _providers_url(ws_id),
+            json={"name": name},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert created.status_code == 201
+        assert created.json()["name"] == name
+
+    @pytest.mark.asyncio
+    async def test_the_50_character_cap_measures_the_stored_name(
+        self, async_client, db_session, seed_workspace
+    ) -> None:
+        """Padding around a 50-character name is trimmed before it is measured.
+
+        The cap has to live in the validator, not in a raw ``max_length`` on the
+        field, or this padded name would be refused for being 54 characters long
+        while the name that gets stored is exactly at the limit.
+        """
+        user = await _create_user(db_session)
+        ws_id = (await _seed(seed_workspace, user)).workspace_id
+        name = "a" * 50
+
+        created = await async_client.post(
+            _providers_url(ws_id),
+            json={"name": f"  {name}  "},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert created.status_code == 201
+        assert created.json()["name"] == name
+
+    @pytest.mark.asyncio
+    async def test_names_that_differ_only_in_case_both_exist(
+        self, async_client, db_session, seed_workspace
+    ) -> None:
+        """Identity is case-sensitive: ``Groq`` and ``groq`` are two providers.
+
+        The user's approved rule. The DB constraint is ``UNIQUE (workspace_id,
+        name)``, so this needs no migration and no lower-cased comparison.
+        """
+        user = await _create_user(db_session)
+        ws_id = (await _seed(seed_workspace, user)).workspace_id
+        headers = _auth_headers(str(user.id))
+
+        first = await async_client.post(
+            _providers_url(ws_id), json={"name": "Groq"}, headers=headers
+        )
+        second = await async_client.post(
+            _providers_url(ws_id), json={"name": "groq"}, headers=headers
+        )
+        listed = await async_client.get(_providers_url(ws_id), headers=headers)
+
+        assert first.status_code == 201
+        assert second.status_code == 201
+        assert [p["name"] for p in listed.json()] == ["Groq", "groq"]
 
     @pytest.mark.asyncio
     async def test_create_requires_admin(self, async_client, db_session, seed_workspace) -> None:
@@ -182,11 +256,18 @@ class TestCustomProviderRegistry:
         assert listed.json() == []
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("name", ["ollama", "openai", "anthropic", "gemini"])
+    @pytest.mark.parametrize(
+        "name",
+        ["ollama", "openai", "anthropic", "gemini", "OLLAMA", "OpenAI", "Gemini"],
+    )
     async def test_known_provider_names_are_rejected(
         self, async_client, db_session, seed_workspace, name: str
     ) -> None:
-        """A first-class provider has its own branch, so it is not a custom entry."""
+        """A first-class provider has its own branch, so it is not a custom entry.
+
+        Casing does not open a side door: a custom provider named ``OpenAI`` would
+        sit beside the built-in entry in the select while routing somewhere else.
+        """
         user = await _create_user(db_session)
         ws_id = (await _seed(seed_workspace, user)).workspace_id
 
@@ -199,14 +280,33 @@ class TestCustomProviderRegistry:
         assert response.status_code == 409
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "name",
-        ["", "   ", "-leading", "has space", "UPPER!", "a" * 51, "ünïcode"],
-    )
+    async def test_the_select_s_control_value_is_rejected(
+        self, async_client, db_session, seed_workspace
+    ) -> None:
+        """``__add_custom_provider__`` is a control, not a provider name.
+
+        It travels through the select's value, so a provider registered under it
+        would occupy the "Add custom provider…" slot and be unselectable. The old
+        slug pattern kept it out by forbidding a leading underscore; that accident
+        is gone, so the guard is explicit.
+        """
+        user = await _create_user(db_session)
+        ws_id = (await _seed(seed_workspace, user)).workspace_id
+
+        response = await async_client.post(
+            _providers_url(ws_id),
+            json={"name": "__add_custom_provider__"},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 409
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("name", ["", "   ", "a" * 51])
     async def test_invalid_names_are_rejected(
         self, async_client, db_session, seed_workspace, name: str
     ) -> None:
-        """Names that are not slugs are refused before they reach the database."""
+        """An empty name and one over the cap are refused before the database."""
         user = await _create_user(db_session)
         ws_id = (await _seed(seed_workspace, user)).workspace_id
 
@@ -285,10 +385,11 @@ class TestCustomProviderRegistry:
         assert renamed.status_code == 409
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("target", ["gemini", "Gemini"])
     async def test_rename_rejects_a_known_provider_name(
-        self, async_client, db_session, seed_workspace
+        self, async_client, db_session, seed_workspace, target: str
     ) -> None:
-        """A rename cannot smuggle in a first-class provider name."""
+        """A rename cannot smuggle in a first-class provider name, in any casing."""
         user = await _create_user(db_session)
         ws_id = (await _seed(seed_workspace, user)).workspace_id
         headers = _auth_headers(str(user.id))
@@ -298,7 +399,7 @@ class TestCustomProviderRegistry:
 
         renamed = await async_client.patch(
             f"{_providers_url(ws_id)}/{created.json()['id']}",
-            json={"name": "gemini"},
+            json={"name": target},
             headers=headers,
         )
 

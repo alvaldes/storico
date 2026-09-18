@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from storico.api.dependencies import get_repository, require_admin
 from storico.api.schemas.custom_provider import (
     KNOWN_PROVIDERS,
+    SELECT_CONTROL_VALUE,
     CustomProviderRequest,
     CustomProviderResponse,
 )
@@ -196,16 +197,27 @@ async def upsert_llm_config(
 # ── Custom provider endpoints ─────────────────────────────────────
 
 
-def _reject_known_provider_name(name: str) -> None:
-    """Refuse a name that is already a first-class provider.
+def _reject_reserved_provider_name(name: str) -> None:
+    """Refuse a name the registry cannot own.
 
-    A known provider has its own adapter branch and model-discovery endpoint, so
-    a registry row for it would only duplicate an entry the select already offers.
+    Two names already mean something else. A built-in provider has its own adapter
+    branch and model-discovery endpoint, so a registry row for it would only
+    duplicate an entry the select already offers — and the comparison is
+    case-insensitive, because a name is free-form text now: ``OpenAI`` sits beside
+    ``openai`` in the select while routing to the custom branch, which is worse than
+    refusing it. The select's own control value is refused for the same reason: a
+    provider registered under it would occupy the "Add custom provider…" slot and
+    could never be selected.
     """
-    if name in KNOWN_PROVIDERS:
+    if name.lower() in KNOWN_PROVIDERS:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"'{name}' is a built-in provider and cannot be registered as a custom one",
+        )
+    if name == SELECT_CONTROL_VALUE:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"'{name}' is reserved by the provider selector",
         )
 
 
@@ -251,11 +263,12 @@ async def create_custom_provider(
 ) -> CustomProviderResponse:
     """Register a custom provider name for this workspace. Admin only.
 
-    The name is normalised by the request schema, so casing and surrounding
-    whitespace cannot produce a second row for a name the workspace already has.
+    The name is normalized by the request schema (trimmed, keeping its casing), so
+    surrounding whitespace cannot produce a second row for a name the workspace
+    already has.
     """
     workspace, _ = ctx
-    _reject_known_provider_name(body.name)
+    _reject_reserved_provider_name(body.name)
 
     existing = await provider_repo.find_by_workspace_and_name(workspace.id, body.name)
     if existing is not None:
@@ -283,7 +296,7 @@ async def rename_custom_provider(
     also rewrites the selection, so the two cannot drift apart.
     """
     workspace, _ = ctx
-    _reject_known_provider_name(body.name)
+    _reject_reserved_provider_name(body.name)
 
     existing = await provider_repo.get(provider_id)
     if existing is None or existing.workspace_id != workspace.id:
