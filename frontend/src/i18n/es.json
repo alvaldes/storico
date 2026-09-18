@@ -378,7 +378,7 @@
     "step2_card3_desc": "Organiza proyectos y colabora con tu equipo en espacios de trabajo dedicados.",
     "step3_title": "Configura tu LLM",
     "step3_description": "Elige tu proveedor de IA. Puedes cambiarlo después en Configuración.",
-    "step3_note": "Ollama funciona sin configuración adicional, sin API key.",
+    "step3_note": "Ollama no necesita API key, pero todos los proveedores necesitan un modelo. Elígelo en Configuración antes de tu primera extracción.",
     "llm_ollama": "Ollama (Local)",
     "llm_openai": "OpenAI",
     "llm_anthropic": "Anthropic",
