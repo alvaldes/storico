@@ -203,6 +203,19 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     );
   }
 
+  /**
+   * Retry the board load.
+   *
+   * `initialLoad` goes back to true first so a retry shows the spinner instead of the
+   * empty-board copy while it is in flight: the guard is `initialLoad && loading`, and a
+   * retry starts with `initialLoad` already false. A retry that fails again still lands on
+   * the error branch, because that guard needs `loading` too.
+   */
+  const reload = () => {
+    setInitialLoad(true);
+    if (workspaceId) void fetchTasksForWorkspace(workspaceId);
+  };
+
   if (loadError) {
     return (
       <ErrorDisplay
@@ -211,7 +224,7 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
         friendlyMessage={loadError}
         retryLabel={t.common.retry}
         // A refetch is the retry: it clears the recorded error before it starts.
-        onRetry={() => workspaceId && fetchTasksForWorkspace(workspaceId)}
+        onRetry={reload}
         locale={locale}
       />
     );

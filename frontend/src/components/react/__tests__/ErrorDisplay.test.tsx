@@ -107,6 +107,26 @@ describe('ErrorDisplay — the raw detail behind the message', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('offers no toggle for an empty detail', () => {
+    render(<ErrorDisplay friendlyMessage="Boom" rawDetail="" />);
+
+    // An empty string is not a detail: the toggle would open onto an empty panel.
+    expect(
+      screen.queryByRole('button', { name: t.errorDisplay.raw_response }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a detail whose text happens to be the placeholder', async () => {
+    const user = userEvent.setup();
+    // The gate used to compare the formatted text against the placeholder string, which
+    // silently dropped a caller whose detail *is* that text.
+    render(<ErrorDisplay friendlyMessage="Boom" rawDetail="(no detail provided)" />);
+
+    await user.click(screen.getByRole('button', { name: t.errorDisplay.raw_response }));
+
+    expect(screen.getByRole('region')).toHaveTextContent('(no detail provided)');
+  });
+
   it('starts collapsed, discloses the detail on demand, and reports its state', async () => {
     const user = userEvent.setup();
     render(<ErrorDisplay friendlyMessage="Boom" rawDetail="gateway said no" />);

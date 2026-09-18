@@ -142,4 +142,34 @@ describe('KanbanBoard', () => {
     await waitFor(() => expect(fetchTasksForWorkspace).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByText('Backlog')).toBeInTheDocument());
   });
+
+  it('does not claim the board is empty while a retry is in flight', async () => {
+    const user = userEvent.setup();
+    let release: (() => void) | undefined;
+    // Mimic the store exactly: it records the failure, and it raises `loading` before it
+    // awaits. Without the second half the board would have nothing to show a spinner for.
+    const fetchTasksForWorkspace = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        useTaskStore.setState({ error: 'the board is unavailable', loading: false });
+      })
+      .mockImplementationOnce(() => {
+        // The real action clears the recorded error before it awaits; without that the retry
+        // would land back on the error branch and this assertion would pass for free.
+        useTaskStore.setState({ loading: true, error: null });
+        return new Promise<void>((resolve) => {
+          release = () => resolve();
+        });
+      });
+    useTaskStore.setState({ fetchTasksForWorkspace, error: null, workspaceTasks: [] });
+
+    render(<KanbanBoard locale="en" />);
+    await user.click(await screen.findByRole('button', { name: t.common.retry }));
+
+    // The retry starts with `initialLoad` already false, so without putting it back the guard
+    // that shows the spinner misses and the page says there are no tasks.
+    expect(screen.queryByText(t.kanban.empty_board)).not.toBeInTheDocument();
+
+    release?.();
+  });
 });

@@ -136,22 +136,27 @@ export function ErrorDisplay({
   const t = useTranslations(locale);
 
   const formattedDetail = formatRawDetail(rawDetail);
-  // A detail worth showing: `undefined`/`null` have nothing, and the placeholder string is
-  // what `formatRawDetail` returns for them, so the toggle never opens onto nothing.
+  // Worth disclosing when there is a detail at all and it has something to say. Testing the
+  // formatted text for the placeholder string would drop a caller whose detail *is* that
+  // literal text, and testing only for `null` would open an empty panel for `""`.
   const hasDetail =
-    rawDetail !== undefined && rawDetail !== null && formattedDetail !== '(no detail provided)';
+    rawDetail !== undefined && rawDetail !== null && formattedDetail !== '';
 
   return (
     <div
-      // Announced: the banner appears in response to a failure, so a screen reader has to
-      // hear it rather than let it materialize silently in the middle of the page.
-      role="alert"
       data-slot="error-display"
       className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4"
     >
       <div className="flex items-start gap-3">
         <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
-        <div className="min-w-0 flex-1">
+        <div
+          // Announced, and only this: a banner appears in response to a failure, so a screen
+          // reader has to hear it — but `role="alert"` is atomic, so putting it on the whole
+          // card would re-read the card (raw JSON included) every time the detail is
+          // expanded or collapsed.
+          role="alert"
+          className="min-w-0 flex-1"
+        >
           <p className="text-sm font-medium text-destructive">{friendlyMessage}</p>
           {(status || errorCode) && (
             <p className="mt-1 font-mono text-xs text-destructive/70">
