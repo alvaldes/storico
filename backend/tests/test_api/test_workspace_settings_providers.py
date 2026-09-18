@@ -494,6 +494,31 @@ class TestCustomProviderRegistry:
         assert renamed.status_code == 404
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("name", ["Gemini", "ollama", "__add_custom_provider__"])
+    async def test_an_absent_row_outranks_a_reserved_target_name(
+        self, async_client, db_session, seed_workspace, name: str
+    ) -> None:
+        """A reserved target name is judged only once the row is known to exist.
+
+        The reservation answers "what may a name be registered as", which is not a
+        question about a row that does not exist. The repository's contract reads
+        ``404`` as "that row does not exist" and ``403`` as "it exists but is not
+        reachable", so this pins the side of that split the rename path is on.
+        """
+        from uuid import uuid4
+
+        user = await _create_user(db_session)
+        ws_id = (await _seed(seed_workspace, user)).workspace_id
+
+        renamed = await async_client.patch(
+            f"{_providers_url(ws_id)}/{uuid4()}",
+            json={"name": name},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert renamed.status_code == 404
+
+    @pytest.mark.asyncio
     async def test_rename_cannot_reach_another_workspaces_provider(
         self, async_client, db_session, seed_workspace
     ) -> None:
