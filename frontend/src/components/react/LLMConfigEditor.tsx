@@ -1029,7 +1029,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                   />
                   <FieldDescription>
                     {t.workspace?.llmApiKeyDesc ??
-                      'Your API key for this provider. Stored encrypted at rest.'}
+                      'Your API key for this provider. It is stored with this workspace on the server — readable only by its admins, and never saved in your browser.'}
                   </FieldDescription>
                   {fieldErrorFor('apiKey')}
                 </Field>

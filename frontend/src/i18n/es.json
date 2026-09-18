@@ -422,7 +422,7 @@
     "llmModelNotInList": "El modelo guardado no aparece en la lista del proveedor.",
     "llmTemperatureDesc": "Valores bajos = salida más consistente. Valores altos = más creativa.",
     "llmMaxTokensDesc": "Cantidad máxima de tokens que el modelo puede generar por respuesta.",
-    "llmApiKeyDesc": "Tu API Key para este proveedor. Se almacena encriptada.",
+    "llmApiKeyDesc": "Tu API Key para este proveedor. Se guarda con este espacio de trabajo en el servidor: solo la pueden leer sus administradores y nunca se guarda en tu navegador.",
     "llmBaseUrlCloudDesc": "Opcional. Déjalo vacío para usar el endpoint por defecto de este proveedor.",
     "llmModelsLoading": "Cargando modelos...",
     "llmModelsEmpty": "No hay modelos disponibles. Revisa el proveedor y vuelve a recargar.",
