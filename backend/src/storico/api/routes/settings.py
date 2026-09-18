@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 
 from storico.api.dependencies import get_current_user, get_repository
 from storico.api.schemas.settings import (
+    REMOVED_PREFERENCE_KEYS,
     AppSettings,
     DeleteAccountResponse,
     LLMTestRequest,
@@ -54,6 +55,11 @@ async def get_settings(
     """Return the current user's application preferences.
 
     Returns defaults (from pydantic schema) when no preferences exist yet.
+
+    A stored document is read through the schema with the removed keys dropped: ``AppSettings``
+    forbids extras, so a row written before the per-user LLM block was removed would otherwise
+    fail validation and answer 500. Revision ``0022`` cleaned storage; this covers a row it did
+    not reach.
     """
     existing = await repo.get(current_user.id)
     if existing is None:
@@ -61,8 +67,13 @@ async def get_settings(
             preferences=AppSettings(),
             updated_at=current_user.created_at,
         )
+    stored = {
+        key: value
+        for key, value in existing.preferences.items()
+        if key not in REMOVED_PREFERENCE_KEYS
+    }
     return UserPreferencesResponse(
-        preferences=AppSettings(**existing.preferences),
+        preferences=AppSettings(**stored),
         updated_at=existing.updated_at,
     )
 

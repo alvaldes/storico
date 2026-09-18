@@ -21,42 +21,6 @@ class CamelCaseModel(BaseModel):
     )
 
 
-class LLMProviderConfig(CamelCaseModel):
-    """Configuration for a single LLM provider — shared shape for all providers."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    model: str = "llama3.2"
-    temperature: float = 0.1
-    max_tokens: int = 2048
-    base_url: str | None = None
-    api_key: str | None = None
-
-
-class LLMSettings(CamelCaseModel):
-    """LLM provider selection and per-provider configs."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    provider: Literal["ollama", "openai", "anthropic", "gemini"] = "ollama"
-    ollama: LLMProviderConfig = LLMProviderConfig(
-        model="llama3.2",
-        base_url="http://localhost:11434",
-    )
-    openai: LLMProviderConfig = LLMProviderConfig(
-        model="gpt-4o-mini",
-        api_key="",
-    )
-    anthropic: LLMProviderConfig = LLMProviderConfig(
-        model="claude-3-haiku",
-        api_key="",
-    )
-    gemini: LLMProviderConfig = LLMProviderConfig(
-        model="gemini-2.0-flash",
-        api_key="",
-    )
-
-
 class ExportSettings(CamelCaseModel):
     """Default export format preferences."""
 
@@ -65,12 +29,29 @@ class ExportSettings(CamelCaseModel):
     default_format: Literal["trello", "json", "markdown"] = "json"
 
 
+#: Keys a previous schema version stored and this one deliberately does not declare.
+#:
+#: The preferences route drops exactly these on read, so a document written before the
+#: removal still validates. Revision ``0022`` removes them from storage; this is the shim for
+#: a row it did not reach — a restore, or a client still on the old contract. It is
+#: deliberately narrow: ``extra="forbid"`` stays, so a genuinely unexpected field still fails
+#: loudly instead of being swallowed.
+REMOVED_PREFERENCE_KEYS: frozenset[str] = frozenset({"llm"})
+
+
 class AppSettings(CamelCaseModel):
-    """Top-level user application settings — mirrors frontend AppSettings."""
+    """Top-level user application settings — mirrors frontend AppSettings.
+
+    Deliberately holds no LLM configuration. It used to carry an ``llm`` block with a
+    ``model``/``api_key``/``base_url`` per provider, which this endpoint round-tripped into
+    ``user_preferences.preferences``; nothing ever read it, because the live configuration is
+    per *workspace* (``workspace_llm_configs``), and a credential store no code reads is a
+    liability rather than a feature. Revision ``0022`` removes the stored key, and
+    ``extra="forbid"`` is what keeps it from coming back through this endpoint.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    llm: LLMSettings = LLMSettings()
     export: ExportSettings = ExportSettings()
 
 
