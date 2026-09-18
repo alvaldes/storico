@@ -85,7 +85,7 @@ protectedPaths = ['/dashboard', '/stories', '/kanban', '/export', '/account']
 - **CORS** — Configurable vía `STORICO_CORS_ORIGINS`. Default `"*"` en desarrollo.
 - **Extra fields rechazados** — Schemas Pydantic usan `extra="forbid"`
 - **SQL Injection** — SQLAlchemy con parametrización (no raw SQL)
-- **API keys de LLM** — Almacenadas **sin cifrado en reposo** en la base de datos (campo `api_key` en `workspace_llm_configs`). La key sí se devuelve al **admin** del workspace: `GET /settings/llm` la incluye para que el formulario pueda mostrarla y probar el proveedor. El endpoint de estado (`GET /settings/llm/status`), legible por cualquier miembro, nunca devuelve valores — solo los nombres de los campos que faltan.
+- **API keys de LLM** — Almacenadas **sin cifrado en reposo** en la base de datos (campo `api_key` en `workspace_llm_configs`). La key sí se devuelve al **admin** del workspace: `GET /settings/llm` la incluye para que el formulario pueda mostrarla y probar el proveedor. El endpoint de estado (`GET /settings/llm/status`), legible por cualquier miembro, nunca devuelve valores — solo los nombres de los campos que faltan. **No existe configuración de LLM por usuario**: `GET`/`PUT /users/me/settings` transporta únicamente `export.defaultFormat`, un `PUT` con un bloque `llm` responde `422`, y la revisión `0022` removió del almacenamiento el bloque que versiones anteriores guardaban ahí.
 
 ### Frontend
 

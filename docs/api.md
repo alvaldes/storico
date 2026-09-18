@@ -92,6 +92,13 @@ como toda ruta de colección. La única ruta vigente es la workspace-scoped.
 | PUT | `/api/v1/users/me/settings` | Guardar configuración |
 | PATCH | `/api/v1/users/me/onboarding` | Completar onboarding (opcionalmente renombra el workspace) |
 
+`/users/me/settings` transporta **una sola preferencia**: `preferences.export.defaultFormat`
+(`trello`, `json` o `markdown`). No lleva configuración de LLM ni credencial alguna. Antes
+declaraba un bloque `llm` con un `model`/`api_key`/`base_url` por proveedor que nada leía —la
+configuración viva es por **workspace**— y la revisión `0022` removió esa clave de lo guardado.
+`PUT` rechaza con `422` un body que traiga `llm` (el schema usa `extra="forbid"`), y `GET`
+tolera una fila heredada que todavía lo tenga: descarta esa clave y responde el resto.
+
 ### LLM Config (scoped a workspace)
 
 `GET` y `PUT /settings/llm` requieren admin. `GET /settings/llm/status` es la excepción
