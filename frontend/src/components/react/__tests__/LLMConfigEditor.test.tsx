@@ -782,7 +782,12 @@ describe('LLMConfigEditor custom provider', () => {
     await renderCustomEditor();
 
     const refresh = screen.getByRole('button', { name: 'Refresh models' });
-    expect(refresh).toBeEnabled();
+    // The button is disabled while any probe is in flight (`modelsLoading ||
+    // !canProbe`), and `renderCustomEditor` only awaits the field value -- not the
+    // auto-probe that value triggers. Asserting without waiting made this line
+    // depend on scheduling, and it flaked on a loaded CI runner. What this test is
+    // about is the empty key, so wait for the button to settle.
+    await waitFor(() => expect(refresh).toBeEnabled());
 
     const callsBefore = vi.mocked(fetchAvailableModels).mock.calls.length;
     await user.click(refresh);
