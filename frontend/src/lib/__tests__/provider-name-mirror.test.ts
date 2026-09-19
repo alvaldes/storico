@@ -62,3 +62,46 @@ describe('hand-kept provider vocabulary mirrors', () => {
     expect(declared).toBe(ADD_CUSTOM_PROVIDER_VALUE);
   });
 });
+
+/**
+ * The third copy is the one that actually broke something.
+ *
+ * `KNOWN_PROVIDERS` and its frontend mirror are guarded above, and migration `0021`'s frozen copy
+ * is deliberately separate. What had no guard at all was a *second* rendering of the same list
+ * inside the API schemas: `LLMTestRequest.provider` was a `Literal[...]` of the four names, so
+ * `POST /api/v1/llm/test` answered `422` for every workspace-registered name that
+ * `_build_llm_port` routes to the OpenAI-compatible adapter — and the branch meant to handle those
+ * names was unreachable.
+ *
+ * The field is a bounded `str` now, so a custom name reaches the route, and its bound is the shared
+ * `NAME_MAX_LENGTH` rather than a hand-typed number that could drift from the column it mirrors.
+ */
+describe('the API schemas carry no second provider list', () => {
+  const settingsSource = readFileSync(
+    new URL('../../../../backend/src/storico/api/schemas/settings.py', import.meta.url),
+    'utf8',
+  );
+
+  it('re-lists the built-in provider names in no Literal', () => {
+    // One name inside a Literal is a coincidence; two is a list, and that is how the connection
+    // test came to disagree with extraction about which providers exist.
+    const offender = [...settingsSource.matchAll(/Literal\[([^\]]*)\]/g)]
+      .map((match) => match[1])
+      .find((body) => KNOWN_PROVIDERS.filter((name) => body.includes(`"${name}"`)).length >= 2);
+
+    expect(
+      offender,
+      'a Literal in api/schemas/settings.py re-lists the built-in providers. The list belongs to KNOWN_PROVIDERS in api/schemas/custom_provider.py; a second copy refuses exactly the custom names every other surface routes.',
+    ).toBeUndefined();
+  });
+
+  it('bounds the connection-test provider with the shared maximum', () => {
+    const field = settingsSource.match(/^\s*provider: str = Field\((.+)\)$/m)?.[1];
+
+    expect(field, 'LLMTestRequest.provider is declared as a bounded str').not.toBeUndefined();
+    expect(field).toContain('max_length=NAME_MAX_LENGTH');
+    expect(settingsSource).toMatch(
+      /^from storico\.api\.schemas\.custom_provider import .*NAME_MAX_LENGTH/m,
+    );
+  });
+});

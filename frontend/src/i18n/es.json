@@ -85,7 +85,7 @@
       "q5": "¿A qué formatos puedo exportar?",
       "a5": "Puedes exportar a Trello (directamente a tus tableros), JSON o Markdown. El soporte para CSV y XML está en el roadmap.",
       "q6": "¿Puedo usar modelos de IA locales en lugar de APIs en la nube?",
-      "a6": "Sí. Storico soporta Ollama de fábrica, así que puedes ejecutarlo completamente offline con modelos locales como LLaMA 3.2 o Mistral. También soporta modelos en la nube (OpenAI, Anthropic)."
+      "a6": "Sí. Storico soporta Ollama de fábrica, así que puedes ejecutarlo completamente offline con modelos locales como LLaMA 3.2 o Mistral. También soporta modelos en la nube (OpenAI, Anthropic, Gemini)."
     },
     "cta": {
       "title": "Empieza a transformar tus historias de usuario en tareas hoy",
@@ -585,7 +585,7 @@
       "collection_oauth": "Cuando inicias sesión a trav\u00e9s de Google o GitHub OAuth, recibimos tu correo electr\u00f3nico y nombre de usuario. No",
       "collection_oauth_strong": "almacenamos",
       "collection_oauth_end": "contrase\u00f1as \u2014 la autenticaci\u00f3n es manejada completamente por tu proveedor OAuth.",
-      "collection_llm": "Las historias de usuario que envías se envían al LLM configurado para la extracci\u00f3n de tareas. Si usas un modelo local con Ollama, tus datos nunca salen de tu m\u00e1quina. Si usas un proveedor en la nube (OpenAI, Anthropic), tus datos son procesados por ellos seg\u00fan sus pol\u00edticas respectivas. No usamos tu contenido para entrenar modelos.",
+      "collection_llm": "Las historias de usuario que envías se envían al LLM configurado para la extracci\u00f3n de tareas. Si usas un modelo local con Ollama, tus datos nunca salen de tu m\u00e1quina. Si usas un proveedor en la nube (OpenAI, Anthropic, Gemini), tus datos son procesados por ellos seg\u00fan sus pol\u00edticas respectivas. No usamos tu contenido para entrenar modelos.",
       "collection_communications": "Si nos contactas por correo electr\u00f3nico o issues de GitHub, conservamos los mensajes y detalles que nos proporcionas para poder responder y gestionar la relaci\u00f3n.",
       "providers_title": "Proveedores de servicio",
       "providers_intro": "Usamos un peque\u00f1o n\u00famero de proveedores para hacer funcionar Storico. Procesan datos solo bajo nuestras instrucciones y bajo contrato.",
@@ -614,7 +614,7 @@
       "retention_title": "Retenci\u00f3n de datos",
       "retention": "Retienes la propiedad total de tus datos. Los proyectos, historias y tareas se pueden eliminar en cualquier momento desde la aplicaci\u00f3n. Los datos de la cuenta se conservan mientras tengas una cuenta activa. Los datos de uso se conservan solo mientras sea necesario para operar el servicio y cumplir con requisitos legales. No vendemos ni compartimos tu informaci\u00f3n personal con terceros.",
       "transfers_title": "Transferencias internacionales",
-      "transfers_body": "Si eliges usar un proveedor LLM en la nube (OpenAI, Anthropic), tus datos pueden ser procesados en pa\u00edses distintos al tuyo. Esas transferencias se rigen por los acuerdos de procesamiento de datos del respectivo proveedor. Cuando ejecutas Storico localmente, no ocurre ninguna transferencia de datos.",
+      "transfers_body": "Si eliges usar un proveedor LLM en la nube (OpenAI, Anthropic, Gemini), tus datos pueden ser procesados en pa\u00edses distintos al tuyo. Esas transferencias se rigen por los acuerdos de procesamiento de datos del respectivo proveedor. Cuando ejecutas Storico localmente, no ocurre ninguna transferencia de datos.",
       "rights_title": "Tus derechos",
       "rights_body": "Dependiendo de d\u00f3nde vivas, puedes tener derecho a acceder, corregir, eliminar o portar tus datos personales, a oponerte o restringir cierto procesamiento, y a retirar el consentimiento. Si est\u00e1s en el EEE o Reino Unido, aplica el GDPR. Si eres residente de California, aplica CCPA/CPRA, incluyendo el derecho a saber, eliminar y optar por no participar en la venta de datos (que no realizamos). Para ejercer estos derechos, envíanos un correo a alvaldes.dev@gmail.com. Responderemos dentro del plazo que la ley requiera. Tambi\u00e9n tienes derecho a presentar una queja ante tu autoridad local de protecci\u00f3n de datos.",
       "cookies_title": "Cookies",
@@ -683,7 +683,7 @@
       "story_format_example_text": "\"As a user, I want to reset my password so that I can regain access to my account.\"",
       "llm_backends_title": "Backends LLM soportados",
       "llm_backend_ollama": "Ollama — LLaMA 3.2, Mistral y otros modelos locales",
-      "llm_backend_openai": "OpenAI — GPT-3.5, GPT-4 (requiere API key)",
+      "llm_backend_openai": "OpenAI — modelos GPT (requiere API key)",
       "llm_backend_anthropic": "Anthropic — Claude (requiere API key)",
       "llm_backend_gemini": "Gemini — Gemini 2.0 Flash (requiere API key)",
       "more_coming": "Documentación más detallada, incluyendo guías de API y visión general de la arquitectura, próximamente."
@@ -718,7 +718,7 @@
       "api_server": "Servidor API",
       "api_server_desc": "Backend FastAPI",
       "llm_runner": "Ejecutor LLM",
-      "llm_runner_desc": "Ollama / OpenAI / Anthropic",
+      "llm_runner_desc": "Ollama / OpenAI / Anthropic / Gemini / cualquier endpoint compatible con OpenAI",
       "database": "Base de datos",
       "database_desc": "PostgreSQL",
       "vector_store": "Almacén vectorial",

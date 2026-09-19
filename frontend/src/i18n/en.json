@@ -85,7 +85,7 @@
       "q5": "What formats can I export to?",
       "a5": "You can export to Trello (directly to your boards), JSON, or Markdown. CSV and XML support are on the roadmap.",
       "q6": "Can I use local AI models instead of cloud APIs?",
-      "a6": "Yes. Storico supports Ollama out of the box, so you can run entirely offline with local models like LLaMA 3.2 or Mistral. Cloud models (OpenAI, Anthropic) are also supported."
+      "a6": "Yes. Storico supports Ollama out of the box, so you can run entirely offline with local models like LLaMA 3.2 or Mistral. Cloud models (OpenAI, Anthropic, Gemini) are also supported."
     },
     "cta": {
       "title": "Start transforming your user stories into tasks today",
@@ -585,7 +585,7 @@
       "collection_oauth": "When you sign in via Google or GitHub OAuth, we receive your email address and display name. We do",
       "collection_oauth_strong": "not",
       "collection_oauth_end": "store passwords \u2014 authentication is handled entirely by your OAuth provider.",
-      "collection_llm": "The user stories you submit are sent to the configured LLM for task extraction. If you use a local model via Ollama, your data never leaves your machine. If you use a cloud provider (OpenAI, Anthropic), your data is processed by them according to their respective policies. We do not use your content to train models.",
+      "collection_llm": "The user stories you submit are sent to the configured LLM for task extraction. If you use a local model via Ollama, your data never leaves your machine. If you use a cloud provider (OpenAI, Anthropic, Gemini), your data is processed by them according to their respective policies. We do not use your content to train models.",
       "collection_communications": "If you contact us via email or GitHub issues, we keep the messages and details you provide so we can respond and manage the relationship.",
       "providers_title": "Service providers",
       "providers_intro": "We use a small number of providers to make Storico work. They process data only on our instructions and under contract.",
@@ -614,7 +614,7 @@
       "retention_title": "Data retention",
       "retention": "You retain full ownership of your data. Projects, stories, and tasks can be deleted at any time from within the application. Account data is kept for as long as you have an account. Usage data is kept only as long as needed to operate the service and meet legal requirements. We do not sell or share your personal information with third parties.",
       "transfers_title": "International transfers",
-      "transfers_body": "If you choose to use a cloud LLM provider (OpenAI, Anthropic), your data may be processed in countries other than your own. Those transfers are governed by the respective provider's data processing agreements. When running Storico locally, no data transfer occurs.",
+      "transfers_body": "If you choose to use a cloud LLM provider (OpenAI, Anthropic, Gemini), your data may be processed in countries other than your own. Those transfers are governed by the respective provider's data processing agreements. When running Storico locally, no data transfer occurs.",
       "rights_title": "Your rights",
       "rights_body": "Depending on where you live, you may have the right to access, correct, delete, or port your personal data, to object to or restrict certain processing, and to withdraw consent. If you are in the EEA or UK, the GDPR applies. If you are a California resident, the CCPA/CPRA applies, including the right to know, delete, and opt out of sale (which we do not do). To exercise these rights, email us at alvaldes.dev@gmail.com. We will respond within the period the law requires. You also have the right to complain to your local data protection authority.",
       "cookies_title": "Cookies",
@@ -683,7 +683,7 @@
       "story_format_example_text": "\u201cAs a user, I want to reset my password so that I can regain access to my account.\u201d",
       "llm_backends_title": "Supported LLM backends",
       "llm_backend_ollama": "Ollama \u2014 LLaMA 3.2, Mistral, and other local models",
-      "llm_backend_openai": "OpenAI \u2014 GPT-3.5, GPT-4 (requires API key)",
+      "llm_backend_openai": "OpenAI \u2014 GPT models (requires API key)",
       "llm_backend_anthropic": "Anthropic \u2014 Claude (requires API key)",
       "llm_backend_gemini": "Gemini \u2014 Gemini 2.0 Flash (requires API key)",
       "more_coming": "More detailed documentation, including API guides and architecture overview, coming soon."
@@ -718,7 +718,7 @@
       "api_server": "API Server",
       "api_server_desc": "FastAPI backend",
       "llm_runner": "LLM Runner",
-      "llm_runner_desc": "Ollama / OpenAI / Anthropic",
+      "llm_runner_desc": "Ollama / OpenAI / Anthropic / Gemini / any OpenAI-compatible endpoint",
       "database": "Database",
       "database_desc": "PostgreSQL",
       "vector_store": "Vector Store",

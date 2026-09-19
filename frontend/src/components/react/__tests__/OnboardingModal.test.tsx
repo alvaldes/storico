@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { OnboardingModal } from '@/components/react/OnboardingModal';
 import { useAuthStore } from '@/stores/authStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { KNOWN_PROVIDERS } from '@/lib/llm-providers';
+import en from '@/i18n/en.json';
 
 // Mock the completeOnboarding API call
 vi.mock('@/lib/user-api', () => ({
@@ -116,5 +118,46 @@ describe('OnboardingModal', () => {
 
     // No button with aria-label "Close" should exist
     expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
+  });
+
+  it('offers exactly the known providers in the LLM select', async () => {
+    const user = userEvent.setup();
+    render(<OnboardingModal locale="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Welcome to Storico')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('Next'));
+    await user.click(screen.getByText('Next'));
+    await waitFor(() => {
+      expect(screen.getByText('Step 3 of 3')).toBeInTheDocument();
+    });
+
+    // Derived from KNOWN_PROVIDERS and the catalog rather than typed out, so a provider added
+    // to the list without a label here fails on the missing option instead of on a count.
+    const onboarding = en.onboarding as Record<string, string>;
+    const settings = en.settings as Record<string, string>;
+    const expected = KNOWN_PROVIDERS.map((provider) => onboarding[`llm_${provider}`]);
+    expect(expected.every((label) => typeof label === 'string' && label.length > 0)).toBe(true);
+
+    const trigger = screen.getByLabelText('Configure your LLM');
+    await user.click(trigger);
+    await screen.findByRole('option', { name: expected[0] });
+
+    // Compared as a set and without the glyphs: ordering is the component's business, and
+    // `anthropicBlack` carries an SVG `<title>` that sits in the option's text content
+    // without being part of the name a user reads.
+    const offered = screen.getAllByRole('option').map((option) => {
+      const clone = option.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('svg').forEach((glyph) => glyph.remove());
+      return clone.textContent?.trim();
+    });
+    expect(offered.sort()).toEqual([...expected].sort());
+
+    // A label alone would also pass for an option whose value names a different provider, so
+    // read one selection back: `gemini` is the only value that renders this label.
+    const geminiLabel = expected[KNOWN_PROVIDERS.indexOf('gemini')];
+    await user.click(await screen.findByRole('option', { name: geminiLabel }));
+    await waitFor(() => expect(trigger).toHaveTextContent(settings.llm_provider_gemini));
   });
 });
