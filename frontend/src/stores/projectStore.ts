@@ -5,6 +5,7 @@ import * as api from '@/lib/projects-api';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { getScopedWorkspaceId, isScopeUnchanged, isScopedWorkspace } from '@/lib/workspace-scope';
 import { createInflightTracker } from '@/stores/_inflight';
+import { extractErrorInfo, type ErrorInfo } from '@/lib/error-info';
 
 // Dedupe of inflight fetchProjects calls. Multiple components mounting
 // simultaneously (sidebar, Dashboard, ProjectsList) all call fetchProjects()
@@ -25,7 +26,13 @@ interface ProjectState {
   projects: Project[];
   loading: boolean;
   saving: boolean;
-  error: string | null;
+  /**
+   * The failure that stopped the last call, keeping what the API layer captured.
+   *
+   * `ErrorInfo` rather than a bare message: the whole point is that the caller can show the HTTP
+   * status, the machine-readable code and the raw response body instead of one sentence.
+   */
+  error: ErrorInfo | null;
 
   /** Fetch all projects for the current workspace. */
   fetchProjects: () => Promise<void>;
@@ -68,8 +75,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({ projects: response.items, loading: false });
     } catch (err) {
       if (requestId !== projectsRequestSeq) return;
-      const message = err instanceof Error ? err.message : 'Failed to fetch projects';
-      set({ error: message, loading: false });
+      set({ error: extractErrorInfo(err, 'Failed to fetch projects'), loading: false });
     }
   },
 
@@ -93,10 +99,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
       return project;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create project';
       // The banner is global, but the failure still belongs to the workspace this call started
       // in: showing it after a switch would blame the new workspace for the old one's error.
-      if (isScopeUnchanged(scopeAtCall)) set({ error: message });
+      if (isScopeUnchanged(scopeAtCall)) set({ error: extractErrorInfo(err, 'Failed to create project') });
       // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
       // settled — the scope decides where the *result* belongs, not whether it finished.
       set({ saving: false });
@@ -115,10 +120,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         saving: false,
       }));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update project';
       // The banner is global, but it describes a request addressed to `ws.id`, so it must not
       // outlive that workspace.
-      if (isScopedWorkspace(ws.id)) set({ error: message });
+      if (isScopedWorkspace(ws.id)) set({ error: extractErrorInfo(err, 'Failed to update project') });
       // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
       // settled — the scope decides where the *result* belongs, not whether it finished.
       set({ saving: false });
@@ -137,10 +141,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         saving: false,
       }));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to delete project';
       // The banner is global, but it describes a request addressed to `ws.id`, so it must not
       // outlive that workspace.
-      if (isScopedWorkspace(ws.id)) set({ error: message });
+      if (isScopedWorkspace(ws.id)) set({ error: extractErrorInfo(err, 'Failed to delete project') });
       // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
       // settled — the scope decides where the *result* belongs, not whether it finished.
       set({ saving: false });

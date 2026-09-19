@@ -123,7 +123,6 @@ describe('taskStore — extraction error handling', () => {
       currentWorkspace: null,
       loading: false,
       saving: false,
-      error: null,
     });
   });
 
@@ -216,7 +215,6 @@ describe('taskStore — stale workspace continuations', () => {
       currentWorkspace: null,
       loading: false,
       saving: false,
-      error: null,
     });
   });
 
@@ -516,7 +514,6 @@ describe('taskStore — extraction started in a workspace that was discarded', (
       currentWorkspace: null,
       loading: false,
       saving: false,
-      error: null,
     });
   });
 

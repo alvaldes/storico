@@ -219,9 +219,12 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   if (loadError) {
     return (
       <ErrorDisplay
-        // The store records a message rather than the `ApiRequestError`, so there is no
-        // status, code or raw body to disclose on this page.
-        friendlyMessage={loadError}
+        friendlyMessage={loadError.friendlyMessage}
+        // The store now keeps what the API layer captured, so the card can disclose the HTTP
+        // status, the machine code and the raw body instead of only a sentence.
+        rawDetail={loadError.rawDetail}
+        status={loadError.status}
+        errorCode={loadError.errorCode}
         retryLabel={t.common.retry}
         // A refetch is the retry: it clears the recorded error before it starts.
         onRetry={reload}

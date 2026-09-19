@@ -31,7 +31,6 @@ describe('ExportPanel', () => {
       } as Workspace,
       loading: false,
       saving: false,
-      error: null,
     });
     useTaskStore.setState({
       tasks: {},
@@ -56,5 +55,26 @@ describe('ExportPanel', () => {
 
     const downloadButton = screen.getByRole('button', { name: 'Download' });
     expect(downloadButton).toBeEnabled();
+  });
+
+  it('reports a failed task load with what the API answered', async () => {
+    // This branch had no test at all. It is worth pinning now because the store keeps the
+    // whole failure rather than a message: the page supplies its own headline, so the status
+    // and the machine code can only reach the card through the structured fields.
+    useTaskStore.setState({
+      error: {
+        friendlyMessage: 'the workspace could not be read',
+        rawDetail: { detail: 'the workspace could not be read' },
+        status: 500,
+        errorCode: 'WORKSPACE_TASKS_FAILED',
+      },
+    });
+
+    render(<ExportPanel locale="en" />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Failed to load tasks for export');
+    expect(alert).toHaveTextContent('HTTP 500');
+    expect(alert).toHaveTextContent('WORKSPACE_TASKS_FAILED');
   });
 });

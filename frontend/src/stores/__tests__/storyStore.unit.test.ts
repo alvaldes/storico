@@ -160,7 +160,6 @@ describe('storyStore — created story scope guard', () => {
       currentWorkspace: makeWorkspace('ws-a'),
       loading: false,
       saving: false,
-      error: null,
     });
     useStoryStore.setState({ stories: [], loading: false, saving: false });
   });
@@ -268,7 +267,6 @@ describe('storyStore — updated/deleted story scope guard', () => {
       currentWorkspace: makeWorkspace('ws-a'),
       loading: false,
       saving: false,
-      error: null,
     });
     useStoryStore.setState({ stories: [], loading: false, saving: false });
   });
@@ -353,7 +351,6 @@ describe('storyStore — created story append guard with a real observed scope',
       currentWorkspace: null,
       loading: false,
       saving: false,
-      error: null,
     });
     useStoryStore.setState({ stories: [], loading: false, saving: false });
   });

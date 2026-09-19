@@ -141,7 +141,6 @@ function resetStores() {
     currentWorkspace: makeWorkspace('ws-1'),
     loading: false,
     saving: false,
-    error: null,
   });
   // A cached project keeps the contextual-back-link effect synchronous.
   useProjectStore.setState({ projects: [project], loading: false, error: null });

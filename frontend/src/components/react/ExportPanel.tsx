@@ -160,7 +160,12 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
       {error && !initialLoad && (
         <ErrorDisplay
           friendlyMessage={t.exportPage.error_fetch}
-          rawDetail={error}
+          // This page supplies its own headline, so the store's message belongs in the detail
+          // rather than in the sentence. Falling back to it keeps the disclosure panel from
+          // being empty when the failure carried no body at all.
+          rawDetail={error.rawDetail ?? error.friendlyMessage}
+          status={error.status}
+          errorCode={error.errorCode}
           retryLabel={t.common.retry}
           onRetry={() => workspaceId && fetchTasksForWorkspace(workspaceId)}
           locale={locale}

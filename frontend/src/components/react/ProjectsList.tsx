@@ -60,7 +60,7 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
   }, [fetchProjects]);
 
   useEffect(() => {
-    if (error) setLocalError(error);
+    if (error) setLocalError(error.friendlyMessage);
   }, [error]);
 
   const handleCreate = async (data: { name: string; description: string; icon?: string }) => {

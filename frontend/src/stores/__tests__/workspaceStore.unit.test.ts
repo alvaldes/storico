@@ -83,7 +83,6 @@ describe('workspaceStore — workspace switching hygiene', () => {
       currentWorkspace: null,
       loading: false,
       saving: false,
-      error: null,
     });
     useProjectStore.setState({
       projects: [project],
@@ -240,7 +239,12 @@ describe('workspaceStore — workspace switching hygiene', () => {
 
 describe('projectStore / storyStore reset', () => {
   beforeEach(() => {
-    useProjectStore.setState({ projects: [project], loading: true, saving: false, error: 'boom' });
+    useProjectStore.setState({
+      projects: [project],
+      loading: true,
+      saving: false,
+      error: { friendlyMessage: 'boom', rawDetail: 'boom' },
+    });
     useStoryStore.setState({
       stories: [story],
       loading: true,
@@ -278,7 +282,6 @@ describe('workspaceStore — the scoped workspace id follows currentWorkspace', 
       currentWorkspace: null,
       loading: false,
       saving: false,
-      error: null,
     });
     useProjectStore.setState({
       projects: [],

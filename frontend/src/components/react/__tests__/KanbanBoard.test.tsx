@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { KanbanBoard } from '@/components/react/KanbanBoard';
-import * as api from '@/lib/tasks-api';
 import { useTaskStore } from '@/stores/taskStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useTranslations } from '@/i18n/utils';
@@ -61,7 +60,6 @@ describe('KanbanBoard', () => {
       } as Workspace,
       loading: false,
       saving: false,
-      error: null,
     });
     useTaskStore.setState({
       workspaceTasks: mockTasks,
@@ -121,7 +119,15 @@ describe('KanbanBoard', () => {
     // Driving this path through a rejected promise is what the old board did, and it is why
     // the branch was unreachable — nothing could ever reject.
     const fetchTasksForWorkspace = vi.fn().mockImplementation(async () => {
-      useTaskStore.setState({ error: 'the board is unavailable', loading: false });
+      useTaskStore.setState({
+        error: {
+          friendlyMessage: 'the board is unavailable',
+          rawDetail: { detail: 'the board is unavailable' },
+          status: 503,
+          errorCode: 'BOARD_UNAVAILABLE',
+        },
+        loading: false,
+      });
     });
     useTaskStore.setState({ fetchTasksForWorkspace, error: null });
 
@@ -131,6 +137,10 @@ describe('KanbanBoard', () => {
     // failed load left the board empty with no explanation at all.
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('the board is unavailable');
+    // The status and the machine code reach the user now: the store keeps what the API layer
+    // captured, where it used to record only a message and the page had nothing to disclose.
+    expect(alert).toHaveTextContent('HTTP 503');
+    expect(alert).toHaveTextContent('BOARD_UNAVAILABLE');
     expect(screen.queryByText('Backlog')).not.toBeInTheDocument();
 
     // And the board can be brought back without leaving the page.
@@ -151,7 +161,10 @@ describe('KanbanBoard', () => {
     const fetchTasksForWorkspace = vi
       .fn()
       .mockImplementationOnce(async () => {
-        useTaskStore.setState({ error: 'the board is unavailable', loading: false });
+        useTaskStore.setState({
+        error: { friendlyMessage: 'the board is unavailable', rawDetail: 'the board is unavailable' },
+        loading: false,
+      });
       })
       .mockImplementationOnce(() => {
         // The real action clears the recorded error before it awaits; without that the retry

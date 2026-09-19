@@ -9,6 +9,7 @@ vi.mock('@/lib/projects-api', () => ({
 }));
 
 import * as api from '@/lib/projects-api';
+import { ApiRequestError } from '@/lib/api';
 import { useProjectStore } from '@/stores/projectStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { getScopedWorkspaceId, resetScopedWorkspace } from '@/lib/workspace-scope';
@@ -68,7 +69,6 @@ describe('projectStore — workspace-scoped fetch guard', () => {
       currentWorkspace: makeWorkspace('ws-a'),
       loading: false,
       saving: false,
-      error: null,
     });
     useProjectStore.setState({ projects: [], loading: false, saving: false, error: null });
   });
@@ -148,7 +148,6 @@ describe('projectStore — created project scope guard', () => {
       currentWorkspace: makeWorkspace('ws-a'),
       loading: false,
       saving: false,
-      error: null,
     });
     useProjectStore.setState({ projects: [], loading: false, saving: false, error: null });
   });
@@ -226,7 +225,7 @@ describe('projectStore — created project scope guard', () => {
       useProjectStore.getState().createProject({ name: 'New project', description: '' }),
     ).rejects.toThrow('boom');
 
-    expect(useProjectStore.getState().error).toBe('boom');
+    expect(useProjectStore.getState().error).toMatchObject({ friendlyMessage: 'boom' });
     expect(useProjectStore.getState().saving).toBe(false);
   });
 });
@@ -240,7 +239,6 @@ describe('projectStore — updated/deleted project scope guard', () => {
       currentWorkspace: makeWorkspace('ws-a'),
       loading: false,
       saving: false,
-      error: null,
     });
     useProjectStore.setState({ projects: [], loading: false, saving: false, error: null });
   });
@@ -295,7 +293,7 @@ describe('projectStore — updated/deleted project scope guard', () => {
       useProjectStore.getState().updateProject('project-a', { name: 'Renamed' }),
     ).rejects.toThrow('boom');
 
-    expect(useProjectStore.getState().error).toBe('boom');
+    expect(useProjectStore.getState().error).toMatchObject({ friendlyMessage: 'boom' });
     expect(useProjectStore.getState().saving).toBe(false);
   });
 
@@ -304,7 +302,7 @@ describe('projectStore — updated/deleted project scope guard', () => {
 
     await expect(useProjectStore.getState().deleteProject('project-a')).rejects.toThrow('boom');
 
-    expect(useProjectStore.getState().error).toBe('boom');
+    expect(useProjectStore.getState().error).toMatchObject({ friendlyMessage: 'boom' });
     expect(useProjectStore.getState().saving).toBe(false);
   });
 });
@@ -323,7 +321,6 @@ describe('projectStore — scope guards with a real observed scope', () => {
       currentWorkspace: null,
       loading: false,
       saving: false,
-      error: null,
     });
     useProjectStore.setState({ projects: [], loading: false, saving: false, error: null });
   });
@@ -382,7 +379,7 @@ describe('projectStore — scope guards with a real observed scope', () => {
       useProjectStore.getState().createProject({ name: 'New project', description: '' }),
     ).rejects.toThrow('boom');
 
-    expect(useProjectStore.getState().error).toBe('boom');
+    expect(useProjectStore.getState().error).toMatchObject({ friendlyMessage: 'boom' });
     expect(useProjectStore.getState().saving).toBe(false);
   });
 
@@ -415,7 +412,7 @@ describe('projectStore — scope guards with a real observed scope', () => {
     ).rejects.toThrow('boom');
 
     expect(getScopedWorkspaceId()).toBe('ws-a');
-    expect(useProjectStore.getState().error).toBe('boom');
+    expect(useProjectStore.getState().error).toMatchObject({ friendlyMessage: 'boom' });
     expect(useProjectStore.getState().saving).toBe(false);
   });
 
@@ -444,7 +441,7 @@ describe('projectStore — scope guards with a real observed scope', () => {
     await expect(useProjectStore.getState().deleteProject('project-a')).rejects.toThrow('boom');
 
     expect(getScopedWorkspaceId()).toBe('ws-a');
-    expect(useProjectStore.getState().error).toBe('boom');
+    expect(useProjectStore.getState().error).toMatchObject({ friendlyMessage: 'boom' });
     expect(useProjectStore.getState().saving).toBe(false);
   });
 
@@ -464,5 +461,56 @@ describe('projectStore — scope guards with a real observed scope', () => {
     expect(getScopedWorkspaceId()).toBe('ws-b');
     expect(useProjectStore.getState().error).toBeNull();
     expect(useProjectStore.getState().saving).toBe(false);
+  });
+});
+
+describe('projectStore — the failure it records', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetScopedWorkspace();
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace('ws-a')],
+      currentWorkspace: makeWorkspace('ws-a'),
+      loading: false,
+      saving: false,
+    });
+    useProjectStore.setState({ projects: [], loading: false, saving: false, error: null });
+    // The store only publishes a failure whose request was addressed to the workspace on
+    // screen, so the scope has to be the real one rather than unset.
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-a'));
+  });
+
+  it('keeps the status, the machine code and the raw body it was given', async () => {
+    // What the store records is exactly what the banner can show. It used to keep
+    // `err.message` alone, so a refused delete could not say `HTTP 409` or name the code the
+    // backend sent — nothing downstream had them any more.
+    vi.mocked(api.listProjects).mockResolvedValue(page([]));
+    vi.mocked(api.deleteProject).mockRejectedValue(
+      new ApiRequestError(409, 'Conflict', { error_code: 'PROJECT_HAS_STORIES' }, {
+        detail: 'the project still has stories',
+      }),
+    );
+
+    await expect(useProjectStore.getState().deleteProject('p-1')).rejects.toThrow();
+
+    expect(useProjectStore.getState().error).toEqual({
+      friendlyMessage: expect.any(String),
+      rawDetail: { detail: 'the project still has stories' },
+      status: 409,
+      errorCode: 'PROJECT_HAS_STORIES',
+    });
+    expect(useProjectStore.getState().saving).toBe(false);
+  });
+
+  it('still reads a plain Error, which carries no status at all', async () => {
+    vi.mocked(api.listProjects).mockResolvedValue(page([]));
+    vi.mocked(api.deleteProject).mockRejectedValue(new Error('boom'));
+
+    await expect(useProjectStore.getState().deleteProject('p-1')).rejects.toThrow('boom');
+
+    expect(useProjectStore.getState().error).toEqual({
+      friendlyMessage: 'boom',
+      rawDetail: 'boom',
+    });
   });
 });

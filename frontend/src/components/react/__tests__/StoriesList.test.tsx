@@ -61,7 +61,6 @@ describe('StoriesList — workspace scoping', () => {
       currentWorkspace: makeWorkspace('ws-a'),
       loading: false,
       saving: false,
-      error: null,
     });
   });
 

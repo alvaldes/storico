@@ -36,7 +36,6 @@ import {
 import { toast } from 'sonner';
 import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
-import type { ExtractionErrorInfo } from '@/stores/taskStore';
 
 const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   pending_extraction: 'outline',

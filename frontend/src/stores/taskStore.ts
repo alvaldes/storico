@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { getAllowedTaskTransitions, type Task, type TaskStatus } from '@/types/task';
 import type { UserStory, UserStoryStatus } from '@/types/story';
 import * as api from '@/lib/tasks-api';
-import { ApiRequestError, type RawBackendError } from '@/lib/api';
+import { extractErrorInfo, type ErrorInfo } from '@/lib/error-info';
 import { LLM_CONFIG_INCOMPLETE_CODE } from '@/lib/llm-config-readiness';
 import { isScopedWorkspace, setScopedWorkspaceId } from '@/lib/workspace-scope';
 import { useStoryStore } from '@/stores/storyStore';
@@ -26,18 +26,11 @@ export type ExtractionErrorCode =
   | 'config'
   | null;
 
-export interface ExtractionErrorInfo {
-  friendlyMessage: string;
-  rawDetail: unknown;
-  status?: number;
-  errorCode?: string;
-}
-
 export interface ExtractionState {
   extractionId: string | null;
   status: ExtractionStatus;
   userStoryStatus: UserStoryStatus | null;
-  error: ExtractionErrorInfo | null;
+  error: ErrorInfo | null;
   /** Categorized failure cause so consumers can react specifically (e.g. 401 → re-auth). */
   errorCode: ExtractionErrorCode;
 }
@@ -47,7 +40,15 @@ export interface TaskState {
   workspaceTasks: Task[];
   extractions: Record<string, ExtractionState>;
   loading: boolean;
-  error: string | null;
+  /**
+   * The failure that stopped the last fetch, keeping what the API layer captured.
+   *
+   * It is `ErrorInfo` rather than a bare message so the error card can show the HTTP status,
+   * the machine-readable code and the raw response body instead of only a sentence. This slice
+   * of the store used to flatten to a string while the extraction slice right above it kept the
+   * rich shape — the same store disagreeing with itself.
+   */
+  error: ErrorInfo | null;
   /** ID of the task currently being PUT-updated, or null when idle. Enables per-task spinners. */
   updatingTaskId: string | null;
   /** Store allowed transitions per task for client-side validation. */
@@ -120,26 +121,8 @@ function categorizeExtractionError(err: unknown): ExtractionErrorCode {
   return 'server';
 }
 
-function extractExtractionErrorInfo(err: unknown): ExtractionErrorInfo {
-  if (err instanceof ApiRequestError) {
-    return err.toErrorInfo();
-  }
-  if (err instanceof Error) {
-    return {
-      friendlyMessage: err.message,
-      rawDetail: err.message,
-    };
-  }
-  if (typeof err === 'string') {
-    return {
-      friendlyMessage: err,
-      rawDetail: err,
-    };
-  }
-  return {
-    friendlyMessage: 'Extraction failed',
-    rawDetail: err,
-  };
+function extractExtractionErrorInfo(err: unknown): ErrorInfo {
+  return extractErrorInfo(err, 'Extraction failed');
 }
 
 export const useTaskStore = create<TaskState>((set, get) => ({
@@ -170,8 +153,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         return { allowedTransitions: newTransitions };
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch tasks';
-      set({ error: message, loading: false });
+      set({ error: extractErrorInfo(err, 'Failed to fetch tasks'), loading: false });
     }
   },
 
@@ -293,7 +275,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         }
       } else if (status.status === 'failed') {
         if (!scopeCurrent()) return;
-        const errorInfo: ExtractionErrorInfo = {
+        const errorInfo: ErrorInfo = {
           friendlyMessage: status.errorInfo ?? 'Extraction failed',
           rawDetail: status.errorInfo ?? 'Extraction failed',
           status: 500,
@@ -397,8 +379,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         set({ loading: false });
         return;
       }
-      const message = err instanceof Error ? err.message : 'Failed to fetch tasks';
-      set({ error: message, loading: false });
+      set({ error: extractErrorInfo(err, 'Failed to fetch tasks'), loading: false });
     }
   },
 

@@ -64,7 +64,6 @@ describe('WorkspaceSettings — URL id adoption', () => {
       currentWorkspace: null,
       loading: false,
       saving: false,
-      error: null,
       setCurrentWorkspace: setCurrentWorkspaceSpy as unknown as typeof realSetCurrentWorkspace,
     });
     vi.mocked(workspaceApi.getWorkspace).mockResolvedValue(makeWorkspace('ws-b'));

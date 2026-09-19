@@ -74,7 +74,6 @@ describe('TeamSwitcher — workspace navigation', () => {
       currentWorkspace: makeWorkspace('ws-a', 'Alpha'),
       loading: false,
       saving: false,
-      error: null,
     });
   });
 

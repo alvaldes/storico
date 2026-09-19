@@ -20,7 +20,6 @@ interface WorkspaceState {
   currentWorkspace: Workspace | null;
   loading: boolean;
   saving: boolean;
-  error: string | null;
 
   /** Fetch all workspaces the current user belongs to. Auto-selects the first one if none selected. */
   fetchWorkspaces: () => Promise<void>;
@@ -72,10 +71,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       currentWorkspace: null,
       loading: false,
       saving: false,
-      error: null,
 
       fetchWorkspaces: async () => {
-        set({ loading: true, error: null });
+        set({ loading: true });
         try {
           const response = await workspacesInflight.run('workspaces', () => api.listWorkspaces());
           const workspaces = response.workspaces;
@@ -93,9 +91,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           // only projects request here — it dedupes on `projects:{wsId}` when the
           // id did not change.
           useProjectStore.getState().fetchProjects();
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Failed to fetch workspaces';
-          set({ error: message, loading: false });
+        } catch {
+          // Deliberately silent, as it was before: this store recorded the failure in an `error`
+          // field that no component ever read, so removing the field changes nothing the user
+          // can see. `loading` is the only thing a surface observes here. Surfacing this
+          // failure would be new behaviour, and it is recorded as a follow-up rather than
+          // invented in a change whose subject is deleting a dead field.
+          set({ loading: false });
         }
       },
 
@@ -110,7 +112,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       },
 
       createWorkspace: async (params) => {
-        set({ saving: true, error: null });
+        set({ saving: true });
         try {
           const workspace = await api.createWorkspace(params);
           set((state) => ({
@@ -120,14 +122,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           switchWorkspace(set, workspace);
           return workspace;
         } catch (err) {
-          const message = err instanceof Error ? err.message : 'Failed to create workspace';
-          set({ error: message, saving: false });
+          set({ saving: false });
           throw err;
         }
       },
 
       updateWorkspace: async (id, params) => {
-        set({ saving: true, error: null });
+        set({ saving: true });
         try {
           const updated = await api.updateWorkspace(id, params);
           set((state) => {
@@ -137,14 +138,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             return { workspaces, currentWorkspace, saving: false };
           });
         } catch (err) {
-          const message = err instanceof Error ? err.message : 'Failed to update workspace';
-          set({ error: message, saving: false });
+          set({ saving: false });
           throw err;
         }
       },
 
       deleteWorkspace: async (id) => {
-        set({ saving: true, error: null });
+        set({ saving: true });
         try {
           await api.deleteWorkspace(id);
           const wasCurrent = get().currentWorkspace?.id === id;
@@ -155,8 +155,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             switchWorkspace(set, workspaces.length > 0 ? workspaces[0] : null);
           }
         } catch (err) {
-          const message = err instanceof Error ? err.message : 'Failed to delete workspace';
-          set({ error: message, saving: false });
+          set({ saving: false });
           throw err;
         }
       },
