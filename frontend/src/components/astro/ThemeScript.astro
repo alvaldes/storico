@@ -6,6 +6,13 @@
  *  1. Anti-flash inline script (runs before first paint in <head>)
  *  2. View Transitions theme persistence
  *  3. System preference change detection
+ *  4. The legacy-storage cleanup, which is not theme work.
+ *
+ * (4) is hosted here rather than in a component of its own because this is the one script every
+ * layout includes, and the cleanup has to reach a browser on its first full page load whichever
+ * page that is. It removes the pre-`v2` settings key, which may still hold a plaintext LLM API
+ * key. See `@/lib/legacy-storage-cleanup` for why that cannot live in the store alone: the store
+ * is imported by `/account` only, so most browsers would never run it.
  *
  * Every layout (MainLayout, PublicLayout, AuthLayout) and standalone page
  * (index.astro) MUST include this component in their <head>.
@@ -40,6 +47,7 @@
     onAfterSwap,
     onSystemPreferenceChange,
   } from '@/lib/theme';
+  import { dropLegacySettingsKey } from '@/lib/legacy-storage-cleanup';
 
   /* ── View Transitions ─────────────────────────── */
   document.addEventListener('astro:before-swap', onBeforeSwap);
@@ -52,4 +60,7 @@
 
   /* ── Initialize current page ───────────────────── */
   applyTheme(resolveTheme());
+
+  /* ── Legacy storage ────────────────────────────── */
+  dropLegacySettingsKey();
 </script>
