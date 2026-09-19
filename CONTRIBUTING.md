@@ -175,8 +175,10 @@ The project's priorities are:
 3. **Architecture discipline.** The hexagonal backend and Astro islands frontend
    are intentional — they enable the multi-model LLM strategy and the
    thesis evaluation.
-4. **Local-first LLM.** Ollama is the primary integration target. Cloud models
-  (OpenAI, Anthropic) are post-MVP.
+4. **Local-first LLM.** Ollama is the primary integration target, because it needs no
+   credential and keeps the offline path first-class. Cloud models (OpenAI, Anthropic,
+   Gemini) are supported, but a contribution should not make the offline path depend
+   on one.
 
 Contributions that add features outside the thesis scope (for example unrelated
 project management tools, CI/CD integrations, or non-agile workflows) may be

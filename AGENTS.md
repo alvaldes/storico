@@ -110,7 +110,7 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 | **API Client**             | **fetch** nativo                            | ✅ Decidido    | Abstracción intercambiable para migrar a Axios si es necesario            |
 | **Backend API**            | **FastAPI** (Python 3.9+)                   | ✅ De la tesis | Async, tipado fuerte, OpenAPI automático                                  |
 | **Arquitectura**           | **Hexagonal** (Ports & Adapters)            | ✅ De la tesis | Separación dominio / aplicación / infraestructura                         |
-| **Modelos LLM cloud**      | Gemini (adapter real) + OpenAI (Post-MVP)   | ✅ MVP / 🔜 Post-MVP | Gemini adapter existe; OpenAI no implementado aún                   |
+| **Modelos LLM cloud**      | Gemini + OpenAI + Anthropic                 | ✅ MVP         | Los tres adapters existen; extracción y probe los alcanzan                |
 | **Modelos LLM local**      | **Ollama** (LLaMA 3.2, Mistral, etc.)       | ✅ MVP         | Prioridad inicial                                                         |
 | **Base de datos relacional** | **PostgreSQL**                              | ✅ Decidido    | Datos de proyectos, user stories, tareas, usuarios                        |
 | **Base de datos vectorial** | **Qdrant**                                 | ✅ Decidido    | Historial de extracciones para contexto de LLM (RAG)                      |
@@ -135,7 +135,7 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 
 > **📋 Plan de evaluación**: Se probarán los mismos 5 modelos con un conjunto de ~50 historias de usuario. Las métricas a medir incluyen precisión, consistencia, velocidad de respuesta, y costo por extracción. Los resultados reemplazarán los guiones en la tabla.
 
-**Estrategia**: MVP con Ollama (modelos locales), luego agregar OpenAI y Anthropic.
+**Estrategia**: MVP con Ollama (modelos locales), y también OpenAI, Anthropic y Gemini como proveedores cloud.
 
 ---
 
@@ -157,7 +157,7 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 ### ADR-002: Estrategia de modelos LLM
 
 - **Status**: ✅ Decidido
-- **Decisión**: **Primero Ollama (local)**, luego OpenAI y Anthropic
+- **Decisión**: **Primero Ollama (local)**, luego OpenAI, Anthropic y Gemini
 - **Contexto**: Empezar con modelos locales evita dependencia de API keys y costos durante desarrollo. La arquitectura hexagonal permite agregar conectores sin modificar el core.
 - **Consecuencias**: El adaptador LLM debe tener una interfaz genérica desde el día 1.
 
@@ -317,7 +317,7 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 │  │  │  │Ollama│ │OpenAI│    │  │  │  PostgreSQL                 │  │ │   │
 │  │  │  └──────┘ └──────┘    │  │  └────────────────────────────┘  │ │   │
 │  │  │  ┌──────┐ ┌────────┐  │  │  ┌────────────────────────────┐  │ │   │
-│  │  │  │Claude│ │(futuro) │  │  │  │  Qdrant (historial         │  │ │   │
+│  │  │  │Claude│ │Gemini  │  │  │  │  Qdrant (historial         │  │ │   │
 │  │  │  └──────┘ └────────┘  │  │  │  de extracciones)           │  │ │   │
 │  │  └─────────────────────────┘  └──────────────────────────────────┘ │   │
 │  │                                                                     │   │
