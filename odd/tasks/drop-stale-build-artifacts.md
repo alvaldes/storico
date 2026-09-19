@@ -1,71 +1,105 @@
 # ODD Feature: drop-stale-build-artifacts
 
-> **Status**: planning — no commit, no evidence yet.
+> **Status**: done — one documentation commit on `chore/drop-stale-build-artifacts` (off `main` @
+> `c004dc8`), plus deleting two gitignored directories. **Nothing to commit for the deletion**: both
+> paths are outputs, which is the point. Receipt-driven development is **off** in this clone.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)
-> **Branch**: `chore/drop-stale-build-artifacts` (to be created off `main` after the code
-> features land, so the rebuilt artifacts reflect them).
-> **Receipt-driven development**: off in this clone.
+> **Branch**: `chore/drop-stale-build-artifacts`.
 
-## Problem
+## What the problem was
 
-`frontend/.vercel/output/` (19 MB, 2161 files) and `frontend/dist/` (1.9 MB, 94 files) hold
-bundles written in a single ~7-second window on **2026-09-17 22:58**, i.e. **before** the
-commits that dropped the per-user LLM config and the false encryption claim (2026-09-18).
+`frontend/.vercel/output/` (19 MB, 2161 files) and `frontend/dist/` (1.9 MB, 94 files) held bundles
+written in one ~7-second window on **2026-09-17 22:58** — before the 2026-09-18 commits that dropped
+the per-user LLM config and the false encryption claim. They were stale in a way that was provable
+rather than suspected: they still contained `setLLMProvider` / `setOllamaConfig` /
+`setOpenAIConfig` / `setAnthropicConfig` (deleted by `52d8a6f`), the deleted per-provider defaults
+(`gpt-4o-mini`, `claude-3-haiku`, `gemini-2.0-flash`, `llama3.2`, `maxTokens`), the pre-change
+comment text in the unminified SSR bundles, and — in **8 built files** — the retracted string
+**`"Stored encrypted at rest"`**.
 
-They are stale in a way that is provable, not merely suspected. They still contain strings
-removed from the source:
+That last one is why it was worth more than tidiness: the artifact that ships can state something
+the code stopped claiming. And it is now doubly closed, because `encrypt-workspace-api-keys` is what
+makes that sentence true again.
 
-- `setLLMProvider` / `setOllamaConfig` / `setOpenAIConfig` / `setAnthropicConfig` — deleted by
-  `52d8a6f`; present in 1 `dist/` file and 3 `.vercel/output/` files each.
-- `gpt-4o-mini`, `claude-3-haiku`, `gemini-2.0-flash`, `llama3.2`, `maxTokens` — the deleted
-  per-provider defaults.
-- The pre-change comment text `// New key — old 'storico-settings' still has API keys
-  persisted, clean slate`, in the unminified SSR bundles.
-- **`"Stored encrypted at rest"`** — the claim retracted by `7617b08`, still present in 8 built
-  files.
+Both directories were untracked and ignored (`git ls-files` returned 0; `.gitignore:10`,
+`.gitignore:26`, `.gitignore:52`, `frontend/.gitignore:2`), and nothing in the repository read them.
 
-The last one is why this matters beyond tidiness: the artifact that ships can state something
-the code stopped claiming. Notably, `feat/encrypt-workspace-api-keys` is what would make that
-particular sentence true again.
+## The correction that matters: my own builds had already invalidated the evidence
 
-Both directories are **untracked and ignored** (`git ls-files` returns 0 for both;
-`.gitignore:10`, `.gitignore:26`, `.gitignore:52`, `frontend/.gitignore:2`), and **nothing in
-the repository reads them**: `frontend/package.json:8-16` only ever writes `dist/` via
-`astro build`; `Makefile:32-33` builds as a smoke test; `.github/workflows/ci.yml:69-75` runs
-only `tsc --noEmit` and `vitest run` and never builds the site; there is no frontend deploy
-workflow at all. The risk is therefore purely operational — a deploy that reuses
-`.vercel/output` without rebuilding serves the stale bundle — and it is already recorded as
-such in `odd/tasks/honest-llm-copy-and-doc-drift.md:327-333` and
-`odd/tasks/drop-per-user-llm-config.md:269`.
+By the time this feature was reached, the directories were **no longer the ones the reconnaissance
+described**. Verified before touching anything:
 
-## Decisions
+| | reconnaissance (2026-09-17) | what was actually on disk |
+|---|---|---|
+| `frontend/dist` | 94 files | 96 files, newest mtime **2026-09-19 11:26** |
+| `frontend/.vercel/output` | 2161 files | 2163 files, newest mtime **2026-09-19 11:26** |
+| `setLLMProvider` | present | **0 files** |
+| `gpt-4o-mini` | present | **0 files** |
+| `Stored encrypted at rest` | 8 files | **0 files** |
 
-| # | Decision | Choice |
-|---|----------|--------|
-| D1 | Delete | Remove both directories. They are outputs, nothing reads them, and a build regenerates them: `pnpm run build` for `dist/`, `vercel build` for `.vercel/output/`. |
-| D2 | Ordering | Do this **last**, after the code features land, so the regenerated `dist/` proves the current tree rather than an intermediate one. |
-| D3 | Proof, not assertion | Verify after rebuilding that the stale strings are actually gone from the fresh artifacts. Deleting a directory and assuming the rebuild is clean is the same class of unverified claim this feature exists to remove. |
-| D4 | The operational hazard | A deletion fixes today and cannot prevent tomorrow. Record the hazard where a deploy would look — `docs/deployment.md` — stating that the frontend output must be rebuilt, not reused. A CI guard is **not** added in this slice: CI does not build the frontend today, and adding a build job is a workflow change with its own cost, so it is proposed rather than bundled. |
-| D5 | No commit of artifacts | Nothing is committed: both paths stay ignored. This feature commits documentation only, and must not accidentally start tracking build output. |
+`storico-settings-v2` still appears in 4 files, and that is correct — it is the *live* store key, not
+a removed identifier.
 
-## Non-goals
+They were regenerated by this batch's own frontend builds, run as gates while features 1–6 were
+being verified. So the pre-change state was **historical**: the finding was real when it was made,
+and it could no longer be observed on disk when the fix was due.
 
-- No new CI job that builds the frontend.
-- No `vercel.json` at the frontend root (the only one in the repo is the backend's).
-- No change to the build configuration or to the Astro adapter.
+Both facts are recorded rather than quietly reconciled, because the two halves of this feature have
+different lifespans:
 
-## Tasks
+- **The deletion is hygiene, and it expires.** It removes today's output. The next build creates
+  output again, and whether that output is stale depends on when it was built, not on this commit.
+- **The deploy note is the durable half.** A deploy that reuses `.vercel/output` without rebuilding
+  serves whatever bundle is sitting there, which is how a retracted sentence shipped in the first
+  place.
 
-- [ ] Record the pre-deletion evidence: sizes, file counts, mtimes, and the exact stale strings
-      with the files that carry them.
-- [ ] Confirm nothing tracked is lost (`git status` unchanged after deletion).
-- [ ] Delete `frontend/dist` and `frontend/.vercel/output`.
-- [ ] Rebuild (`pnpm run build`) and verify the stale strings are absent from the fresh output.
-- [ ] Add the deploy-order note to `docs/deployment.md`.
-- [ ] Work-unit commit (documentation only).
-- [ ] Fast-forward into `main`, delete the branch, re-gate.
+## What was done
+
+1. **Deleted both directories** after recording their state. 21 MB and 2259 files, all of them
+   reproducible by `pnpm run build` (`frontend/dist`) and `vercel build` (`.vercel/output`).
+2. **Added the operational note to `docs/deployment.md`**, under "Producción (Vercel)", where a
+   deploy would look for it: the two paths are outputs, nothing reads them, CI does not build the
+   frontend, and a deploy must regenerate rather than reuse. It also states that deleting them is
+   safe at any time, because that is the action the next operator should take when in doubt.
+3. **Recorded the invalidation above** in this document, and corrected the earlier texts elsewhere
+   that still described the artifacts as sitting on disk.
 
 ## Evidence
 
-_None yet._
+| Check | Command | Result |
+|-------|---------|--------|
+| Nothing is tracked | `git ls-files -- frontend/dist frontend/.vercel/output` | 0 |
+| Both are ignored | `git check-ignore -v` | `.gitignore:52`, `frontend/.gitignore:2` |
+| The stale copy is gone | `grep -rl "Stored encrypted at rest" frontend/dist frontend/.vercel/output` | 0 files (was 8) |
+| Deletion changes no tracked file | `git status --short` before and after | identical (1 file, the doc edit) |
+| Nothing depends on them | `pnpm vitest run` / `pnpm exec tsc --noEmit` with both absent | 420 passed, exit 0 |
+| Nothing in the repo reads them | `frontend/package.json` scripts, `Makefile`, `.github/workflows/*` | only `astro build` **writes** `dist/`; CI runs `tsc` and `vitest` only |
+| Size removed | `du -sh` before deletion | 1.9 MB + 19 MB |
+
+## Follow-ups this surfaced, recorded rather than bundled
+
+1. **No CI job builds the frontend.** `.github/workflows/ci.yml` runs `tsc --noEmit` and
+   `vitest run`, so a broken build is caught by a person, not by CI, and nothing in the pipeline
+   would notice a stale output either. Adding a build job is a real cost on every pull request, so it
+   is proposed rather than bundled: the trade is minutes-per-PR against the class of failure that
+   shipped a retracted sentence.
+2. **The `prod.todo.md` references remain dead** — `docs/deployment.md:79` and `:87`,
+   `docs/security.md:108`, `docs/README.md:26` point at a file that does not exist and is not
+   gitignored. It is the same class of statement this batch exists to remove, and it needs a
+   decision (write the checklist, or stop promising it) rather than a unilateral edit in a
+   deployment-hygiene slice.
+3. **`frontend/docs/design-brief.md`** is a stale design artifact that still enumerates providers
+   without Gemini (`:113`, `:285`). Recorded by the `provider-literal-and-copy-drift` verification
+   and still open.
+
+## Tasks — all closed
+
+- [x] Record the pre-deletion evidence and correct it against what was actually on disk.
+- [x] Confirm nothing tracked is lost, and that both paths are ignored.
+- [x] Delete `frontend/dist` and `frontend/.vercel/output`.
+- [x] Verify the tree is unchanged and the frontend gates still pass with them absent.
+- [x] Add the deploy note to `docs/deployment.md`.
+- [ ] Work-unit commit (documentation only) — **pending**.
+- [ ] Independent verification — **pending**.
+- [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
