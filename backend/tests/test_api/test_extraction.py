@@ -17,6 +17,7 @@ from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
+    SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
 )
@@ -157,6 +158,69 @@ class TestExtractEndpoint:
         assert failed is not None
         assert failed.status == ExtractionStatus.FAILED
         assert "Ollama not running" in (failed.error_info or "")
+
+    @pytest.mark.asyncio
+    async def test_the_completed_save_records_when_it_finished(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The happy path — the one production actually takes — stamps ``completed_at``.
+
+        This is the site a mutation could remove without any other test noticing: the failure
+        paths are covered, and this one only runs when an LLM answers. Leaving it uncovered
+        would mean the field this column exists for could go back to being null on every
+        successful extraction, silently, which is the bug the column was added to fix.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            repo = SQLAlchemyExtractionRepository(session)
+            pending = await repo.save(
+                Extraction(
+                    user_story_id=seeded.story_id,
+                    model_used="llama3.2",
+                    raw_response="",
+                    status=ExtractionStatus.PENDING,
+                    user_story_status=UserStoryStatus.PENDING_EXTRACTION,
+                )
+            )
+
+        class AnsweringLLM(LLMPort):
+            async def generate(
+                self,
+                prompt: str,  # noqa: ARG002
+                config: LLMConfig,  # noqa: ARG002
+                system_prompt: str | None = None,  # noqa: ARG002
+            ) -> str:
+                return (
+                    "1. summary: Set up the schema\n"
+                    "description: Create the tables.\n\n"
+                    "2. summary: Build the endpoint\n"
+                    "description: Expose the data.\n"
+                )
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: AnsweringLLM())
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+        async with factory() as session:
+            repo = SQLAlchemyExtractionRepository(session)
+            completed = await repo.find_by_id(pending.id)
+            tasks = await SQLAlchemyTaskRepository(session).list_by_story(seeded.story_id)
+
+        assert completed is not None
+        assert completed.status == ExtractionStatus.COMPLETED
+        assert completed.completed_at is not None
+        # Not merely non-null: after the row it completes, and not in the future.
+        assert completed.completed_at >= completed.created_at.replace(tzinfo=None)
+        assert len(tasks) == 2
 
     @pytest.mark.asyncio
     async def test_extract_unauthorized(self, async_client) -> None:
