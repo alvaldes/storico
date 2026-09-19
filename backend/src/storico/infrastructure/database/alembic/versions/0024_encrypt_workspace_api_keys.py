@@ -90,8 +90,8 @@ def upgrade() -> None:
     The widening is first and is not incidental. The column was sized for a credential, not for a
     credential's ciphertext, and Fernet's output is about 1.4 times longer: a 500-character key
     stores as 763. Encrypting into the old width would raise on Postgres for any credential past
-    roughly 310 characters, and SQLite — which does not enforce a VARCHAR length — would accept the
-    overflow silently and leave it to be discovered on the next Postgres write.
+    303 characters — measured, not estimated — and SQLite, which does not enforce a VARCHAR length,
+    would accept the overflow silently and leave it to be discovered on the next Postgres write.
     """
     with op.batch_alter_table("workspace_llm_configs") as batch:
         batch.alter_column(
