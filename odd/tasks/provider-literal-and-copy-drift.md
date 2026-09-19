@@ -1,9 +1,11 @@
 # ODD Feature: provider-literal-and-copy-drift
 
-> **Status**: implemented on `fix/provider-literal-and-copy-drift` (off `main` @ `a38b943`), not
-> pushed. Green and mutation-checked on both halves; the independent verification ran, found the
-> sweep one file short and a second provider rule hiding behind the widened field, and both are
-> now fixed. Receipt-driven development is **off** in this clone, so no native review ran.
+> **Status**: done and landed on `main` @ `984dd1d` — eight commits from `a38b943`:
+> `352f1b1`, `0ee0965`, `c67dab5`, `7af8d2c` (the implementation and its record) then `ca0d9b4`,
+> `9af0452`, `08d858f`, `984dd1d` (the answers to the verification). Branch deleted, `main`
+> re-gated, **not pushed**. Receipt-driven development is **off** in this clone, so no native
+> review ran; an independent verification did, and it found the sweep one file short and a second
+> provider rule hiding behind the widened field.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/provider-literal-and-copy-drift`.
@@ -211,4 +213,6 @@ substitute for the other.
 - [x] Run backend `ruff check src tests`, `ruff format --check src tests`, `pytest -q`; frontend `tsc --noEmit` and `vitest run`.
 - [x] Work-unit commits on the feature branch (`352f1b1`, `0ee0965`, `c67dab5`, `7af8d2c`).
 - [x] Independent verification — the fix confirmed end to end against the real route; W1–W5 fixed in `ca0d9b4`, `9af0452`, `08d858f`; W6–W8 recorded.
-- [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
+- [x] Fast-forward into `main`, delete the branch, re-gate — `main` @ `984dd1d`; frontend
+      36 files / 420 tests, backend 654 passed / 1 skipped, `ruff check src tests` clean and
+      `ruff format --check src tests` over 214 files — all re-run **after** the merge.
