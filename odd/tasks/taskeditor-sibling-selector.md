@@ -1,10 +1,11 @@
 # ODD Feature: taskeditor-sibling-selector
 
-> **Status**: planning — no commit, no evidence yet.
+> **Status**: done — commits `e460b8f` (the plan of record) and `6c42998` (the fix) on
+> `fix/taskeditor-sibling-selector`, not pushed. Receipt-driven development is **off** in this
+> clone, so no native review ran; independent verification is recorded below.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)
-> **Branch**: `fix/taskeditor-sibling-selector` (to be created off `main` @ `6174f5a`).
-> **Receipt-driven development**: off in this clone.
+> **Branch**: `fix/taskeditor-sibling-selector`, off `main` @ `6174f5a`.
 
 ## Problem
 
@@ -41,17 +42,48 @@ on purpose so it would get its own review.
 
 - No change to `taskStore`'s shape or to the dependency-selection logic.
 
-## Tasks
+## Reproduced, and it was worse than a warning
 
-- [ ] Reproduce: confirm the warning and the loop with the story slice absent.
-- [ ] Fix with the stable empty-array constant.
-- [ ] Add the identity-stability test plus the no-loop regression test.
-- [ ] Run `pnpm exec tsc --noEmit` and `pnpm vitest run`.
-- [ ] Work-unit commit on the feature branch.
-- [ ] Independent verification.
-- [ ] Fast-forward into `main`, delete the branch, re-gate.
+Measured before any change, with the story slice absent (`state.tasks = {}`), React DOM 19.3.0:
+
+```text
+THREW: Error: Maximum update depth exceeded. This can happen when a component repeatedly
+       calls setState inside componentWillUpdate or componentDidUpdate. React limits the
+       number of nested updates to prevent infinite loops.
+WARNING_COUNT: 1
+FIRST_WARNING: The result of getSnapshot should be cached to avoid an infinite loop
+RENDERED_TITLE: no
+```
+
+The stack proves the path is `useSyncExternalStore`, not a local state loop:
+`forceStoreRerender` → `updateStoreInstance` → `commitHookEffectListMount`.
+
+So the dialog **throws and renders nothing**. The problem statement above said "re-renders in a
+loop" and warned about the console; the honest severity is a hard crash of the editor.
+
+The two permanent tests were written first and failed on the unmodified code with the same
+`Error: Maximum update depth exceeded`, then passed after the fix.
 
 ## Evidence
 
-_None yet — this document carries pending statuses only. Evidence rows are written after a
-command actually runs._
+| Check | Command | Result |
+|-------|---------|--------|
+| Repro (before) | `pnpm vitest run …/TaskEditor.test.tsx` | **2 failed**, 9 passed — `Error: Maximum update depth exceeded` |
+| Fixed file | `pnpm vitest run …/TaskEditor.test.tsx` | **11 passed** |
+| Full frontend suite | `pnpm vitest run` | **33 files, 384 passed** (baseline 382, +2 new) |
+| Types | `pnpm exec tsc --noEmit` | exit 0 |
+| Pattern is unique | `grep -rn "use*Store((s) =>… ?? []" frontend/src` | 1 hit — the fixed line |
+
+`StoryDetail.tsx:83` also writes `tasks[storyId] ?? []`, but as a plain local after the store was
+read, **not** as a selector: it never reaches `getSnapshot`, so it cannot loop. Recorded, not
+changed (D4).
+
+## Tasks — all closed
+
+- [x] Reproduce: confirmed the crash and the warning with the story slice absent.
+- [x] Fix with the stable frozen empty-array constant.
+- [x] Add the render test plus the no-candidates behaviour test.
+- [x] Run `pnpm exec tsc --noEmit` and `pnpm vitest run`.
+- [x] Work-unit commit on the feature branch (`6c42998`).
+- [ ] Independent verification — **pending**.
+- [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
