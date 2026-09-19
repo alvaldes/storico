@@ -95,13 +95,24 @@ describe('the API schemas carry no second provider list', () => {
     ).toBeUndefined();
   });
 
-  it('bounds the connection-test provider with the shared maximum', () => {
-    const field = settingsSource.match(/^\s*provider: str = Field\((.+)\)$/m)?.[1];
+  it('validates the connection-test provider with the registry rule', () => {
+    // The field is a bare `str` on purpose: the bound and the emptiness rule live in a validator
+    // that applies the registry's own rule, so this endpoint cannot accept a name the registry
+    // refuses (a whitespace-only one) or refuse a padded name it accepts. A `Field` with a
+    // hand-typed number would be a fourth copy of the bound, and this asserts the rule is
+    // applied *inside* the validator rather than merely mentioned in a comment.
+    expect(settingsSource).toMatch(/^\s*provider: str$/m);
+    expect(settingsSource).not.toMatch(/^\s*provider: str = Field\(.*max_length=\d+/m);
 
-    expect(field, 'LLMTestRequest.provider is declared as a bounded str').not.toBeUndefined();
-    expect(field).toContain('max_length=NAME_MAX_LENGTH');
-    expect(settingsSource).toMatch(
-      /^from storico\.api\.schemas\.custom_provider import .*NAME_MAX_LENGTH/m,
-    );
+    const validator = settingsSource.match(
+      /@field_validator\("provider"\)[\s\S]*?return name/,
+    )?.[0];
+
+    expect(
+      validator,
+      'LLMTestRequest.provider has a validator applying the registry rule',
+    ).not.toBeUndefined();
+    expect(validator).toContain('normalize_provider_name(value)');
+    expect(validator).toContain('NAME_MAX_LENGTH');
   });
 });

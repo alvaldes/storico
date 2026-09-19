@@ -64,8 +64,11 @@ const CLOUD_ONLY_KEYS = [
  * today — and requiring all of them is not over-constraining a list of runners. The local
  * side is still read from the rule rather than typed out, so the two requirements come from
  * one classification.
+ *
+ * `pages.docs.step_2` is the same kind of list in the user-facing docs, and it is here rather
+ * than unguarded so a fifth provider cannot leave it behind.
  */
-const ALL_PROVIDER_KEYS = ['pages.status.llm_runner_desc'];
+const ALL_PROVIDER_KEYS = ['pages.status.llm_runner_desc', 'pages.docs.step_2'];
 
 const CATALOGS = { en: en as Record<string, unknown>, es: es as Record<string, unknown> };
 
@@ -80,13 +83,23 @@ function readPath(catalog: Record<string, unknown>, path: string): unknown {
 /**
  * Provider names the string does not mention.
  *
- * Case-insensitive substring matching, because the prose capitalises the names its own way
- * (`OpenAI`, `Anthropic`, `Gemini`) while `KNOWN_PROVIDERS` holds the lowercase wire spelling.
- * `OpenAI-compatible` counts as naming OpenAI, which is the reading a human takes too.
+ * Case-insensitive matching on whole provider names, because the prose capitalises them its own
+ * way (`OpenAI`, `Anthropic`, `Gemini`) while `KNOWN_PROVIDERS` holds the lowercase wire spelling.
+ *
+ * `OpenAI-compatible` deliberately does **not** count as naming OpenAI. It describes a dialect an
+ * endpoint speaks, not the provider: a string that only ever says "any OpenAI-compatible
+ * endpoint" tells the reader nothing about whether OpenAI itself is supported. An earlier version
+ * of this guard matched by raw substring and `llm_runner_desc` passed while naming no cloud
+ * provider at all beyond that phrase.
  */
 function missingProviders(text: string, providers: readonly string[]): string[] {
   const haystack = text.toLowerCase();
-  return providers.filter((provider) => !haystack.includes(provider.toLowerCase()));
+  const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  return providers.filter((provider) => {
+    const name = escapeRegExp(provider.toLowerCase());
+    return !new RegExp(`${name}(?!-compatible)`).test(haystack);
+  });
 }
 
 describe('provider copy', () => {
