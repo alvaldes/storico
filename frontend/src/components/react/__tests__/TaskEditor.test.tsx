@@ -145,6 +145,45 @@ describe('TaskEditor', () => {
     expect(values).not.toContain('task-0');
   });
 
+  /* ── A story whose tasks were never loaded ── */
+
+  it('renders when the story has no entry in the task slice', async () => {
+    // The siblings selector used to end with `?? []`, which builds a NEW array on every call.
+    // Zustand v5 subscribes through `useSyncExternalStore`, which compares snapshots with
+    // `Object.is`, so an unstable snapshot makes React re-render forever: this render threw
+    // "Maximum update depth exceeded" and the dialog never appeared.
+    useTaskStore.setState({ tasks: {} });
+
+    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
+
+    expect(await screen.findByText('Edit Task')).toBeInTheDocument();
+  });
+
+  it('offers no dependency candidates when the story slice is empty', async () => {
+    // The same missing slice, asserted on behaviour rather than on the absence of a crash:
+    // with no siblings loaded there is nothing to depend on, so the select offers only its
+    // placeholder.
+    useTaskStore.setState({ tasks: {} });
+
+    render(
+      <TaskEditor
+        task={{ ...mockTask, dependencies: [] }}
+        open={true}
+        onOpenChange={vi.fn()}
+        locale="en"
+      />,
+    );
+
+    await screen.findByText('Edit Task');
+
+    const depSelect = screen.getByLabelText('Dependencies') as HTMLSelectElement;
+    const values = Array.from(depSelect.options)
+      .map((o) => o.value)
+      .filter(Boolean);
+
+    expect(values).toEqual([]);
+  });
+
   /* ── Save / rollback ── */
 
   it('optimistically updates, applies server response, and closes on success', async () => {

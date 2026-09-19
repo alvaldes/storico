@@ -32,6 +32,18 @@ function normalizeTag(tag: string): string {
   return tag.trim().toLowerCase();
 }
 
+/**
+ * Shared fallback for a story whose tasks have not been loaded yet.
+ *
+ * It has to be ONE stable reference. The siblings selector below used to end with
+ * `?? []`, which builds a new array on every call, and zustand v5 subscribes through
+ * `useSyncExternalStore`, which compares snapshots with `Object.is`. An unstable snapshot
+ * makes React re-render forever: mounting this editor for a story id that was absent from
+ * `state.tasks` threw "Maximum update depth exceeded" and the dialog never rendered.
+ * Frozen so nothing can mutate the value every mounted editor shares.
+ */
+const NO_TASKS: readonly Task[] = Object.freeze([]);
+
 export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEditorProps) {
   const t = useTranslations(locale);
   const updateTask = useTaskStore((s) => s.updateTask);
@@ -46,7 +58,7 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
   const [saveError, setSaveError] = useState<ApiRequestError | null>(null);
 
   // Sibling tasks in the same story are the only valid dependency targets.
-  const siblings = useTaskStore((s) => s.tasks[task.storyId] ?? []);
+  const siblings = useTaskStore((s) => s.tasks[task.storyId] ?? NO_TASKS);
   const siblingOptions = siblings.filter((s) => s.id !== task.id);
   const availableSiblings = siblingOptions.filter(
     (s) => !dependencies.some((d) => normalizeTag(d) === normalizeTag(s.id)),
