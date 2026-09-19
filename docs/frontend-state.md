@@ -144,6 +144,10 @@ defaults eran strings en inglés sobre una configuración de LLM que ya no exist
 **Persistencia parcial**: Solo `settings.export` en localStorage (key: `storico-settings-v2`).
 **No persiste**: API keys en localStorage.
 **Deep-merge**: Merge personalizado para hidratación.
+**Clave legacy eliminada**: `storico-settings`, la clave previa a `v2`, guardaba `settings`
+completo y con él un `apiKey` en claro por proveedor cloud. El módulo la borra al evaluarse
+(`dropLegacySettingsKey`), de forma best-effort: sin `localStorage` (render en servidor) o con
+un storage que rechaza la operación, la clave sobrevive y la app sigue igual.
 
 ### uiStore
 

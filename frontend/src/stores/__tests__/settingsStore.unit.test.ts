@@ -103,3 +103,75 @@ describe('useSettingsStore — saving preferences', () => {
     expect(useSettingsStore.getState().settings).toEqual(DEFAULT_SETTINGS);
   });
 });
+
+describe('useSettingsStore — the legacy persisted key', () => {
+  // The key an older build wrote. `partialize` then was `{ settings: state.settings }`, and
+  // `settings.llm` held a plaintext `apiKey` per cloud provider, so this is a credential
+  // sitting in browser storage with no reader and no expiry.
+  const LEGACY_KEY = 'storico-settings';
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('removes the legacy key, which may still hold plaintext API keys', async () => {
+    localStorage.setItem(
+      LEGACY_KEY,
+      JSON.stringify({
+        state: {
+          settings: {
+            llm: {
+              provider: 'openai',
+              openai: { apiKey: 'sk-legacy-secret', model: 'gpt-4o-mini' },
+              anthropic: { apiKey: 'sk-ant-legacy-secret' },
+            },
+          },
+        },
+        version: 0,
+      }),
+    );
+
+    vi.resetModules();
+    await import('@/stores/settingsStore');
+
+    expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
+  });
+
+  it('leaves the live keys alone', async () => {
+    // A test that only asserted the removal would pass even if the cleanup wiped every key.
+    localStorage.setItem(LEGACY_KEY, '{"state":{}}');
+    localStorage.setItem('storico-settings-v2', '{"state":{"settings":{}}}');
+    localStorage.setItem('theme', 'dark');
+
+    vi.resetModules();
+    await import('@/stores/settingsStore');
+
+    expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
+    expect(localStorage.getItem('storico-settings-v2')).not.toBeNull();
+    expect(localStorage.getItem('theme')).toBe('dark');
+  });
+
+  it('does not stop the module loading when storage refuses the removal', async () => {
+    // Safari private mode and storage-disabled policies throw instead of returning.
+    const spy = vi
+      .spyOn(Storage.prototype, 'removeItem')
+      .mockImplementation(() => {
+        throw new DOMException('the operation is insecure', 'SecurityError');
+      });
+
+    vi.resetModules();
+    await expect(import('@/stores/settingsStore')).resolves.toBeDefined();
+
+    spy.mockRestore();
+  });
+
+  it('does not stop the module loading on the server, where storage does not exist', async () => {
+    // Astro renders these pages server-side, so the module is evaluated without a `localStorage`.
+    vi.stubGlobal('localStorage', undefined);
+
+    vi.resetModules();
+    await expect(import('@/stores/settingsStore')).resolves.toBeDefined();
+
+    vi.unstubAllGlobals();
+  });
+});
