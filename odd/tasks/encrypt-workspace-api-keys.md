@@ -1,8 +1,11 @@
 # ODD Feature: encrypt-workspace-api-keys
 
-> **Status**: implemented on `feat/encrypt-workspace-api-keys` (off `main` @ `c45bc66`), not pushed.
-> Green and mutation-checked; the independent verification is recorded below. Receipt-driven
-> development is **off** in this clone, so no native review ran.
+> **Status**: done and landed on `main` @ `6583e40` — eight commits from `c45bc66`: `65758d3`,
+> `4a86859`, `a323172`, `8457fda`, `88fdfed` (the implementation and its record) then `2c9ba73`,
+> `7f07238`, `6583e40` (the answers to the verification). Branch deleted, `main` re-gated, **not
+> pushed**. Receipt-driven development is **off** in this clone, so no native review ran; an
+> independent verification did, and it found three statements the record made that no test defended
+> — each by mutation — plus a pre-existing credential leak it did not fix.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `feat/encrypt-workspace-api-keys`.
@@ -192,4 +195,6 @@ env-absent branch is exercised through the routes rather than at the repository 
 - [x] `docs/security.md` and `backend/.env.example`.
 - [x] Re-export the three cipher errors from `domain/entities` (the writer flagged the gap; the parent closed it).
 - [x] Independent verification — the encryption, the choke point, the leak-free paths and fail-closed all confirmed; V1–V3 (three surviving mutants) fixed and re-mutated, V5 corrected, V4/V6/V7 recorded.
-- [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
+- [x] Fast-forward into `main`, delete the branch, re-gate — `main` @ `6583e40`; backend
+      695 passed / 1 skipped with `ruff check src tests` clean and 224 files formatted, frontend
+      36 files / 420 tests and `tsc --noEmit` exit 0 — all re-run **after** the merge.
