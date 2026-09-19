@@ -30,3 +30,10 @@ class Extraction:
     confidence_score: float | None = None
     id: UUID = field(default_factory=uuid7)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    # Non-null exactly when the status is terminal. Stamped by the terminal-path call sites rather
+    # than derived here, and the reason is the read path: the repository rebuilds an entity from
+    # every row it loads, so deriving it would hand a freshly generated timestamp to a historical
+    # extraction that finished before this column existed. The response would then report a
+    # completion time that changed on each read, and the deliberate decision not to backfill would
+    # be silently undone.
+    completed_at: datetime | None = None

@@ -50,6 +50,12 @@ class ExtractionModel(Base):
     raw_response: Mapped[str] = mapped_column(Text, nullable=False)
     confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Nullable because a ``pending`` extraction has not finished. The invariant — non-null exactly
+    # when ``status`` is terminal — is enforced by the call sites that reach a terminal state, and
+    # rows that predate this column keep ``NULL`` rather than a backfilled guess.
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
     __table_args__ = (Index("ix_extractions_user_story_id", "user_story_id"),)
 

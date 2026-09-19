@@ -1,11 +1,14 @@
 """Tests for SQLAlchemyExtractionRepository."""
 
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from storico.domain.entities import Extraction
+from storico.domain.entities import EntityNotFound, Extraction
+from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.entities.user_story import UserStoryStatus
 from storico.infrastructure.database.repositories import SQLAlchemyExtractionRepository
 
 
@@ -100,3 +103,94 @@ async def test_list_all(db_session: AsyncSession, story_id: UUID) -> None:
 
     extractions = await repo.list()
     assert len(extractions) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_completed_extraction_round_trips_its_end_time(
+    db_session: AsyncSession, story_id: UUID
+) -> None:
+    """``completed_at`` is stored and read back, which is the whole point of the column."""
+    repo = SQLAlchemyExtractionRepository(db_session)
+    finished = datetime(2026, 9, 19, 12, 30, tzinfo=UTC)
+    extraction = Extraction(
+        user_story_id=story_id,
+        model_used="llama3.2",
+        raw_response="r",
+        status=ExtractionStatus.COMPLETED,
+        user_story_status=UserStoryStatus.EXTRACTED,
+        completed_at=finished,
+    )
+
+    await repo.save(extraction)
+
+    found = await repo.find_by_id(extraction.id)
+    assert found is not None
+    # The test database is SQLite, which drops ``tzinfo`` on a ``DateTime(timezone=True)`` column,
+    # so the read-back value is naive while the written one was aware — the same note as in
+    # ``test_custom_provider_repo.py``. The instant is what the column carries; Postgres, which is
+    # what production runs, keeps the offset.
+    assert found.completed_at is not None
+    assert found.completed_at.replace(tzinfo=None) == finished.replace(tzinfo=None)
+
+
+@pytest.mark.asyncio
+async def test_a_pending_extraction_has_no_end_time(
+    db_session: AsyncSession, story_id: UUID
+) -> None:
+    """The invariant is "non-null exactly when terminal", not "not null"."""
+    repo = SQLAlchemyExtractionRepository(db_session)
+    extraction = Extraction(user_story_id=story_id, model_used="m", raw_response="r")
+
+    await repo.save(extraction)
+
+    found = await repo.find_by_id(extraction.id)
+    assert found is not None
+    assert found.status is ExtractionStatus.PENDING
+    assert found.completed_at is None
+
+
+@pytest.mark.asyncio
+async def test_reading_a_terminal_row_invents_no_end_time(
+    db_session: AsyncSession, story_id: UUID
+) -> None:
+    """A row that finished before the column existed keeps its null, forever.
+
+    This is the decision the design turns on. Deriving ``completed_at`` inside the entity would
+    have been tidier at the write sites and wrong here: the repository rebuilds an entity from
+    every row it loads, so a derived value would hand this historical row a fresh timestamp on
+    each read — a completion time that changes every time it is fetched, and the explicit
+    decision not to backfill silently undone.
+    """
+    repo = SQLAlchemyExtractionRepository(db_session)
+    historical = Extraction(
+        user_story_id=story_id,
+        model_used="m",
+        raw_response="r",
+        status=ExtractionStatus.COMPLETED,
+        user_story_status=UserStoryStatus.EXTRACTED,
+        completed_at=None,
+    )
+    await repo.save(historical)
+
+    first = await repo.find_by_id(historical.id)
+    second = await repo.find_by_id(historical.id)
+
+    assert first is not None and second is not None
+    assert first.completed_at is None
+    assert second.completed_at is None
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_a_row_and_reports_an_absent_one(
+    db_session: AsyncSession, story_id: UUID
+) -> None:
+    """The delete path answers both questions: it removes, and it says when there is nothing."""
+    repo = SQLAlchemyExtractionRepository(db_session)
+    extraction = Extraction(user_story_id=story_id, model_used="m", raw_response="r")
+    await repo.save(extraction)
+
+    await repo.delete(extraction.id)
+    assert await repo.find_by_id(extraction.id) is None
+
+    with pytest.raises(EntityNotFound):
+        await repo.delete(extraction.id)

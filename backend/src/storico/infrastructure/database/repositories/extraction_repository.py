@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,11 +59,17 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
         return [self._to_domain(row) for row in result.scalars()]
 
     async def delete(self, extraction_id: UUID) -> None:
-        stmt = delete(ExtractionModel).where(ExtractionModel.id == extraction_id)
-        result = await self._session.execute(stmt)
-        await self._session.commit()
-        if result.rowcount == 0:
+        # Through the session's identity map rather than a `DELETE` plus a row count. The count was
+        # correct — an earlier form was proved to raise `EntityNotFound` on the real path — but it
+        # has to be read off a `CursorResult` that `Session.execute` does not admit to returning,
+        # and stating the missing type invited a false alarm about the statement being unparameterized.
+        # Two analyzer findings, either way, over a statement whose only value travels as a bound
+        # parameter: going through the ORM says the same thing without either opening.
+        existing = await self._session.get(ExtractionModel, extraction_id)
+        if existing is None:
             raise EntityNotFound("Extraction", str(extraction_id))
+        await self._session.delete(existing)
+        await self._session.commit()
 
     def _to_domain(self, model: ExtractionModel) -> Extraction:
         return Extraction(
@@ -77,6 +83,7 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
             confidence_score=model.confidence_score,
             id=model.id,
             created_at=model.created_at,
+            completed_at=model.completed_at,
         )
 
     @staticmethod
@@ -92,4 +99,5 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
             "prompt_config": extraction.prompt_config,
             "confidence_score": extraction.confidence_score,
             "created_at": extraction.created_at,
+            "completed_at": extraction.completed_at,
         }
