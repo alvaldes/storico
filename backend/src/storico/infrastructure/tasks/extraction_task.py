@@ -151,10 +151,14 @@ async def run_background_extraction(
 def _as_utc(value: datetime) -> datetime:
     """Read a stored timestamp as UTC.
 
-    SQLite has no timezone type, so a ``DateTime(timezone=True)`` column comes back naive, holding
-    the UTC wall clock it was written with (verified: the instant is preserved, only the offset is
-    dropped). Postgres returns it aware. Comparing the two directly raises ``TypeError``, which is
-    what this exists to prevent — the stale-extraction deadline below has to work on both.
+    SQLite has no timezone type: a ``DateTime(timezone=True)`` column comes back naive. It drops
+    the offset and keeps the wall clock **without converting** — an ``03:30-05:00`` written and
+    read back is ``03:30``, not ``08:30`` — so this is only correct because everything written to
+    these columns is UTC, which holds today: every ``datetime.now`` in this module passes ``UTC``.
+
+    Postgres returns the value aware, which is why the two cannot be compared directly. That
+    ``TypeError`` is what this exists to prevent: the stale-extraction deadline below has to work
+    against either database.
     """
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
