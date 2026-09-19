@@ -1,8 +1,10 @@
 # ODD Feature: rich-store-errors
 
-> **Status**: done — commit (the fix, its tests and the record) on `fix/rich-store-errors`, off
-> `main` @ `137f804`, not pushed. Receipt-driven development is **off** in this clone, so no
-> native review ran; the independent verification is recorded below.
+> **Status**: done and landed on `main` @ `1532552` — three commits from `137f804`: `c9878b3`
+> (the change and its tests), `faa60d7` (the record) and `1532552` (the answer to the verification,
+> including the coverage it proved was missing). Branch deleted, `main` re-gated, **not pushed**.
+> Receipt-driven development is **off** in this clone, so no native review ran; an independent
+> verification did, and it found a real hole in this change rather than only in its prose.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/rich-store-errors`.
@@ -171,4 +173,5 @@ appear, which is a product question.
 - [x] Work-unit commit on the feature branch (`c9878b3`, plus the record at `faa60d7`).
 - [x] Independent verification — 4/7 confirmed outright; V1 (a real hole) fixed and re-mutated to
       prove it, V2/V4 corrected here, V3 recorded, V5–V7 fixed or recorded, V8 fixed.
-- [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
+- [x] Fast-forward into `main`, delete the branch, re-gate — `main` @ `1532552`, 35 files /
+      406 tests passed and `tsc --noEmit` exit 0 re-run **after** the merge.
