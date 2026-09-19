@@ -46,6 +46,7 @@ from storico.infrastructure.database.repositories.workspace_prompt_repository im
     SQLAlchemyWorkspacePromptRepository,
 )
 from storico.infrastructure.llm import (
+    CUSTOM_PROVIDER_PLACEHOLDER_KEY,
     AnthropicAdapter,
     GeminiAdapter,
     OllamaAdapter,
@@ -192,12 +193,6 @@ async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
 
 # ── Internal extraction logic ─────────────────────────────────────
 
-# Sent when a custom provider has no stored key. ``AsyncOpenAI`` rejects an
-# empty key with ``OpenAIError("Missing credentials…")``, and ``None`` would
-# let the SDK fall back to an ambient ``OPENAI_API_KEY`` — which would break
-# the workspace-config-only credential rule enforced at this call site.
-_CUSTOM_PROVIDER_PLACEHOLDER_KEY = "no-key-required"
-
 
 def _build_llm_port(
     provider: str,
@@ -262,7 +257,7 @@ def _build_llm_port(
             f"Base URL is not configured for the custom provider '{provider}'. "
             "Set it in Workspace Settings before extracting."
         )
-    return OpenAIAdapter(api_key=api_key or _CUSTOM_PROVIDER_PLACEHOLDER_KEY, base_url=base_url)
+    return OpenAIAdapter(api_key=api_key or CUSTOM_PROVIDER_PLACEHOLDER_KEY, base_url=base_url)
 
 
 async def _run_extraction(

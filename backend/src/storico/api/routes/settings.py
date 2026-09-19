@@ -123,8 +123,10 @@ async def test_llm_connection(
     """Test a connection to the specified LLM provider.
 
     Sends a minimal prompt (\"Hello\") and returns the result.
-    Each provider constructs its own adapter (Ollama, Gemini, OpenAI, or
-    Anthropic) and returns the raw response or a connection error message.
+    Each of the four built-in providers constructs its own adapter (Ollama, Gemini, OpenAI,
+    or Anthropic) and returns the raw response or a connection error message. Any other name
+    is a workspace-registered custom provider, tested against its OpenAI-compatible endpoint
+    the same way ``_build_llm_port`` routes extraction.
     """
     from storico.domain.ports import LLMConfig
 
@@ -264,12 +266,46 @@ async def test_llm_connection(
                 latency_ms=elapsed,
             )
 
-    msg = (
-        f"{body.provider.title()} adapter not yet implemented. "
-        "Supported providers for connection testing: "
-        "Ollama, Gemini, OpenAI, and Anthropic."
+    # Anything outside the four built-in names is a workspace-registered custom provider,
+    # which ``_build_llm_port`` already sends to the OpenAI-compatible adapter. Refusing it
+    # here as "not yet implemented" made this endpoint disagree with extraction about a
+    # provider extraction supports; the endpoint requirement is the same rule as there, and
+    # stated as a refused test rather than an exception because this is a probe, not a run.
+    if not base_url:
+        return LLMTestResponse(
+            success=False,
+            message=(
+                f"Base URL is required for the custom provider '{body.provider}'. "
+                "Set it in workspace settings."
+            ),
+        )
+
+    from storico.infrastructure.llm import CUSTOM_PROVIDER_PLACEHOLDER_KEY, OpenAIAdapter
+
+    adapter = OpenAIAdapter(api_key=api_key or CUSTOM_PROVIDER_PLACEHOLDER_KEY, base_url=base_url)
+    config = LLMConfig(
+        model=body.model,
+        temperature=0.1,
+        max_tokens=10,
+        timeout=30,
     )
-    return LLMTestResponse(success=False, message=msg)
+
+    try:
+        response = await adapter.generate("Hello", config)
+        elapsed = int((time.monotonic() - start) * 1000)
+        return LLMTestResponse(
+            success=True,
+            message=f"{body.provider} responded: {response[:100]}",
+            model=body.model,
+            latency_ms=elapsed,
+        )
+    except Exception as e:
+        elapsed = int((time.monotonic() - start) * 1000)
+        return LLMTestResponse(
+            success=False,
+            message=f"{body.provider} connection failed: {e}",
+            latency_ms=elapsed,
+        )
 
 
 # ── Account Deletion ──────────────────────────────────────────────────────────

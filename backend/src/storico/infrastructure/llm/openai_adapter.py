@@ -15,6 +15,15 @@ from storico.domain.ports import LLMConfig, LLMPort
 
 logger = logging.getLogger(__name__)
 
+#: Credential to send to an OpenAI-compatible endpoint that requires none.
+#:
+#: ``AsyncOpenAI`` rejects an empty key, and ``None`` would let the SDK read the ambient
+#: ``OPENAI_API_KEY`` instead — a credential source a workspace-scoped call must not reach
+#: for. Self-hosted gateways commonly accept unauthenticated requests, so they need a value
+#: that means "no credential": this one, shared by every caller that builds the adapter from
+#: a workspace configuration or from the connection test.
+CUSTOM_PROVIDER_PLACEHOLDER_KEY = "no-key-required"
+
 
 class OpenAIAdapter(LLMPort):
     """Adapter that sends prompts to OpenAI models via the openai SDK.
@@ -32,7 +41,8 @@ class OpenAIAdapter(LLMPort):
         """Initialize the adapter.
 
         Args:
-            api_key: OpenAI API key.
+            api_key: OpenAI API key, or :data:`CUSTOM_PROVIDER_PLACEHOLDER_KEY`
+                for an endpoint that needs no credential.
             base_url: Optional base URL for OpenAI-compatible endpoints.
             client: Optional pre-configured ``AsyncOpenAI`` client. If omitted,
                 a new client is created with the given api_key and base_url.

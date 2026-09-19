@@ -140,3 +140,70 @@ class TestRealValues:
 
         assert response.status_code == 200
         assert adapter_kwargs == [{"api_key": "sk-ant-a b c", "base_url": None}]
+
+
+class TestCustomProviders:
+    """A name outside the four built-ins is a workspace-registered OpenAI-compatible endpoint.
+
+    ``_build_llm_port`` already routes every such name to ``OpenAIAdapter``. This endpoint used
+    to answer ``422`` from its own ``Literal`` of the four built-in names, which is why the
+    branch that named the provider here was unreachable and why a custom provider could not be
+    tested at all.
+    """
+
+    @pytest.mark.asyncio
+    async def test_it_reaches_the_openai_compatible_adapter_with_the_placeholder(
+        self, authed_client: AsyncClient, adapter_kwargs: list[dict[str, Any]]
+    ) -> None:
+        """A gateway that needs no credential stays reachable without one, as in extraction."""
+        response = await _post(
+            authed_client,
+            {
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "base_url": "https://api.deepseek.com/v1",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+        assert adapter_kwargs == [
+            {
+                "api_key": llm_module.CUSTOM_PROVIDER_PLACEHOLDER_KEY,
+                "base_url": "https://api.deepseek.com/v1",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_custom_provider_without_an_endpoint_is_refused(
+        self, authed_client: AsyncClient, adapter_kwargs: list[dict[str, Any]]
+    ) -> None:
+        """No endpoint means nothing to call: extraction's rule, answered as a refused test."""
+        response = await _post(authed_client, {"provider": "deepseek", "model": "deepseek-chat"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is False
+        assert "deepseek" in body["message"]
+        assert "Base URL is required" in body["message"]
+        assert adapter_kwargs == []
+
+    @pytest.mark.asyncio
+    async def test_an_explicit_key_replaces_the_placeholder(
+        self, authed_client: AsyncClient, adapter_kwargs: list[dict[str, Any]]
+    ) -> None:
+        """The placeholder is a fallback: a supplied credential is the one that goes through."""
+        response = await _post(
+            authed_client,
+            {
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "base_url": "https://api.deepseek.com/v1",
+                "api_key": "deepseek-key",
+            },
+        )
+
+        assert response.status_code == 200
+        assert adapter_kwargs == [
+            {"api_key": "deepseek-key", "base_url": "https://api.deepseek.com/v1"}
+        ]

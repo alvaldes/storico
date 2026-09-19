@@ -14,6 +14,7 @@ import pytest
 
 from storico.domain.entities.exceptions import LLMError
 from storico.infrastructure.llm import (
+    CUSTOM_PROVIDER_PLACEHOLDER_KEY,
     AnthropicAdapter,
     GeminiAdapter,
     OllamaAdapter,
@@ -203,7 +204,7 @@ class TestBlankCredentials:
         # The placeholder the port substitutes when a gateway needs no credential.
         assert (
             adapter_spies["OpenAIAdapter"][0]["kwargs"]["api_key"]
-            == extraction_task._CUSTOM_PROVIDER_PLACEHOLDER_KEY
+            == CUSTOM_PROVIDER_PLACEHOLDER_KEY
         )
 
 

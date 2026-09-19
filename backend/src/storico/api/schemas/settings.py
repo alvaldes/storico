@@ -5,8 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import AliasGenerator, BaseModel, ConfigDict
+from pydantic import AliasGenerator, BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+
+from storico.api.schemas.custom_provider import NAME_MAX_LENGTH
 
 
 class CamelCaseModel(BaseModel):
@@ -75,7 +77,11 @@ class LLMTestRequest(CamelCaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    provider: Literal["ollama", "openai", "anthropic", "gemini"]
+    # Bounded by the shared ``NAME_MAX_LENGTH`` rather than a ``Literal`` of the four built-in
+    # names. That ``Literal`` was a third, unguarded rendering of ``KNOWN_PROVIDERS``, and it
+    # refused exactly the workspace-registered names that ``_build_llm_port`` routes to the
+    # OpenAI-compatible adapter — so this endpoint could not test a custom provider at all.
+    provider: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
     base_url: str | None = None
     api_key: str | None = None
     model: str = "llama3.2"
