@@ -23,6 +23,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from storico.api.dependencies import (
+    get_llm_config_repository,
     get_repository,
     get_workspace_for_user,
 )
@@ -108,7 +109,7 @@ ProjectRepoDep = Annotated[
 
 LLMConfigRepoDep = Annotated[
     SQLAlchemyWorkspaceLLMConfigRepository,
-    Depends(get_repository(SQLAlchemyWorkspaceLLMConfigRepository)),
+    Depends(get_llm_config_repository),
 ]
 
 

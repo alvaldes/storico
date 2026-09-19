@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from storico.api.errors import (
     cannot_remove_owner_handler,
+    cipher_error_handler,
     duplicate_entity_handler,
     entity_not_found_handler,
     generic_error_handler,
@@ -51,6 +52,7 @@ from storico.domain.entities import (
     ParseError,
     RepositoryError,
 )
+from storico.domain.entities.exceptions import CipherError
 from storico.infrastructure.database.base import dispose_engine, get_engine
 
 logger = logging.getLogger(__name__)
@@ -109,6 +111,10 @@ def create_app() -> FastAPI:
     app.add_exception_handler(OwnerTransferError, owner_transfer_error_handler)
     app.add_exception_handler(LastAdminError, last_admin_error_handler)
     app.add_exception_handler(CannotRemoveOwnerError, cannot_remove_owner_handler)
+
+    # Credential cipher errors. Registered on the base class so both subclasses are covered;
+    # the handler itself distinguishes them for the machine-readable ``error_code``.
+    app.add_exception_handler(CipherError, cipher_error_handler)
 
     app.add_exception_handler(Exception, generic_error_handler)  # type: ignore[arg-type]
 

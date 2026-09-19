@@ -8,12 +8,13 @@ providers through it. The prober is exercised with an injected
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from uuid import uuid4
 
 import httpx
 import jwt as pyjwt
 import pytest
+from cryptography.fernet import Fernet
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,13 +25,30 @@ from storico.api.routes.workspace_settings import (
     fetch_openai_models,
 )
 from storico.api.schemas.workspace_llm_config import LLMModelProbeRequest
-from storico.config.settings import Settings
+from storico.config.settings import Settings, _reset_settings_cache
 from storico.domain.entities.user import User
 from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
+from storico.infrastructure.crypto import FernetCipher
 from storico.infrastructure.database.repositories import (
     SQLAlchemyUserRepository,
     SQLAlchemyWorkspaceLLMConfigRepository,
 )
+
+_MASTER_KEY = Fernet.generate_key().decode("ascii")
+
+
+@pytest.fixture(autouse=True)
+def _master_key(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Give the app a master key, so a route-level save encrypts like production."""
+    monkeypatch.setenv("STORICO_ENCRYPTION_KEY", _MASTER_KEY)
+    _reset_settings_cache()
+    yield
+    _reset_settings_cache()
+
+
+def _repo(session) -> SQLAlchemyWorkspaceLLMConfigRepository:
+    """The repository as the app wires it: a session plus the cipher."""
+    return SQLAlchemyWorkspaceLLMConfigRepository(session, FernetCipher(_MASTER_KEY))
 
 
 def _auth_headers(user_id: str) -> dict:
@@ -312,7 +330,7 @@ class TestCustomProviderModelDiscovery:
 
         user = await _create_user(db_session)
         ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
-        await SQLAlchemyWorkspaceLLMConfigRepository(db_session).upsert(
+        await _repo(db_session).upsert(
             WorkspaceLLMConfig(workspace_id=ws_id, provider="deepseek", api_key="secret")
         )
 
@@ -339,7 +357,7 @@ class TestCustomProviderModelDiscovery:
 
         user = await _create_user(db_session)
         ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
-        await SQLAlchemyWorkspaceLLMConfigRepository(db_session).upsert(
+        await _repo(db_session).upsert(
             WorkspaceLLMConfig(
                 workspace_id=ws_id,
                 provider="deepseek",
@@ -463,7 +481,7 @@ class TestPendingSelectionProbe:
         user = await _create_user(db_session)
         ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
         # The saved row points somewhere unreachable; only the posted values may run.
-        await SQLAlchemyWorkspaceLLMConfigRepository(db_session).upsert(
+        await _repo(db_session).upsert(
             WorkspaceLLMConfig(
                 workspace_id=ws_id,
                 provider="NaN",
@@ -498,7 +516,7 @@ class TestPendingSelectionProbe:
 
         user = await _create_user(db_session)
         ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
-        await SQLAlchemyWorkspaceLLMConfigRepository(db_session).upsert(
+        await _repo(db_session).upsert(
             WorkspaceLLMConfig(
                 workspace_id=ws_id,
                 provider="gemini",
@@ -534,7 +552,7 @@ class TestPendingSelectionProbe:
 
         user = await _create_user(db_session)
         ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
-        await SQLAlchemyWorkspaceLLMConfigRepository(db_session).upsert(
+        await _repo(db_session).upsert(
             WorkspaceLLMConfig(
                 workspace_id=ws_id,
                 provider="deepseek",

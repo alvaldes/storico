@@ -8,14 +8,35 @@ the credential or the endpoint the configuration holds.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from storico.config.settings import _reset_settings_cache
 from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
 from storico.domain.entities.workspace_member import WorkspaceRole
+from storico.infrastructure.crypto import FernetCipher
 from storico.infrastructure.database.repositories import (
     SQLAlchemyWorkspaceLLMConfigRepository,
 )
+
+_MASTER_KEY = Fernet.generate_key().decode("ascii")
+
+
+@pytest.fixture(autouse=True)
+def _master_key(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Give the app a master key, so a route-level save encrypts like production."""
+    monkeypatch.setenv("STORICO_ENCRYPTION_KEY", _MASTER_KEY)
+    _reset_settings_cache()
+    yield
+    _reset_settings_cache()
+
+
+def _repo(session) -> SQLAlchemyWorkspaceLLMConfigRepository:
+    """The repository as the app wires it: a session plus the cipher."""
+    return SQLAlchemyWorkspaceLLMConfigRepository(session, FernetCipher(_MASTER_KEY))
 
 
 def _status_url(workspace_id) -> str:
@@ -32,7 +53,7 @@ async def _seed_config(
     base_url: str | None = None,
 ) -> None:
     """Persist the workspace's LLM row exactly as the settings form would."""
-    await SQLAlchemyWorkspaceLLMConfigRepository(db_session).upsert(
+    await _repo(db_session).upsert(
         WorkspaceLLMConfig(
             workspace_id=workspace_id,
             provider=provider,

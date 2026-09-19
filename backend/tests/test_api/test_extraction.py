@@ -5,23 +5,46 @@ Tests the workspace-scoped routes at
 """
 
 import asyncio
+from collections.abc import Iterator
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
+from cryptography.fernet import Fernet
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from storico.config.settings import _reset_settings_cache
 from storico.domain.entities import Extraction, LLMConnectionError, User
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort
+from storico.infrastructure.crypto import FernetCipher
+from storico.infrastructure.database.models import WorkspaceLLMConfigModel
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
+    SQLAlchemyWorkspaceLLMConfigRepository,
 )
 from storico.infrastructure.tasks import extraction_task
+
+_MASTER_KEY = Fernet.generate_key().decode("ascii")
+
+
+@pytest.fixture(autouse=True)
+def _master_key(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Give the app a master key, so a seeded credential is stored as ciphertext."""
+    monkeypatch.setenv("STORICO_ENCRYPTION_KEY", _MASTER_KEY)
+    _reset_settings_cache()
+    yield
+    _reset_settings_cache()
+
+
+def _repo(session) -> SQLAlchemyWorkspaceLLMConfigRepository:
+    """The repository as the app wires it: a session plus the cipher."""
+    return SQLAlchemyWorkspaceLLMConfigRepository(session, FernetCipher(_MASTER_KEY))
 
 
 async def _create_user(db_session: AsyncSession, email: str = "test@example.com") -> User:
@@ -484,11 +507,8 @@ async def _seed_llm_config(
 ) -> None:
     """Persist the workspace's LLM row exactly as the settings form would."""
     from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
-    from storico.infrastructure.database.repositories import (
-        SQLAlchemyWorkspaceLLMConfigRepository,
-    )
 
-    await SQLAlchemyWorkspaceLLMConfigRepository(db_session).upsert(
+    await _repo(db_session).upsert(
         WorkspaceLLMConfig(
             workspace_id=workspace_id,
             provider=provider,
@@ -697,3 +717,45 @@ class TestExtractionRefusesAnIncompleteConfig:
         assert response.status_code == 202
         await asyncio.sleep(0)
         assert scheduled.call_args.kwargs["api_key"] is None
+
+
+class TestExtractionReceivesTheDecryptedCredential:
+    """The background task is the last consumer of the key, so it must receive plaintext."""
+
+    @pytest.mark.asyncio
+    async def test_the_adapter_is_built_with_the_plaintext_not_the_ciphertext(
+        self, async_client, db_session: AsyncSession, seed_workspace, monkeypatch
+    ) -> None:
+        """A stored ciphertext credential has to reach the adapter decrypted."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(
+            db_session,
+            seeded.workspace_id,
+            provider="openai",
+            model="gpt-4o-mini",
+            api_key="sk-decrypted-for-the-adapter",
+        )
+
+        stored = (
+            await db_session.execute(
+                select(WorkspaceLLMConfigModel.api_key).where(
+                    WorkspaceLLMConfigModel.workspace_id == seeded.workspace_id
+                )
+            )
+        ).scalar_one()
+        # The row really is ciphertext, so a plaintext hand-off can only have come from
+        # the repository decrypting it on the way out.
+        assert stored.startswith("v1:")
+
+        scheduled = AsyncMock()
+        monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", scheduled)
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 202
+        assert scheduled.call_args.kwargs["api_key"] == "sk-decrypted-for-the-adapter"

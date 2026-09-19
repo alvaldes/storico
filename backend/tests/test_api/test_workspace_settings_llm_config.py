@@ -10,14 +10,34 @@ provider handed the Ollama host would probe and extract against a local Ollama.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
+from cryptography.fernet import Fernet
 
 from storico.api.routes.workspace_settings import resolve_llm_config
-from storico.config.settings import Settings
+from storico.config.settings import Settings, _reset_settings_cache
 from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
+from storico.infrastructure.crypto import FernetCipher
 from storico.infrastructure.database.repositories import (
     SQLAlchemyWorkspaceLLMConfigRepository,
 )
+
+_MASTER_KEY = Fernet.generate_key().decode("ascii")
+
+
+@pytest.fixture(autouse=True)
+def _master_key(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Give the app a master key, so a route-level save encrypts like production."""
+    monkeypatch.setenv("STORICO_ENCRYPTION_KEY", _MASTER_KEY)
+    _reset_settings_cache()
+    yield
+    _reset_settings_cache()
+
+
+def _repo(session) -> SQLAlchemyWorkspaceLLMConfigRepository:
+    """The repository as the app wires it: a session plus the cipher."""
+    return SQLAlchemyWorkspaceLLMConfigRepository(session, FernetCipher(_MASTER_KEY))
 
 
 def _settings(ollama_host: str = "http://ollama.test:11434") -> Settings:
@@ -35,7 +55,7 @@ class TestResolveLLMConfigBaseUrl:
     ) -> None:
         """A cloud provider has no base URL, and must not be given Ollama's."""
         workspace = await seed_workspace(stories=0)
-        repo = SQLAlchemyWorkspaceLLMConfigRepository(db_session)
+        repo = _repo(db_session)
         await repo.upsert(
             WorkspaceLLMConfig(
                 workspace_id=workspace.workspace_id,
@@ -56,7 +76,7 @@ class TestResolveLLMConfigBaseUrl:
     ) -> None:
         """Ollama's own default endpoint is the one it should fall back to."""
         workspace = await seed_workspace(stories=0)
-        repo = SQLAlchemyWorkspaceLLMConfigRepository(db_session)
+        repo = _repo(db_session)
         await repo.upsert(
             WorkspaceLLMConfig(workspace_id=workspace.workspace_id, provider="ollama")
         )
@@ -71,7 +91,7 @@ class TestResolveLLMConfigBaseUrl:
     ) -> None:
         """An OpenAI-compatible proxy is a real value and must survive resolution."""
         workspace = await seed_workspace(stories=0)
-        repo = SQLAlchemyWorkspaceLLMConfigRepository(db_session)
+        repo = _repo(db_session)
         await repo.upsert(
             WorkspaceLLMConfig(
                 workspace_id=workspace.workspace_id,
@@ -91,7 +111,7 @@ class TestResolveLLMConfigBaseUrl:
     ) -> None:
         """With no row at all the default provider is Ollama, host included."""
         workspace = await seed_workspace(stories=0)
-        repo = SQLAlchemyWorkspaceLLMConfigRepository(db_session)
+        repo = _repo(db_session)
 
         resolved = await resolve_llm_config(workspace.workspace_id, repo, _settings())
 
@@ -125,7 +145,7 @@ class TestBlankValuesAreNotStored:
         )
 
         assert response.status_code == 200
-        stored = await SQLAlchemyWorkspaceLLMConfigRepository(db_session).get(seeded.workspace_id)
+        stored = await _repo(db_session).get(seeded.workspace_id)
         assert stored is not None
         assert stored.base_url is None
 
@@ -143,7 +163,7 @@ class TestBlankValuesAreNotStored:
         )
 
         assert response.status_code == 200
-        stored = await SQLAlchemyWorkspaceLLMConfigRepository(db_session).get(seeded.workspace_id)
+        stored = await _repo(db_session).get(seeded.workspace_id)
         assert stored is not None
         assert stored.api_key is None
 
@@ -165,7 +185,7 @@ class TestBlankValuesAreNotStored:
         )
 
         assert response.status_code == 200
-        stored = await SQLAlchemyWorkspaceLLMConfigRepository(db_session).get(seeded.workspace_id)
+        stored = await _repo(db_session).get(seeded.workspace_id)
         assert stored is not None
         assert stored.base_url == "https://api.deepseek.com/v1"
 
@@ -175,7 +195,7 @@ class TestBlankValuesAreNotStored:
     ) -> None:
         """Normalizing must not turn "not part of this update" into "clear it"."""
         seeded = await seed_workspace(stories=0)
-        repo = SQLAlchemyWorkspaceLLMConfigRepository(db_session)
+        repo = _repo(db_session)
         await repo.upsert(
             WorkspaceLLMConfig(
                 workspace_id=seeded.workspace_id,
@@ -200,7 +220,7 @@ class TestBlankValuesAreNotStored:
     ) -> None:
         """A row written before this change is repaired by the next save, not preserved."""
         seeded = await seed_workspace(stories=0)
-        repo = SQLAlchemyWorkspaceLLMConfigRepository(db_session)
+        repo = _repo(db_session)
         await repo.upsert(
             WorkspaceLLMConfig(
                 workspace_id=seeded.workspace_id,
@@ -230,7 +250,7 @@ class TestBlankValuesReadAsAbsent:
         self, db_session, workspace_id, *, provider: str, base_url: str | None
     ) -> SQLAlchemyWorkspaceLLMConfigRepository:
         """Persist a row with the given endpoint, bypassing the route's normalization."""
-        repo = SQLAlchemyWorkspaceLLMConfigRepository(db_session)
+        repo = _repo(db_session)
         await repo.upsert(
             WorkspaceLLMConfig(
                 workspace_id=workspace_id,
@@ -273,7 +293,7 @@ class TestBlankValuesReadAsAbsent:
     async def test_a_blank_credential_resolves_to_none(self, db_session, seed_workspace) -> None:
         """The form must not receive a key made of spaces as if it were a key."""
         workspace = await seed_workspace(stories=0)
-        repo = SQLAlchemyWorkspaceLLMConfigRepository(db_session)
+        repo = _repo(db_session)
         await repo.upsert(
             WorkspaceLLMConfig(
                 workspace_id=workspace.workspace_id,
@@ -303,3 +323,51 @@ class TestBlankValuesReadAsAbsent:
         resolved = await resolve_llm_config(workspace.workspace_id, repo, _settings())
 
         assert resolved.base_url == "https://api.deepseek.com/v1"
+
+
+@pytest.mark.integration
+class TestCredentialEncryptionThroughTheRoute:
+    """The settings route is where an admin's key becomes a stored secret, and back."""
+
+    async def _put(self, client, workspace_id, payload: dict):
+        """Send a config update and return the response."""
+        return await client.put(f"/api/v1/workspaces/{workspace_id}/settings/llm", json=payload)
+
+    @pytest.mark.asyncio
+    async def test_saving_a_key_without_a_master_key_is_refused(
+        self, authed_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """No master key means no write -- never a plaintext one."""
+        seeded = await seed_workspace(stories=0)
+        monkeypatch.delenv("STORICO_ENCRYPTION_KEY", raising=False)
+        _reset_settings_cache()
+
+        response = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {"provider": "openai", "model": "gpt-4o-mini", "api_key": "sk-would-be-plaintext"},
+        )
+
+        assert response.status_code == 500
+        assert response.json()["error_code"] == "ENCRYPTION_KEY_MISSING"
+        # The refusal is a refusal: no row reached the table, not even a partial one.
+        assert await _repo(db_session).get(seeded.workspace_id) is None
+
+    @pytest.mark.asyncio
+    async def test_the_admin_reads_back_the_key_it_saved(
+        self, authed_client, seed_workspace
+    ) -> None:
+        """Encryption must be invisible to the admin who owns the credential."""
+        seeded = await seed_workspace(stories=0)
+
+        saved = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {"provider": "openai", "model": "gpt-4o-mini", "api_key": "sk-round-trip"},
+        )
+        assert saved.status_code == 200
+
+        response = await authed_client.get(f"/api/v1/workspaces/{seeded.workspace_id}/settings/llm")
+
+        assert response.status_code == 200
+        assert response.json()["api_key"] == "sk-round-trip"

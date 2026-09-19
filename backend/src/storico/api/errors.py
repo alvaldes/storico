@@ -18,6 +18,11 @@ from storico.domain.entities import (
     ParseError,
     RepositoryError,
 )
+from storico.domain.entities.exceptions import (
+    CipherError,
+    CredentialUndecryptable,
+    EncryptionKeyMissing,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -182,4 +187,47 @@ async def cannot_remove_owner_handler(
     return JSONResponse(
         status_code=400,
         content={"detail": str(exc), "type": "cannot_remove_owner"},
+    )
+
+
+# ── Credential cipher exception handlers ─────────────────────────
+
+# One code per subclass, keyed by exact type: the handler is registered on the
+# ``CipherError`` base so it must say which specific condition it caught. The code is what
+# a client or an operator greps for; the message is what they act on.
+_CIPHER_ERROR_CODES: dict[type[CipherError], str] = {
+    EncryptionKeyMissing: "ENCRYPTION_KEY_MISSING",
+    CredentialUndecryptable: "CREDENTIAL_UNDECRYPTABLE",
+}
+
+
+async def cipher_error_handler(
+    request: Request,
+    exc: CipherError,
+) -> JSONResponse:
+    """Maps ``CipherError`` to a 500 JSON response an operator can act on.
+
+    ``500`` and not a ``4xx``: the caller did nothing wrong. The server is not in a
+    position to keep the secret it was asked to keep, and only whoever runs it can change
+    that. Answering ``400`` would blame the workspace admin for a deployment gap.
+
+    The message is the exception's own, which by construction names the problem and never
+    the credential or the master key — that is what makes it safe both to return and to log.
+    """
+    error_code = _CIPHER_ERROR_CODES.get(type(exc), "CIPHER_ERROR")
+    logger.error(
+        "CipherError: %s | code=%s | path=%s method=%s",
+        exc,
+        error_code,
+        request.url.path,
+        request.method,
+        exc_info=exc,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": str(exc),
+            "type": "cipher_error",
+            "error_code": error_code,
+        },
     )

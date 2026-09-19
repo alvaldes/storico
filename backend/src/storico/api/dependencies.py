@@ -9,18 +9,20 @@ import jwt as pyjwt  # PyJWT library
 from fastapi import Depends, HTTPException, Path, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from storico.config.settings import get_settings
+from storico.config.settings import Settings, get_settings
 from storico.domain.entities import EntityNotFound, User, UserStory
 from storico.domain.entities.workspace import Workspace
 from storico.domain.entities.workspace_member import WorkspaceRole
-from storico.domain.ports import EmbeddingPort, UserRepository, VectorStorePort
+from storico.domain.ports import CipherPort, EmbeddingPort, UserRepository, VectorStorePort
 from storico.domain.ports.workspace_member_repository import WorkspaceMemberRepository
 from storico.domain.ports.workspace_repository import WorkspaceRepository
 from storico.infrastructure.cache.user_cache import get_cached_user, set_cached_user
+from storico.infrastructure.crypto import FernetCipher
 from storico.infrastructure.database.repositories import (
     SQLAlchemyProjectRepository,
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
+    SQLAlchemyWorkspaceLLMConfigRepository,
 )
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
@@ -132,6 +134,30 @@ async def get_current_user(
 def get_prompt_manager() -> PromptManager:
     """Factory for the prompt manager."""
     return PromptManager()
+
+
+def get_cipher() -> CipherPort:
+    """Factory for the credential cipher, keyed by the configured master key.
+
+    A missing ``encryption_key`` produces a cipher that refuses to encrypt rather than an
+    error here: the process has to be able to *hold* that state so the refusal surfaces at
+    the write that would otherwise store a plaintext credential, not at startup.
+    """
+    return FernetCipher(Settings.load().encryption_key)
+
+
+def get_llm_config_repository(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    cipher: Annotated[CipherPort, Depends(get_cipher)],
+) -> SQLAlchemyWorkspaceLLMConfigRepository:
+    """Factory for the workspace LLM config repository.
+
+    Deliberately not built with ``get_repository``: that factory injects only a session,
+    and this repository needs the cipher too. The cipher arrives as an explicit
+    dependency rather than as a module-level singleton the repository reaches for, so a
+    test — or a future key rotation — can substitute it per request.
+    """
+    return SQLAlchemyWorkspaceLLMConfigRepository(session, cipher)
 
 
 def get_task_parser() -> TaskParser:

@@ -18,7 +18,12 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from storico.api.dependencies import get_repository, get_workspace_for_user, require_admin
+from storico.api.dependencies import (
+    get_llm_config_repository,
+    get_repository,
+    get_workspace_for_user,
+    require_admin,
+)
 from storico.api.schemas.custom_provider import (
     KNOWN_PROVIDERS,
     SELECT_CONTROL_VALUE,
@@ -65,7 +70,7 @@ router = APIRouter(
 # ``Annotated`` dependency.
 type LLMConfigRepoDep = Annotated[
     SQLAlchemyWorkspaceLLMConfigRepository,
-    Depends(get_repository(SQLAlchemyWorkspaceLLMConfigRepository)),
+    Depends(get_llm_config_repository),
 ]
 
 type PromptRepoDep = Annotated[
