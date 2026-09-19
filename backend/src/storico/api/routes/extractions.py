@@ -143,7 +143,7 @@ async def list_extractions(
             raw_response=e.raw_response,
             confidence_score=e.confidence_score,
             created_at=e.created_at,
-            completed_at=None,
+            completed_at=e.completed_at,
         )
         for e in all_extractions[start : start + params.size]
     ]
@@ -182,5 +182,5 @@ async def get_extraction(
         raw_response=extraction.raw_response,
         confidence_score=extraction.confidence_score,
         created_at=extraction.created_at,
-        completed_at=None,
+        completed_at=extraction.completed_at,
     )

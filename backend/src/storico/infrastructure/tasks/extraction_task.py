@@ -148,6 +148,17 @@ async def run_background_extraction(
                 )
 
 
+def _as_utc(value: datetime) -> datetime:
+    """Read a stored timestamp as UTC.
+
+    SQLite has no timezone type, so a ``DateTime(timezone=True)`` column comes back naive, holding
+    the UTC wall clock it was written with (verified: the instant is preserved, only the offset is
+    dropped). Postgres returns it aware. Comparing the two directly raises ``TypeError``, which is
+    what this exists to prevent — the stale-extraction deadline below has to work on both.
+    """
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
 async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
     """Mark any ``pending`` extractions older than *max_age_minutes* as
     ``failed``.
@@ -170,7 +181,7 @@ async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
             if (
                 ext.status == ExtractionStatus.PENDING
                 and ext.created_at
-                and ext.created_at < deadline
+                and _as_utc(ext.created_at) < deadline
             ):
                 await repo.save(
                     Extraction(
@@ -183,6 +194,7 @@ async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
                         error_info="Server restarted while extraction was pending",
                         prompt_config=ext.prompt_config,
                         created_at=ext.created_at,
+                        completed_at=datetime.now(UTC),
                     )
                 )
                 recovered += 1
@@ -302,7 +314,6 @@ async def _run_extraction(
         # Only transition if currently in PENDING_EXTRACTION (idempotent for retries)
         if story.status == UserStoryStatus.PENDING_EXTRACTION:
             from dataclasses import replace
-            from datetime import UTC, datetime
 
             updated_story = replace(
                 story,
@@ -426,6 +437,7 @@ async def _run_extraction(
                 "system_prompt": system_prompt,
             },
             created_at=created_at,
+            completed_at=datetime.now(UTC),
         )
         await extraction_repo.save(completed)
 
@@ -446,7 +458,6 @@ async def _run_extraction(
         # 8. Transition UserStory to EXTRACTED (from EXTRACTING)
         if story.status == UserStoryStatus.EXTRACTING:
             from dataclasses import replace
-            from datetime import UTC, datetime
 
             updated_story = replace(
                 story,
@@ -482,6 +493,7 @@ async def _mark_failed(
         error_info=error_info,
         prompt_config=pending.prompt_config,
         created_at=pending.created_at,
+        completed_at=datetime.now(UTC),
     )
     await extraction_repo.save(failed)
 
@@ -489,7 +501,6 @@ async def _mark_failed(
     story = await story_repo.find_by_id(pending.user_story_id)
     if story and story.status in (UserStoryStatus.EXTRACTING, UserStoryStatus.PENDING_EXTRACTION):
         from dataclasses import replace
-        from datetime import UTC, datetime
 
         updated_story = replace(
             story,
@@ -569,6 +580,7 @@ async def _mark_extraction_failed(
             error_info=error_info,
             prompt_config=pending.prompt_config,
             created_at=pending.created_at,
+            completed_at=datetime.now(UTC),
         )
         await repo.save(failed)
 
@@ -579,7 +591,6 @@ async def _mark_extraction_failed(
             UserStoryStatus.PENDING_EXTRACTION,
         ):
             from dataclasses import replace
-            from datetime import UTC, datetime
 
             updated_story = replace(
                 story,

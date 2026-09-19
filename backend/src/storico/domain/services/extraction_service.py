@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from uuid import UUID
 
 from storico.domain.entities import Extraction, ParseError, Task
@@ -281,6 +282,7 @@ class ExtractionService:
                 user_story_status=UserStoryStatus.EXTRACTED,
                 prompt_config=effective_prompt_config,
                 confidence_score=confidence,
+                completed_at=datetime.now(UTC),
             )
             extraction = await self._extraction_repo.save(extraction)
 
@@ -316,6 +318,7 @@ class ExtractionService:
                 user_story_status=UserStoryStatus.FAILED_EXTRACTION,
                 error_info=str(exc),
                 prompt_config=prompt_config,
+                completed_at=datetime.now(UTC),
             )
             return await self._extraction_repo.save(extraction)
 

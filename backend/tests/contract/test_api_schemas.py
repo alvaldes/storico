@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from storico.api.schemas.extraction import (
@@ -105,6 +106,19 @@ class TestExtractionResponseContract:
         schema = ExtractionResponse.model_json_schema()
         status_enum = schema["$defs"]["ExtractionStatus"]["enum"]
         assert status_enum == ["pending", "completed", "failed"]
+
+    def test_includes_a_nullable_completed_at(self):
+        """The end time travels, and it is optional because a pending run has none.
+
+        Nothing asserted this field before, which is how it could be advertised on every response
+        while no construction site ever set it. The annotation is what the client's
+        ``completed_at: string | null`` is written against, so it is part of the contract rather
+        than an incidental default.
+        """
+        fields = ExtractionResponse.model_fields
+        assert "completed_at" in fields
+        assert fields["completed_at"].annotation == (datetime | None)
+        assert fields["completed_at"].default is None
 
 
 class TestExtractResponseContract:

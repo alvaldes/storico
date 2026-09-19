@@ -192,6 +192,8 @@ class TestExtractionService:
 
         result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
         assert result.status == "completed"
+        # A terminal extraction records when it finished, which is what the column exists for.
+        assert result.completed_at is not None
         assert deps["extraction_repo"].save.called
         assert deps["task_repo"].save.called
 
@@ -238,6 +240,8 @@ class TestExtractionService:
         result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
         assert result.status == "failed"
         assert "Cannot connect" in (result.error_info or "")
+        # A failure is terminal too, and it ends at a known moment rather than never.
+        assert result.completed_at is not None
 
     @pytest.mark.asyncio
     async def test_extract_parse_error_persists_failed(self, setup) -> None:
