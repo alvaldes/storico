@@ -1,8 +1,10 @@
 # ODD Feature: extraction-completed-at
 
-> **Status**: implemented on `feat/extraction-completed-at` (off `main` @ `8a33baf`), not pushed.
-> Green and mutation-checked; the independent verification is recorded below. Receipt-driven
-> development is **off** in this clone, so no native review ran.
+> **Status**: done and landed on `main` @ `2ab0001` — six commits from `8a33baf`: `f572c4b`,
+> `0eeed2c`, `1864622` (the implementation and its record) then `46393ec`, `ef12334`, `2ab0001`
+> (the answers to the verification). Branch deleted, `main` re-gated, **not pushed**. Receipt-driven
+> development is **off** in this clone, so no native review ran; an independent verification did,
+> and it found that the one site production actually takes had no test at all.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `feat/extraction-completed-at`.
@@ -203,4 +205,6 @@ or loosened (566 → 580 test nodes, +14, none deleted).
 - [x] Run backend `ruff check src tests`, `ruff format --check src tests`, `pytest -q`; frontend `tsc --noEmit` and `vitest run`.
 - [x] Work-unit commits on the feature branch (`f572c4b`, `0eeed2c`, `1864622`, plus the answer to the verification).
 - [x] Independent verification — the six sites and the design decision confirmed by falsification; V1 (a real coverage hole on the production happy path) fixed and re-mutated, V2 and V4 corrected, V3 recorded.
-- [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
+- [x] Fast-forward into `main`, delete the branch, re-gate — `main` @ `2ab0001`; backend
+      668 passed / 1 skipped with `ruff check src tests` clean and 217 files formatted, frontend
+      36 files / 420 tests and `tsc --noEmit` exit 0 — all re-run **after** the merge.
