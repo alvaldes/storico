@@ -124,4 +124,6 @@ Worth keeping from the verification: the repository's neutral-Spanish guard read
 - [x] Add the deploy note to `docs/deployment.md`.
 - [x] Work-unit commits (documentation only) — the note and this record.
 - [x] Independent verification — the deletion and the note confirmed claim by claim; W1–W4 fixed here.
-- [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
+- [x] Fast-forward into `main`, delete the branch, re-gate — `main` @ `c6f5a0c`; 36 files /
+      420 tests and `tsc --noEmit` exit 0 re-run **after** the merge. The delete paths are absent
+      again after the merge, which is the point.
