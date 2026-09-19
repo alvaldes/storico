@@ -1,11 +1,13 @@
 # ODD Feature: taskeditor-sibling-selector
 
-> **Status**: done — commits `e460b8f` (the plan of record) and `6c42998` (the fix) on
-> `fix/taskeditor-sibling-selector`, not pushed. Receipt-driven development is **off** in this
-> clone, so no native review ran; independent verification is recorded below.
+> **Status**: done and landed on `main` @ `4dc97bd` — three commits from `6174f5a`:
+> `e460b8f` (the plan of record), `6c42998` (the fix), `4dc97bd` (the two doc claims the
+> independent verification refuted). Branch deleted, `main` re-gated, **not pushed**.
+> Receipt-driven development is **off** in this clone, so no native review ran; independent
+> verification is recorded below.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)
-> **Branch**: `fix/taskeditor-sibling-selector`, off `main` @ `6174f5a`.
+> **Branch**: `fix/taskeditor-sibling-selector`, off `main` @ `6174f5a` — fast-forwarded and deleted.
 
 ## Problem
 
@@ -106,4 +108,5 @@ newly allocated object or array, so this was the only unstable snapshot in the t
 - [x] Run `pnpm exec tsc --noEmit` and `pnpm vitest run`.
 - [x] Work-unit commit on the feature branch (`6c42998`).
 - [x] Independent verification — 6/6 confirmed, F1/F2 fixed in this document, F3 recorded.
-- [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
+- [x] Fast-forward into `main`, delete the branch, re-gate — `main` @ `4dc97bd`, 33 files /
+      384 tests passed and `tsc --noEmit` exit 0 re-run **after** the merge.
