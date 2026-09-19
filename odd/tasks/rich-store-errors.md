@@ -1,15 +1,16 @@
 # ODD Feature: rich-store-errors
 
-> **Status**: planning — no commit, no evidence yet.
+> **Status**: done — commit (the fix, its tests and the record) on `fix/rich-store-errors`, off
+> `main` @ `137f804`, not pushed. Receipt-driven development is **off** in this clone, so no
+> native review ran; the independent verification is recorded below.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)
-> **Branch**: `fix/rich-store-errors` (to be created off `main` @ `6174f5a`).
-> **Receipt-driven development**: off in this clone.
+> **Branch**: `fix/rich-store-errors`.
 
 ## Problem
 
-Three stores flatten a thrown error to a `string` at the catch boundary, discarding everything
-the richer type carries:
+Three stores flattened a thrown error to a `string` at the catch boundary, discarding everything
+the richer type carried:
 
 | Site | Type declaration | Flattening |
 |------|------------------|------------|
@@ -17,65 +18,110 @@ the richer type carries:
 | `frontend/src/stores/projectStore.ts` | `:28` `error: string \| null;` | `:71`, `:96`, `:118`, `:140` |
 | `frontend/src/stores/workspaceStore.ts` | `:23` `error: string \| null;` | `:97`, `:123`, `:140`, `:158` |
 
-All of them do `const message = err instanceof Error ? err.message : '<fallback>'`. The API
-layer throws `ApiRequestError` (`frontend/src/lib/api.ts:17-98`), which holds `status`,
-`statusText`, `errorCode`, `currentState`, `attemptedState`, `allowedTransitions`, `detail`
-and `rawError.rawBody`. Flattening drops all of it.
+All of them did `const message = err instanceof Error ? err.message : '<fallback>'`. The API layer
+throws `ApiRequestError` (`frontend/src/lib/api.ts:17-98`), which holds `status`, `statusText`,
+`errorCode`, `currentState`, `attemptedState`, `allowedTransitions`, `detail` and
+`rawError.rawBody`. Flattening dropped all of it.
 
-The loss is already visible in the product and already admitted in the code. `KanbanBoard.tsx:222-223`:
+The loss was already admitted in the code. `KanbanBoard.tsx`:
 
 ```tsx
 // The store records a message rather than the `ApiRequestError`, so there is no
 // status, code or raw body to disclose on this page.
 ```
 
-Consequences: `ErrorDisplay` cannot render its `HTTP n` badge or the collapsible raw-response
-panel (`ErrorDisplay.tsx:138-141`, `:167-173`, `:190`), and no consumer can branch on a machine
-code the way the extraction slice already does via `categorizeExtractionError`
-(`taskStore.ts:112`, `:114`).
+Consequences: `ErrorDisplay` could not render its `HTTP n` badge or the raw-response panel
+(`ErrorDisplay.tsx:167-173`, `:190`), and no consumer could branch on a machine code the way the
+extraction slice already did (`categorizeExtractionError`).
 
-The asymmetry is internal to one file: the **same** `taskStore` keeps a rich
-`ExtractionErrorInfo` for the extraction slice (`:29-43`, `:123-143`) while flattening the
-workspace slice.
+The asymmetry was internal to one file: the **same** `taskStore` kept a rich
+`ExtractionErrorInfo` for the extraction slice while flattening the workspace slice.
 
-Two pieces of dead weight are entangled with this and are decided here rather than left:
+## Two normalisers, one of them loose
 
-- `extractErrorInfo` (`frontend/src/components/react/ErrorDisplay.tsx:222-265`) is exported and
-  referenced by **nothing** — including no test — and git shows it was added in `dad9039` with
-  no caller ever, so it is dead **from birth**, not orphaned by a removal.
-- `workspaceStore.error` is written by four catch blocks and read by **zero** components.
+The audit that preceded this change found the duplication that caused the drift:
+
+- `extractExtractionErrorInfo` (`taskStore.ts:123`) used `err instanceof ApiRequestError` and
+  delegated to `toErrorInfo()`.
+- `extractErrorInfo` (`ErrorDisplay.tsx:222`) — **dead since it was written** in `dad9039`, with
+  no caller in any commit — classified by shape instead: `'detail' in err && 'status' in err`.
+  Any object with those two keys satisfied it, and everything else about the object was ignored.
+
+Unifying them was therefore not just tidying: it is what removes the loose classification.
 
 ## Decisions
 
 | # | Decision | Choice |
 |---|----------|--------|
-| D1 | The store field | `error` becomes the rich shape (`ExtractionErrorInfo`-compatible) in `taskStore` and `projectStore`, matching what the extraction slice already stores. |
-| D2 | The normaliser | `extractErrorInfo` stops being dead code: it becomes the boundary normaliser used by the catch blocks. Its current structural check (`'detail' in err && 'status' in err`) must be reviewed — it is looser than an `instanceof ApiRequestError` test and must not misclassify an arbitrary object that happens to have those keys. |
-| D3 | `workspaceStore.error` | **Removed.** Zero readers: keeping a field nothing consumes is the same liability as dead code, and its four catch blocks lose nothing that no consumer was reading. |
-| D4 | Consumers | Update the two real readers — `KanbanBoard.tsx:37→:219-229` and `ExportPanel.tsx:19→:159-168` — to pass the structured fields through, deleting the comment that documents the loss. |
-| D5 | Tests that must change | `KanbanBoard.test.tsx:118` and `:146` seed `useTaskStore.setState({ error: 'the board is unavailable' })` as a plain string; they must be rewritten against the new shape. They are the first thing that will fail and are the proof the change is observable. |
-| D6 | Coverage to add | The two flattening expressions and `ExportPanel`'s error branch (currently untested — `ExportPanel.test.tsx` has one unrelated test) get assertions, since they are the behaviour this feature changes. |
+| D1 | Where the shared shape and the normaliser live | A new `frontend/src/lib/error-info.ts`. A store normalising errors must not import a React component to do it, and the helper was in `ErrorDisplay.tsx` only because that is where it happened to be written. |
+| D2 | The normaliser | One function. `ApiRequestError` matched **by class, first**, delegating to `toErrorInfo()`; then `Error`; then `string`; then a fallback. A `fallbackMessage` parameter lets a caller with its own user-facing name keep it without re-implementing the rest. |
+| D3 | `TaskState.error` and `ProjectState.error` | Both become `ErrorInfo \| null`, matching what the extraction slice already stored. |
+| D4 | `ExtractionErrorInfo` | Deleted as a name; `ExtractionState.error` uses `ErrorInfo`. Two names for one shape is the drift this feature is about. |
+| D5 | `workspaceStore.error` | **Removed**, with its four writes and its initial value: four writes, zero readers. |
+| D6 | Coverage | The two flattening expressions and `ExportPanel`'s error branch — the latter entirely untested — get assertions. |
+| D7 | `rawDetail` semantics | The old `ErrorDisplay.extractErrorInfo` put `detail` in `rawDetail`; the unified normaliser puts the whole `rawError.rawBody` there. Deliberate: the raw body is what the disclosure panel is for, and it is what the extraction path already used. |
 
-## Non-goals
+## What the change actually touched, including what I underestimated
 
-- No change to `ApiRequestError`'s shape.
-- No change to the extraction error path, which already stores the rich shape.
-- No new UI for `currentState` / `allowedTransitions`: the data becomes available, surfacing it
-  beyond the existing `ErrorDisplay` fields is separate work.
+The blast radius of D5 was larger than the exploration predicted, and it is worth writing down
+rather than discovering again:
 
-## Tasks
+- **16 test state resets** across 8 files set `error: null` inside a `useWorkspaceStore.setState`
+  block and had to drop the key: `workspaceStore.unit.test.ts` (2), `storyStore.unit.test.ts` (3),
+  `taskStore.unit.test.ts` (3), `projectStore.unit.test.ts` (4), `team-switcher.test.tsx`,
+  `StoryDetail.test.tsx`, `WorkspaceSettings.test.tsx`, `StoriesList.test.tsx`. The type checker
+  is what makes this safe: every one was found by `tsc`, and none of them silently changed
+  behaviour.
+- **Three dead imports surfaced**, all pre-existing: `ExtractionErrorInfo` in `StoryDetail.tsx`
+  (imported and never used — so the fix was to delete the import, not to repoint it),
+  `api` in `KanbanBoard.test.tsx`, and — created by this change — `ApiRequestError` and
+  `RawBackendError` in `taskStore.ts` once the old normaliser was gone.
+- **A mistake I made and repaired**: the mechanical deletion of those 16 lines was done with a
+  line-based script that tracked "inside a `useWorkspaceStore.setState` block" with a flag. A
+  *single-line* `setState({ … })` never closed the flag, so it stayed set for the rest of the
+  file and the script deleted an `error: null` from an `ExtractionState` literal 12 lines later.
+  `tsc` caught it (the field is required there). Lesson: a line-based state machine is the wrong
+  tool for brace-structured code, and a scripted bulk edit needs an audit that re-derives the
+  change from the original revision rather than trusting the script's own bookkeeping. The repair
+  and a full re-derived audit of all 16 sites are both recorded here.
 
-- [ ] Explore the exact reader set of each store's `error` before changing any type.
-- [ ] Decide and implement the rich state type shared by `taskStore` and `projectStore`.
-- [ ] Route the catch blocks through `extractErrorInfo`; tighten its classification.
-- [ ] Remove `workspaceStore.error` and its four writes.
-- [ ] Update `KanbanBoard`, `ExportPanel` and their tests.
-- [ ] Add the missing coverage (`ExportPanel` error branch, store flattening).
-- [ ] Run `pnpm exec tsc --noEmit` and `pnpm vitest run`.
-- [ ] Work-unit commit on the feature branch.
-- [ ] Independent verification.
-- [ ] Fast-forward into `main`, delete the branch, re-gate.
+## The follow-up this leaves behind
+
+`fetchWorkspaces` failing is **silent**, and it was equally silent before: the catch recorded the
+failure in `workspaceStore.error`, which no component ever read, and now it records nothing while
+still clearing `loading`. Removing the dead field did not create that gap, it exposed it. It is
+the same class of defect as the previous batch's unreachable Kanban error branch, and it needs its
+own slice — surfacing the failure is new behaviour, not a rename.
 
 ## Evidence
 
-_None yet._
+| Check | Command | Result |
+|-------|---------|--------|
+| The duplication | `grep -rn "extractErrorInfo\|extractExtractionErrorInfo"` at `main` | two near-identical normalisers; the `ErrorDisplay` one with **zero** callers in any commit |
+| Broken state (before the test updates) | `pnpm exec tsc --noEmit` | **20 errors** naming every site that still set the removed key |
+| Failing tests (before the test updates) | `pnpm vitest run` | **2 files failed, 7 tests failed** of 394 — the 6 project-store scope-guard assertions plus KanbanBoard's |
+| Full suite | `pnpm vitest run` | **35 files, 403 passed** (394 before, +9 new) |
+| Types | `pnpm exec tsc --noEmit` | exit 0 |
+| New coverage | — | `error-info.test.ts` (6), `ExportPanel` error branch (1), `projectStore` rich failure (2) |
+| Audit of the bulk edit | re-derived from `main` with a corrected parser | exactly the 16 intended sites, none other |
+
+Two of the new assertions are the ones that make the change observable rather than merely typed:
+
+- `KanbanBoard.test.tsx` now seeds `status: 503` and `errorCode: 'BOARD_UNAVAILABLE'` and asserts
+  the alert shows `HTTP 503` **and** the code — impossible before, which is exactly what the
+  deleted comment said.
+- `error-info.test.ts` pins that a look-alike object (`{ detail, status, message }`) is **not**
+  treated as an `ApiRequestError`, guarding the loose classification the old copy allowed.
+
+## Tasks — all closed
+
+- [x] Explore the exact reader set of each store's `error` before changing any type.
+- [x] Define one `ErrorInfo` shape and one normaliser in `lib/`.
+- [x] Route every catch through it; delete the duplicated normaliser.
+- [x] Remove `workspaceStore.error` and its writes.
+- [x] Update `KanbanBoard`, `ExportPanel` and `ProjectsList`; delete the comment recording the loss.
+- [x] Update the tests that the type change invalidated, and add the missing coverage.
+- [x] Run `pnpm exec tsc --noEmit` and `pnpm vitest run`.
+- [x] Work-unit commit on the feature branch.
+- [ ] Independent verification — **pending**.
+- [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
