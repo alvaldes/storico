@@ -639,3 +639,88 @@ class TestBlankEndpointOnTheProbe:
 
         assert models == []
         assert requested == []
+
+
+@pytest.mark.unit
+class TestTheProbeDoesNotLeakTheCredential:
+    """The credential leaves in a header, and it does not come back in a response.
+
+    Both halves were real. The Gemini fetch put the key in a ``?key=`` query parameter, which
+    ``httpx`` logs at INFO for every request and which any transport error embeds into its message;
+    and the route interpolated that message verbatim into its 502 body. The credential could be the
+    workspace's *stored* one, because the probe falls back to the saved row when the body names no
+    provider — so this route could hand a secret back to a caller who never supplied it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_gemini_probe_sends_the_credential_in_a_header(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The URL carries no credential, which is what keeps it out of the logs."""
+        credential = "AIza-HEADER-STAND-IN"
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(200, json={"models": []})
+
+        _patch_client_factory(monkeypatch, handler)
+
+        await workspace_settings.fetch_gemini_models(credential)
+
+        assert len(seen) == 1
+        assert credential not in str(seen[0].url)
+        assert "key=" not in str(seen[0].url)
+        assert seen[0].headers["x-goog-api-key"] == credential
+
+    @pytest.mark.asyncio
+    async def test_a_failed_probe_publishes_the_status_and_never_the_credential(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """A 502 may name the provider and the status. It may not carry the credential or the
+        dependency's message — and the transport error crafted here is exactly the shape that used
+        to do both, with the credential in it on purpose so the assertion has something to catch.
+        """
+        credential = "AIza-PROBE-SECRET-STAND-IN"
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            response = httpx.Response(401, request=request)
+            raise httpx.HTTPStatusError(
+                f"Client error '401 Unauthorized' for url '{request.url}?key={credential}'",
+                request=request,
+                response=response,
+            )
+
+        _patch_client_factory(monkeypatch, handler)
+
+        user = await _create_user(db_session)
+        ws_id = (await seed_workspace(user=user, stories=0)).workspace_id
+        await _repo(db_session).upsert(
+            WorkspaceLLMConfig(
+                workspace_id=ws_id,
+                provider="gemini",
+                model="gemini-2.0-flash",
+                api_key=credential,
+            )
+        )
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{ws_id}/settings/llm/models",
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 502
+        body = response.text
+        # The credential is nowhere in the answer, not even the part the error handler wrote.
+        assert credential not in body
+        # And neither is the dependency's own sentence, which is what carried it.
+        assert "Client error" not in body
+        # What the caller does get: which provider, and how it failed.
+        assert "gemini" in body
+        assert "401" in body
+        # The credential did travel — in the header, on a URL that cannot log it.
+        assert len(seen) == 1
+        assert credential not in str(seen[0].url)
+        assert seen[0].headers["x-goog-api-key"] == credential

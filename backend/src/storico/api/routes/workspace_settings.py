@@ -10,6 +10,7 @@ the missing field names and never with a value.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Annotated
@@ -58,6 +59,8 @@ from storico.infrastructure.database.repositories.workspace_llm_config_repositor
 from storico.infrastructure.database.repositories.workspace_prompt_repository import (
     SQLAlchemyWorkspacePromptRepository,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1/workspaces/{workspace_id}/settings",
@@ -538,10 +541,17 @@ async def fetch_gemini_models(api_key: str) -> list[ModelInfo]:
     """Fetch available models from the Gemini API.
 
     Returns only models that support content generation (``generateContent``).
+
+    The credential travels in the ``x-goog-api-key`` header rather than in a ``?key=`` query
+    parameter. It used to be in the URL, which put it in two places nobody chose: the request line
+    that ``httpx`` logs at INFO, and the message of any transport error — which the route then
+    interpolated into its 502 body. The header is the mechanism the Google SDK uses on the
+    extraction path, so this probe now carries the credential the same way the rest of the
+    application does.
     """
-    url = f"{GEMINI_API_BASE}/models?key={api_key}"
+    url = f"{GEMINI_API_BASE}/models"
     async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(url)
+        resp = await client.get(url, headers={"x-goog-api-key": api_key})
         resp.raise_for_status()
         data = resp.json()
     return [
@@ -660,7 +670,19 @@ async def list_available_models(
     try:
         return await _probe_models(probe)
     except httpx.HTTPError as e:
+        # The provider and the status are ours to publish. The exception's text is not: it is a
+        # dependency's message, it changes between versions, and it is what carried the credential
+        # to the client — an `httpx` error embeds the request URL, and one provider used to put the
+        # key in that URL. It goes to the log instead, where an operator can read it and a caller
+        # cannot.
+        logger.warning("Model probe failed for %s: %s", probe.provider, e, exc_info=e)
+        response = getattr(e, "response", None)
+        reason = (
+            f"HTTP {response.status_code}"
+            if response is not None
+            else "the provider could not be reached"
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to fetch models from {probe.provider}: {e}",
-        )
+            detail=f"Failed to fetch models from {probe.provider}: {reason}",
+        ) from e
