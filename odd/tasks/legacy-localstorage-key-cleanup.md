@@ -79,11 +79,20 @@ The cleanup is therefore extracted to `@/lib/legacy-storage-cleanup` and called 
 `ThemeScript` hosts it because it is the one script every layout already includes; the component's
 own header records that the cleanup is not theme work and why it lives there.
 
-**Remaining gap, recorded not hidden**: `pages/index.astro` does not include `ThemeScript`, so a
-browser whose only visit is the landing page keeps the key until it loads another page. This is
-also a pre-existing doc/code drift: `ThemeScript.astro`'s header states that "every layout … and
-standalone page (`index.astro`) MUST include this component", and `index.astro` does not. Fixing
-that is a change to the landing page's theme behaviour and belongs with the drift sweep, not here.
+**A "remaining gap" was recorded here and it was wrong; the second verification refuted it.** This
+document first claimed that `pages/index.astro` does not include `ThemeScript` and therefore "a
+browser whose only visit is the landing page keeps the key until it loads another page". The
+verifier fetched `/` from the shipped SSR function and measured `status=302 location=/en/` with an
+empty body: `index.astro` is seven lines whose only statement is an `Astro.redirect`, and
+`middleware.ts` answers `/` before the route is reached. A browser cannot stay on that page, and
+the target `/[locale]/` is `ThemeScript`-covered. **Coverage is therefore complete**: 18 of 19
+pages are covered through their layout, and the nineteenth redirects to one that is.
+
+The doc/code drift underneath the withdrawn claim is real and pre-existing:
+`ThemeScript.astro:14-15` states that "every layout (MainLayout, PublicLayout, AuthLayout) and
+standalone page (`index.astro`) MUST include this component", while `index.astro` never has — it
+has been a redirect in all four of its historical revisions. That is a doc statement that is not
+true, and it belongs with the drift sweep rather than here.
 
 ## Evidence
 
@@ -97,7 +106,9 @@ that is a change to the landing page's theme behaviour and belongs with the drif
 | Types | `pnpm exec tsc --noEmit` | exit 0 |
 | Build | `pnpm run build` | complete — proves the `ThemeScript` import bundles rather than failing at build time |
 | Reaches the client | `grep -rl legacy-storage-cleanup dist/client/_astro/` | `ThemeScript.astro_astro_type_script_index_0_lang.qKOSAZe_.js` — the layout script chunk imports the cleanup |
-| Is shipped | client-script list in `.vercel/output/_functions/manifest_*.mjs` | contains `_astro/ThemeScript.astro_astro_type_script_index_0_lang.qKOSAZe_.js` |
+| Is shipped | `entryModules` in `.vercel/output/_functions/manifest_*.mjs` | contains `_astro/ThemeScript.astro_astro_type_script_index_0_lang.qKOSAZe_.js` |
+| Served in real HTML | boot the shipped SSR function and fetch pages | `/_astro/ThemeScript.astro_astro_type_script_index_0_lang.qKOSAZe_.js` present on `/en/about`, `/en/login`, `/en/`, and even the 404 |
+| `/` cannot strand a browser | fetch `/` | `status=302 location=/en/` — `index.astro` never renders, so the withdrawn gap was unreachable |
 | Layout coverage | `grep -rln ThemeScript src/layouts/` | all three: `MainLayout`, `PublicLayout`, `AuthLayout` |
 | Guard idiom matches the corpus | `git grep -n "typeof window\|typeof localStorage\|typeof document" -- frontend/src` | **8** — 7 pre-existing (e.g. `stores/uiStore.ts:33`, `lib/theme.ts:17`) + 1 here |
 
@@ -105,10 +116,10 @@ An `ast-grep` hint (`no-runtime-typeof`) fires on the guard. **Not adopted**: `t
 'undefined'` is the established idiom in this repo and a bare reference to `localStorage` would
 throw a `ReferenceError` on the server — the case the guard exists for.
 
-**Not verified, stated plainly**: the definitive runtime proof would be fetching real HTML from a
-running server and finding the script tag on a non-`/account` page. That was not executed. The
-evidence above is static (build graph plus the client-script manifest), which is why the
-`index.astro` gap is reported from source rather than from a measurement.
+**Not verified, stated honestly**: the browser-level observation — executing the chunk in a real
+engine — was not done, and this repo has no Playwright (see `AGENTS.md`). "Runs in a browser"
+rests on the module-script tag in the served HTML plus Astro's ClientRouter code path, not on a
+browser observation.
 
 ## Independent verification
 
@@ -135,6 +146,33 @@ Two further things the verifier established, kept because they are load-bearing:
   module-scope call, which the verifier demonstrated separately — so the store tests would fail
   spuriously without it.
 
+### Second verification — the widened reach (`4df5e3e..3183eb6`)
+
+Ran over the follow-up commit that answered F4. All seven claims confirmed except the one this
+document itself had wrong. It also discharged the runtime proof the first report had listed as
+not executed, by booting the shipped SSR function and reading real HTML.
+
+| # | Sev | Finding | Disposition |
+|---|-----|---------|-------------|
+| G1 | low–medium | The "remaining gap" recorded here did not exist: `/` answers `302 → /en/` with an empty body, so a browser cannot stay on `index.astro`, and the target is covered. | **Fixed** — the gap is withdrawn above, with the measurement that refutes it. |
+| G2 | low | The `typeof localStorage` guard has **no independent coverage**: deleting it keeps all 6 module tests and the whole 394-test suite green, because the surrounding `catch` swallows the resulting `ReferenceError` (mutant M2). The test named "does not throw on the server" pins the no-throw contract, not the guard. | **Documented, guard kept** — the two are not redundant in intent (no storage vs. storage that refuses), and the guard is this repo's SSR idiom. The test's comment now says exactly what it does and does not pin, instead of implying coverage it lacks. |
+| G3 | low | `vi.unstubAllGlobals()` and `spy.mockRestore()` were manual while `vitest.config.ts` sets no `restoreMocks`/`unstubGlobals`, so a failing assertion could leak a throwing `removeItem` or an absent `localStorage` into later tests. | **Fixed** — an `afterEach` restores both unconditionally. |
+| G4 | info | `ThemeScript`'s script now imports the cleanup chunk, so a chunk-load failure would also block theme initialisation on that page. | **Accepted** — same origin, immutably cached, and a page whose module chunks fail is broken regardless. Recorded rather than worked around, since the alternative (inlining the key into the anti-flash script) trades a duplicated string literal for the coupling. |
+| G5 | info | Cost: +190 B raw and one extra immutably-cached request per cold load. The 129 B cleanup chunk gzips to 162 B, i.e. compression makes it larger. | **Recorded**, no change: the chunk is shared, not duplicated, and `AccountPage` imports it instead of inlining it. |
+| G6 | info | The `Is shipped` row called Astro's `entryModules` a "client-script list". | **Fixed** — the row names the field. |
+
+The mutation matrix is worth keeping: removing the body fails 4 tests; removing the `catch` fails
+the refusal test; a `localStorage.clear()` implementation fails the live-keys test; never calling
+`removeItem` fails the assertion added in this feature; the wrong key fails 4. And the store tests
+fail both when the call is removed and when it is merely moved inside the store factory — so they
+pin module evaluation specifically, which is the behaviour that matters.
+
+**Collateral the verifier disclosed**: to guarantee a fresh build it deleted
+`frontend/dist` and `frontend/.vercel/output` before rebuilding. Those directories had already
+been regenerated by this feature's own `pnpm run build`, so the pre-change artifacts described in
+`odd/tasks/drop-stale-build-artifacts.md` no longer exist on disk. That feature's evidence now
+rests on the reconnaissance record rather than on live files; noted there.
+
 ## Tasks — all closed
 
 - [x] Confirm the exact legacy payload shape from git history before deleting anything.
@@ -144,4 +182,5 @@ Two further things the verifier established, kept because they are load-bearing:
 - [x] Update `docs/frontend-state.md`.
 - [x] Work-unit commit on the feature branch (`a2d5be8`).
 - [x] Independent verification — 6/7 confirmed, F4 fixed by widening the reach, F1/F2 fixed here.
+- [x] Second independent verification — 7/7 on the follow-up, with the record's own "gap" refuted (G1) and the runtime proof produced.
 - [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.

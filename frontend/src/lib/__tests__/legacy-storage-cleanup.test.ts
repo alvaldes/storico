@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { dropLegacySettingsKey } from '@/lib/legacy-storage-cleanup';
 
@@ -12,6 +12,15 @@ const LEGACY_KEY = 'storico-settings';
 describe('dropLegacySettingsKey', () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+
+  // `vitest.config.ts` sets neither `restoreMocks` nor `unstubGlobals`, and the two mocks below
+  // are global-object surgery. Restoring here rather than only inside each test means a failing
+  // assertion cannot leak a throwing `removeItem` or an absent `localStorage` into the tests
+  // that follow.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('removes the legacy key that may hold plaintext API keys', () => {
@@ -66,6 +75,13 @@ describe('dropLegacySettingsKey', () => {
 
   it('does not throw on the server, where storage does not exist', () => {
     // Astro renders these pages server-side, so both call sites run without a `localStorage`.
+    //
+    // This pins the no-throw contract, NOT the `typeof` guard on its own: deleting the guard
+    // keeps this green, because the surrounding `catch` swallows the resulting ReferenceError.
+    // The guard's branch is therefore not independently observable from outside the module — it
+    // stays because it is this repo's SSR idiom and because reaching for the absence of storage
+    // should not be exception-driven control flow, and that redundancy is recorded in
+    // `odd/tasks/legacy-localstorage-key-cleanup.md` rather than papered over here.
     vi.stubGlobal('localStorage', undefined);
 
     expect(() => dropLegacySettingsKey()).not.toThrow();
