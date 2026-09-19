@@ -35,7 +35,7 @@ on purpose so it would get its own review.
 |---|----------|--------|
 | D1 | The fix | Hoist one module-level frozen empty array and return it from the selector, so the fallback reference is stable for the lifetime of the module. |
 | D2 | Alternative rejected | `useShallow` / a `useMemo` wrapper: treats the symptom at each call site and leaves the next selector free to repeat the mistake. |
-| D3 | Test shape | Pin the *stability* of the snapshot (select twice, compare identity) **and** pin the observable behaviour that no loop occurs when the slice is missing. A test that only renders the editor would not have caught this. |
+| D3 | Test shape | **As actually implemented**: two *behaviour* tests — the dialog renders for a story absent from the slice, and with no siblings loaded the dependency select offers no candidate. The original intent was an identity assertion (`select twice, compare with Object.is`); it was dropped while implementing because it pins the mechanism rather than the outcome, and the outcome is the crash. Both shipped tests are proven to fail on the unmodified code. |
 | D4 | Scope | This one selector. No sweep of other selectors in this slice; if the sweep finds siblings, record them rather than bundling. |
 
 ## Non-goals
@@ -72,11 +72,31 @@ The two permanent tests were written first and failed on the unmodified code wit
 | Fixed file | `pnpm vitest run …/TaskEditor.test.tsx` | **11 passed** |
 | Full frontend suite | `pnpm vitest run` | **33 files, 384 passed** (baseline 382, +2 new) |
 | Types | `pnpm exec tsc --noEmit` | exit 0 |
-| Pattern is unique | `grep -rn "use*Store((s) =>… ?? []" frontend/src` | 1 hit — the fixed line |
+| Pattern is unique | `git grep -nE "Store\(\(s\) =>.*\?\? \[\]" 6174f5a -- frontend/src` | **1 hit** at the parent commit (`TaskEditor.tsx:49`); **0 hits** on the fixed tree |
+| No unstable sibling | sweep of all 42 store-hook call sites in `frontend/src` | no selector returns a newly allocated object/array/`.map`/`.filter` snapshot |
 
 `StoryDetail.tsx:83` also writes `tasks[storyId] ?? []`, but as a plain local after the store was
 read, **not** as a selector: it never reaches `getSnapshot`, so it cannot loop. Recorded, not
 changed (D4).
+
+## Independent verification
+
+Ran over `6174f5a..fc7b069`, read-only. **All six claims confirmed**: the crash reproduction
+(including replaying the shipped tests against the pre-fix bytes → `2 failed | 9 passed`), that
+the fix is minimal and correct, that both new tests genuinely fail when the fix is reverted
+(also under `--sequence.shuffle` with three seeds), the completeness of the sweep, the three gate
+numbers, and no collateral damage (the 9 pre-existing tests are byte-identical).
+
+Three findings, all about this document and none about the code:
+
+| # | Severity | Finding | Disposition |
+|---|----------|---------|-------------|
+| F1 | LOW | D3 described a snapshot-identity assertion that was never shipped (the tests assert behaviour). | **Fixed** — D3 now records what was implemented and why the identity assertion was dropped. |
+| F2 | LOW | The evidence row claimed the uniqueness grep returns "1 hit — the fixed line"; on the fixed tree it returns **0**. The hit exists only at the parent commit. | **Fixed** — the row now names the revision for each count. |
+| F3 | INFO | `siblings` infers as plain `Task[]`, not a union with `readonly`: the `readonly` guards the shared constant, not the call site, so a future `siblings.push(...)` would still type-check and only `Object.freeze` would stop it — loudly, not silently. | **Recorded**, no change: no such mutation exists. |
+
+Also verified by the sweep, and worth keeping: no other selector in `frontend/src` returns a
+newly allocated object or array, so this was the only unstable snapshot in the tree.
 
 ## Tasks — all closed
 
@@ -85,5 +105,5 @@ changed (D4).
 - [x] Add the render test plus the no-candidates behaviour test.
 - [x] Run `pnpm exec tsc --noEmit` and `pnpm vitest run`.
 - [x] Work-unit commit on the feature branch (`6c42998`).
-- [ ] Independent verification — **pending**.
+- [x] Independent verification — 6/6 confirmed, F1/F2 fixed in this document, F3 recorded.
 - [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
