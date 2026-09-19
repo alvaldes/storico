@@ -51,10 +51,11 @@ change is the **ciphertext**, and Fernet's base64 output is about 1.4 times long
 |-----------|------------------------|---------------------|
 | 64 | 187 | yes |
 | 200 | 359 | yes |
+| 303 | 503 | **no — the exact maximum that would have fit** |
 | 360 | 571 | **no** |
 | 500 | 763 | **no** |
 
-So a credential longer than roughly 310 characters would have overflowed. **SQLite does not enforce
+So a credential longer than **303 characters** would have overflowed. **SQLite does not enforce
 a `VARCHAR` length**, so no test in this repository could have caught it; Postgres would have raised
 `value too long for type character varying(500)` — during the migration for an existing long key,
 and on a legitimate admin save for a new one. It is the same class of trap the repository already has
@@ -132,6 +133,52 @@ All three were verified by the parent before the corrected brief went back out.
    process environment, and that ciphertext does not stop someone holding both the database and the
    key. Key rotation remains unimplemented; the `v1:` prefix is what makes it possible later.
 
+## Independent verification
+
+Ran over `c45bc66..88fdfed`, read-only, against a writer's implementation. It confirmed the
+encryption end to end (a credential written through the real route lands in the column as `v1:`
+ciphertext, with the plaintext absent from the whole row), confirmed the choke point is complete by
+deriving it independently (no raw SQL, no second query path, no ORM bypass, and `upsert` routes
+**both** its insert and update branches through `_to_orm_kwargs`), confirmed no secret escapes into
+logs or responses, confirmed the authorization empirically rather than from the docstring
+(admin 200 / member 403 / non-member 403 on the credential-bearing route), and confirmed fail-closed
+down to the database having nothing in it after a refusal.
+
+It also **strengthened** the deploy-order claim beyond what was written: the migration imports
+`FernetCipher` and reads `Settings.encryption_key`, neither of which exists at `c45bc66`, so it
+cannot run against the previous release at all — and the old read path demonstrably hands the
+ciphertext to the provider as if it were a key.
+
+| # | Sev | Finding | Disposition |
+|---|-----|---------|-------------|
+| V1 | medium | Making the repository swallow `CipherError` into `None` left the suite green (692 passed): D7's "never a silent `None`" was stated but not defended. Returning `None` also makes a misconfigured master key indistinguishable from an unconfigured workspace, so the readiness rule would tell the admin to configure a credential that already exists. | **Fixed** — a repository test now reads a `v1:` row with a keyless cipher and requires the raise. Mutation re-run: fails with `DID NOT RAISE CredentialUndecryptable`. |
+| V2 | medium | The migration's `_API_KEY_LENGTH` was a third, uncross-checked copy of the width. Lowering it to 500 kept 692 passing while leaving the column narrower than what the repository writes. | **Fixed** — a test asserts the migration's width covers the model's and the ciphertext of the widest accepted credential. Mutation re-run: `assert 500 >= 1000`. |
+| V3 | medium | "The widening is first and is not incidental" was not pinned: reversing the order kept 692 passing, and with the order reversed a 763-character ciphertext is written into a `VARCHAR(500)` — which SQLite verifiably accepts and Postgres rejects. | **Fixed** — the statements the revision executes are captured and the widening must precede the first rewrite. Mutation re-run: `widening was statement 12 and the first rewrite was 1`. |
+| V4 | medium, pre-existing | **A credential escapes the response and the logs.** The Gemini model probe puts the key in the URL query string, and the route echoes the httpx error — including the full URL — into the 502 body; `httpx` also logs that URL at INFO, which is precisely what the route's own docstring claims to have avoided. The echoed credential can be the *stored, decrypted* one. Confirmed **not** caused by this branch, and returned only to a workspace admin, so it is not a cross-user escalation. | **Recorded** — see the follow-ups. It is the same class of defect this feature exists to remove, but a different mechanism (transport and logging, not storage), and moving the key to a header is an integration change that needs its own slice and its own verification. |
+| V5 | low | "past roughly 310 characters" — the exact maximum that fits 500 is **303**. | **Fixed** in the migration docstring and here, with the measurement in the table. |
+| V6 | low | `GET /llm/status` is member-readable, but 500s with `CREDENTIAL_UNDECRYPTABLE` when a ciphertext row exists and no key is configured — the state in which a member most needs the readiness answer. Fail-closed and leak-free; the cost is availability. | **Recorded**. |
+| V7 | low | `cipher_error_handler` logs with `exc_info=exc`, so a full traceback is emitted. Verified free of the plaintext and the master key under the default formatter, but a formatter that renders locals would expose frame arguments. | **Recorded** — not a defect of this change, and the reason is worth knowing. |
+
+One caveat the verifier recorded about its own method, kept because it bounds the claims above: the
+tests construct the repository with a cipher directly, so the `get_cipher()` dependency's
+env-absent branch is exercised through the routes rather than at the repository level.
+
+## Follow-ups this surfaced, recorded rather than bundled
+
+1. **The Gemini probe leaks the credential into its own error response and into the logs** (V4).
+   `workspace_settings.py` builds the probe URL with `?key=<credential>` and returns the httpx
+   error, URL included, in the 502 body; httpx logs the URL at INFO. The credential can be the
+   stored one, because the probe falls back to the saved key. The fix is to move the credential to a
+   request header and stop echoing the URL — an integration change with its own test surface, and
+   the most security-relevant item left open.
+2. **`GET /llm/status` fails closed but unhelpfully** when a ciphertext row exists and no master key
+   is configured: a member asking whether the workspace is ready gets a 500 rather than an answer
+   saying the server cannot read the stored credential. Worth one decision (V6).
+3. **`exc_info=exc` in the cipher handler emits a traceback** (V7). Harmless under the default
+   formatter; a locals-rendering formatter would change that.
+4. **The analyzer's index is stale and is not a gate** — see the environment notes above. Nothing in
+   this feature depends on it, and every claim it made about this range was refuted by execution.
+
 ## Tasks — all closed
 
 - [x] Explore the full read/write path of `api_key` before changing anything.
@@ -144,5 +191,5 @@ All three were verified by the parent before the corrected brief went back out.
 - [x] The tests, including the security assertion and the width guard.
 - [x] `docs/security.md` and `backend/.env.example`.
 - [x] Re-export the three cipher errors from `domain/entities` (the writer flagged the gap; the parent closed it).
-- [ ] Independent verification — **pending**.
+- [x] Independent verification — the encryption, the choke point, the leak-free paths and fail-closed all confirmed; V1–V3 (three surviving mutants) fixed and re-mutated, V5 corrected, V4/V6/V7 recorded.
 - [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
