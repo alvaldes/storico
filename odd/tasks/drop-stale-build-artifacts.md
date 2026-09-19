@@ -1,8 +1,9 @@
 # ODD Feature: drop-stale-build-artifacts
 
-> **Status**: done — one documentation commit on `chore/drop-stale-build-artifacts` (off `main` @
-> `c004dc8`), plus deleting two gitignored directories. **Nothing to commit for the deletion**: both
-> paths are outputs, which is the point. Receipt-driven development is **off** in this clone.
+> **Status**: done and landed on `main` — two commits on `chore/drop-stale-build-artifacts` (off
+> `main` @ `c004dc8`), plus deleting two gitignored directories. **Nothing to commit for the
+> deletion**: both paths are outputs, which is the point. Receipt-driven development is **off** in
+> this clone; an independent verification ran and found four things in this record, all fixed below.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `chore/drop-stale-build-artifacts`.
@@ -57,7 +58,8 @@ different lifespans:
 ## What was done
 
 1. **Deleted both directories** after recording their state. 21 MB and 2259 files, all of them
-   reproducible by `pnpm run build` (`frontend/dist`) and `vercel build` (`.vercel/output`).
+   reproducible by `pnpm run build`: `@astrojs/vercel` empties and rewrites `.vercel/output/`
+   during the build, and Astro writes `dist/`.
 2. **Added the operational note to `docs/deployment.md`**, under "Producción (Vercel)", where a
    deploy would look for it: the two paths are outputs, nothing reads them, CI does not build the
    frontend, and a deploy must regenerate rather than reuse. It also states that deleting them is
@@ -77,6 +79,25 @@ different lifespans:
 | Nothing in the repo reads them | `frontend/package.json` scripts, `Makefile`, `.github/workflows/*` | only `astro build` **writes** `dist/`; CI runs `tsc` and `vitest` only |
 | Size removed | `du -sh` before deletion | 1.9 MB + 19 MB |
 
+## Independent verification
+
+Ran over `c004dc8..4223c32`, read-only. It confirmed the deletion is safe and complete — nothing
+tracked, nothing changed, and nothing in the repository reads either path, including the one
+plausible counterexample (`astro preview` cannot run at all under this adapter, which declares no
+`previewEntrypoint`) — reproduced the frontend gates at 420 passed and `tsc` 0 with both absent,
+confirmed the CI claim by reading the workflow rather than the summary, and confirmed the Spanish is
+neutral and correctly accented.
+
+| # | Sev | Finding | Disposition |
+|---|-----|---------|-------------|
+| W1 | low | **Two line numbers in this record were wrong**: `docs/deployment.md:87` is really `:100`, and `docs/security.md:108` is `:107` (`:108` does not exist). They were correct when first captured in `provider-literal-and-copy-drift`, then went stale because `8457fda` removed a line above that file's references and `87ef8be` inserted thirteen lines into the deployment doc — and this slice copied them forward without re-checking. | **Fixed**, and the line numbers are gone rather than corrected: the record names the files and the count, because a line number in a record is a claim that expires without anyone touching it. The lesson is the one this whole batch runs on, caught this time in my own writing: a copied-forward path is an unverified path. |
+| W2 | low | The note attributed `.vercel/output` regeneration to `vercel build` as well as `pnpm run build`. The adapter empties and rewrites it during `astro build`, so the build alone is enough. | **Fixed** in both the note and here. The correction strengthens the claim rather than weakening it: deleting these paths is safe because the ordinary build recreates them. |
+| W3 | low | This record still said "**pending**" for the work-unit commit and "one documentation commit" for what is a two-commit range. | **Fixed**. |
+| W4 | low | Two style nits in the note's Spanish: `nada … **las** lee` could momentarily read as "nothing reads the sources" (the antecedent meant is the two directories), and `retractado`/`la suite` are anglicisms. | **Fixed** — `los lee`, `retirado`, `las pruebas`. The grammar and neutrality were otherwise clean, and the earlier enclitic-accent fix is confirmed: `Regenera los artefactos…` with a detached pronoun needs no accent. |
+
+Worth keeping from the verification: the repository's neutral-Spanish guard reads only
+`en.json` and `es.json`, so a Spanish sentence in `docs/` is protected by review and nothing else.
+
 ## Follow-ups this surfaced, recorded rather than bundled
 
 1. **No CI job builds the frontend.** `.github/workflows/ci.yml` runs `tsc --noEmit` and
@@ -84,11 +105,12 @@ different lifespans:
    would notice a stale output either. Adding a build job is a real cost on every pull request, so it
    is proposed rather than bundled: the trade is minutes-per-PR against the class of failure that
    shipped a retracted sentence.
-2. **The `prod.todo.md` references remain dead** — `docs/deployment.md:79` and `:87`,
-   `docs/security.md:108`, `docs/README.md:26` point at a file that does not exist and is not
+2. **The `prod.todo.md` references remain dead** — four of them, in `docs/deployment.md` (twice),
+   `docs/security.md` and `docs/README.md` — pointing at a file that does not exist and is not
    gitignored. It is the same class of statement this batch exists to remove, and it needs a
    decision (write the checklist, or stop promising it) rather than a unilateral edit in a
-   deployment-hygiene slice.
+   deployment-hygiene slice. The count is four; the line numbers are deliberately not repeated here,
+   for the reason W1 records.
 3. **`frontend/docs/design-brief.md`** is a stale design artifact that still enumerates providers
    without Gemini (`:113`, `:285`). Recorded by the `provider-literal-and-copy-drift` verification
    and still open.
@@ -100,6 +122,6 @@ different lifespans:
 - [x] Delete `frontend/dist` and `frontend/.vercel/output`.
 - [x] Verify the tree is unchanged and the frontend gates still pass with them absent.
 - [x] Add the deploy note to `docs/deployment.md`.
-- [ ] Work-unit commit (documentation only) — **pending**.
-- [ ] Independent verification — **pending**.
+- [x] Work-unit commits (documentation only) — the note and this record.
+- [x] Independent verification — the deletion and the note confirmed claim by claim; W1–W4 fixed here.
 - [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.

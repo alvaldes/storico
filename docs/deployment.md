@@ -85,13 +85,14 @@ Pendiente de definir.
 ### Artefactos de build del frontend
 
 `frontend/dist/` y `frontend/.vercel/output/` son **salidas**, no fuentes: están en
-`.gitignore`, nada en el repositorio las lee (ni el `Makefile`, ni el workflow de CI, que solo
-corre `tsc` y `vitest`), y se regeneran con `pnpm run build` y `vercel build`.
+`.gitignore`, nada en el repositorio **los** lee (ni el `Makefile`, ni el workflow de CI, que solo
+corre `tsc` y `vitest`), y las produce `pnpm run build`: `@astrojs/vercel` vacía y reescribe
+`.vercel/output/` durante el build, además de escribir `dist/`.
 
 **Regenera los artefactos antes de desplegar; no reutilices una salida existente.** El riesgo es
 concreto y ya se materializó una vez: quedaron en disco bundles anteriores a un cambio de copy y el
-texto retractado seguía dentro de ellos. Un deploy que reutilice `.vercel/output` sin reconstruir
-sirve el bundle viejo aunque el código diga otra cosa, y nada en la suite lo detecta porque el
+texto retirado seguía dentro de ellos. Un deploy que reutilice `.vercel/output` sin reconstruir
+sirve el bundle viejo aunque el código diga otra cosa, y nada en las pruebas lo detecta porque el
 frontend no se construye en CI. Borrar los directorios es seguro en cualquier momento — se recrean
 en el siguiente build — y es la forma más simple de no partir de un estado viejo.
 
