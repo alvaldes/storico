@@ -72,7 +72,7 @@ pytest -v
 - **Backend**: FastAPI en Vercel (serverless)
 - **Base de datos**: PostgreSQL (proveedor pendiente de definir)
 - **Vector store**: Qdrant Cloud (free tier 1GB) — pendiente
-- **LLM**: OpenAI (pendiente de implementar adapter)
+- **LLM**: OpenAI (adapter implementado)
 
 ### Variables de entorno requeridas
 
@@ -88,7 +88,7 @@ El checklist completo está en [`prod.todo.md`](../prod.todo.md). Resumen de pri
 
 | Prioridad | Item | Status |
 |-----------|------|--------|
-| 🔴 Crítico | OpenAI adapter (extracción en prod sin Ollama) | 🔲 Pendiente |
+| 🔴 Crítico | OpenAI adapter (extracción en prod sin Ollama) | ✅ Implementado |
 | 🟡 Medio | Qdrant Cloud + Embedding adapter | 🔲 Pendiente |
 | 🟡 Medio | Vercel env audit | 🔲 Pendiente |
 | 🟡 Medio | Error monitoring (Sentry) | 🔲 Pendiente |

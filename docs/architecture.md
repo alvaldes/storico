@@ -16,7 +16,7 @@
 | Tema | Claro / Oscuro / Auto |
 | Backend API | FastAPI (Python 3.12+) |
 | Arquitectura backend | Hexagonal (Ports & Adapters) |
-| Modelos LLM cloud | OpenAI (GPT-4o-mini), Anthropic (Claude) |
+| Modelos LLM cloud | OpenAI (GPT-4o-mini), Anthropic (Claude), Gemini (Gemini 2.0 Flash) |
 | Modelos LLM local | Ollama (LLaMA 3.2, Mistral) |
 | Base de datos relacional | PostgreSQL 16 |
 | Base de datos vectorial | Qdrant |
@@ -99,7 +99,7 @@
 
 **Status**: ✅ Implementado
 
-**Decisión**: Primero Ollama (local), luego OpenAI y Anthropic.
+**Decisión**: Primero Ollama (local), luego OpenAI, Anthropic y Gemini.
 
 **Contexto**: Modelos locales evitan dependencia de API keys y costos durante desarrollo. La arquitectura hexagonal permite agregar conectores sin modificar el core.
 

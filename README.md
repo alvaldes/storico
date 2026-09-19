@@ -57,7 +57,7 @@ See [AGENTS.md](./AGENTS.md) for the full project definition, including:
 - Hexagonal architecture (backend)
 - Astro + React islands with View Transitions (frontend)
 - Docker Compose orchestration with 5 services
-- LLM integration (Ollama first, OpenAI/Anthropic later)
+- LLM integration (Ollama, OpenAI, Anthropic, Gemini, and custom OpenAI-compatible endpoints)
 
 ## Environment Variables
 
