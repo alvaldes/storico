@@ -122,13 +122,13 @@ naive value as UTC is correct rather than convenient.
 
 | Check | Command | Result |
 |-------|---------|--------|
-| Backend suite | `python -m pytest -q` | **667 passed, 1 skipped** (654 before, +13) |
+| Backend suite | `python -m pytest -q` | **668 passed, 1 skipped** (654 before, +14) |
 | Backend lint (CI scope) | `ruff check src tests` | `All checks passed!` |
 | Backend format | `ruff format --check src tests` | `217 files already formatted` |
 | Frontend suite | `pnpm vitest run` | 36 files / 420 passed (unchanged: `completed_at` was already typed `string \| null`) |
 | Types | `pnpm exec tsc --noEmit` | exit 0 |
 | The crash, before the fix | replicate the shadowing pattern | `UnboundLocalError: cannot access local variable 'datetime'` |
-| The crash, ordered in the real code | AST pass over `extraction_task.py` | `_mark_failed` use@487 < import@495; `_mark_extraction_failed` use@575 < import@586 |
+| The crash, ordered in the real code | AST pass over `extraction_task.py` | `_mark_failed` uses `datetime` before its function-local import, and so does `_mark_extraction_failed` |
 | The tz defect, before the fix | the new sweep test | `TypeError: can't compare offset-naive and offset-aware datetimes` |
 | Non-vacuity, the tz fix | remove `_as_utc` | **2 tests fail**; green on restore |
 | SQLite keeps the instant | write aware UTC, read back | `2020-01-01 03:30:00+00:00` → `2020-01-01 03:30:00`, same wall clock |
@@ -138,8 +138,35 @@ naive value as UTC is correct rather than convenient.
 New tests: the migration (4: nullable, no backfill of existing rows, downgrade, correct parent),
 the repository (4: round trip, pending has none, a historical null stays null, delete), the failure
 paths (4: `_mark_failed`, `_mark_extraction_failed`, the recovery sweep, a pending job untouched),
-the contract (1), and one assertion in each of the two service tests that already exercise the
-terminal branches.
+the completed save (1 — see the verification below, which is what demanded it), the contract (1), and
+one assertion in each of the two service tests that already exercise the terminal branches.
+
+## Independent verification
+
+Ran over `8a33baf..1864622`, read-only. The record's five counts all reproduced exactly, and the
+verifier derived the six terminal sites **from the source rather than from the record**, checking
+the indirect paths too (raw SQL in migrations, direct ORM writes, `dataclasses.replace`, the CLI
+seeder, the startup sweep): all six stamp the field, and no terminal write misses it. It also
+falsified D3's rejected alternative by actually applying it — an entity that derives the value in
+`__post_init__` hands a historical `NULL` row a fresh timestamp on read, failing
+`test_reading_a_terminal_row_invents_no_end_time` — and confirmed the API really returns the field
+(`"completed_at":"2026-09-19T12:00:04"` on a completed extraction, `null` on a pending one and on a
+historical one).
+
+| # | Sev | Finding | Disposition |
+|---|-----|---------|-------------|
+| V1 | **high** | **The completed save — the site production actually takes — had no test.** Removing its stamp left the whole suite green (667 passed, 1 skipped); `extraction_task.py`'s coverage showed lines 399–468 never executing, because the only test that calls `run_background_extraction` drives it into `UnreachableLLM` and dies first. The failure paths were covered and the happy path was not. | **Fixed** — `test_the_completed_save_records_when_it_finished` drives the real pipeline with an answering adapter and asserts the saved extraction is `COMPLETED` with a non-null end time after `created_at`. Re-ran the verifier's own mutation: it now fails. |
+| V2 | low | `_as_utc`'s docstring said SQLite "drops the offset", full stop, implying the instant survives. It does not convert: an `03:30-05:00` written and read back is `03:30`, not `08:30`. The helper is correct **only because everything written is UTC**. | **Fixed** — the docstring now says it drops the offset *without converting* and states the condition it depends on, plus the evidence that the condition holds (every `datetime.now` in the module passes `UTC`). |
+| V3 | low | SQLite and Postgres serialize the field differently — `"2026-09-19T12:00:04"` versus `"2026-09-19T12:00:04Z"` — and `new Date("...04")` in JavaScript reads the first as **local** time, so the same instant renders differently in dev than in production. | **Recorded** — pre-existing (it is `created_at`'s convention too, documented in `test_custom_provider_repo.py:127`) and newly visible on a new field. See the follow-ups. |
+| V4 | info | The record's line numbers for the crash (`use@487 < import@495`) are not reproducible from git: no committed revision has the stamps and the local imports coexisting, so they describe a working-tree state. | **Fixed** — the record names the functions instead of lines that never existed in a commit. |
+
+Also confirmed by the verifier: the `UnboundLocalError` fix is complete with a **positive control**
+(an AST pass over the reconstructed intermediate state finds the two helpers; over the fixed
+revision and over `main` it finds nothing), the same shadowing pattern exists for **no other name**
+in any file under `src/` or `tests/`, there is **exactly one** stored-datetime ordering comparison
+in the backend and it is the one fixed, the migration's deploy order was proved by loading the ORM
+against a column-less table (`OperationalError: no such column`), and no test was removed, skipped
+or loosened (566 → 580 test nodes, +14, none deleted).
 
 ## Follow-ups this surfaced, recorded rather than bundled
 
@@ -157,6 +184,11 @@ terminal branches.
 4. **`recover_stuck_extractions` swallows a `list()` failure** with a warning and returns, so a
    database problem at startup is invisible. Out of this feature's scope; noted because the test
    had to work around the function's structure.
+5. **A naive timestamp serializes without an offset**, so a client that parses it with `new Date()`
+   reads it as local time while the Postgres-shaped `...Z` reads as UTC. That is a frontend hazard
+   rather than a backend one (the type, `string | null`, is right either way), it predates this
+   change on `created_at`, and this change gives it a second field to appear on. Worth one decision:
+   either serialize with an explicit offset server-side, or make the client parse as UTC.
 
 ## Tasks — all closed
 
@@ -169,6 +201,6 @@ terminal branches.
 - [x] Tests: contract, both directions of the invariant, no-invention on read, migration up/down, and the four failure paths that had none.
 - [x] Correct `docs/api.md` (claim and example) and `docs/database.md`.
 - [x] Run backend `ruff check src tests`, `ruff format --check src tests`, `pytest -q`; frontend `tsc --noEmit` and `vitest run`.
-- [ ] Work-unit commits on the feature branch — **pending**.
-- [ ] Independent verification — **pending**.
+- [x] Work-unit commits on the feature branch (`f572c4b`, `0eeed2c`, `1864622`, plus the answer to the verification).
+- [x] Independent verification — the six sites and the design decision confirmed by falsification; V1 (a real coverage hole on the production happy path) fixed and re-mutated, V2 and V4 corrected, V3 recorded.
 - [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
