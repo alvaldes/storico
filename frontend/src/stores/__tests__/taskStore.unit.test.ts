@@ -608,3 +608,76 @@ describe('taskStore — extraction started in a workspace that was discarded', (
     );
   });
 });
+
+describe('taskStore — the failure it records', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetScopedWorkspace();
+    useTaskStore.setState({
+      tasks: {},
+      workspaceTasks: [],
+      extractions: {},
+      loading: false,
+      error: null,
+      updatingTaskId: null,
+      allowedTransitions: {},
+    });
+  });
+
+  it('keeps what the API answered when the workspace fetch fails', async () => {
+    // The board is the surface this reaches, and the whole reason the store stopped keeping
+    // only `err.message`: without these fields the error card has no status and no code to
+    // show, and nothing downstream can branch on the failure.
+    setScopedWorkspaceId('ws-a');
+    vi.mocked(api.listTasksByWorkspace).mockRejectedValue(
+      new ApiRequestError(
+        500,
+        'Internal Server Error',
+        { error_code: 'BOARD_READ_FAILED' },
+        { detail: 'the board could not be read' },
+      ),
+    );
+
+    await useTaskStore.getState().fetchTasksForWorkspace('ws-a');
+
+    expect(useTaskStore.getState().error).toEqual({
+      friendlyMessage: expect.any(String),
+      rawDetail: { detail: 'the board could not be read' },
+      status: 500,
+      errorCode: 'BOARD_READ_FAILED',
+    });
+    expect(useTaskStore.getState().loading).toBe(false);
+  });
+
+  it('keeps what the API answered when the story fetch fails', async () => {
+    vi.mocked(api.listTasks).mockRejectedValue(
+      new ApiRequestError(
+        404,
+        'Not Found',
+        { error_code: 'STORY_NOT_FOUND' },
+        { detail: 'no such story' },
+      ),
+    );
+
+    await useTaskStore.getState().fetchTasks('story-missing');
+
+    expect(useTaskStore.getState().error).toEqual({
+      friendlyMessage: expect.any(String),
+      rawDetail: { detail: 'no such story' },
+      status: 404,
+      errorCode: 'STORY_NOT_FOUND',
+    });
+    expect(useTaskStore.getState().loading).toBe(false);
+  });
+
+  it('falls back to a plain message when the failure carries no response', async () => {
+    vi.mocked(api.listTasks).mockRejectedValue(new Error('boom'));
+
+    await useTaskStore.getState().fetchTasks('story-1');
+
+    expect(useTaskStore.getState().error).toEqual({
+      friendlyMessage: 'boom',
+      rawDetail: 'boom',
+    });
+  });
+});

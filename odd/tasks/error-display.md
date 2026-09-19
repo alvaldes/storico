@@ -240,8 +240,11 @@ What it confirmed:
   the store would let them; that is a store-contract change, not a component one.
 - `StoryForm` and `TaskEditor` have no toast channel for a failed save, so `ErrorDisplay` is
   their only feedback (it now renders). Adding a toast is a separate decision.
-- `extractErrorInfo` is exported and used by nobody (it predates `dad9039`), and the new
-  `data-slot="error-display"` hook has no consumer.
+- `extractErrorInfo` was exported and used by nobody, and it was **born** that way: `dad9039`
+  added it with no caller, so there was never a last use to remove. It has since been deleted
+  outright and replaced by `lib/error-info.ts` (`rich-store-errors`), whose normaliser classifies
+  by class instead of by shape — the old one accepted any object with `detail` and `status` keys.
+  The new `data-slot="error-display"` hook still has no consumer.
 - Five of the component's tests are negative-only and pass vacuously against a component that
   renders nothing; they pin the conditional-rendering contract rather than proving the card
   draws. The other twelve fail without it.

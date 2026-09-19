@@ -162,9 +162,12 @@ describe('KanbanBoard', () => {
       .fn()
       .mockImplementationOnce(async () => {
         useTaskStore.setState({
-        error: { friendlyMessage: 'the board is unavailable', rawDetail: 'the board is unavailable' },
-        loading: false,
-      });
+          error: {
+            friendlyMessage: 'the board is unavailable',
+            rawDetail: 'the board is unavailable',
+          },
+          loading: false,
+        });
       })
       .mockImplementationOnce(() => {
         // The real action clears the recorded error before it awaits; without that the retry
