@@ -1,10 +1,12 @@
 # ODD Feature: legacy-localstorage-key-cleanup
 
-> **Status**: done — commits `a2d5be8` (the fix, its tests and `docs/frontend-state.md`),
-> `4df5e3e` (the doc close) and the follow-up commit that answers the independent verification
-> on `fix/legacy-localstorage-key-cleanup`, off `main` @ `4f142bd`, not pushed. Receipt-driven
-> development is **off** in this clone, so no native review ran; the independent verification is
-> recorded below and it changed the scope of this feature.
+> **Status**: done and landed on `main` @ `957cb3b` — five commits from `4f142bd`:
+> `a2d5be8` (the fix, its tests and `docs/frontend-state.md`), `4df5e3e` (the doc close),
+> `ed9518a` (the widened reach that answers the first verification), `3183eb6` (the rewritten
+> record) and `957cb3b` (the retraction and test hygiene that answer the second). Branch deleted,
+> `main` re-gated, **not pushed**. Receipt-driven development is **off** in this clone, so no
+> native review ran; **two** independent verifications did, and the second corrected this
+> document's own conclusion.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/legacy-localstorage-key-cleanup`.
@@ -183,4 +185,5 @@ rests on the reconnaissance record rather than on live files; noted there.
 - [x] Work-unit commit on the feature branch (`a2d5be8`).
 - [x] Independent verification — 6/7 confirmed, F4 fixed by widening the reach, F1/F2 fixed here.
 - [x] Second independent verification — 7/7 on the follow-up, with the record's own "gap" refuted (G1) and the runtime proof produced.
-- [ ] Fast-forward into `main`, delete the branch, re-gate — **pending**.
+- [x] Fast-forward into `main`, delete the branch, re-gate — `main` @ `957cb3b`, 34 files /
+      394 tests passed and `tsc --noEmit` exit 0 re-run **after** the merge.
