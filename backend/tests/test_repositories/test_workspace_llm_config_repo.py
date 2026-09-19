@@ -16,6 +16,7 @@ from sqlalchemy import String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.api.schemas.workspace_llm_config import LLMConfigRequest
+from storico.domain.entities import CredentialUndecryptable
 from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
 from storico.domain.ports import CipherPort
 from storico.infrastructure.crypto import FernetCipher
@@ -183,3 +184,33 @@ def test_the_column_holds_the_ciphertext_of_the_longest_credential_we_accept() -
         f"a {accepted}-character credential stores as {len(longest)} characters, "
         f"which does not fit the declared {stored_width}"
     )
+
+
+@pytest.mark.asyncio
+async def test_a_keyless_cipher_refuses_to_read_ciphertext_instead_of_returning_nothing(
+    db_session: AsyncSession,
+) -> None:
+    """A stored credential that cannot be opened must fail loudly, not read as absent.
+
+    ``None`` is the honest answer for a workspace with no credential, so returning it for a
+    value that *has* one would be indistinguishable from that — and the consequence is worse
+    than a missing key: the readiness rule would tell the admin to configure a credential that
+    is already configured, while the real problem is the master key on the server.
+
+    The repository is where those two become confusable, so this is where it is pinned. A
+    version of this repository that swallowed the cipher's error into ``None`` passes every
+    other test in this file.
+    """
+    workspace_id = await _workspace_id(db_session, "Unopenable")
+    db_session.add(
+        WorkspaceLLMConfigModel(
+            workspace_id=workspace_id,
+            provider="openai",
+            api_key=FernetCipher(_MASTER_KEY).encrypt(_PLAINTEXT),
+            updated_at=WorkspaceLLMConfig(workspace_id=workspace_id).updated_at,
+        )
+    )
+    await db_session.commit()
+
+    with pytest.raises(CredentialUndecryptable):
+        await _repo(db_session, FernetCipher(None)).get(workspace_id)

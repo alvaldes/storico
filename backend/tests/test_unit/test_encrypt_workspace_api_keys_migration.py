@@ -23,12 +23,16 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from cryptography.fernet import Fernet
+from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import storico
+from storico.api.schemas.workspace_llm_config import LLMConfigRequest
 from storico.config.settings import _reset_settings_cache
+from storico.infrastructure.crypto import FernetCipher
+from storico.infrastructure.database.models import WorkspaceLLMConfigModel
 
 _MIGRATION_PATH = (
     Path(storico.__file__).parent
@@ -216,3 +220,63 @@ def test_the_revision_follows_0023() -> None:
 
     assert migration.revision == "0024"
     assert migration.down_revision == "0023"
+
+
+def test_the_widening_runs_before_the_first_credential_is_rewritten(engine: Engine) -> None:
+    """The order is the point, and it is the first thing a later edit would break.
+
+    Widening afterwards means writing a ciphertext of up to 763 characters into a column still
+    declared at 500: SQLite accepts that without a word — which is exactly why no test in this
+    suite would notice — and Postgres raises. So the statements the revision executes are captured
+    and the widening is required to come first, rather than the order being asked for in a comment.
+    """
+    _seed(engine, _PLAINTEXT)
+    migration = _load_migration()
+    widened_type = f"varchar({migration._API_KEY_LENGTH})"
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _many) -> None:
+        statements.append(statement.lower())
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        _run(engine, "upgrade")
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+    widened = next(
+        index
+        for index, statement in enumerate(statements)
+        if widened_type in statement.replace(" ", "")
+    )
+    rewritten = next(
+        index
+        for index, statement in enumerate(statements)
+        if statement.startswith("update") and "api_key" in statement
+    )
+
+    assert widened < rewritten, (
+        "the column has to be wide before a ciphertext is written into it; "
+        f"widening was statement {widened} and the first rewrite was {rewritten}"
+    )
+
+
+def test_the_migration_widens_at_least_as_far_as_the_model_declares() -> None:
+    """Three copies of one number, so the three are compared instead of each being trusted.
+
+    A migration has to spell its width locally — it cannot follow a constant that may change — and
+    the model declares its own. Lowering the migration's number leaves every test green while the
+    column ends narrower than the ciphertext the repository now writes, which is silent on SQLite
+    and fatal on Postgres. That is the failure this feature exists to remove, so it is pinned
+    against the model and against the ciphertext of the widest credential the API accepts.
+    """
+    migration = _load_migration()
+    column_type = WorkspaceLLMConfigModel.__table__.c.api_key.type
+    accepted = LLMConfigRequest.model_fields["api_key"].metadata[0].max_length
+
+    assert isinstance(column_type, sa.String)
+    model_width = getattr(column_type, "length", None)
+    assert isinstance(model_width, int) and isinstance(accepted, int)
+
+    assert migration._API_KEY_LENGTH >= model_width
+    assert len(FernetCipher(_MASTER_KEY).encrypt("x" * accepted)) <= migration._API_KEY_LENGTH
