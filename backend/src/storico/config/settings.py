@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     # Auth — JWT secret for verifying proxy-generated tokens
     auth_jwt_secret: str = "dev-insecure-token-change-in-production"
 
+    # Master key for encrypting workspace LLM credentials at rest.
+    #
+    # Deliberately has no default. A default would be a published key that silently
+    # encrypts — or worse, fails to protect — production rows, and that is
+    # indistinguishable from no encryption at all while being much harder to notice.
+    # Absent, the cipher refuses to store a credential and the API answers 500 with
+    # ``ENCRYPTION_KEY_MISSING``, so the gap is loud instead of cosmetic.
+    encryption_key: str | None = None
+
     # Embedding API keys
     google_api_key: str | None = None
     openai_api_key: str | None = None

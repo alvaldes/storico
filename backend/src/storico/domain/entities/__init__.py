@@ -1,7 +1,10 @@
 from storico.domain.entities.custom_provider import CustomProvider
 from storico.domain.entities.exceptions import (
     CannotRemoveOwnerError,
+    CipherError,
+    CredentialUndecryptable,
     DuplicateEntity,
+    EncryptionKeyMissing,
     EntityNotFound,
     InsufficientRole,
     LastAdminError,
@@ -29,7 +32,10 @@ from storico.domain.entities.workspace_prompt import WorkspacePrompt
 
 __all__ = [
     "CannotRemoveOwnerError",
+    "CipherError",
+    "CredentialUndecryptable",
     "DuplicateEntity",
+    "EncryptionKeyMissing",
     "EntityNotFound",
     "InsufficientRole",
     "LastAdminError",

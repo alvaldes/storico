@@ -127,3 +127,46 @@ class CannotRemoveOwnerError(RepositoryError):
 
     def __init__(self, message: str = "Cannot remove the workspace owner") -> None:
         super().__init__(message)
+
+
+class CipherError(Exception):
+    """Base exception for credential cipher errors.
+
+    Deliberately outside the ``RepositoryError`` tree: nothing is wrong with the
+    repository, and the server's *configuration* is what leaves the request unservable.
+
+    Messages name the problem and never the secret. A message, a log line and a ``repr``
+    are all places a key or a plaintext credential would outlive the request that
+    carried it, so the value is never interpolated into any of them.
+    """
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(self.message)
+
+    def __str__(self) -> str:
+        return self.message
+
+
+class EncryptionKeyMissing(CipherError):
+    """Raised when no master key is configured and a value must be encrypted."""
+
+    def __init__(
+        self,
+        message: str = (
+            "No encryption master key is configured, so workspace credentials cannot be stored"
+        ),
+    ) -> None:
+        super().__init__(message)
+
+
+class CredentialUndecryptable(CipherError):
+    """Raised when a value marked as encrypted cannot be decrypted."""
+
+    def __init__(
+        self,
+        message: str = (
+            "A stored workspace credential cannot be decrypted with the configured master key"
+        ),
+    ) -> None:
+        super().__init__(message)

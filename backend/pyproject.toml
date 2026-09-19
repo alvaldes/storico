@@ -52,6 +52,11 @@ dependencies = [
     # JWT
     "PyJWT>=2.9.0",
 
+    # Crypto — encrypts workspace LLM credentials at rest (see docs/security.md).
+    # Declared explicitly even though it arrives transitively via google-auth: a
+    # transitive dependency is not a contract, and an unrelated bump could drop it.
+    "cryptography>=50.0.1",
+
     # Environment
     "python-dotenv>=1.0.0",
 ]
