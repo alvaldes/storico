@@ -194,6 +194,7 @@ Index: `user_story_id`
 | raw_response | Text | NOT NULL |
 | confidence_score | Float | nullable |
 | created_at | DateTime(tz) | NOT NULL |
+| completed_at | DateTime(tz) | nullable — no nulo exactamente cuando `status` es terminal. Las filas anteriores a la revisión `0023` quedan en `NULL`: no se rellenaron hacia atrás. |
 
 Index: `user_story_id`
 

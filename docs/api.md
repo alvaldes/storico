@@ -249,13 +249,16 @@ GET /api/v1/workspaces/{wsId}/extract/status/{extractionId}
   "raw_response": "1. summary: Set up the database schema\ndescription: Create the tables...",
   "confidence_score": null,
   "created_at": "2026-07-15T12:00:00Z",
-  "completed_at": null,
+  "completed_at": "2026-07-15T12:00:04Z",
   "tasks": []
 }
 ```
 
-`completed_at` viaja siempre en `null`: la ruta de estado no lo completa, aunque la
-extracción haya terminado.
+`completed_at` registra cuándo terminó la extracción: viaja con la hora real cuando el
+`status` es `completed` o `failed`, y en `null` mientras siga en `pending`. Las extracciones
+anteriores a la revisión `0023` también viajan en `null`, porque **no se rellenaron hacia
+atrás**: su hora de fin nunca se registró, y tanto copiar `created_at` como usar la hora del
+despliegue habría inventado un dato.
 
 Las tareas generadas no viajan en la respuesta de estado: se leen con
 `GET /api/v1/tasks/?user_story_id=...` una vez que la extracción pasó a `completed`.
