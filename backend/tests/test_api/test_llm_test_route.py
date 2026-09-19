@@ -207,3 +207,41 @@ class TestCustomProviders:
         assert adapter_kwargs == [
             {"api_key": "deepseek-key", "base_url": "https://api.deepseek.com/v1"}
         ]
+
+
+class TestTheProviderNameItself:
+    """The name is validated with the registry's rule, not a second one.
+
+    Widening the field from a ``Literal`` to a bounded ``str`` removed the refusal that used
+    to happen by accident: a ``Literal`` rejected ``" "`` for the same reason it rejected every
+    other unknown name, and widening it would have let a whitespace-only provider through to an
+    adapter while the registry that stores custom providers refuses that same name. The rule is
+    imported rather than re-derived so the two surfaces cannot disagree.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("name", ["", " ", "   ", "x" * 51])
+    async def test_a_name_the_registry_would_refuse_is_refused_here(
+        self, authed_client: AsyncClient, adapter_kwargs: list[dict[str, Any]], name: str
+    ) -> None:
+        response = await _post(authed_client, {"provider": name, "base_url": "https://x.test/v1"})
+
+        assert response.status_code == 422
+        assert adapter_kwargs == []
+
+    @pytest.mark.asyncio
+    async def test_a_padded_name_is_trimmed_before_it_is_used(
+        self, authed_client: AsyncClient, adapter_kwargs: list[dict[str, Any]]
+    ) -> None:
+        """The registry trims before it measures, so a padded name that fits must be accepted."""
+        response = await _post(
+            authed_client,
+            {"provider": "  deepseek  ", "base_url": "https://api.deepseek.com/v1"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+        assert len(adapter_kwargs) == 1
+        # The name the user sees is the trimmed one, and the padding never reached the adapter.
+        assert "deepseek responded" in response.json()["message"]
+        assert "  deepseek  " not in response.json()["message"]

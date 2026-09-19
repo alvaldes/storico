@@ -5,10 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import AliasGenerator, BaseModel, ConfigDict, Field
+from pydantic import AliasGenerator, BaseModel, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 
-from storico.api.schemas.custom_provider import NAME_MAX_LENGTH
+from storico.api.schemas.custom_provider import (
+    NAME_MAX_LENGTH,
+    NAME_RULE_MESSAGE,
+    normalize_provider_name,
+)
 
 
 class CamelCaseModel(BaseModel):
@@ -77,14 +81,27 @@ class LLMTestRequest(CamelCaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # Bounded by the shared ``NAME_MAX_LENGTH`` rather than a ``Literal`` of the four built-in
-    # names. That ``Literal`` was a third, unguarded rendering of ``KNOWN_PROVIDERS``, and it
-    # refused exactly the workspace-registered names that ``_build_llm_port`` routes to the
-    # OpenAI-compatible adapter — so this endpoint could not test a custom provider at all.
-    provider: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
+    # A bounded ``str`` rather than a ``Literal`` of the four built-in names. That ``Literal``
+    # was a third, unguarded rendering of ``KNOWN_PROVIDERS``, and it refused exactly the
+    # workspace-registered names that ``_build_llm_port`` routes to the OpenAI-compatible
+    # adapter — so this endpoint could not test a custom provider at all.
+    #
+    # The bound and the rule are the registry's, imported rather than re-derived, so this
+    # endpoint cannot accept a name the registry refuses (a whitespace-only one) or refuse a
+    # padded name the registry accepts: ``normalize_provider_name`` trims first, and the cap is
+    # measured on the trimmed name.
+    provider: str
     base_url: str | None = None
     api_key: str | None = None
     model: str = "llama3.2"
+
+    @field_validator("provider")
+    @classmethod
+    def _a_name_the_registry_would_accept(cls, value: str) -> str:
+        name = normalize_provider_name(value)
+        if not 1 <= len(name) <= NAME_MAX_LENGTH:
+            raise ValueError(NAME_RULE_MESSAGE)
+        return name
 
 
 class LLMTestResponse(CamelCaseModel):
