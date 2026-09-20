@@ -440,7 +440,7 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | --- | ----------------------- | ------------------------------------------------- |
 | 37  | Arquitectura hexagonal  | Separación dominio / aplicación / infraestructura |
 | 38  | Procesamiento asíncrono | `asyncio.create_task` + Redis (broker)                                    |
-| 39  | Logging estructurado    | Correlation IDs para trazabilidad                 |
+| 39  | Logging estructurado    | Campos estructurados con `extra=` en los logger (28 llamadas). **Sin correlation IDs**: no hay ninguno en el backend, aunque esta fila los anunciaba. |
 | 40  | Dockerización           | Docker Compose para dev                           |
 | 41  | Permisos y workspaces  | **Implementado** (migraciones 0007‑0012) | **Antes se indicaba “V2”.**  Ahora el modelo de workspaces y permisos ya está completo (admin crea workspaces, asigna usuarios a equipos). Los permisos quedan en **V2** solo para futuras extensiones (rate‑limiting, auditoría). |
 | 42  | Rate limiting           | V2                                                |
