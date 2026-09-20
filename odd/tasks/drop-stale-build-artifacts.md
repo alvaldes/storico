@@ -8,6 +8,25 @@
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `chore/drop-stale-build-artifacts`.
 
+## Process correction: the review switch was on
+
+**This record said receipt-driven development was "off in this clone", and for the second half of
+this session that was false.** The switch read `off (decided by default)` when the session began, and
+was turned on globally mid-session — `~/.gentle-ai/state.json` records `rdd_mode = 'on'` with
+`rdd_mode_recorded_at = 2026-09-19T18:49:02Z`. This record's line was copied forward from the earlier
+features without re-checking it, which is **the same defect this batch spent the day removing**: a
+claim about state, written once and never re-read.
+
+So native review was the expected path for this candidate and it did not run. Two independent
+verifications did, and their findings are recorded below — every one of them found something material.
+Whether that is an adequate substitute is the maintainer's call, not this record's.
+
+It could not have run from the parent session regardless: the `gentle_review` facade answers
+`native-status-package-binary-missing` here, while a subagent's context reached the lifecycle and
+returned an unresolved provider consent envelope for the last candidate. The recovery is
+`node scripts/install-gentle-ai.mjs` from the installed package directory, which is a maintenance
+action rather than something this session takes on its own.
+
 ## What the problem was
 
 `frontend/.vercel/output/` (19 MB, 2161 files) and `frontend/dist/` (1.9 MB, 94 files) held bundles
