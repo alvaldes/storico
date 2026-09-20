@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 
 import httpx
 from fastapi import APIRouter
-from sqlalchemy import text
+from sqlalchemy import literal, select
 
 from storico.config.settings import Settings
 from storico.infrastructure.database.base import get_engine
@@ -34,7 +34,9 @@ async def _check_database() -> dict:
         engine = get_engine()
         async with asyncio.timeout(DB_TIMEOUT):
             async with engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
+                # Core rather than a raw "SELECT 1": the same probe, without a hand-written SQL
+                # string in a route that takes no input from the caller.
+                await conn.execute(select(literal(1)))
         elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
         return {"status": "ok", "latency_ms": round(elapsed, 1)}
     except TimeoutError:
@@ -44,7 +46,13 @@ async def _check_database() -> dict:
     except Exception as e:
         elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
         logger.warning("Database health check failed: %s", e)
-        return {"status": "error", "latency_ms": round(elapsed, 1), "error": str(e)}
+        # The reason is spelled here rather than taken from the exception. This route is
+        # unauthenticated, so whatever it publishes is published to anyone: a driver's message can
+        # name an internal host, a port, a database or a credential, and none of that is part of the
+        # answer to "is this service up". The exception is logged just above, which is where an
+        # operator can read it. The timeout branch above already made this choice; this branch now
+        # makes it too.
+        return {"status": "error", "latency_ms": round(elapsed, 1), "error": "connection failed"}
 
 
 async def _check_ollama() -> dict:
@@ -66,7 +74,8 @@ async def _check_ollama() -> dict:
     except Exception as e:
         elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
         logger.warning("Ollama health check failed: %s", e)
-        return {"status": "error", "latency_ms": round(elapsed, 1), "error": str(e)}
+        # Spelled, not taken from the exception: this route is unauthenticated. See `_check_database`.
+        return {"status": "error", "latency_ms": round(elapsed, 1), "error": "not reachable"}
 
 
 async def _check_qdrant() -> dict:
@@ -82,7 +91,8 @@ async def _check_qdrant() -> dict:
     except Exception as e:
         elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
         logger.warning("Qdrant health check failed: %s", e)
-        return {"status": "error", "latency_ms": round(elapsed, 1), "error": str(e)}
+        # Spelled, not taken from the exception: this route is unauthenticated. See `_check_database`.
+        return {"status": "error", "latency_ms": round(elapsed, 1), "error": "not reachable"}
 
 
 @router.get("/health")
