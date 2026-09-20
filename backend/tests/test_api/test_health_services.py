@@ -16,6 +16,7 @@ import logging
 
 import httpx
 import pytest
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from storico.api.routes import health
 
@@ -86,12 +87,40 @@ async def test_a_failing_service_is_reported_without_publishing_the_reason(
 
 @pytest.mark.asyncio
 async def test_the_global_health_route_is_unaffected(async_client) -> None:
-    """The required-services route reports a level, and it never carried exception text."""
+    """The required-services route reports a level, and it never carried exception text.
+
+    Deliberately silent on *whether* the database is reachable. An earlier version of this test
+    asserted `status == "ok"`, which is a property of the deployment rather than of the route — it
+    passed on a machine with a database and failed in CI, where there is none. What the route owes a
+    caller is the shape, and a spelled reason instead of the driver's message when a probe fails.
+    """
     response = await async_client.get("/api/v1/health")
 
     assert response.status_code == 200
     body = response.json()
     assert set(body) == {"status", "version", "timestamp", "database"}
-    # The probe itself has to work, which is what makes this test cover the query it runs.
-    assert body["database"]["status"] == "ok"
-    assert "error" not in body["database"]
+    assert body["status"] in {"ok", "degraded"}
+    if body["database"]["status"] == "error":
+        # One of the two reasons the probe spells, never the exception's own text.
+        assert body["database"]["error"] in {"connection failed", "connection timed out"}
+
+
+@pytest.mark.asyncio
+async def test_the_database_probe_reports_ok_when_the_query_works(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Covers the probe's own query, with an engine this test controls.
+
+    This is what the route-level assertion above cannot do without depending on the environment: it
+    proves the probe executes and reports `ok`, which is what covers the query it runs.
+    """
+    engine = create_async_engine("sqlite+aiosqlite://")
+    monkeypatch.setattr(health, "get_engine", lambda: engine)
+
+    try:
+        result = await health._check_database()
+    finally:
+        await engine.dispose()
+
+    assert result["status"] == "ok"
+    assert "error" not in result
