@@ -50,7 +50,7 @@ Prerrequisitos que, si faltan, rompen algo en silencio o fallan recién en produ
 |------|--------|---------|
 | Conector Trello | 🔲 | |
 | Conectores Jira / GitHub Projects / Azure DevOps | 🔲 | V2/V3. |
-| Adaptador de OpenAI con tests de construcción positiva | 🟡 | El adaptador existe y la extracción lo alcanza; falta el test que lo construya por esa rama. |
+| Adaptador de OpenAI con tests de construcción positiva | ✅ | El adaptador existe y la extracción lo construye por dos ramas: `openai` y proveedor personalizado (`backend/src/storico/infrastructure/tasks/extraction_task.py`). El test de construcción es `backend/tests/test_unit/test_llm_port_selection.py::TestKnownCloudProviders::test_openai_with_key_forwards_base_url`, que verifica el tipo del adaptador y que el `base_url` configurado llega a él. |
 
 ## Tesis
 
