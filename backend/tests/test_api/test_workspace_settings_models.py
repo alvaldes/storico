@@ -8,6 +8,7 @@ providers through it. The prober is exercised with an injected
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterator
 from uuid import uuid4
 
@@ -724,3 +725,69 @@ class TestTheProbeDoesNotLeakTheCredential:
         assert len(seen) == 1
         assert credential not in str(seen[0].url)
         assert seen[0].headers["x-goog-api-key"] == credential
+
+    @pytest.mark.asyncio
+    async def test_no_fetcher_puts_the_credential_in_a_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Class-shaped on purpose: the bug was in one provider, the rule is all of them.
+
+        A test that drove only the Gemini fetcher would have let the same mistake ship again in a
+        sibling — which is not hypothetical: a review of the first version of this fix tried exactly
+        that and the full suite stayed green. Every fetcher that takes a credential is driven here,
+        and the assertion is on the requests they actually make.
+        """
+        credential = "URL-STAND-IN-CREDENTIAL"
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(200, json={"models": [], "data": []})
+
+        _patch_client_factory(monkeypatch, handler)
+
+        await workspace_settings.fetch_gemini_models(credential)
+        await workspace_settings.fetch_anthropic_models(credential)
+        await workspace_settings.fetch_openai_models(credential, None)
+        await workspace_settings.fetch_openai_compatible_models(
+            "https://custom.example", credential
+        )
+
+        assert seen, "no fetcher made a request, so this guard would pass without testing anything"
+        for request in seen:
+            # Not in the URL, which is what the log line below is built from.
+            assert credential not in str(request.url), f"{request.url}"
+            assert "key=" not in str(request.url), f"{request.url}"
+            # And it did travel, in a header — so a fetcher cannot pass this by dropping it. A
+            # substring test, because the scheme is part of the value: OpenAI sends
+            # ``Bearer <credential>`` and a whole-value comparison would fail on correct behaviour.
+            assert any(credential in value for value in request.headers.values()), (
+                f"{request.url} carried no credential"
+            )
+
+    @pytest.mark.asyncio
+    async def test_a_successful_probe_does_not_log_the_credential(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The half of the leak no test asserted, on the path where it actually happened.
+
+        Measured, because the intuition is backwards: ``httpx`` writes
+        ``HTTP Request: GET <url> "HTTP/1.1 200 OK"`` at INFO for a request that **succeeds**, and
+        writes nothing for one that fails to connect. So the URL landed in the log on every
+        successful Gemini probe — the ordinary case — which is why this test probes successfully
+        rather than failing. The handler below answers, and the assertion is on what got logged.
+        """
+        credential = "LOG-STAND-IN-CREDENTIAL"
+        caplog.set_level(logging.INFO, logger="httpx")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"models": []})
+
+        _patch_client_factory(monkeypatch, handler)
+
+        await workspace_settings.fetch_gemini_models(credential)
+
+        # The logger really did record the request, so the assertion is about a credential that
+        # would otherwise be in there rather than about a logger nobody configured.
+        assert "HTTP Request" in caplog.text
+        assert credential not in caplog.text
