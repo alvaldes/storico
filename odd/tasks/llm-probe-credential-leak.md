@@ -15,9 +15,9 @@ was turned on globally mid-session — `~/.gentle-ai/state.json` records `rdd_mo
 features without re-checking it, which is **the same defect this batch spent the day removing**: a
 claim about state, written once and never re-read.
 
-So native review was the expected path for this candidate and it did not run. Two independent
-verifications did, and their findings are recorded below — every one of them found something material.
-Whether that is an adequate substitute is the maintainer's call, not this record's.
+So native review was the expected path for this candidate and it did not run. Independent verification
+did, and it found something material; its findings are recorded below. Whether that is an adequate
+substitute is the maintainer's call, not this record's.
 
 It could not have run from the parent session regardless: the `gentle_review` facade answers
 `native-status-package-binary-missing` here, while a subagent's context reached the lifecycle and
@@ -183,6 +183,25 @@ that reason and says so in the test, so the next reader does not have to re-deri
 
 The credential the test uses is a stand-in, never a real key, and the assertion is on the response
 body rather than on a log line, because the log is where the error is supposed to go.
+
+## Independent verification
+
+Ran over `5d4d021..986ed1a` — the fix and its record, before the guards below were written. It
+confirmed the core claims: the credential is out of the URL, out of the `httpx` INFO line, and out of
+the 502 body, and the error is relocated to a WARNING log with its traceback preserved rather than
+discarded.
+
+It then found three things the record had not accounted for, and **stopped at a provider consent
+envelope** rather than answering it — correctly, because that is the human's decision. The envelope
+went unresolved and could not be submitted from the parent session (the facade reports
+`native-status-package-binary-missing` there); the answer given was to skip this candidate, which is
+candidate-scoped and leaves reviews enabled.
+
+| # | Sev | Finding | Disposition |
+|---|-----|---------|-------------|
+| V1 | medium | **The tests were gemini-shaped, not class-shaped.** Reintroducing `?key=` in `fetch_anthropic_models` passed the entire suite (697 passed, 1 skipped) — the fix was one provider, and nothing enforced the rule for its siblings. | **Fixed** — every credential-bearing fetcher is now driven and the assertions are on the requests they make. Re-mutating the anthropic fetcher fails the guard. |
+| V2 | medium | **Nothing asserted the log was clean.** The other half of the leak had no test at all. | **Fixed** — and writing it corrected a premise: `httpx` logs the request line on **success** and nothing on a connect failure, so the credential leaked on every successful Gemini probe, not only on a failure. |
+| V3 | medium | **The same class was live one route over**: `GET /api/v1/health/services`, unauthenticated, answered with `str(e)` for three probes. A sibling admin route, `POST /api/v1/llm/test`, echoes transport errors in five branches. | **Fixed for health** (with the tests it never had); **recorded** for `/llm/test`, whose message is its documented response contract. |
 
 ## Follow-ups this surfaced, recorded rather than bundled
 

@@ -18,9 +18,9 @@ was turned on globally mid-session — `~/.gentle-ai/state.json` records `rdd_mo
 features without re-checking it, which is **the same defect this batch spent the day removing**: a
 claim about state, written once and never re-read.
 
-So native review was the expected path for this candidate and it did not run. Two independent
-verifications did, and their findings are recorded below — every one of them found something material.
-Whether that is an adequate substitute is the maintainer's call, not this record's.
+So native review was the expected path for this candidate and it did not run. Independent verification
+did, and it found something material; its findings are recorded below. Whether that is an adequate
+substitute is the maintainer's call, not this record's.
 
 It could not have run from the parent session regardless: the `gentle_review` facade answers
 `native-status-package-binary-missing` here, while a subagent's context reached the lifecycle and
