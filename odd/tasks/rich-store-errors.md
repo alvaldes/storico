@@ -2,8 +2,9 @@
 
 > **Status**: done and landed on `main` @ `1532552` — three commits from `137f804`: `c9878b3`
 > (the change and its tests), `faa60d7` (the record) and `1532552` (the answer to the verification,
-> including the coverage it proved was missing). Branch deleted, `main` re-gated, **not pushed**.
-> Receipt-driven development is **off** in this clone, so no native review ran; an independent
+> including the coverage it proved was missing). Branch deleted, `main` re-gated and **pushed**
+> (`origin/main` @ `cf89d2d`, 2026-09-20). Receipt-driven development is **off** in this clone,
+> so no native review ran; an independent
 > verification did, and it found a real hole in this change rather than only in its prose.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)

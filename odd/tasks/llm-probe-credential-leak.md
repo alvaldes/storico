@@ -1,7 +1,11 @@
 # ODD Feature: llm-probe-credential-leak
 
-> **Status**: implemented on `fix/llm-probe-credential-leak` (off `main` @ `5d4d021`), not pushed.
-> Recip-driven development is **off** in this clone; the independent verification is recorded below.
+> **Status**: done and landed on `main` @ `cf89d2d` — six commits from `5d4d021`: `150319a` and
+> `9769d39` (the probe fix and its tests), `283f51c` (the unauthenticated health sibling),
+> `986ed1a` and `b175a02` (the record), and `cf89d2d` (the health test that no longer depends on
+> the environment). Branch deleted, `main` re-gated and **pushed** (`origin/main` @ `cf89d2d`,
+> 2026-09-20). Receipt-driven development is **off** in this clone; the independent verification is
+> recorded below.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/llm-probe-credential-leak`.

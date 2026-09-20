@@ -2,8 +2,9 @@
 
 > **Status**: done and landed on `main` @ `4dc97bd` — three commits from `6174f5a`:
 > `e460b8f` (the plan of record), `6c42998` (the fix), `4dc97bd` (the two doc claims the
-> independent verification refuted). Branch deleted, `main` re-gated, **not pushed**.
-> Receipt-driven development is **off** in this clone, so no native review ran; independent
+> independent verification refuted). Branch deleted, `main` re-gated and **pushed**
+> (`origin/main` @ `cf89d2d`, 2026-09-20). Receipt-driven development is **off** in this clone,
+> so no native review ran; independent
 > verification is recorded below.
 > **Created**: 2026-09-19
 > **Workflow**: Organic Driven Development (ODD)

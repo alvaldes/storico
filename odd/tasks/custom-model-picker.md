@@ -1,7 +1,8 @@
 # ODD Feature: custom-model-picker
 
 > **Status**: done — 3 commits on `fix/custom-model-picker` (`353f1ac`,
-> `9f3a3af`, `2a41fdc`); verified, NOT merged, not pushed
+> `9f3a3af`, `2a41fdc`); verified, **landed on `main` by fast-forward and pushed**
+> (`origin/main` @ `cf89d2d`, 2026-09-20)
 > **Created**: 2026-09-17
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/custom-model-picker`
@@ -137,8 +138,8 @@ its command has actually run)_
 Done and independently verified on `fix/custom-model-picker`: the twelve models are
 now a collapsed, scrollable dropdown instead of a block that flooded the card, the
 field still accepts an id the provider never listed, and one click anywhere in the
-field opens the catalogue. RDD is off in this clone, so no native review ran. Not
-merged — the merge is the user's decision.
+field opens the catalogue. RDD is off in this clone, so no native review ran. Landed
+on `main` by fast-forward and pushed (`origin/main` @ `cf89d2d`, 2026-09-20).
 
 ## Follow-ups (not part of this fix)
 

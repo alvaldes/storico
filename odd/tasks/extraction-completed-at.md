@@ -2,7 +2,8 @@
 
 > **Status**: done and landed on `main` @ `2ab0001` — six commits from `8a33baf`: `f572c4b`,
 > `0eeed2c`, `1864622` (the implementation and its record) then `46393ec`, `ef12334`, `2ab0001`
-> (the answers to the verification). Branch deleted, `main` re-gated, **not pushed**. Receipt-driven
+> (the answers to the verification). Branch deleted, `main` re-gated and **pushed**
+> (`origin/main` @ `cf89d2d`, 2026-09-20). Receipt-driven
 > development is **off** in this clone, so no native review ran; an independent verification did,
 > and it found that the one site production actually takes had no test at all.
 > **Created**: 2026-09-19

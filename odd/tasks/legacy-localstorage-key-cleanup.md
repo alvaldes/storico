@@ -4,7 +4,8 @@
 > `a2d5be8` (the fix, its tests and `docs/frontend-state.md`), `4df5e3e` (the doc close),
 > `ed9518a` (the widened reach that answers the first verification), `3183eb6` (the rewritten
 > record) and `957cb3b` (the retraction and test hygiene that answer the second). Branch deleted,
-> `main` re-gated, **not pushed**. Receipt-driven development is **off** in this clone, so no
+> `main` re-gated and **pushed** (`origin/main` @ `cf89d2d`, 2026-09-20). Receipt-driven
+> development is **off** in this clone, so no
 > native review ran; **two** independent verifications did, and the second corrected this
 > document's own conclusion.
 > **Created**: 2026-09-19

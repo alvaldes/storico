@@ -3,7 +3,8 @@
 > **Status**: done and landed on `main` @ `984dd1d` — eight commits from `a38b943`:
 > `352f1b1`, `0ee0965`, `c67dab5`, `7af8d2c` (the implementation and its record) then `ca0d9b4`,
 > `9af0452`, `08d858f`, `984dd1d` (the answers to the verification). Branch deleted, `main`
-> re-gated, **not pushed**. Receipt-driven development is **off** in this clone, so no native
+> re-gated and **pushed** (`origin/main` @ `cf89d2d`, 2026-09-20). Receipt-driven development
+> is **off** in this clone, so no native
 > review ran; an independent verification did, and it found the sweep one file short and a second
 > provider rule hiding behind the widened field.
 > **Created**: 2026-09-19
