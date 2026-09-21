@@ -73,3 +73,13 @@ jobs:
       - name: Test (vitest)
         working-directory: frontend
         run: pnpm vitest run
+
+      # The build is the artifact Vercel serves, and no job compiled it until
+      # this step existed: `tsc` type-checks and `vitest` tests, but neither runs
+      # `astro build`, so a pull request could merge with a build Vercel would
+      # refuse. Every prior verification ran `pnpm run build` by hand, which made
+      # this a convention rather than a gate. It needs no environment: the
+      # frontend's config module is evaluated per request, not at build time.
+      - name: Build (astro build)
+        working-directory: frontend
+        run: pnpm build

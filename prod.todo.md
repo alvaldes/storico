@@ -43,7 +43,7 @@ Prerrequisitos que, si faltan, rompen algo en silencio o fallan recién en produ
 |------|--------|---------|
 | Qdrant Cloud + adaptador de embeddings | 🔲 | El RAG degrada con gracia si falta; en producción conviene decidir si se usa. |
 | Dominio propio + SSL | 🔲 | |
-| CI que construya el frontend | 🔲 | `.github/workflows/ci.yml` corre `tsc` y `vitest`, no `astro build`. Un build roto y un artefacto viejo pasan los dos sin que nadie se entere; ver `docs/deployment.md`. |
+| CI que construya el frontend | ✅ | `.github/workflows/ci.yml` corre `pnpm build` en el job del frontend, después de `tsc` y de `vitest`, así que un build roto frena el pull request. Medido antes de agregarlo: el build pasa sin `.env` y con el entorno pelado, porque el módulo de configuración del frontend se evalúa por request y no en build. Cuesta la corrida del build nada más — el job ya instalaba, tipaba y testeaba — y el artefacto viejo reutilizado en un despliegue manual queda fuera de su alcance, que es lo que advierte `docs/deployment.md`. |
 
 ## Producto (después de la evaluación)
 

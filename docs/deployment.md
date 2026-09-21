@@ -105,16 +105,19 @@ sin su migración aplicada, y ese es exactamente el incidente del 2026-09-20: el
 ### Artefactos de build del frontend
 
 `frontend/dist/` y `frontend/.vercel/output/` son **salidas**, no fuentes: están en
-`.gitignore`, nada en el repositorio **los** lee (ni el `Makefile`, ni el workflow de CI, que solo
-corre `tsc` y `vitest`), y las produce `pnpm run build`: `@astrojs/vercel` vacía y reescribe
-`.vercel/output/` durante el build, además de escribir `dist/`.
+`.gitignore`, nada en el repositorio **los** lee (ni el `Makefile` ni ningún otro paso: el workflow
+de CI los **escribe** al construir, no los consume), y las produce `pnpm run build`:
+`@astrojs/vercel` vacía y reescribe `.vercel/output/` durante el build, además de escribir `dist/`.
 
 **Regenera los artefactos antes de desplegar; no reutilices una salida existente.** El riesgo es
 concreto y ya se materializó una vez: quedaron en disco bundles anteriores a un cambio de copy y el
 texto retirado seguía dentro de ellos. Un deploy que reutilice `.vercel/output` sin reconstruir
-sirve el bundle viejo aunque el código diga otra cosa, y nada en las pruebas lo detecta porque el
-frontend no se construye en CI. Borrar los directorios es seguro en cualquier momento — se recrean
-en el siguiente build — y es la forma más simple de no partir de un estado viejo.
+sirve el bundle viejo aunque el código diga otra cosa. Antes, nada lo detectaba: el frontend no se
+construía en CI y las pruebas no lo miraban. Desde que `.github/workflows/ci.yml` corre `pnpm build`,
+un build roto frena el pull request; lo que el gate **no** puede ver es un artefacto viejo
+reutilizado en un despliegue manual, que es justo lo que esta sección advierte. Borrar los
+directorios es seguro en cualquier momento — se recrean en el siguiente build — y es la forma más
+simple de no partir de un estado viejo.
 
 ## Roadmap de Producción
 

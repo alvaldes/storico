@@ -124,6 +124,11 @@ Worth keeping from the verification: the repository's neutral-Spanish guard read
    would notice a stale output either. Adding a build job is a real cost on every pull request, so it
    is proposed rather than bundled: the trade is minutes-per-PR against the class of failure that
    shipped a retracted sentence.
+
+   **Closed 2026-09-21.** `.github/workflows/ci.yml` now runs `pnpm build` in the frontend job. The
+   trade was settled by measurement rather than by argument: the build takes ~13 s warm, against a job
+   that already installs, type-checks and tests, and it was verified to pass with no `.env` and a
+   stripped environment before the step was added. See `odd/tasks/ci-frontend-build-gate.md`.
 2. **The `prod.todo.md` references remain dead** — four of them, in `docs/deployment.md` (twice),
    `docs/security.md` and `docs/README.md` — pointing at a file that does not exist and is not
    gitignored. It is the same class of statement this batch exists to remove, and it needs a
