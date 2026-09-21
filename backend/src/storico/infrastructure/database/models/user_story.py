@@ -40,7 +40,13 @@ class UserStoryModel(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    __table_args__ = (Index("ix_user_stories_project_id", "project_id"),)
+    # ``ix_user_stories_project_id`` comes from revision 0001. ``idx_user_stories_status`` comes
+    # from 0016, the mirror of ``idx_tasks_status`` on ``tasks`` — see that model's comment for
+    # why the index is declared instead of dropped.
+    __table_args__ = (
+        Index("ix_user_stories_project_id", "project_id"),
+        Index("idx_user_stories_status", "status"),
+    )
 
     project: Mapped["ProjectModel"] = relationship(  # noqa: F821, UP037
         back_populates="user_stories", lazy="selectin"

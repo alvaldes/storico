@@ -12,13 +12,14 @@ This module executes it against a Postgres 16 container and asserts two things:
    head the packaged scripts declare. That is what proves no revision in the chain is broken and
    that the enum types, the ``USING ...::jsonb`` cast and the NOT NULL narrowing actually work on
    Postgres. SQLite cannot run this: the chain depends on all three.
-2. Autogenerate's differences between the migrated schema and the models are **exactly** the six
+2. Autogenerate's differences between the migrated schema and the models are **exactly** the
    known, measured differences recorded in this module — no more and no fewer. That is a ratchet,
    not a tolerance: a difference the run reports and the record does not hold fails the test, and
    so does a record entry the run no longer reports, because a stale line turns the record into a
-   lie. The six predate this test and are deliberately not fixed here — three of them need a
-   decision about which side is authoritative. See ``odd/tasks/schema-drift-gate.md``, section
-   "WU3 — the chain measured".
+   lie. The recorded differences predate this test and are paid off one work unit at a time, each
+   line leaving the literal in the same commit that fixes it *because* of that second direction.
+   See ``odd/tasks/schema-drift-gate.md``, section "WU3 — the chain measured", and
+   ``odd/tasks/schema-drift-reconciliation.md`` for the payoff.
 
 The two container tests are marked ``@pytest.mark.integration`` individually and disabled unless the
 Docker daemon is reachable, so they skip on a laptop without a daemon and run for real on GitHub
@@ -95,32 +96,20 @@ _ALEMBIC_VERSION = sa.Table(
 )
 
 # The differences between the migrated schema and the models that have been **measured** and are
-# known to exist today. This is a debt list, not a tolerance: the drift test below asserts exact
+# still outstanding. This is a debt list, not a tolerance: the drift test below asserts exact
 # equality against it in both directions, so a new difference fails and a resolved one fails too,
 # because its line here has gone stale.
 #
-# Each entry is "<op>:<target>", the normalised shape ``_diff_signature`` produces. All six are
-# pre-existing and predate the migration-chain test entirely, and none is fixed here: three of them
-# need a decision about which side is authoritative, and one of those may be a missing revision
-# rather than a wrong model. The reasoning for every line, and the full table this literal mirrors,
-# is in ``odd/tasks/schema-drift-gate.md`` under "WU3 — the chain measured".
+# Each entry is "<op>:<target>", the normalised shape ``_diff_signature`` produces. The two that
+# remain are pre-existing and predate the migration-chain test entirely; each is removed here by
+# the work unit that reconciles it. The reasoning for every entry, and the full table this literal
+# mirrors, is in ``odd/tasks/schema-drift-gate.md`` under "WU3 — the chain measured".
 _KNOWN_DRIFT: frozenset[str] = frozenset(
     {
         # 0018 creates the `extraction_status_new` enum and no revision ever converts the column to
         # it, so the model declares a type the migrations never produce. Neither side is proven:
         # either the conversion revision is missing, or the enum type was never wanted.
         "modify_type:extractions.status",
-        # 0005 creates this column as JSONB and the model under-declares it as JSON. The migrations
-        # are authoritative, so the model is the side to change.
-        "modify_type:user_preferences.preferences",
-        # 0009 converts this column to JSONB explicitly and the model again under-declares it as
-        # JSON. The migrations are authoritative, same shape as the line above.
-        "modify_type:workspace_prompts.few_shot_examples",
-        # 0016 creates this index on purpose and the models do not declare it. The models are the
-        # side to change, because a deliberately created index is missing from the metadata.
-        "remove_index:idx_tasks_status",
-        # Same shape as the line above, on `user_stories.status`. The models are the side to change.
-        "remove_index:idx_user_stories_status",
         # 0016 created this index while 0001 had already created `ix_tasks_user_story_id` for the
         # same column, so one column carries two indexes under two names. The migrations are the
         # side to change: one of the two duplicates should go.
@@ -370,11 +359,10 @@ async def test_the_migrated_schema_drift_equals_the_recorded_gap(
 ) -> None:
     """The autogenerate diff equals ``_KNOWN_DRIFT`` exactly — a ratchet, not a tolerance.
 
-    Six differences between the migrated schema and the models were measured on CI, because the
-    chain needs a real Postgres and there is no Docker daemon on the author's machine; they are
-    recorded in ``_KNOWN_DRIFT`` and in ``odd/tasks/schema-drift-gate.md`` under "WU3 — the chain
-    measured". Reconciling them is deliberately not this test's job: three of the six need a
-    decision about which side is authoritative.
+    The differences between the migrated schema and the models were measured on CI, because the
+    chain needs a real Postgres and there is no Docker daemon on the author's machine; the ones
+    still outstanding are recorded in ``_KNOWN_DRIFT`` and in ``odd/tasks/schema-drift-gate.md``
+    under "WU3 — the chain measured".
 
     The assertion is an exact set match in **both** directions, and that is what makes this a
     ratchet rather than a tolerance:
@@ -384,7 +372,7 @@ async def test_the_migrated_schema_drift_equals_the_recorded_gap(
       anyone noticing.
     * a recorded entry the run no longer reports is a **resolved** difference whose allowlist
       line has gone stale, and it fails too. Without this half, the record rots into a lie the
-      first time somebody reconciles one of the six.
+      first time somebody reconciles a recorded difference.
 
     Both sets are printed on failure, so the reader can tell which case they are in. Fixing the
     schema or the model to make one difference vanish must be a separate change that deletes its

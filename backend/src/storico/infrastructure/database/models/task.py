@@ -41,7 +41,14 @@ class TaskModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    __table_args__ = (Index("ix_tasks_user_story_id", "user_story_id"),)
+    # ``ix_tasks_user_story_id`` comes from revision 0001. ``idx_tasks_status`` comes from 0016:
+    # no query in the repository filters ``tasks.status`` in SQL (the Kanban grouping is
+    # client-side), but a deliberately created index is cheaper to document than to remove and
+    # want back, and the migrations are the side that already has it.
+    __table_args__ = (
+        Index("ix_tasks_user_story_id", "user_story_id"),
+        Index("idx_tasks_status", "status"),
+    )
 
     user_story: Mapped["UserStoryModel"] = relationship(  # noqa: F821, UP037
         back_populates="tasks", lazy="selectin"
