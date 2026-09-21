@@ -39,8 +39,17 @@ jobs:
             # The build below overwrites the only tag the previous release had, so
             # without this step there is no way back at all. See docs/deployment.md
             # for when restoring this tag is safe and when the path is forward.
-            docker tag storico-api storico-api:previous 2>/dev/null \
-              || echo "no image tagged storico-api yet (first deploy)"
+            #
+            # Deliberately an `if` and not `docker tag ... || echo`: a missing image on
+            # the first deploy is the one tolerated case, and any other `docker tag`
+            # failure has to reach `set -e`. A trailing `|| echo` here is the same
+            # shape as the `|| echo OK` that made a broken deploy report success for
+            # a day, and it would hide a missing rollback image as well.
+            if docker image inspect storico-api >/dev/null 2>&1; then
+              docker tag storico-api storico-api:previous
+            else
+              echo "no image tagged storico-api yet (first deploy)"
+            fi
 
             echo "=== Rebuild Docker image ==="
             docker build -t storico-api -f backend/Dockerfile backend/
@@ -68,9 +77,19 @@ jobs:
             # on every deploy. `set -e` aborts the job on failure, which leaves the
             # API down rather than serving a schema the code does not match: that is
             # the deliberate trade, and the alternative is the 2026-09-20 outage.
-            # Recovery is forward -- fix the cause, re-run this workflow -- and the
-            # revisions' own idempotence guards make re-running safe.
-            docker run --rm \
+            # Recovery is forward -- fix the cause, re-run this workflow. Re-running is
+            # safe for the two revisions that rewrite existing data rather than only
+            # adding structure: 0022 and 0024 carry idempotence guards for it
+            # (odd/tasks/schema-drift-gate.md). The rest are additive.
+            #
+            # Bounded on purpose: a migration that hangs on a lock or a stalled
+            # connection would otherwise hold the API down for as long as the job
+            # lives. The chain's runtime is seconds when it has anything to do at all,
+            # so 900s is a ceiling only a hang reaches. `-k 30` is the part that
+            # matters: without it `timeout` sends SIGTERM and then waits forever for a
+            # child that ignores it. The container is unnamed, so a killed CLI cannot
+            # leave a name collision with the serving container.
+            timeout -k 30 900 docker run --rm \
               --network host \
               --env-file /home/ubuntu/storico/backend/.env \
               storico-api \
@@ -147,8 +166,9 @@ jobs:
               echo "Last 20 container log lines:"
               docker logs --tail 20 storico-api 2>&1 || true
               echo
-              echo "This red gate means something different now: the migration"
-              echo "step above already ran and reported success, so the schema"
+              echo "This red gate means something different from the one it"
+              echo "replaced: the migration step above already ran and reported"
+              echo "success, so the schema"
               echo "is not the suspect. Readiness requires the database to"
               echo "answer AND alembic_version to equal the head packaged with"
               echo "this code, so a red result here points at the container or"
@@ -156,7 +176,9 @@ jobs:
               echo "database, or the STORICO_* variables differ between the"
               echo "migration env file and the app's."
               echo 'Runbook -- docs/deployment.md, "Migraciones": the exact'
-              echo "commands, the forward recovery path, and the rollback tag"
-              echo "the previous deploy left as storico-api:previous."
+              echo "commands, the forward recovery path, and the rollback tag the"
+              echo "previous deploy left as storico-api:previous -- safe only while"
+              echo "the schema still fits that code; with a half-applied migration"
+              echo "the path is forward, not back."
               exit 1
             fi

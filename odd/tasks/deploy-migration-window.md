@@ -1,6 +1,8 @@
 # ODD Feature: deploy-migration-window
 
-> **Status**: in progress. Branch `feat/deploy-migration-window` off `main` @ `4410dea`.
+> **Status**: in progress. Two commits on `feat/deploy-migration-window` off `main` @ `4410dea`: the
+> change, and then the review's warnings fixed. Native review of the change: `review-70ebcd84d691fe01`;
+> the fix commit carries its own.
 > **Created**: 2026-09-21
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -104,3 +106,37 @@ the migration container uses the same file.
 Backend and frontend tests are not this candidate's surface: no Python and no frontend file changes. The
 surface is a Dockerfile, an ini, one workflow and documents, so the evidence is the ini measurement
 above, a YAML parse, and a shell syntax check of the workflow's remote script.
+
+## Review
+
+Native review of the change as one commit, lineage `review-70ebcd84d691fe01`: **approved and burned**, no
+correction, four reviewers prepared and four submitted. The tier is `high` with four lenses, and the
+reason names the file rather than the diff: `shell_source` / `shell_process` on
+`.github/workflows/deploy-backend.yml`.
+
+**Seven advisories, two of them `WARNING`.** Unlike the previous batches these were acted on before
+landing, and the reason is specific to this change: this candidate's first production run *is* the deploy
+it modifies, so the failure path it ships with is the failure path an operator will actually have on the
+day something goes wrong. Fixing them first is what makes that day survivable.
+
+| Id | Lens | Severity | Location | Disposition |
+|---|---|---|---|---|
+| `R3-swallowed-tag-failure` | reliability | WARNING | `deploy-backend.yml:41-43` | **Fixed.** The rollback tag was written as `docker tag … \|\| echo …`, the same shape as the `\|\| echo OK` that made a broken deploy report success for a day: any `docker tag` failure was swallowed. It is now an `if` that tolerates exactly one case — no image yet on the first deploy — and lets every other failure reach `set -e`. |
+| `R4-migration-no-timeout` | resilience | WARNING | `deploy-backend.yml:52-71` | **Fixed.** The migration container now runs under `timeout -k 30 900`, so a migration that hangs on a lock cannot hold the API down for the length of the job. `-k` is the part that matters: without it `timeout` sends SIGTERM and then waits forever for a child that ignores it. |
+| `R3-migration-no-timeout` | reliability | SUGGESTION | `deploy-backend.yml:60-66` | **Fixed** — the same edit as the row above, from the other lens. |
+| `R4-idempotence-overclaim` | resilience | SUGGESTION | `deploy-backend.yml:62-65` | **Fixed.** The comment claimed "the revisions' own idempotence guards make re-running safe" for the whole chain; only the two revisions that rewrite data carry those guards. Narrowed to the two, with the record that documents them. |
+| `R2-time-relative-wording` | readability | SUGGESTION | `deploy-backend.yml:150-160` | **Fixed.** "means something different now" became "different from the one it replaced", so the sentence does not expire. |
+| `R4-rollback-tag-message-caveat` | resilience | SUGGESTION | `deploy-backend.yml:160-168` | **Fixed.** The failure message named the rollback tag without its caveat; it now says the tag is only safe while the schema still fits that code and that a half-applied migration is forward work. |
+| `R2-rationale-duplication` | readability | SUGGESTION | `deploy-backend.yml:52-73` | **Not fixed, deliberately.** The rationale appears in the workflow, in `docs/deployment.md` and in this record. The operator reading the workflow while a deploy is red is not the reader of the documentation, and the duplicate is the copy that arrives with the failure output. |
+
+### The first production run is the first proof
+
+No Docker daemon exists on the development machine, so nothing here proves the container path end to end;
+`docker run … storico-api alembic upgrade head` is exercised for the first time by the deploy that ships
+it. The local SSH key is not authorised on the VM — `ssh -o BatchMode=yes ubuntu@<vm>` answers
+`Permission denied (publickey)`, since the deploy uses a key held in the repository secrets — so the path
+cannot be rehearsed by hand beforehand either.
+
+That is why the two warnings were fixed before landing rather than after: the rollback tag and the timeout
+are the two things that decide what that first run costs if it fails. The migration itself is a no-op on
+that run, because production stands at `0026`, the head of the commit being deployed.
