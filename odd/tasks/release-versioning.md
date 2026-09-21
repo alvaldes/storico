@@ -1,9 +1,9 @@
 # ODD Feature: release-versioning
 
-> **Status**: implemented and committed on `main`; **nothing pushed**. Native review has
-> **not** run for this candidate, deliberately: the review flow in this worktree is owned by
-> the other session, and opening a second lineage on the same target is the drift source this
-> change exists to avoid. See "Follow-ups".
+> **Status**: implemented and committed on `main`; **nothing pushed**. Native review ran on
+> 2026-09-21 under this worktree's review flow and **closed approved** —
+> `review-85d12db7ba7103e8`, tier `high`, four lenses, nine advisories and no correction. See
+> "Native review".
 > **Created**: 2026-09-21
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `main`, direct. This matches the existing practice for docs commits here.
@@ -97,11 +97,59 @@ sandbox repositories, never by running the target:
 | a version field lagging the tag | blocks, naming the path |
 | no tag at all | blocks |
 
+## Native review
+
+Native review `review-85d12db7ba7103e8`, target
+`sha256:ddfaa2fec2a973e30b9a80c64a9e37a6afc872db96498e74cf7c87efa2c44d2a`: `state: approved`,
+`risk_tier: **high**`, **four lenses** (`review-risk`, `review-resilience`, `review-readability`,
+`review-reliability`), 10 files, `original_changed_lines: 742`, `correction_budget: 200`,
+`risk_reasons: [{"code": "process_boundary", "signal": "shell_process", "path": "Makefile"}]` — the
+provider reads the `Makefile` as code that starts other processes, which is precisely what the guarded
+`bump` target is. Four reviewers were prepared and submitted over `pi_host_relay`, and the
+acknowledgement burned the authority (`gentle-ai.review-acknowledged/v1`).
+
+It ran on the committed range `4931f10..55c1c08`, once the tree was clean and stable, under this
+worktree's review flow. This section was written afterwards, so it was **not** part of the reviewed
+candidate.
+
+**Nine advisories, none opening a correction.** Three are `WARNING` and six `SUGGESTION`:
+
+| Finding | Lens | Location | Severity |
+|---|---|---|---|
+| `R2-001` | readability | `AGENTS.md:46` | WARNING |
+| `R2-002` | readability | `CONTRIBUTING.md:137-178` | SUGGESTION |
+| `R2-003` | readability | `Makefile:55-58` | SUGGESTION |
+| `R3-cz-not-installed` | reliability | `Makefile:51-58` | WARNING |
+| `R3-grep-substring` | reliability | `Makefile:54-57` | SUGGESTION |
+| `R3-tag-baseline-remote` | reliability | `Makefile:52-53` | SUGGESTION |
+| `R4-bump-not-idempotent-retry` | resilience | `Makefile:52` | SUGGESTION |
+| `R4-partial-bump-no-recovery` | resilience | `Makefile:51-57` | WARNING |
+| `R4-tag-grep-substring` | resilience | `Makefile:54-56` | SUGGESTION |
+
+**Eight of the nine land in the `Makefile`** — the same file that forced the tier to `high` and required
+all four lenses. The risk lens returned 820 bytes and **no findings at all**; the populated ones were
+reliability and resilience. The coincidence is worth recording: the tier driver and the finding cluster
+are the same artifact, which is the classification doing its job rather than handing out lenses at
+random.
+
+Two advisories — `R3-grep-substring` and `R4-tag-grep-substring`, arriving independently from two lenses
+— point at the same thing: the guard's version check is a **substring** grep, so a tag string that
+appears inside a longer one could satisfy it. That is the same class as this record's own fact #1, where
+commitizen matches the tag string literally and skips a file that lacks it, so the guard's precision
+deserves the scrutiny the tooling got. The closure envelope carries ids, lenses, locations and
+severities only, so this record does not paraphrase the finding text.
+
+Deliberately **not** fixed here: the review's own closure says advisories are separate later work and
+never a reason to re-run review on this candidate, and editing the reviewed tree would mean delivering
+something other than what was reviewed.
+
 ## Follow-ups (not part of this change)
 
-1. **Native review for these commits has not run.** RDD is on in this clone, so this candidate
-   is reviewable, but the review flow belongs to the other session in this worktree. Whoever
-   opens the lineage should do it once, on a stable tree.
+1. ~~**Native review for these commits has not run.**~~ **Done.** It ran on 2026-09-21 under this
+   worktree's review flow, once the tree was clean and stable, and closed approved —
+   `review-85d12db7ba7103e8`, tier `high`, four lenses. Its nine advisories are the outstanding work,
+   not a correction; they are listed under "Native review" and eight of the nine are in the
+   `Makefile`.
 2. **Nothing is pushed.** `main` is ahead of `origin/main` by the commits in the Evidence
    log above, and carries the local tag `v0.4.0`.
 3. `CONTRIBUTING.md` lists `feat`, `fix`, `refactor`, `style`, `docs`, `test`, `perf`, `chore`
