@@ -48,10 +48,12 @@ jobs:
             # reported success, which is how the 2026-09-20 outage survived a
             # day. Every check below is a plain command, and `set -e` at the
             # top of this script aborts on the first non-zero status. That
-            # status reaches the job because drone-ssh returns the remote exit
-            # code as its own; the action's `script_stop` input no longer
-            # exists at v1 (removed in v1.2.0) and its README says to use
-            # `set -e` instead.
+            # status reaches the job because drone-ssh exits non-zero when
+            # the remote script does -- it reports through log.Fatal, so a
+            # remote `exit 3` arrives here as 1. Non-zero propagation is all
+            # this gate needs. The action's `script_stop` input was declared
+            # through v1.2.0 and is gone from v1.2.1 on; the v1 README says
+            # to add `set -e` at the top of the script instead.
             #
             # Readiness means the database answers AND `alembic_version`
             # equals the code's head, so this gate is strict on purpose. The
