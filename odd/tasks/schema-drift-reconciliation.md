@@ -247,9 +247,56 @@ The first blocker is **`0021`**, and `0022` fails on its own as well. `0021:59` 
 `_backfill_existing_custom_providers()`, and at `:81` that function opens `Session(op.get_bind())` — an ORM
 Session whose bind, in offline mode, is a `MockConnection` with no `close()`. The failure mode that
 produced the wrong localisation is worth keeping: the claim came from `base:head`, and **a range that
-contains the culprit is indistinguishable from the culprit**. The tell was available and missed —
-`base:0022` printed 374 lines, the same length as `base:0021`, so it had never advanced past it.
+contains the culprit is indistinguishable from the culprit**. The tell was available and missed, and the
+paragraph above records it.
 
 Two consequences for **Fase 1**: a hand-applied revision means an online `alembic upgrade`, never a SQL
 file; and `0024`'s guard is the model to copy, because it fails loudly, names the missing variable and says
 re-running is safe, where `0021` and `0022` fail with an opaque `AttributeError`.
+
+### Native review
+
+Native review `review-d891068373279e1e`, target
+`sha256:6a1f7d173b863c0cb5312bf31c66247cd3e1a8c6f9e5d8bdbe42c8ff786edf75`: **approved**, `risk_tier: medium`,
+one lens (`review-reliability`), 9 files, `original_changed_lines: 885`, `correction_budget: 200`,
+`risk_reasons: [{"code": "executable_change", "path":
+"backend/src/storico/infrastructure/database/alembic/versions/0025_convert_extractions_status_to_enum.py"}]`.
+
+**It took three attempts, and the failure was flaky rather than deterministic.** The first two died at the
+transport stage — `pi-host-relay-transport-failure`, stage `pi`, ~250 s each, reason *"Reviewer completion
+failed for review-reliability: Expected property name or '}' in JSON at position 1"* — with
+`mutation_performed: false`, so nothing was admitted and no authority was created. The prescribed
+continuation is a **fresh STATUS and its reoffered binding**, never a replay of the previous one, and the
+third attempt closed approved. Recorded because two identical failures invited the conclusion
+"deterministic", and the third refuted it — an inference from n=2, which is the mistake this record is
+about.
+
+**Four advisories, none opening a correction:**
+
+| Finding | Lens | Location | Severity |
+|---|---|---|---|
+| `R3-docstring-offline-render-localisation` | reliability | `0025:31-36` | WARNING |
+| `R3-guard-raise-path-integration-unexercised` | reliability | `test_migration_chain.py:415-440` | SUGGESTION |
+| `R3-order-agnostic-claim-unmeasured` | reliability | `0025:18-24` | SUGGESTION |
+| `R3-tripwire-vacuous-today` | reliability | `test_migration_chain.py:415-440` | SUGGESTION |
+
+**The `WARNING` is a false claim that this record had already corrected, and the correction never reached
+the code.** `0025`'s docstring says offline rendering *"stops at 0022"* — the localisation this record's own
+brief stated and that the record later corrected to `0021`. The reviewer flagged precisely that location. So
+the same wrong claim is now **right in the record and wrong in the revision an operator would read before
+running it against production**.
+
+That is the *"fix by class, not by instance"* failure the previous batch recorded: the correction was
+applied to the artifact in front of the parent and not to every place the claim had already reached. Worth
+keeping for exactly that reason — the record was the instance, the revision docstring was the class, and the
+class was missed.
+
+It is a **follow-up and not fixed here**, because the review's own closure says advisories are separate
+later work and editing the reviewed tree would mean delivering something other than what was reviewed. The
+fix is small and specific: name `0021` as the first blocker, and name the mechanism — an ORM
+`Session(op.get_bind())`, not `op.get_bind()` directly.
+
+The other three are the limitations this record already states rather than new defects: the guard's raise
+path is exercised by unit tests but not through the integration path; the order-agnostic claim is argued
+from code-reading and cannot be measured without two production-shaped databases; and the tripwire is
+vacuous today, which the writing agent said itself when it added it.
