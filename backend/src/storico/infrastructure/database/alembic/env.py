@@ -19,9 +19,24 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override sqlalchemy.url with the value from our application settings.
-# Normalize for asyncpg (sslmode -> ssl, strip psycopg2-only params).
-config.set_main_option("sqlalchemy.url", _normalize_db_url(Settings.load().database_url))
+# An explicitly supplied URL wins; the application settings are the fallback.
+#
+# The supplied URL arrives through ``config.attributes``, Alembic's own channel for passing values
+# from a caller into this file -- not through the ``sqlalchemy.url`` option. That is deliberate:
+# ``alembic.ini`` declares ``sqlalchemy.url = driver://user:pass@localhost/dbname`` as a **truthy**
+# placeholder (its own comment explains why it is kept), so ``config.get_main_option(
+# "sqlalchemy.url")`` is never empty and an emptiness check would silently discard the override.
+# The ini placeholder is left exactly as it is, for the Alembic commands that parse the config
+# without ever reaching this file.
+#
+# A supplied URL is used verbatim. It is the caller's contract, and ``_normalize_db_url`` rewrites
+# any scheme to ``postgresql+asyncpg``, which would mangle a URL whose caller never asked for that.
+_supplied_url = config.attributes.get("sqlalchemy_url")
+if _supplied_url:
+    config.set_main_option("sqlalchemy.url", _supplied_url)
+else:
+    # Normalize for asyncpg (sslmode -> ssl, strip psycopg2-only params).
+    config.set_main_option("sqlalchemy.url", _normalize_db_url(Settings.load().database_url))
 
 # Target metadata for autogenerate support.
 target_metadata = Base.metadata
