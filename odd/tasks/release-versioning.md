@@ -177,6 +177,47 @@ repositories, asserting the extracted recipe before trusting any result:
 
 The remaining seven advisories are untouched and stay the owner's to disposition.
 
+## Native review of the guard fix
+
+Native review `review-5809e0d918afbd67`, target
+`sha256:b4afc99eb6e0b9429508a4ce7b28cffd4358e1489bbcf91dc8e5e57e767895e0`: `state: approved`,
+`risk_tier: high`, **four lenses** (`review-risk`, `review-resilience`, `review-readability`,
+`review-reliability`), 2 files, 46 lines, `correction_budget: 23`, and the same tier driver as the
+first round — `process_boundary` on the `Makefile`. Four reviewers were prepared and submitted, and
+the acknowledgement burned the authority (`gentle-ai.review-acknowledged/v1`).
+
+It ran on the committed range `fa56bd6..a1d549b`, whose tree is `a1d549b` — not the tip of `main`,
+which kept moving afterwards. What the harness freezes is the **workspace view**, not the commit, so a
+later tip does not invalidate the review. This section was written afterwards and was **not** part of
+the reviewed candidate.
+
+**Six advisories, none opening a correction.** One is `WARNING` and five `SUGGESTION`, and all six
+land in the `Makefile`, inside the six lines the fix touched:
+
+| Finding | Lens | Location | Severity |
+|---|---|---|---|
+| `R2-inline-recipe-complexity` | readability | `Makefile:55-61` | SUGGESTION |
+| `R2-sed-json-anchor` | readability | `Makefile:56-58` | SUGGESTION |
+| `R3-json-field-drift` | reliability | `Makefile:56-59` | WARNING |
+| `R3-no-tests` | reliability | `Makefile:55-60` | SUGGESTION |
+| `R3-pyproject-first-match` | reliability | `Makefile:58` | SUGGESTION |
+| `R4-empty-extraction-message` | resilience | `Makefile:56-60` | SUGGESTION |
+
+**`R3-pyproject-first-match` is the residual limitation this record already declared**, found
+independently by a reviewer. Announcing your own blind spot turns a future surprise into an
+independent confirmation, which is cheaper than being told.
+
+**The cost asymmetry, now measured twice.** The first round was 742 lines and came out tier `high`
+with four lenses and nine advisories. This one was **46 lines and still tier `high`, four lenses, six
+advisories**, because `process_boundary` keys on the file extension rather than on the diff. Any edit
+to that `Makefile`, however small, therefore costs a full review round — which is why the disposition
+below is all-or-nothing rather than proportional.
+
+**Disposition: the six stay open, deliberately.** The owner chose not to open a fix round, so these
+are follow-ups and not oversights. The reasoning is the asymmetry above: a round costs the same
+whether it touches one line or forty-six, so the real choice was between fixing everything and fixing
+nothing, and the review had closed approved with no correction opened.
+
 ## Follow-ups (not part of this change)
 
 1. ~~**Native review for these commits has not run.**~~ **Done.** It ran on 2026-09-21 under this
@@ -184,8 +225,20 @@ The remaining seven advisories are untouched and stay the owner's to disposition
    `review-85d12db7ba7103e8`, tier `high`, four lenses. Its nine advisories were not a correction;
    they are listed under "Native review" and eight of the nine are in the `Makefile`. Two of them,
    the substring check, are fixed in "Post-review fix"; seven remain.
-2. **Nothing is pushed.** `main` is ahead of `origin/main` by the commits in the Evidence
-   log above, and carries the local tag `v0.4.0`.
+2. **Nothing is pushed, and the tag least of all.** `main` is on `origin/main` as of `5c295d4`, but
+   `git ls-remote --tags origin` finds no `v0.4.0`: the tag exists only on this machine. Because
+   `version_provider = "scm"` makes the tag the version source of truth, a clean clone has `v0.3.2` as
+   its highest tag and would compute its next bump from that baseline. The guard blocks it
+   fail-closed, which is the first time that design met a case it did not invent. Pushing a tag is a
+   release decision and belongs to the owner.
 3. `CONTRIBUTING.md` lists `feat`, `fix`, `refactor`, `style`, `docs`, `test`, `perf`, `chore`
    as the commit types while the history also uses `ci` and `build`, both of which the mapping
    in this change already names. The list is cosmetic drift, not a behaviour gap.
+4. **The six advisories of the guard-fix review stay open, by decision** — bringing the open advisory
+   count to thirteen. They are listed under "Native review of the guard fix" with their locations and
+   severities. Two would matter first if this is revisited: `R3-pyproject-first-match`, the only false
+   pass left in the guard (a nested `version` key whose value equals the tag while the root differs),
+   and `R4-empty-extraction-message`, where an empty extraction reads as `carries version ''`. Both
+   can be closed without a parser: block on **ambiguity** when more than one line matches the anchored
+   pattern, and say so when there is nothing to read. That keeps the design rationale that the guard
+   models the mechanism rather than the file's meaning.
