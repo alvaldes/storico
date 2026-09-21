@@ -134,6 +134,41 @@ Fixes #42.
 - No AI-generated filler ("This commit improves...", "As an AI...").
 - Do not add `Co-Authored-By` lines or list yourself as a co-author.
 
+### The commit type decides the version
+
+The version comes from the commit history; nobody edits the version fields by hand.
+`make bump` runs [commitizen](https://commitizen-tools.github.io/commitizen/)
+(`cz bump`), which reads the Conventional Commits since the last tag, computes the
+next version, writes it into `package.json`, `frontend/package.json` and
+`backend/pyproject.toml`, updates `CHANGELOG.md`, commits, and creates the tag.
+
+The type you pick is therefore what decides the release:
+
+| Commit | Bump | Example |
+| --- | --- | --- |
+| `feat` | MINOR (`0.3.2` → `0.4.0`) | a new capability, backwards compatible |
+| `fix`, `refactor`, `perf` | PATCH (`0.3.2` → `0.3.3`) | a bug fix, a cleanup, or a speedup |
+| `docs`, `test`, `chore`, `style`, `ci`, `build` | no bump | they ship with the next version, they do not create one |
+| a type followed by `!`, or a `BREAKING CHANGE:` footer | MAJOR (`0.3.2` → `1.0.0`) | an incompatible change |
+
+The scope never affects the bump: `feat(api): ...` and `feat: ...` release the same
+thing.
+
+Careful with `!` while the project is on `0.x`: by default commitizen takes it all
+the way to `1.0.0`. Setting `major_version_zero = true` in `.cz.toml` keeps 0.x
+semantics, where a breaking change releases `0.4.0` instead.
+
+The three version fields are mirrors of the git tag, and the tag is the source of
+truth. Never edit them by hand and never create the tag yourself. Across `v0.3.0`,
+`v0.3.1` and `v0.3.2`, `backend/pyproject.toml` said `0.3.0` while
+`frontend/package.json` said `0.2.0`, and there was no manifest at the repository
+root: the two files contradicted each other and neither matched the tag. `cz bump`
+is what reconciles the files to the tag.
+
+Run `make bump` from the repository root with a clean working tree. `cz bump`
+commits the files it writes together with every tracked change in the worktree, so
+`make bump` refuses to run while the tree is dirty.
+
 ## Pull requests
 
 - All submissions are reviewed; a maintainer merges after approval.

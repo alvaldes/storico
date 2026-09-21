@@ -9,6 +9,7 @@
 
 ## 📋 Índice
 
+0. [Convenciones de trabajo (humanos y agentes)](#0-convenciones-de-trabajo-humanos-y-agentes)
 1. [Contexto de la tesis](#1-contexto-de-la-tesis)
 2. [Identidad de Storico](#2-identidad-de-storico)
 3. [Problema que resuelve](#3-problema-que-resuelve)
@@ -24,6 +25,50 @@
 13. [Preguntas abiertas](#13-preguntas-abiertas)
 14. [Glosario](#14-glosario)
 15. [Referencias](#15-referencias)
+
+---
+
+## 0. Convenciones de trabajo (humanos y agentes)
+
+### Versionado: los commits son la fuente de la versión
+
+La versión no se edita a mano. `make bump` ejecuta
+[commitizen](https://commitizen-tools.github.io/commitizen/) (`cz bump`), que lee
+los Conventional Commits desde el último tag, calcula la versión siguiente, la
+escribe en `package.json`, `frontend/package.json` y `backend/pyproject.toml`,
+actualiza `CHANGELOG.md`, commitea y crea el tag.
+
+El tipo de commit es lo que decide el release:
+
+| Commit | Sube |
+| --- | --- |
+| `feat` | MINOR (`0.3.2` a `0.4.0`) |
+| `fix`, `refactor`, `perf` | PATCH (`0.3.2` a `0.3.3`) |
+| `docs`, `test`, `chore`, `style`, `ci`, `build` | nada, no generan versión |
+| tipo con `!` o footer `BREAKING CHANGE:` | MAJOR (`0.3.2` a `1.0.0`) |
+
+El `scope` no afecta el bump: `feat(api): ...` y `feat: ...` sueltan lo mismo.
+
+### Reglas duras para agentes
+
+1. **Nunca edites a mano** el campo `version` de `package.json`,
+   `frontend/package.json` ni `backend/pyproject.toml`. Los tres son espejos del
+   tag de git, y el tag es la fuente de verdad.
+2. **Nunca crees ni muevas el tag vos mismo.** `make bump` es la única vía. En
+   `v0.3.0`, `v0.3.1` y `v0.3.2`, `backend/pyproject.toml` decía `0.3.0` y
+   `frontend/package.json` decía `0.2.0`, sin ningún manifest en la raíz: los dos
+   archivos se contradecían entre sí y ninguno coincidía con el tag.
+3. **Escribí commits convencionales** (`type(scope): summary`), en imperativo, sin
+   emoji. El tipo es el que decide la versión.
+4. **Un `docs:`, `chore:` o `test:` no crea versión**: se publica con la próxima.
+   Si querés que tu cambio salga solo, el tipo tiene que ser `feat` o `fix`.
+5. **Corré `make bump` solo con el árbol limpio.** `cz bump` commitea los archivos
+   que escribe junto con todo cambio trackeado del worktree, así que `make bump` se
+   niega a correr si hay algo sin commitear. Nunca lo corras mientras otra sesión
+   tenga trabajo en vuelo en este repo: commitea y taggea, no es una lectura.
+
+Las convenciones de commit completas están en `CONTRIBUTING.md`. Cuando este
+archivo y `CONTRIBUTING.md` se contradigan, gana `CONTRIBUTING.md`.
 
 ---
 

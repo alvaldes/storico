@@ -154,6 +154,29 @@ Example of splitting commits:
 
 - `--no-verify`: Skip running the pre-commit checks (lint, build, generate:docs)
 
+## Versioning
+
+This repository derives its version from the commit history. `make bump` runs
+commitizen (`cz bump`), which reads the Conventional Commits since the last tag and
+writes the next version into `package.json`, `frontend/package.json` and
+`backend/pyproject.toml`, updates `CHANGELOG.md`, commits, and creates the tag.
+
+So pick the type deliberately:
+
+- `feat` releases a MINOR (`0.3.2` to `0.4.0`).
+- `fix`, `refactor`, `perf` release a PATCH (`0.3.2` to `0.3.3`).
+- `docs`, `test`, `chore`, `style`, `ci`, `build` release nothing; they ship with
+  the next version.
+- A `!` after the type, or a `BREAKING CHANGE:` footer, releases a MAJOR
+  (`0.3.2` to `1.0.0`). Avoid it unless the change is genuinely incompatible.
+
+Never hand-edit a `version` field and never create the tag yourself. The git tag is
+the source of truth and `cz bump` is what reconciles the files to it.
+
+`cz bump` commits every tracked change in the worktree along with the files it
+writes, so run `make bump` on a clean tree, and never while you have unreviewed work
+in progress.
+
 ## Important Notes
 
 - By default, pre-commit checks (`pnpm lint`, `pnpm build`, `pnpm generate:docs`) will run to ensure code quality
