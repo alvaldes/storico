@@ -117,7 +117,7 @@ from the per-workspace prompt config (`extraction_task.py:349` →
 
 ## Tasks
 
-- [ ] WU1 — `prod.todo.md`: C1, C2 closed with evidence; Trello detail corrected.
+- [x] WU1 — `prod.todo.md`: C1, C2 closed with evidence; Trello detail corrected.
 - [ ] WU2 — `AGENTS.md`: C3 and C6 corrected.
 - [ ] WU3 — `docs/deployment.md`: production section rewritten to the architecture that runs.
 - [ ] Gates for PR 1: no doc gate exists in CI (it runs `ruff`, `pytest`, `tsc`, `vitest` and no
@@ -135,3 +135,5 @@ from the per-workspace prompt config (`extraction_task.py:349` →
 
 To be filled from the gate output at commit time; the measurements for C1–C6 are already in the table
 above, each with the command or file that produced it.
+
+- **WU1 — `prod.todo.md`** (commit `docs: close two production checklist items that were already satisfied`). C1 🟡→✅: CI run `35546955633` executed `tests/test_integration/test_projects_integration.py::test_list_projects_with_counts_latency_under_500ms` and the job ended `703 passed`; `backend/pytest.ini` registers the `integration` marker without deselecting it, `.github/workflows/ci.yml` runs a bare `pytest -q` with no marker filter, `testcontainers>=4.9.0` is a dev dependency, and GitHub runners carry the Docker daemon that `_docker_reachable()` probes. C2 🔲→✅: the in-container probe printed booleans only and never an origin value — `ORIGENES_DECLARADOS: 1`, `USA_EL_DEFAULT_LOCALHOST: False`, `CONTIENE_LOCALHOST_O_127: False`, `CONTIENE_VERCEL_APP: True`, `CONTIENE_HTTP_SIN_TLS_NO_LOCAL: False`. The Trello item kept its 🔲 and its detail now states the connector does not exist (`backend/src/storico/infrastructure/` holds `cache, crypto, database, llm, tasks, vector`) and that the selectable option is retired in WU4. No markdown gate exists in CI, so both texts were verified by reading them against the measurements above.
