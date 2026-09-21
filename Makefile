@@ -1,4 +1,4 @@
-.PHONY: help build up down logs restart ps test-backend test-frontend shell-api shell-backend shell-frontend clean setup
+.PHONY: help build up down logs restart ps test-backend test-frontend shell-api shell-backend shell-frontend clean setup bump
 
 .DEFAULT_GOAL := help
 
@@ -47,3 +47,7 @@ setup: ## Install all dependencies and build images
 	cd backend && python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 	cd frontend && pnpm install
 	docker compose build
+
+bump: ## Bump version from Conventional Commits and tag the release
+	@test -z "$$(git status --porcelain --untracked-files=no)" || { echo "error: there are uncommitted tracked changes:"; git status --short --untracked-files=no; echo "       cz bump sweeps staged AND unstaged tracked changes into the version commit."; echo "       Commit or stash them first, then re-run make bump."; exit 1; }
+	cz bump
