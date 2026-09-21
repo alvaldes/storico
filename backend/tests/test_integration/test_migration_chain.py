@@ -46,6 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
 import storico.infrastructure.database as _database_package
+from storico.config.settings import _reset_settings_cache
 
 
 def _docker_reachable() -> bool:
@@ -161,13 +162,63 @@ def alembic_config(pg_url: str) -> Config:
     return _alembic_config(pg_url)
 
 
+@pytest.fixture(scope="module")
+def throwaway_encryption_key() -> Iterator[None]:
+    """Put a throwaway master key in the environment so the chain can reach head.
+
+    Revision ``0024`` encrypts the credentials already stored in
+    ``workspace_llm_configs.api_key``, and it refuses to run at all when the master key is absent:
+    a migration that reports success while leaving credentials in plaintext is the exact failure
+    that revision exists to remove. The refusal is correct behaviour, and it makes the master key
+    an operational requirement of **any** upgrade to head — a fresh database or a restore just as
+    much as production, where the container carries the key in its own ``.env`` (a file outside
+    version control, so a deployment that omits it fails here rather than in silence).
+
+    This is why the key is supplied rather than asserted away: the container database is empty, so
+    nothing is encrypted and the key's value is irrelevant. It is generated per run instead of
+    hardcoded so this module can never be read as saying a real key belongs in the repository.
+
+    Ordering is load-bearing, and the reason is the settings cache: ``Settings.load()`` delegates to
+    ``get_settings``, which is wrapped in ``lru_cache(maxsize=1)`` and is therefore process-wide and
+    possibly already primed during collection, before this fixture ran. The cache is cleared after
+    the environment changes; without that, ``0024`` would read a ``Settings`` built before the key
+    existed, and the failure would look like the migration's own guard instead of this fixture's
+    ordering.
+
+    ``pytest.MonkeyPatch()`` is constructed by hand because the ``monkeypatch`` fixture is
+    function-scoped and cannot be injected into a module-scoped fixture. Both the patch and the
+    cache are undone on teardown, so neither the environment variable nor a ``Settings`` built from
+    this key outlives the module.
+    """
+    # Imported lazily, like testcontainers above, so importing this module stays cheap.
+    from cryptography.fernet import Fernet
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setenv("STORICO_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    # Drop any instance built before the key existed, or 0024 never sees it.
+    _reset_settings_cache()
+    try:
+        yield
+    finally:
+        monkeypatch.undo()
+        # Restore the cache too: the instance built for the chain above holds the throwaway key.
+        _reset_settings_cache()
+
+
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
-async def migrated_engine(pg_url: str, alembic_config: Config) -> AsyncGenerator[AsyncEngine, None]:
+async def migrated_engine(
+    pg_url: str,
+    alembic_config: Config,
+    throwaway_encryption_key: None,
+) -> AsyncGenerator[AsyncEngine, None]:
     """Run the whole chain once against the empty container database, then yield an engine on it.
 
     ``command.upgrade`` is invoked through ``asyncio.to_thread`` because ``env.py`` ends in
     ``asyncio.run(run_async_migrations())``: calling Alembic from inside this fixture's running
     event loop raises ``asyncio.run() cannot be called from a running event loop``.
+
+    ``throwaway_encryption_key`` is a dependency rather than an unused parameter: it must be set up
+    before the upgrade runs, and naming it here is what orders the two.
     """
     await asyncio.to_thread(command.upgrade, alembic_config, "head")
 
