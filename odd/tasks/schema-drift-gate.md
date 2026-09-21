@@ -315,6 +315,17 @@ failure heals instead of pinning the instance out of rotation. It is **not** app
 editing the tree after approval would deliver something other than what was approved. It is the first
 follow-up.
 
+**Both warnings are now closed**, by `bf4622f` on `fix/expected-head-cache-self-heal`. Only a
+successful read is stored, so `None` in the single module global means exactly "not known yet" and the
+next caller retries — and the separate `_expected_head_cached` flag that latching a failure required
+disappears with it, so the state mechanism is smaller than it was. The parent reproduced the red by
+reverting only the source and keeping the test: it fails with `assert None == '0024'`. Its own review
+(`review-ff992b5ed68d8e0a`, `medium`, one lens) approved it and returned two advisories, one of which —
+`R3-retry-cost-unbounded` — disputes precisely the trade-off the new docstring records as deliberate:
+retrying without a bound while the read keeps failing. That is recorded rather than re-litigated here;
+the reasoning for accepting it (readiness is already 503 in that state, so nothing should be routing)
+lives next to the code.
+
 The other eleven, named so a follow-up can open them instead of re-deriving them:
 `R1-info-readiness-leak`, `R2-duplicated-alembic-table-decl`, `R2-inconsistent-version-failure-mode`,
 `R2-timeout-name-conflates-attempts-and-seconds`, `R3-drift-direction-blind`, `R3-gate-after-swap`,
