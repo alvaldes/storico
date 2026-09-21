@@ -225,10 +225,23 @@ chain fails at `0022`. Measured independently afterwards:
 
 | Range | Result | Named in the traceback |
 |---|---|---|
-| `base:0020` | exit 0, 360 lines | — |
-| `base:0021` | exit 1, 373 lines | `versions/0021_add_custom_providers.py` |
-| `0020:0021` | exit 1, 16 lines | `0021` |
-| `0021:0022` | exit 1, 3 lines | `0022` |
+| `base:0020` | exit 0, 362 lines | — |
+| `base:0021` | exit 1, 375 lines | `versions/0021_add_custom_providers.py` |
+| `0020:0021` | exit 1, 18 lines | `0021` |
+| `0021:0022` | exit 1, 5 lines | `0022` |
+
+**Those counts took three attempts, and the correction belongs in the record.** The first measurement
+captured the output through `$(...)`, which strips a trailing newline; a second, made by the other session
+in this worktree through a different capture path, landed one below a third that agreed with neither pair.
+The figures above come from writing the output **to a file** and counting it with **three independent
+instruments** (`wc -l`, `grep -c ''`, Python's `readlines`), plus the last byte, which is `0a` — so three
+counters agree and the file really does end in a newline. The counts are decorative and **the localisation
+is the claim that matters**; but a number nobody can reproduce is a claim nobody can check, which is the
+subject of this whole record.
+
+**The same discipline the counts needed is the one the bug needed.** `base:0022` printed the **same number
+of lines** as `base:0021`, so the render had never advanced past it — and the difference between "the
+range fails" and "the range fails *at* its last revision" was invisible until a narrower range was run.
 
 The first blocker is **`0021`**, and `0022` fails on its own as well. `0021:59` calls
 `_backfill_existing_custom_providers()`, and at `:81` that function opens `Session(op.get_bind())` — an ORM
