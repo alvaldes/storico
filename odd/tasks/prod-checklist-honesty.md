@@ -13,7 +13,8 @@
 >   36 files). No blocking finding; see "Independent verification" below. **Native review approved and
 >   burned** — `review-bde8183340bdb47b`, `risk_tier: medium`, one lens (`review-reliability`),
 >   `changed_files: 18`, `original_changed_lines: 472`, `correction_budget: 200`, two non-blocking
->   advisories. **Not landed**: merging and pushing are the operator's decision, not this record's.
+>   advisories. **Landed**: `git merge --ff-only` `fc59dc5` → `61a132b`, pushed, CI run `35563349443`
+>   green and backend deploy run `35563349521` green; production probed healthy afterwards.
 > - **PR 1 (docs) — DONE.** Branch `docs/honest-prod-claims`, four commits (`f147029`, `6f480c8`,
 >   `d523492`, `b196589`), fast-forwarded into `main` (`fb48732` → `b196589`), branch deleted, pushed,
 >   CI green (run `35554779323`). The backend deploy did not trigger, correctly: its `paths` are
@@ -361,11 +362,27 @@ paraphrase their content — it names them so the follow-up can open them. As wi
 bundled in: editing the reviewed tree after approval would mean delivering something other than what
 was reviewed.
 
-**This section was written after the approval, in a commit that the approved candidate did not
-contain.** That is deliberate and is the same shape as PR 1's handoff commit: the record is
-non-executable documentation, and freezing the record at the moment of approval would leave the batch
-with no record of its own review. Anyone treating the branch tip as "the reviewed artifact" should
-read the target identity above instead — it names what was actually reviewed.
+**Landed.** `git merge --ff-only` `fc59dc5` → `61a132b` on `main`, pushed (`fc59dc5..61a132b`), branch
+deleted with `-d` — which fails unless the branch is merged, so the deletion is itself the proof.
+`HEAD == refs/remotes/origin/main == 61a132b`, ahead/behind `0/0`, one branch left, working tree
+clean.
+
+The push triggered **both** workflows, because the candidate touches `backend/**` and
+`deploy-backend.yml` watches that path: CI run `35563349443` **green**, and — the one that mattered —
+the backend deploy run `35563349521` **green**, which resets the VM worktree, rebuilds the image and
+restarts the container. Production was then probed read-only: `GET /api/v1/health` answers `200` with
+`database.status: ok`, and `GET /api/v1/health/services` answers `200` `degraded` with Ollama and
+Qdrant unreachable — the documented pre-existing state (Qdrant contracted but never configured, no
+Ollama in the container), not something this deploy caused. This candidate carries no Alembic
+revision, so the deploy's missing-migration step — the open root cause of the 2026-09-20 incident —
+was not on this path.
+
+**This section was written after the approval, in commits that the approved candidate did not
+contain** (the review record, a counting fix, the Dockerfile note, and the landing record itself).
+That is deliberate and is the same shape as PR 1's handoff commit: the record is non-executable
+documentation, and freezing the record at the moment of approval would leave the batch with no record
+of its own review or landing. Anyone treating the branch tip as "the reviewed artifact" should read the
+target identity above instead — it names what was actually reviewed.
 
 ## Resuming in a fresh session
 
