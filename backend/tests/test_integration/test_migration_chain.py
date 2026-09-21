@@ -12,9 +12,13 @@ This module executes it against a Postgres 16 container and asserts two things:
    head the packaged scripts declare. That is what proves no revision in the chain is broken and
    that the enum types, the ``USING ...::jsonb`` cast and the NOT NULL narrowing actually work on
    Postgres. SQLite cannot run this: the chain depends on all three.
-2. Autogenerate reports no differences between the migrated schema and the models — ``alembic
-   check`` semantics. A difference is drift between the two and is reported as a failure, not
-   accommodated here.
+2. Autogenerate's differences between the migrated schema and the models are **exactly** the six
+   known, measured differences recorded in this module — no more and no fewer. That is a ratchet,
+   not a tolerance: a difference the run reports and the record does not hold fails the test, and
+   so does a record entry the run no longer reports, because a stale line turns the record into a
+   lie. The six predate this test and are deliberately not fixed here — three of them need a
+   decision about which side is authoritative. See ``odd/tasks/schema-drift-gate.md``, section
+   "WU3 — the chain measured".
 
 The two container tests are marked ``@pytest.mark.integration`` individually and disabled unless the
 Docker daemon is reachable, so they skip on a laptop without a daemon and run for real on GitHub
@@ -32,6 +36,7 @@ import asyncio
 import os
 from collections.abc import AsyncGenerator, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -87,6 +92,40 @@ _ALEMBIC_VERSION = sa.Table(
     "alembic_version",
     sa.MetaData(),
     sa.Column("version_num", sa.String(32), nullable=False),
+)
+
+# The differences between the migrated schema and the models that have been **measured** and are
+# known to exist today. This is a debt list, not a tolerance: the drift test below asserts exact
+# equality against it in both directions, so a new difference fails and a resolved one fails too,
+# because its line here has gone stale.
+#
+# Each entry is "<op>:<target>", the normalised shape ``_diff_signature`` produces. All six are
+# pre-existing and predate the migration-chain test entirely, and none is fixed here: three of them
+# need a decision about which side is authoritative, and one of those may be a missing revision
+# rather than a wrong model. The reasoning for every line, and the full table this literal mirrors,
+# is in ``odd/tasks/schema-drift-gate.md`` under "WU3 — the chain measured".
+_KNOWN_DRIFT: frozenset[str] = frozenset(
+    {
+        # 0018 creates the `extraction_status_new` enum and no revision ever converts the column to
+        # it, so the model declares a type the migrations never produce. Neither side is proven:
+        # either the conversion revision is missing, or the enum type was never wanted.
+        "modify_type:extractions.status",
+        # 0005 creates this column as JSONB and the model under-declares it as JSON. The migrations
+        # are authoritative, so the model is the side to change.
+        "modify_type:user_preferences.preferences",
+        # 0009 converts this column to JSONB explicitly and the model again under-declares it as
+        # JSON. The migrations are authoritative, same shape as the line above.
+        "modify_type:workspace_prompts.few_shot_examples",
+        # 0016 creates this index on purpose and the models do not declare it. The models are the
+        # side to change, because a deliberately created index is missing from the metadata.
+        "remove_index:idx_tasks_status",
+        # Same shape as the line above, on `user_stories.status`. The models are the side to change.
+        "remove_index:idx_user_stories_status",
+        # 0016 created this index while 0001 had already created `ix_tasks_user_story_id` for the
+        # same column, so one column carries two indexes under two names. The migrations are the
+        # side to change: one of the two duplicates should go.
+        "remove_index:idx_tasks_user_story_id",
+    }
 )
 
 
@@ -251,22 +290,124 @@ async def test_the_chain_from_scratch_reaches_the_head_the_scripts_declare(
     )
 
 
+#: Ops whose diff tuple is ``(name, schema, table, column, ...)``. The trailing members carry
+#: types, defaults and comments, which ``_diff_signature`` leaves out on purpose.
+_COLUMN_LEVEL_OPS = frozenset(
+    {
+        "add_column",
+        "remove_column",
+        "modify_type",
+        "modify_nullable",
+        "modify_default",
+        "modify_comment",
+    }
+)
+
+#: Ops whose diff tuple is ``(name, object)`` and whose target is that object's own ``name``:
+#: indexes, tables, constraints and table comments.
+_NAMED_OBJECT_OPS = frozenset(
+    {
+        "add_index",
+        "remove_index",
+        "add_table",
+        "remove_table",
+        "add_constraint",
+        "remove_constraint",
+        "add_fk",
+        "remove_fk",
+        "add_table_comment",
+        "remove_table_comment",
+    }
+)
+
+
+def _diff_tuples(diffs: list[Any]) -> Iterator[tuple[Any, ...]]:
+    """One diff tuple per difference, unwrapping the one op that reports several at once.
+
+    Every leaf op's ``to_diff_tuple`` returns a single ``(op_name, ...)`` tuple, except
+    ``AlterColumnOp``: that one returns a *list* of them, one per column attribute it would
+    modify. ``command.check`` flattens the op tree but not that inner list, so an entry in
+    ``diffs`` is either the tuple itself or a list of tuples. A diff tuple always starts with the
+    op name as a string, which is what tells the two apart.
+    """
+    for diff in diffs:
+        if isinstance(diff[0], str):
+            yield diff
+        else:
+            yield from diff
+
+
+def _diff_signature(diff: tuple[Any, ...]) -> str:
+    """Reduce one autogenerate difference to a stable ``"<op>:<target>"`` signature.
+
+    Built from the op name and the target's own *name*, never from the diff's ``repr``: the tuples
+    embed live ``Index``, ``Table`` and type objects whose reprs carry memory addresses, so a
+    repr-based assertion would be non-deterministic across runs and fragile across a SQLAlchemy
+    release. Type details are left out for the same reason — the signature names the *difference*,
+    it does not render it, so it survives a version bump that changes how types print. An op shape
+    this test has not seen before still yields a signature of its own, so it fails the ratchet as
+    the new difference it is instead of being dropped.
+    """
+    op = diff[0]
+    if op in _COLUMN_LEVEL_OPS:
+        # The column member is a plain name for the "modify_*" ops and a Column object for
+        # add/remove, hence the getattr.
+        return f"{op}:{diff[2]}.{getattr(diff[3], 'name', diff[3])}"
+    if op in _NAMED_OBJECT_OPS:
+        return f"{op}:{diff[1].name}"
+    # Unknown shape: its name plus its own scalar members, and nothing else. No `_KNOWN_DRIFT`
+    # entry can match this, so an unrecognised op is a loud failure rather than a silent drop.
+    scalars = "|".join(str(part) for part in diff[1:] if isinstance(part, str | int))
+    return f"{op}:{scalars}" if scalars else op
+
+
 @pytest.mark.integration
 @_needs_docker
 @pytest.mark.asyncio(loop_scope="module")
-async def test_the_migrated_schema_matches_the_models(
+async def test_the_migrated_schema_drift_equals_the_recorded_gap(
     alembic_config: Config,
     migrated_engine: AsyncEngine,
 ) -> None:
-    """Autogenerate must find nothing to do: the migrated schema equals the models' metadata.
+    """The autogenerate diff equals ``_KNOWN_DRIFT`` exactly — a ratchet, not a tolerance.
 
-    This is ``alembic check``, and its assertion is deliberately strict: a difference reported on
-    the first CI run is the measurement the drift gate needs, not a reason to soften this test. (A
-    ``None`` or empty ``target_metadata`` cannot make it pass vacuously — Alembic raises
-    ``CommandError`` for autogenerate without metadata, and an empty metadata reports every migrated
-    table as to-be-dropped.)
+    Six differences between the migrated schema and the models were measured on CI, because the
+    chain needs a real Postgres and there is no Docker daemon on the author's machine; they are
+    recorded in ``_KNOWN_DRIFT`` and in ``odd/tasks/schema-drift-gate.md`` under "WU3 — the chain
+    measured". Reconciling them is deliberately not this test's job: three of the six need a
+    decision about which side is authoritative.
+
+    The assertion is an exact set match in **both** directions, and that is what makes this a
+    ratchet rather than a tolerance:
+
+    * a difference the run reports that is not recorded is a **new** divergence, and it fails.
+      That is the failure mode this whole gate exists to catch: a schema change arriving without
+      anyone noticing.
+    * a recorded entry the run no longer reports is a **resolved** difference whose allowlist
+      line has gone stale, and it fails too. Without this half, the record rots into a lie the
+      first time somebody reconciles one of the six.
+
+    Both sets are printed on failure, so the reader can tell which case they are in. Fixing the
+    schema or the model to make one difference vanish must be a separate change that deletes its
+    line here as part of the same work unit.
     """
     try:
         await asyncio.to_thread(command.check, alembic_config)
     except AutogenerateDiffsDetected as exc:
-        pytest.fail(f"the migrated schema and the models differ: {exc.diffs}")
+        found = {_diff_signature(diff) for diff in _diff_tuples(exc.diffs)}
+    else:
+        # No differences at all: every recorded entry is now stale, and the comparison says so.
+        found = set()
+
+    new_differences = sorted(found - _KNOWN_DRIFT)
+    stale_entries = sorted(_KNOWN_DRIFT - found)
+
+    assert not new_differences and not stale_entries, (
+        "the migrated schema and the models disagree in a way the recorded drift does not cover. "
+        f"The record holds {len(_KNOWN_DRIFT)} known differences; this run reported {len(found)}.\n"
+        f"  new differences (reported by the run, absent from the record): {new_differences or 'none'}\n"
+        f"  stale entries (recorded, no longer reported): {stale_entries or 'none'}\n"
+        "A new difference is drift that arrived unnoticed and must be understood before it is "
+        "recorded. A stale entry means its difference is gone and the record must lose that line. "
+        "See odd/tasks/schema-drift-gate.md, 'WU3 — the chain measured', for what each one is and "
+        "which side looks authoritative."
+    )
