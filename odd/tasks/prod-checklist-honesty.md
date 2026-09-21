@@ -4,12 +4,13 @@
 > independently verified, and awaiting native review.** This record is the resume point — read it
 > first, then the section "Resuming in a fresh session" at the end.
 > - **PR 2 (code) — COMMITTED AND VERIFIED, NOT LANDED.** Branch
->   `fix/retire-trello-option-and-dead-settings` off `main` @ `fc59dc5`, six commits (`c5683b8` WU4,
->   `79d57dc` + `073a5f8` WU5, `f5f82e0` WU6, `84b0c64` this record, `1af649d` WU7), 18 files. All five
->   gates re-run independently and green: backend `ruff check`, `ruff format --check`, `pytest -q`
->   (705 passed, 1 skipped, 1 pre-existing `RuntimeWarning`); frontend `tsc --noEmit`, `vitest run`
->   (421 passed, 36 files). No blocking finding; see "Independent verification" below. Native review
->   pending.
+>   `fix/retire-trello-option-and-dead-settings` off `main` @ `fc59dc5`. Five work-unit commits —
+>   `c5683b8` (WU4), `79d57dc` + `073a5f8` (WU5), `f5f82e0` (WU6), `1af649d` (WU7) — plus this
+>   record's own commits, which add no code; 18 files. `git log fc59dc5..HEAD` is authoritative for the
+>   tip, since counting this record's commits here would be self-referential. All five gates re-run
+>   independently and green: backend `ruff check`, `ruff format --check`, `pytest -q` (705 passed,
+>   1 skipped, 1 pre-existing `RuntimeWarning`); frontend `tsc --noEmit`, `vitest run` (421 passed,
+>   36 files). No blocking finding; see "Independent verification" below. Native review pending.
 > - **PR 1 (docs) — DONE.** Branch `docs/honest-prod-claims`, four commits (`f147029`, `6f480c8`,
 >   `d523492`, `b196589`), fast-forwarded into `main` (`fb48732` → `b196589`), branch deleted, pushed,
 >   CI green (run `35554779323`). The backend deploy did not trigger, correctly: its `paths` are
