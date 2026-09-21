@@ -13,13 +13,14 @@ This module executes it against a Postgres 16 container and asserts two things:
    that the enum types, the ``USING ...::jsonb`` cast and the NOT NULL narrowing actually work on
    Postgres. SQLite cannot run this: the chain depends on all three.
 2. Autogenerate's differences between the migrated schema and the models are **exactly** the
-   known, measured differences recorded in this module — no more and no fewer. That is a ratchet,
-   not a tolerance: a difference the run reports and the record does not hold fails the test, and
-   so does a record entry the run no longer reports, because a stale line turns the record into a
-   lie. The recorded differences predate this test and are paid off one work unit at a time, each
-   line leaving the literal in the same commit that fixes it *because* of that second direction.
-   See ``odd/tasks/schema-drift-gate.md``, section "WU3 — the chain measured", and
-   ``odd/tasks/schema-drift-reconciliation.md`` for the payoff.
+   recorded ones, and the record is now an **empty** ``frozenset`` — so the assertion is that there
+   are none. The comparison stays two-directional rather than collapsing to a bare equality against
+   ``set()``: it is the same amount of work, the "stale entry" branch is the mechanism that forced
+   every recorded difference out in the same commit that fixed it, and a future reconciliation can
+   add an entry to a literal whose semantics are already proven. The differences this record used to
+   hold were measured on CI (the chain needs a real Postgres) and paid off in
+   ``odd/tasks/schema-drift-reconciliation.md``; the measurement itself is in
+   ``odd/tasks/schema-drift-gate.md``, section "WU3 — the chain measured".
 
 The two container tests are marked ``@pytest.mark.integration`` individually and disabled unless the
 Docker daemon is reachable, so they skip on a laptop without a daemon and run for real on GitHub
@@ -96,26 +97,18 @@ _ALEMBIC_VERSION = sa.Table(
 )
 
 # The differences between the migrated schema and the models that have been **measured** and are
-# still outstanding. This is a debt list, not a tolerance: the drift test below asserts exact
-# equality against it in both directions, so a new difference fails and a resolved one fails too,
-# because its line here has gone stale.
+# still outstanding. It is **empty**, and that is the target state rather than a placeholder: the
+# last two entries were paid off by ``0025_convert_extractions_status_to_enum.py`` and
+# ``0026_drop_duplicate_tasks_user_story_index.py``, each line leaving this literal in the same
+# commit that fixed it.
 #
-# Each entry is "<op>:<target>", the normalised shape ``_diff_signature`` produces. The two that
-# remain are pre-existing and predate the migration-chain test entirely; each is removed here by
-# the work unit that reconciles it. The reasoning for every entry, and the full table this literal
-# mirrors, is in ``odd/tasks/schema-drift-gate.md`` under "WU3 — the chain measured".
-_KNOWN_DRIFT: frozenset[str] = frozenset(
-    {
-        # 0018 creates the `extraction_status_new` enum and no revision ever converts the column to
-        # it, so the model declares a type the migrations never produce. Neither side is proven:
-        # either the conversion revision is missing, or the enum type was never wanted.
-        "modify_type:extractions.status",
-        # 0016 created this index while 0001 had already created `ix_tasks_user_story_id` for the
-        # same column, so one column carries two indexes under two names. The migrations are the
-        # side to change: one of the two duplicates should go.
-        "remove_index:idx_tasks_user_story_id",
-    }
-)
+# It stays a `frozenset` used by the two-directional comparison below instead of collapsing into a
+# bare equality assertion. The two shapes cost the same; keeping this one preserves the branch that
+# fails when a recorded difference is resolved, which is the mechanism that made every entry leave
+# here atomically, and it leaves a proven place to record a difference the next time one is
+# understood and accepted. Each entry is "<op>:<target>", the normalised shape ``_diff_signature``
+# produces.
+_KNOWN_DRIFT: frozenset[str] = frozenset()
 
 
 def _alembic_config(url: str) -> Config:
@@ -359,10 +352,10 @@ async def test_the_migrated_schema_drift_equals_the_recorded_gap(
 ) -> None:
     """The autogenerate diff equals ``_KNOWN_DRIFT`` exactly — a ratchet, not a tolerance.
 
-    The differences between the migrated schema and the models were measured on CI, because the
-    chain needs a real Postgres and there is no Docker daemon on the author's machine; the ones
-    still outstanding are recorded in ``_KNOWN_DRIFT`` and in ``odd/tasks/schema-drift-gate.md``
-    under "WU3 — the chain measured".
+    ``_KNOWN_DRIFT`` is empty, so this asserts that the migrated schema and the models agree with
+    no exceptions. The fixture already proves ``alembic upgrade head`` runs on Postgres; what is
+    left to prove is that it lands on the schema the models describe, and — on the way to CI —
+    that the two revisions which made that true actually execute.
 
     The assertion is an exact set match in **both** directions, and that is what makes this a
     ratchet rather than a tolerance:
