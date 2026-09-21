@@ -379,3 +379,62 @@ only infer from `SOURCES.txt` — and no revision leaks from any of the three bo
 beside it is `ok`.
 
 _(PR 2's per-work-unit records land below as WU3 and WU4 close.)_
+
+### WU3 — the chain measured (branch `feat/migration-chain-gate`, draft PR #2)
+
+This work unit could not be verified locally: there is **no Docker daemon on this machine** (`docker` is
+not installed) and the chain cannot run on SQLite. CI was therefore used as the instrument, which is why
+the branch carries a draft PR — it exists to produce a result, not to propose a merge. Three CI runs,
+and each one taught something real.
+
+**Run 1 — a bug in the test, found locally without a database.** Both tests errored with
+`asyncpg.exceptions.InvalidPasswordError` against the container. The cause was the test's own URL
+construction: SQLAlchemy's `URL.__str__` **masks the password**, so
+`str(make_url(...).set(drivername="postgresql+asyncpg"))` renders
+`postgresql+asyncpg://test:***@localhost:32769/test` and the container was handed the literal password
+`***`. The existing integration test never hits this because it passes the **URL object** to
+`create_async_engine`; here it cannot, because the value goes into a `configparser` option. Fixed with
+`render_as_string(hide_password=False)` and pinned by a pure test that needs no Docker, so the trap now
+has a local guard. The parent reproduced it: with `render_as_string()`'s masking default the pure test
+fails and prints the masked URL.
+
+**Run 2 — the chain reached `0024`, which fails closed.** `0001`–`0023` applied cleanly against
+Postgres 16 — the first proof anywhere that the Postgres-specific parts of the chain work (the
+`CREATE TYPE` enums, the `USING …::jsonb` cast in `0009`, the NOT NULL narrowing in `0009`). Then `0024`
+refused: `RuntimeError: STORICO_ENCRYPTION_KEY is not set…`, at
+`0024_encrypt_workspace_api_keys.py:79`. **That refusal is correct** — it cannot encrypt without a key,
+and failing beats reporting success over plaintext credentials. The finding is the operational
+consequence, which no document stated: **upgrading any database to head requires the master key in the
+environment**, a fresh database or a restore just as much as production. The test now supplies a
+throwaway generated key, and notably had to clear `Settings.load()`'s `lru_cache` (via
+`_reset_settings_cache`, the hook five other test files already use and whose docstring says "for tests
+only") — without that the migration reads a `Settings` built before the key existed and the failure looks
+like the migration's own guard instead of the fixture's ordering.
+
+**Run 3 — the measurement.** The chain now reaches head, and the schema comparison found **six
+substantive differences**. The first test passed; this is drift that predates this lot entirely and has
+nothing to do with any change in it.
+
+| # | Autogenerate op | What it means | Which side looks authoritative |
+|---|---|---|---|
+| 1 | `modify_type` `extractions.status`: DB `VARCHAR(20)` → model `ENUM(extraction_status_new)` | `0018` **creates** that enum type and **no revision ever converts the column to it**, so the model declares a type the migrations never produce. This is the loose end the original exploration flagged from the other direction: an enum type no revision uses. | **Neither is proven.** Either the conversion revision is missing, or `0018` created a type nothing wanted. A decision, not a mechanical fix. |
+| 2 | `modify_type` `user_preferences.preferences`: DB `JSONB` → model `JSON` | `0005` creates the column as JSONB; the model under-declares it. | **The migrations.** JSONB is the deliberate choice; the model should say so. |
+| 3 | `modify_type` `workspace_prompts.few_shot_examples`: DB `JSONB` → model `JSON` | `0009` converts JSON→JSONB explicitly; the model under-declares it. | **The migrations**, same shape as #2. |
+| 4 | `remove_index` `idx_tasks_status` | The database has an index on `tasks.status` the models do not declare. | **The models** — an index created on purpose is missing from the metadata. |
+| 5 | `remove_index` `idx_user_stories_status` | Same, on `user_stories.status`. | **The models.** |
+| 6 | `remove_index` `idx_tasks_user_story_id` | `0016` created it while `0001` had **already** created `ix_tasks_user_story_id` for the same column: a genuine duplicate index, with two different names on one column. | **The migrations** — one of the two should go. |
+
+So the models and the migrations have drifted **in both directions**, which is a stronger result than "the
+migrations are incomplete": three differences are the models under-declaring what the database really
+has, and three are the migrations not delivering what the models declare.
+
+**Decision: the gate lands as a ratchet, not as strict equality.** Asserting full equality on day one
+would mean landing CI red, and scoping the assertion away entirely would throw away the signal that makes
+this test worth having — a *new* divergence would then arrive unnoticed, which is the failure mode the
+whole feature exists to prevent. Instead the test asserts the known set **exactly**: the six above are
+enumerated as a literal, matched against a normalised signature of the autogenerate diff, and the test
+fails on **either** a difference that is not on the list **or** one that is on the list and has since
+been fixed. The second half matters as much as the first — it stops the allowlist from rotting into a
+lie once someone reconciles a difference. Reconciling the six is deliberately **not** this work unit's:
+three of them need a decision about which side is authoritative, and one of those (#1) may be a missing
+revision rather than a wrong model.
