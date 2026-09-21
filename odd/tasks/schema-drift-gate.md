@@ -438,3 +438,10 @@ been fixed. The second half matters as much as the first — it stops the allowl
 lie once someone reconciles a difference. Reconciling the six is deliberately **not** this work unit's:
 three of them need a decision about which side is authoritative, and one of those (#1) may be a missing
 revision rather than a wrong model.
+
+**Confirmed in CI on the fourth run: `733 passed`, zero skips.** That is the number that matters — the
+three Docker-gated tests all *executed* on the runner rather than skipping, so the chain genuinely ran
+end to end and the ratchet's six signatures matched the autogenerate diff exactly. Locally the same
+suite reports `730 passed, 3 skipped`, and 730 + 3 = 733 accounts for the difference completely. Worth
+stating because it is unusual: in this repository the integration tests are normally the ones that skip
+on a laptop, and this is the first branch where they are *proven* to run rather than assumed to.
