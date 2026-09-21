@@ -1,7 +1,12 @@
 # ODD Feature: prod-checklist-honesty
 
-> **Status**: **PR 1 landed and pushed; PR 2 not started.** This record is the resume point — read it
-> first, then the new section "Resuming in a fresh session" at the end.
+> **Status**: **PR 1 landed on `main`; PR 2 committed on `fix/retire-trello-option-and-dead-settings`
+> and awaiting native review.** This record is the resume point — read it first, then the section
+> "Resuming in a fresh session" at the end.
+> - **PR 2 (code) — COMMITTED, NOT LANDED.** Branch `fix/retire-trello-option-and-dead-settings` off
+>   `main` @ `fc59dc5`, four commits (`c5683b8` WU4, `79d57dc` WU5 settings, `f5f82e0` WU6, `073a5f8`
+>   WU5 `.env.example`), 15 files. Backend gates green (705 passed, 1 skipped, 1 pre-existing
+>   `ResourceWarning`); frontend green (`tsc` clean, 421 tests). Native review pending.
 > - **PR 1 (docs) — DONE.** Branch `docs/honest-prod-claims`, four commits (`f147029`, `6f480c8`,
 >   `d523492`, `b196589`), fast-forwarded into `main` (`fb48732` → `b196589`), branch deleted, pushed,
 >   CI green (run `35554779323`). The backend deploy did not trigger, correctly: its `paths` are
@@ -89,7 +94,7 @@ from the per-workspace prompt config (`extraction_task.py:349` →
 | D3 | `trello` handling | **User-approved: normalise on read.** Narrow the `Literal` to `["json","markdown"]`, remove the option from the UI and the type, and normalise a stored legacy `trello` to `json` when it is read. Follows the precedent this very file already sets for the `llm` key (`REMOVED_PREFERENCE_KEYS`, "a document written before the removal still validates"). Production's `user_preferences` is **empty** (measured: 0 rows), so there is nothing to migrate. |
 | D4 | The alternative to D3 | **Rejected: a data migration.** A new Alembic revision rewriting stored `trello` → `json` is the tidiest answer for other databases, but in production it would be a no-op over zero rows — and it would add a migration at the exact moment we know migrations are not applied by the deploy. Paying a manual production step for zero data is the wrong trade. |
 | D5 | Dead settings | **Delete them** (`settings.py` + the three `.env.example` lines), rather than leave them documented as knobs. A documented knob nobody reads is a lie with a name. |
-| D6 | testcontainers deprecation | **Include it.** CI warns on every run: `testcontainers.postgres is deprecated, use testcontainers.community.postgres instead`. It is debt rather than a lie, it is one import, and it is already in the log the previous item was measured from. |
+| D6 | testcontainers deprecation | **Include it.** CI warns on every run: `testcontainers.postgres is deprecated, use testcontainers.community.postgres instead`. It is debt rather than a lie, and it is already in the log the previous item was measured from. **Premise corrected by measurement: "it is one import" is false.** The canonical path `testcontainers.community.postgres` exists only from **4.15.0** — `4.13.3` and `4.14.2` ship no `community` package at all (measured by direct wheel inspection) — so the swap forces the declared floor up. The user approved `testcontainers>=4.15.0`. |
 | D7 | `openspec/changes/archive/` | **Untouched.** It is a historical record of what was decided then, not a live claim. |
 | D8 | `.env.prod.local` | **Reported, not touched.** It has `STORICO_AUTH_ALLOWED_ORIGINS` declared twice, so the first value is silently ignored. It is untracked and local to the operator's machine; the fix belongs to whoever holds that file. |
 
@@ -109,7 +114,7 @@ from the per-workspace prompt config (`extraction_task.py:349` →
 |----|-------|--------|
 | WU4 | `backend/src/storico/api/schemas/settings.py`, `frontend/src/types/settings.ts`, `frontend/src/components/react/AccountPage.tsx`, both frontend tests | D3: `Literal` narrowed, option removed from the UI and the type, and a stored `trello` normalised to `json` on read with a test that fails without the normalisation. |
 | WU5 | `backend/src/storico/config/settings.py`, `backend/.env.example` | D5: both settings and the three `STORICO_RAG_*` lines removed. |
-| WU6 | `backend/tests/test_integration/test_projects_integration.py` | D6: `testcontainers.postgres` → `testcontainers.community.postgres`. |
+| WU6 | `backend/pyproject.toml`, `backend/tests/test_integration/test_projects_integration.py`, `odd/tasks/ci-postgres-integration-test.md` | D6, as corrected: `testcontainers.postgres` → `testcontainers.community.postgres`, **and the floor raised to `>=4.15.0`**, because the new path does not exist below it. The prior record's claim that the boundary is "≤4.12" is also corrected to `<4.15.0` — leaving it would have created the seventh stale claim this batch exists to close. |
 
 ## Non-goals
 
@@ -140,25 +145,27 @@ from the per-workspace prompt config (`extraction_task.py:349` →
 
 **PR 2 — `fix/retire-trello-option-and-dead-settings`** — not started. Branch off `main` @ `b196589`.
 
-- [ ] WU4 — retire the `trello` option with legacy normalisation and its test. Files:
-      `backend/src/storico/api/schemas/settings.py` (`ExportSettings.default_format`),
-      `frontend/src/types/settings.ts` (`ExportFormat`),
-      `frontend/src/components/react/AccountPage.tsx` (the `SelectItem` and the label record),
-      `frontend/src/stores/__tests__/settingsStore.unit.test.ts` (its fixture **is** the legacy case),
-      `frontend/src/components/react/__tests__/AccountPage.test.tsx` (fixture at line 86).
-      Per D3: narrow the `Literal` to `["json", "markdown"]` and normalise a stored legacy `trello` to
-      `json` on read, with a test that fails without the normalisation. `ExportPanel.tsx` already
-      offers only `json | markdown` and needs no change. The `export_format_trello` i18n keys become
-      unused — drop them from both files together if dropped at all, keeping `en.json`/`es.json` key
-      parity (the guard test reads only those two files).
-- [ ] WU5 — delete the two dead settings and their `.env.example` lines. Files:
-      `backend/src/storico/config/settings.py` (`rag_similarity_threshold`, `rag_max_examples`),
-      `backend/.env.example` (the three `STORICO_RAG_*` lines).
-- [ ] WU6 — move the testcontainers import off the deprecated module. File:
-      `backend/tests/test_integration/test_projects_integration.py` (`testcontainers.postgres` →
-      `testcontainers.community.postgres`); check the class name and constructor against the version
-      actually installed instead of assuming the API is identical.
-- [ ] Gates for PR 2: backend `ruff check src tests`, `ruff format --check src tests`, `pytest -q`;
+**PR 2 — `fix/retire-trello-option-and-dead-settings`** — committed and awaiting native review. Branch off `main` @ `fc59dc5`; four commits (`c5683b8`, `79d57dc`, `f5f82e0`, `073a5f8`), 15 files.
+
+- [x] WU4 — retired the `trello` option with legacy normalisation and its test. Landed as `c5683b8`,
+      10 files: `backend/src/storico/api/schemas/settings.py` (`default_format` narrowed to
+      `["json", "markdown"]`, plus `RETIRED_EXPORT_FORMATS`), `backend/src/storico/api/routes/settings.py`
+      (`_for_schema` also rewrites a retired export *value*, in both spellings), `backend/tests/test_api/test_user_settings.py`,
+      `frontend/src/types/settings.ts`, `frontend/src/stores/settingsStore.ts`, `frontend/src/components/react/AccountPage.tsx`,
+      both frontend tests, and both locale files. The store's `merge` path is covered as well: `persist`
+      rehydrates `settings.export` from `storico-settings-v2`, so a returning browser is a third source
+      of the retired value alongside the API. The `export_format_trello` key left `en.json` and
+      `es.json` together, keeping parity.
+- [x] WU5 — landed as **two** commits, because of a tool-level guard and not ambiguity: `79d57dc`
+      removed both settings from `backend/src/storico/config/settings.py`; `073a5f8` removed the three
+      `STORICO_RAG_*` placeholders from `backend/.env.example`. The guard (`read`/`write`/`edit`, no
+      allowlist) refuses that path name, so `79d57dc` declined to work around it and recorded the gap
+      in its own message; the operator authorized the second edit explicitly.
+- [x] WU6 — landed as `f5f82e0`. `backend/pyproject.toml`, the integration test, and
+      `odd/tasks/ci-postgres-integration-test.md`. **The plan's premise was wrong and D6 above is
+      corrected**: the canonical path exists only from 4.15.0, so the floor moved with it, and the prior
+      record's "≤4.12" boundary was corrected to "<4.15.0".
+- [x] Gates for PR 2: backend `ruff check src tests`, `ruff format --check src tests`, `pytest -q`;
       frontend `pnpm exec tsc --noEmit`, `pnpm vitest run`.
 - [ ] Branch, commit, native review, land PR 2.
 
@@ -193,21 +200,74 @@ in `prod.todo.md`'s sibling work. See "Resuming in a fresh session" below.
 
 - **WU3 — `docs/deployment.md`** (commit `docs: describe the production architecture that actually runs`). C5 corrected in the "Producción" section (retitled from "Producción (Vercel)"): backend is a Docker container on the Oracle VM, not Vercel serverless; database is Neon, not an undefined provider; and CI/CD is no longer "pendiente de definir" — the two workflows that exist are named with the steps `ci.yml` actually runs (`ruff check`, `ruff format --check`, `pytest -q`, `pnpm exec tsc --noEmit`, `pnpm vitest run`). The deploy mechanism is described from `.github/workflows/deploy-backend.yml` itself (SSH, `git fetch origin main`, worktree reset to `origin/main`, image rebuild, stop/remove, `docker run --network host --env-file /home/ubuntu/storico/backend/.env`). A new "Migraciones" subsection records that the deploy runs no Alembic migrations (the 2026-09-20 `0021` vs `0024` incident, 56 failed extractions) and points at the open item in `prod.todo.md` without proposing a fix. The untracked VM `.env` note explains the silent failure mode, and Qdrant is recorded as contracted but not configured. The "Artefactos de build del frontend" subsection is unchanged.
 
+### PR 2 work units
+
+**TDD evidence was re-derived by the parent, not taken from the writers' reports.** Both writing agents
+ran the suites and reported them green, but neither returned the observed-red output the brief asked
+for, so the parent reproduced it by reverting only a work unit's *source* while keeping its tests, then
+re-running. Backend WU4 with `api/schemas/settings.py` and `api/routes/settings.py` at `HEAD~1`:
+**3 failed, 8 passed**, the write test failing as `assert 200 == 422`. Frontend WU4 with
+`types/settings.ts` and `stores/settingsStore.ts` at `HEAD~1`: **2 failed, 9 passed**, both
+`expected 'trello' to be 'json'`. Restored and verified clean at the fix commit before continuing.
+Without that re-derivation the tests would have been green with nothing showing they are load-bearing.
+
+- **WU4 — `c5683b8`**, 10 files. Backend: `ExportSettings.default_format` narrowed to
+  `Literal["json", "markdown"]`; a new `RETIRED_EXPORT_FORMATS = {"trello": "json"}` sits beside
+  `REMOVED_PREFERENCE_KEYS`; and `_for_schema` now rewrites a retired *value* — in both spellings the
+  store can hold (`default_format`, what `model_dump()` writes, and the camel `defaultFormat`) — while
+  dropping removed *keys* exactly as before. The asymmetry is the point and is observable: a stored
+  `trello` reads as `json`, and `PUT` answers 422 rather than silently storing what it was not given.
+  The writer added an `isinstance(..., str)` guard before the membership test, which the brief did not
+  ask for and which is right — a JSON document may hold any scalar, and `in` on a dict hashes the
+  value. The new tests cover both spellings of the read and the refused write, and assert the rewrite
+  does **not** write back, so storage keeps its `trello`.
+  Frontend: the type narrowed; `normalizeExportFormat` added (never throws; `hasOwnProperty` before
+  indexing the map, so a prototype key cannot resolve to a function); applied in `loadFromApi` **and**
+  in `merge`. That second call site is beyond the plan and follows from the plan's own premise:
+  `persist` writes `storico-settings-v2` and `merge` rehydrates `settings.export`, making a returning
+  browser a third source of a retired value. Covering it is most of the fourth file's tests, including
+  a rehydrate test that drives the real `persist` path.
+- **WU5 — `79d57dc` and `073a5f8`**, split by a tool-level guard rather than by design. `79d57dc` removed
+  `rag_similarity_threshold` and `rag_max_examples` and left a comment in their place naming why they
+  are gone, so they are not re-added as knobs. `073a5f8` removed the three `STORICO_RAG_*` placeholders
+  from `backend/.env.example`. The guard matches `.env`-family path names for `read`/`write`/`edit` with
+  no allowlist, so the first commit could not include that file; it recorded the gap in its own message
+  instead of quietly narrowing the work unit, and the operator authorized a second, explicit edit.
+- **WU6 — `f5f82e0`**, three files. `backend/pyproject.toml` floor `>=4.9.0` → `>=4.15.0` with its real
+  reason; `tests/test_integration/test_projects_integration.py` importing
+  `testcontainers.community.postgres`; and `odd/tasks/ci-postgres-integration-test.md` recording the
+  supersession in its status block, its D3 row and its established-facts list. Verified without Docker:
+  the old import raises under `-W error::DeprecationWarning` and the new one is silent, and
+  `testcontainers.community.postgres.PostgresContainer` resolves in the project venv (which has 4.15.0).
+  What could **not** be verified locally: container construction, which needs the Docker daemon
+  (`DockerException: Error while fetching server API version`) and is exercised by CI. The conda env
+  also still carries the legacy namespace-package layout, on which the new path does not resolve at all;
+  it needs the old shim uninstalled and the dev extra reinstalled.
+
+**Three claims in this record's own brief were refuted by measurement** and are corrected here rather
+than left standing: that the testcontainers change was "one import" (it forces the floor up — see D6);
+that `PostgresContainer(...)` could be constructed without a Docker daemon (it cannot); and that the
+4.15.0 shim is six lines (it is fifteen). One further self-correction: the parent first reported the
+`backend/.env.example` edit as committed when it was still only in the working tree; it is `073a5f8`.
+
 ## Resuming in a fresh session
 
 State of the world at handoff, in the order it matters.
 
-### 1. PR 2 is the only thing left in this batch
+### 1. PR 2 is committed; what is left is its verification, review and landing
 
-Nothing has been written for it — no branch exists. WU4 is the one that needs care: the same `Literal`
-validates reads **and** writes, so narrowing it without the normalisation turns a previously valid
-stored value into a 500 on read. Production's `user_preferences` is empty (0 rows, measured), so there
-is no data to migrate — but the frontend test that loads `defaultFormat: 'trello'` (in
-`settingsStore.unit.test.ts`) **is** the legacy case, and it should become the test for the
-normalisation rather than being deleted.
-`backend/tests/test_unit/test_drop_user_preference_llm_migration.py` also contains that value, but its
-`_seed` writes through a SQLAlchemy `Session` against the metadata table and never crosses the Pydantic
-schema, so it is unaffected.
+Four commits on `fix/retire-trello-option-and-dead-settings` off `main` @ `fc59dc5`: `c5683b8` (WU4),
+`79d57dc` (WU5 settings), `f5f82e0` (WU6), `073a5f8` (WU5 `.env.example`) — 15 files, tree clean,
+nothing pushed. The writing agents reported the gates green and the parent re-derived the TDD red
+evidence (see "PR 2 work units" above), but the gate numbers in this record have **not** yet been
+re-run by a separate verifier, and the candidate has **not** been through native review. Those are the
+remaining steps, in that order.
+
+Two premises this record got wrong are worth carrying forward, because both would otherwise be
+derived wrongly again: the `trello` retirement needed a **frontend** normalisation as well as the
+backend one — the persisted `storico-settings-v2` blob is a third source of a retired value — and
+WU6's floor change was unavoidable rather than optional, since the canonical module path simply does
+not exist below 4.15.0.
 
 ### 2. Three advisories from PR 1's review are open and non-blocking
 
