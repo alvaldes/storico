@@ -113,6 +113,24 @@ normal y también significa que un error ahí solo aparece en CI.
 - Cada archivo de test cubre un recurso (projects, stories, tasks, etc.)
 - Happy path + error path por endpoint
 
+### Warnings de la suite
+
+La suite completa emite **un** `RuntimeWarning` — `coroutine 'Connection._cancel' was never awaited` — y su
+conteo no es una propiedad del árbol: cuatro corridas seguidas hoy dieron 1, 1, 1 y 1, y una medición
+anterior del mismo árbol dio 1, 1, 1 y 2. Lo que sí es estable es el test al que se atribuye
+(`test_repositories/test_custom_provider_repo.py::test_list_is_empty_for_a_fresh_workspace`); lo que se
+mueve es el frame de SQLAlchemy que lo reporta (`orm/loading.py` en una corrida, `sql/compiler.py` en las
+otras tres). Para comparar un candidato contra su base, entonces, el conteo de warnings **no sirve como
+instrumento**.
+
+Eso importa por una razón concreta: **nada gatea sobre los warnings**. `backend/pytest.ini` no declara
+`filterwarnings`, CI corre `pytest -q` sin `-W error`, y ningún script compara el conteo. Un warning nuevo
+no rompe ningún gate: el único instrumento que lo ve es leer la salida. Si querés que un warning nuevo
+frene algo, hay que agregar el gate, que hoy no existe.
+
+Y hay una trampa al atribuirlo a un cambio: el mismo árbol, corrido con el `.env` presente (que apunta a la
+base remota) y sin él, no siempre reporta lo mismo. Compará candidato y base en el mismo entorno.
+
 ## Frontend
 
 ### Stack
