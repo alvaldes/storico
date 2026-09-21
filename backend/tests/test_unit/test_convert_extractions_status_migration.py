@@ -226,3 +226,35 @@ class TestTheRevisionUsesTheDecision:
 
         assert migration.revision == "0025"
         assert migration.down_revision == "0024"
+
+    @pytest.mark.unit
+    def test_upgrade_refuses_and_names_the_value_it_will_not_cast(self, engine: Engine) -> None:
+        """The refusal path, exercised against a real database instead of proven by reading.
+
+        ``upgrade`` checks the stored values **before** it touches any DDL, so this holds on SQLite
+        even though the cast that follows is Postgres-only: the guard raises first. That is the
+        point of the test — the CI container starts with an **empty** database, so the happy path
+        is the only one CI ever runs, and until this existed the refusal was proven by reading
+        alone.
+
+        The duplicate ``processing`` is deliberate: the message names *distinct* values, so an
+        operator gets one line per offending value rather than one per row.
+        """
+        self._seed(engine, "pending", "processing", "processing", "failed")
+
+        migration = _load_migration()
+        with engine.begin() as conn:
+            with Operations.context(MigrationContext.configure(conn)):
+                with pytest.raises(RuntimeError) as caught:
+                    migration.upgrade()
+
+        message = str(caught.value)
+        # It names what is in the way — once — and what the column does accept.
+        assert message.count("processing") == 1
+        assert "pending" in message and "failed" in message
+        assert "Nothing has been changed" in message
+        # And the promise the message makes is measured rather than asserted in prose: the rows
+        # are still there, because the check runs before anything is altered.
+        with engine.connect() as conn:
+            survivors = conn.execute(sa.select(_EXTRACTIONS_AT_0024.c.status)).scalars().all()
+        assert sorted(survivors) == ["failed", "pending", "processing", "processing"]
