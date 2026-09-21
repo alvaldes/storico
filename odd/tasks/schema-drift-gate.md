@@ -57,6 +57,17 @@ policy cannot be a position; it has to be a property of each revision.
 |---|---|
 | `alembic.ini` is **not** in the image; only `src/` is copied. The `versions/` directory **is** in the image, and the `alembic` CLI is installed (`alembic` is a main dependency). | `backend/Dockerfile:6-24`, `backend/pyproject.toml:32` |
 | `env.py` **unconditionally overwrites** `sqlalchemy.url` from `Settings.load()`, so an externally supplied URL cannot be honored. | `alembic/env.py:24` |
+
+> **Corrections, dated 2026-09-21.** Two rows of the table above are no longer true. The `alembic.ini`
+> row: `odd/tasks/deploy-migration-window.md` adds `COPY alembic.ini` to the runtime stage and makes
+> `script_location` and `prepend_sys_path` use `%(here)s`, because the relative paths resolved against
+> the process working directory and that is why the CLI worked from the repository root and failed from
+> anywhere else. The `env.py` row: `de884f5` made an explicitly supplied URL win, honouring
+> `config.attributes["sqlalchemy_url"]`, and the row predates that commit. Worth keeping straight for
+> anyone reading this later: the CLI cannot populate `config.attributes` — only a programmatic caller
+> can — so a shell `alembic upgrade head` still takes the `Settings.load()` branch, which normalises
+> `sslmode` to `ssl` for Neon. The deploy's migration step relies on exactly that.
+
 | `--sql` offline mode **cannot run the chain**: five revisions call `op.get_bind()` (`0016`, `0018`, `0021`, `0022`, `0024`). | those files |
 | `0022` and `0024` call `session.commit()` **mid-revision**, ending Alembic's transaction; only their idempotence guards make a crash between the two survivable. | `0022:104`, `0024:120,158` |
 | No `CREATE INDEX CONCURRENTLY` / `AUTOCOMMIT` anywhere, so every index build is inside the migration transaction. | `0001`, `0016`, `0021` |

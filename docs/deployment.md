@@ -96,11 +96,48 @@ uno nuevo con `docker run --network host --env-file /home/ubuntu/storico/backend
 
 ### Migraciones
 
-**El despliegue no corre migraciones de Alembic.** Una revisión de esquema puede quedar desplegada
-sin su migración aplicada, y ese es exactamente el incidente del 2026-09-20: el esquema quedó en
-`0021` contra un head `0024` y la extracción falló 56 veces con
-`column extractions.completed_at does not exist`. `prod.todo.md` lleva el paso de migración como
-ítem abierto. La política de migraciones es una decisión aparte y no se define en este documento.
+**El despliegue aplica las migraciones dentro de una ventana de mantenimiento**, entre parar el
+contenedor viejo y arrancar el nuevo. La razón es que no hay ninguna otra posición que sirva: `0022` y
+`0024` piden el código nuevo vivo **antes** de correr (una release vieja malinterpretaría el esquema
+nuevo) y `0023` pide la columna existente **antes** de que el código nuevo la lea. Cada peligro
+necesita un release vivo del lado equivocado, así que una ventana **sin ningún release vivo** los
+elimina a la vez. Por eso el paso no se puede mover arriba del `docker stop`.
+
+El comando que corre el workflow — el mismo que un operador usa a mano:
+
+```bash
+docker run --rm \
+  --network host \
+  --env-file /home/ubuntu/storico/backend/.env \
+  storico-api \
+  alembic upgrade head
+```
+
+Se ejecuta desde la imagen recién construida, porque la revisión que se aplica es la de ese commit, y
+con el **mismo** `--env-file` que el contenedor: ahí viven `STORICO_DATABASE_URL` y
+`STORICO_ENCRYPTION_KEY`, que toda actualización que cruce `0024` necesita. Y con el mismo archivo, la
+migración no puede alcanzar una base distinta de la que usa la aplicación. La configuración de Alembic
+usa `%(here)s`, así que el comando funciona desde cualquier directorio; la imagen incluye
+`alembic.ini` y los scripts viajan dentro de `src/`.
+
+**Las consecuencias, dichas de frente:**
+
+- Hay una **ventana de indisponibilidad** entre el `docker stop` y el arranque del contenedor nuevo,
+  que incluye la migración. En las revisiones actuales son segundos.
+- Si la migración falla, `set -e` aborta el job y **la API queda abajo**. Es deliberado: lo alternativo
+  es servir con un esquema que no coincide con el código, que es el incidente del 2026-09-20. La
+  recuperación es **hacia adelante** — arreglar la causa y volver a correr el workflow — y los guardas
+  de idempotencia de `0022` y `0024` hacen que re-correr sea seguro.
+- El deploy deja la imagen anterior taggeada como `storico-api:previous`, porque hasta ahora no había
+  ninguna vuelta atrás: el build sobrescribía el único tag que tenía la release anterior. Ese tag
+  devuelve la release anterior **sólo mientras el esquema siga siendo compatible con ese código**; con
+  una migración aplicada a medias, el camino correcto es hacia adelante y no volver.
+- El gate de readiness que corre después deja de detectar drift: pasa a ser la **prueba** de que la
+  migración quedó aplicada, porque exige que `alembic_version` sea igual al head empacado con el
+  código. Un gate rojo con la migración en verde ya no apunta al esquema, sino al contenedor o a su
+  entorno.
+- Los deploys están **serializados** (`concurrency` en el workflow): dos a la vez competirían por el
+  swap y por la migración.
 
 ### Artefactos de build del frontend
 

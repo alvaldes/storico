@@ -7,6 +7,15 @@ on:
       - 'backend/**'
       - '.github/workflows/deploy-backend.yml'
 
+# A deploy swaps a container *and* applies migrations. Two at once would race on
+# both, so they queue instead of cancelling each other: cancelling a deploy in the
+# middle of a migration is worse than waiting for the one ahead of it. `ci.yml`
+# cancels superseded runs because it only reads the repository; this one writes to
+# production.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -26,12 +35,46 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
+            echo "=== Keep the current image as a rollback tag ==="
+            # The build below overwrites the only tag the previous release had, so
+            # without this step there is no way back at all. See docs/deployment.md
+            # for when restoring this tag is safe and when the path is forward.
+            docker tag storico-api storico-api:previous 2>/dev/null \
+              || echo "no image tagged storico-api yet (first deploy)"
+
             echo "=== Rebuild Docker image ==="
             docker build -t storico-api -f backend/Dockerfile backend/
 
             echo "=== Stop & remove old container ==="
             docker stop storico-api 2>/dev/null || true
             docker rm storico-api 2>/dev/null || true
+
+            echo "=== Apply migrations (maintenance window) ==="
+            # This window -- old container stopped, new one not started yet -- is
+            # the only position that satisfies every revision's ordering
+            # instruction, and that is why it cannot move above the stop. 0022 and
+            # 0024 require the new code to be live before they run, because an old
+            # release misreads the new schema; 0023 requires the column to exist
+            # before the new code selects it. Each hazard needs a release on the
+            # wrong side, so having no release live removes both at once.
+            #
+            # It runs from the image just built, since the revision being applied is
+            # the one in this commit, and with the same env file as the container, so
+            # the migration cannot reach a different database than the app. That file
+            # carries STORICO_DATABASE_URL and STORICO_ENCRYPTION_KEY, and every
+            # upgrade crossing 0024 needs the key.
+            #
+            # `upgrade head` is a no-op on a database already at head, so this is safe
+            # on every deploy. `set -e` aborts the job on failure, which leaves the
+            # API down rather than serving a schema the code does not match: that is
+            # the deliberate trade, and the alternative is the 2026-09-20 outage.
+            # Recovery is forward -- fix the cause, re-run this workflow -- and the
+            # revisions' own idempotence guards make re-running safe.
+            docker run --rm \
+              --network host \
+              --env-file /home/ubuntu/storico/backend/.env \
+              storico-api \
+              alembic upgrade head
 
             echo "=== Start new container ==="
             docker run -d \
@@ -104,16 +147,16 @@ jobs:
               echo "Last 20 container log lines:"
               docker logs --tail 20 storico-api 2>&1 || true
               echo
-              echo "This red gate is the expected handoff, not a false alarm:"
-              echo "readiness requires the schema to equal the code's Alembic"
-              echo "head, and the three most recent revisions ask for opposite"
-              echo "orders (0022 and 0024 want the code first, 0023 wants the"
-              echo "migration first), so no fixed position inside this workflow"
-              echo "is correct. That is why this step only detects and"
-              echo "does not migrate."
-              echo 'Runbook -- odd/tasks/schema-drift-gate.md, "What readiness'
-              echo 'means, and what a red deploy means with it": deploy (this'
-              echo "run) -> read the failure above -> apply the pending"
-              echo "revision by hand -> re-check ${READY_URL}."
+              echo "This red gate means something different now: the migration"
+              echo "step above already ran and reported success, so the schema"
+              echo "is not the suspect. Readiness requires the database to"
+              echo "answer AND alembic_version to equal the head packaged with"
+              echo "this code, so a red result here points at the container or"
+              echo "its environment -- it did not start, it cannot reach the"
+              echo "database, or the STORICO_* variables differ between the"
+              echo "migration env file and the app's."
+              echo 'Runbook -- docs/deployment.md, "Migraciones": the exact'
+              echo "commands, the forward recovery path, and the rollback tag"
+              echo "the previous deploy left as storico-api:previous."
               exit 1
             fi

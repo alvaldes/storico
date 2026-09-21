@@ -7,8 +7,8 @@
 
 - **Relacional**: PostgreSQL 16 (vía SQLAlchemy async + asyncpg)
 - **Vectorial**: Qdrant (embeddings para RAG)
-- **Migraciones**: Alembic (24 migraciones aplicadas)
-- **Head**: `0024`
+- **Migraciones**: Alembic (26 migraciones aplicadas)
+- **Head**: `0026`
 
 ## Modelo de Datos
 
@@ -236,6 +236,8 @@ Index: `user_story_id`
 | `0022` | Drop the per-user llm block from stored preferences | 2026-09-18 |
 | `0023` | Add completed_at to extractions | 2026-09-19 |
 | `0024` | Encrypt workspace LLM API keys | 2026-09-19 |
+| `0025` | Convert extractions.status to the extraction_status_new enum | 2026-09-21 |
+| `0026` | Drop the duplicate index on tasks.user_story_id | 2026-09-21 |
 
 Comandos útiles:
 
