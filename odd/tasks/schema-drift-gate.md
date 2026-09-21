@@ -445,3 +445,35 @@ end to end and the ratchet's six signatures matched the autogenerate diff exactl
 suite reports `730 passed, 3 skipped`, and 730 + 3 = 733 accounts for the difference completely. Worth
 stating because it is unusual: in this repository the integration tests are normally the ones that skip
 on a laptop, and this is the first branch where they are *proven* to run rather than assumed to.
+
+**Review: `review-4027ff89974be841`, target `sha256:e66144e5fd25da49036de33451692d83ef5ee5c8e53de1d799d38cc53ff27936`,
+approved and burned** — `medium`, one lens (`review-reliability`), 3 files, 500 lines, correction budget
+200.
+
+One thing about how the candidate was scoped is worth recording, because the default was wrong: the
+workspace carried an unrelated dirty file (`frontend/package.json`, a `0.2.0` → `0.3.0` bump that this
+branch never touched and whose origin is unknown), so `inspect` defaulted to a **current-changes**
+projection over that single path. Reviewing it would have meant reviewing somebody else's uncommitted
+edit. Passing an explicit `baseRef` with `committedOnly` scoped it correctly to the three committed
+paths. The dirty file was left exactly as it was found.
+
+Three advisories, none opening a correction. Two are `SUGGESTION` — `R3-check-error-swallow-shape`
+(the ratchet's `except` shape) and `R3-docker-probe-tcp` (the `_docker_reachable` probe inspects a unix
+socket and not `DOCKER_HOST` as TCP) — and one is a `WARNING` that is worth more than its severity
+suggests:
+
+- **`R3-supplied-url-verbatim`**, `alembic/env.py:35-40`. The override path hands a supplied URL to
+  Alembic **verbatim**, skipping `_normalize_db_url`, and that function is not cosmetic: it is what maps
+  Postgres's `sslmode=require` to the `ssl=require` asyncpg actually accepts, which is how this project
+  talks to Neon at all. Nothing calls the override with a settings-shaped URL today — the test supplies
+  an already-asyncpg URL — so this is **latent, not live**, which is why it does not block. But **Fase 1
+  will walk straight into it**: the application's own URL comes from `Settings.load().database_url` and
+  on Neon carries `sslmode`, so an automated migration step that passes that URL explicitly would fail
+  against the exact database production uses. Either the override must be normalized too, or whatever
+  passes a URL must pass one already normalized. Recorded as a **Fase 1 prerequisite** rather than fixed
+  here: editing the tree after approval would deliver something other than what was approved, and the
+  review's own closure says advisories are separate later work.
+
+The two `SUGGESTION`s are named so a follow-up can open them instead of re-deriving them; the closure
+envelope carries ids, lenses, locations and severities only, so this record does not paraphrase their
+content.
