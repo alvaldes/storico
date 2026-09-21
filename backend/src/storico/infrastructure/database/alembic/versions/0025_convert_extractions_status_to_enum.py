@@ -39,10 +39,12 @@ a revision that dropped another's object would break that other revision's own
 
 **The pre-flight check needs a live connection, so this revision cannot be rendered with
 ``alembic upgrade --sql``.** That is not a new limitation: offline rendering of this chain is
-already unavailable, because 0022 and 0024 read and write rows through ``op.get_bind()`` too and
-fail the same way (``base:head --sql`` stops at 0022 with an ``AttributeError`` on Alembic's
-``MockConnection``). Apply this revision with a real connection, the way the rest of the chain
-requires.
+already unavailable, and the **first** revision to break it is **0021**, whose backfill opens an ORM
+``Session(op.get_bind())`` — in offline mode that bind is Alembic's ``MockConnection`` and it fails
+with ``AttributeError: 'MockConnection' object has no attribute 'close'``. 0022 and 0024 read rows
+the same way and each fails on its own when rendered alone, so the set is at least
+``{0021, 0022, 0024}`` and ``base:head --sql`` stops at **0021**. Apply this revision with a real
+connection, the way the rest of the chain requires.
 
 Revision ID: 0025
 Revises: 0024
