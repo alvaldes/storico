@@ -1,6 +1,7 @@
 # ODD Feature: advisory-closures
 
-> **Status**: in progress. Branch `docs/advisory-closures` off `main` @ `2252640`.
+> **Status**: landed on `main` @ `841c7e0` (three commits, ff-merge). Native review
+> `review-45ff50e217b6a3a5`: approved and burned, no correction; seven non-blocking advisories, listed below.
 > **Created**: 2026-09-21
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -119,3 +120,47 @@ measurements that apply, all taken on that identical code during this session:
 The one warning is the subject of the `docs/testing.md` note above, and it is pre-existing: it reproduces on
 the base and on the candidate alike, which is exactly why the note says the count cannot be used to
 attribute it to a change.
+
+## Review
+
+Native review of the three commits as one candidate (`2252640..841c7e0`), lineage
+`review-45ff50e217b6a3a5`: **approved and burned**, no correction opened,
+`prepared_reviewers: 4, submitted_reviewers: 4`.
+
+The tier is the part worth carrying forward. The diff is documentation only, yet the candidate came back
+**`high` with four lenses** (`risk`, `resilience`, `readability`, `reliability`), and the reason names a file
+rather than a change:
+
+```
+risk_reasons: [{code: hot_path, signal: security, path: docs/security.md}]
+risk_evidence: ["security in docs/security.md"]
+```
+
+The edit in that file is two checklist bullets. The classifier keys on the **substring in the path**, which
+makes `docs/security.md` a security hot path. Same family as the extension-keyed `process_boundary` recorded
+in `release-versioning.md`: the tier comes from the path, not from the diff. Consequences for planning: any
+edit to `AGENTS.md` is `medium` with a mandatory lens (it is the file that governs agents) and any path
+carrying a hot-path signal is `high` with four lenses, whatever the diff contains. Not worth fighting — the
+binding is opaque and the tier is the provider's — but worth budgeting **before** the work instead of
+discovering it during review. The alternative, skipping the file, was rejected: leaving the stale claim in
+place is the defect class this batch exists to clean.
+
+### Advisories (seven, all `SUGGESTION` / informational)
+
+None opened a correction. The closure's own words are that they are separate later work and never a reason to
+re-run review on this candidate. It lists them by id and location **without their text**, so each row is the
+whole record of it and the location is where the reviewer saw the concern:
+
+| Id | Lens | Location |
+|---|---|---|
+| `R2-dup-warn-note` | readability | `docs/testing.md:116-129` |
+| `R2-scope-mix` | readability | `odd/tasks/advisory-closures.md:77-100` |
+| `R2-stale-status` | readability | `odd/tasks/advisory-closures.md:3` |
+| `R3-unverifiable-gates` | reliability | `odd/tasks/advisory-closures.md:97-107` |
+| `R3-warning-note-consistency` | reliability | `docs/testing.md:116-133` |
+| `R4-doc-gate-1` | resilience | `docs/testing.md:116-130` |
+| `R4-doc-recovery-1` | resilience | `odd/tasks/advisory-closures.md:104-112` |
+
+`R2-stale-status` points at line 3, which is the status line rewritten by this commit; if that is what the id
+meant, this commit closes it. The other six stay open on purpose and belong to whoever picks up the warning
+note and this record next.
