@@ -4,6 +4,8 @@ The main /api/v1/health endpoint only checks the database (required).
 Full service diagnostics are at /api/v1/health/services.
 """
 
+import importlib.metadata
+
 import pytest
 
 
@@ -22,7 +24,9 @@ async def test_health_endpoint(async_client):
     assert response.status_code == 200
 
     data = response.json()
-    assert data["version"] == "0.1.0"
+    # The distribution's own version, not the literal "0.1.0" this field carried while the package
+    # was already at 0.3.0.
+    assert data["version"] == importlib.metadata.version("storico-backend")
     assert data["status"] in ("ok", "degraded")
     assert "timestamp" in data
 
@@ -42,7 +46,7 @@ async def test_health_services_endpoint(async_client):
     assert response.status_code == 200
 
     data = response.json()
-    assert data["version"] == "0.1.0"
+    assert data["version"] == importlib.metadata.version("storico-backend")
     assert data["status"] in ("ok", "degraded")
     assert "services" in data
 

@@ -2,22 +2,32 @@
 
 Design decisions:
   - The global /api/v1/health endpoint checks ONLY the database, which is
-    required for the app to function.
+    required for the app to function. It also reports whether the schema is at
+    the code's Alembic head, which is not a dependency of the process but is a
+    dependency of being useful: that mismatch stayed invisible until 56
+    extractions failed with a missing column.
   - Ollama and Qdrant are optional, per-workspace services (users configure
     them in workspace settings, saved to DB). They are NOT checked at the
     global health level. Use /api/v1/health/services for full diagnostics.
+  - /api/v1/health is liveness and stays 200 through schema drift;
+    /api/v1/health/ready is readiness and answers 503 unless the database
+    answers AND the schema matches. See the readiness route for why.
+  - None of these routes is authenticated, so each one publishes a status and
+    never a revision. The revisions go to the log.
 """
 
 import asyncio
+import importlib.metadata
 import logging
 from datetime import UTC, datetime
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 from sqlalchemy import literal, select
 
 from storico.config.settings import Settings
 from storico.infrastructure.database.base import get_engine
+from storico.infrastructure.database.schema_status import probe_schema_status
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +63,50 @@ async def _check_database() -> dict:
         # operator can read it. The timeout branch above already made this choice; this branch now
         # makes it too.
         return {"status": "error", "latency_ms": round(elapsed, 1), "error": "connection failed"}
+
+
+def _package_version() -> str:
+    """The installed distribution's version, or ``"unknown"``.
+
+    Read rather than hardcoded: the literal ``"0.1.0"`` this field used to carry had been wrong
+    since the package reached ``0.3.0``. The lookup goes to installed metadata, so it is allowed
+    to fail — a health endpoint that raises is worse than one that admits it does not know.
+    """
+    try:
+        return importlib.metadata.version("storico-backend")
+    except Exception:
+        logger.warning("Could not read the installed package version", exc_info=True)
+        return "unknown"
+
+
+async def _check_schema() -> dict:
+    """Compare the code's Alembic head with the revision the database carries.
+
+    Shaped like ``_check_database``: a status and a latency. There is no ``error`` field because
+    ``unknown`` already is the failure, and there is nothing else an unauthenticated caller may
+    learn. Both revisions go to the log below, which is where the diagnosis belongs.
+    """
+    start = datetime.now(UTC)
+    status = "unknown"
+    try:
+        engine = get_engine()
+        async with asyncio.timeout(DB_TIMEOUT):
+            result = await probe_schema_status(engine)
+        status = result.status
+        if status != "ok":
+            logger.warning(
+                "Schema status is %s: the code expects revision %s, the database holds %s",
+                status,
+                result.expected_revision,
+                result.actual_revision,
+            )
+    except TimeoutError:
+        logger.warning("Schema health check timed out after %.0fs", DB_TIMEOUT)
+    except Exception as e:
+        logger.warning("Schema health check failed: %s", e)
+
+    elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
+    return {"status": status, "latency_ms": round(elapsed, 1)}
 
 
 async def _check_ollama() -> dict:
@@ -99,19 +153,24 @@ async def _check_qdrant() -> dict:
 async def health():
     """Return API health status.
 
-    Only checks the database — the single required dependency.
-    Ollama and Qdrant are optional per-workspace services and are not
-    checked at the global health level.
+    Only checks the database — the single required dependency. Ollama and Qdrant are optional
+    per-workspace services and are not checked at the global health level.
+
+    The schema is reported next to the database but does not change ``status`` or the HTTP code:
+    this is a liveness probe, and a schema behind the code is a reason not to send traffic, not a
+    reason to kill and restart a container that is running.
     """
     db_result = await _check_database()
+    schema_result = await _check_schema()
 
     overall = "ok" if db_result.get("status") == "ok" else "degraded"
 
     return {
         "status": overall,
-        "version": "0.1.0",
+        "version": _package_version(),
         "timestamp": datetime.now(UTC).isoformat(),
         "database": db_result,
+        "schema": schema_result,
     }
 
 
@@ -120,21 +179,57 @@ async def health_services():
     """Full diagnostics — checks all configured services.
 
     This is a debugging endpoint only. Use /api/v1/health for standard
-    health checks (required services only).
+    health checks (required services only). ``schema`` is reported here too: this
+    is the route that answers "what state is this deployment in".
     """
     db_result = await _check_database()
+    schema_result = await _check_schema()
     ollama_result = await _check_ollama()
     qdrant_result = await _check_qdrant()
 
-    all_ok = all(r.get("status") == "ok" for r in [db_result, ollama_result, qdrant_result])
+    all_ok = all(
+        probe.get("status") == "ok"
+        for probe in [db_result, schema_result, ollama_result, qdrant_result]
+    )
 
     return {
         "status": "ok" if all_ok else "degraded",
-        "version": "0.1.0",
+        "version": _package_version(),
         "timestamp": datetime.now(UTC).isoformat(),
         "services": {
             "database": db_result,
+            "schema": schema_result,
             "ollama": ollama_result,
             "qdrant": qdrant_result,
         },
+    }
+
+
+@router.get("/health/ready")
+async def health_ready(response: Response):
+    """Readiness: 200 only when the database answers and the schema is at the code's head.
+
+    Liveness and readiness answer different questions, which is why this is a second route rather
+    than a stricter ``/health``. A container whose schema is behind should not take traffic, but
+    restarting it would not migrate anything — so ``/health`` keeps answering 200 and this route
+    answers 503 until an operator applies the pending revision.
+
+    The status code is the whole interface: ``curl -sf`` under ``set -e`` fails a deploy without
+    parsing JSON on the VM. The body is the same document either way, so a reader never has to
+    branch on the code to read it.
+
+    Like its siblings this route takes no authentication, and it publishes no revision.
+    """
+    db_result = await _check_database()
+    schema_result = await _check_schema()
+
+    ready = db_result.get("status") == "ok" and schema_result.get("status") == "ok"
+    response.status_code = 200 if ready else 503
+
+    return {
+        "status": "ok" if ready else "degraded",
+        "version": _package_version(),
+        "timestamp": datetime.now(UTC).isoformat(),
+        "database": db_result,
+        "schema": schema_result,
     }
