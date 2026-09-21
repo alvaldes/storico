@@ -148,5 +148,95 @@ though they are one candidate.
 
 ## Evidence
 
-_(the per-work-unit records land here; every number cited comes from a measurement, and the two places
-where this feature could not measure something say so.)_
+### WU-A — the model-only half (commit `ae7ae5d`)
+
+Four files: `user_preferences.py` and `workspace_prompt.py` now declare the column through
+`JSON().with_variant(JSONB(), "postgresql")`, `task.py` and `user_story.py` declare their `idx_*` index,
+and four lines left `_KNOWN_DRIFT` in the same commit.
+
+The variant is proven in **both** directions, which is the only local proof available: the unit suite
+builds its schema with `create_all` on SQLite, so a bare `postgresql.JSONB()` dies at fixture setup with
+a `CompileError` rather than failing quietly. Measured resolution is `JSONB` on `postgresql` and `JSON` on
+`sqlite` for both columns. The suite ends at **743 passed, 3 skipped, 1 warning** — the warning is the
+pre-existing `RuntimeWarning` — and the pre-change baseline was 730 + 3, so the only delta is WU-C's 13.
+
+### WU-B — the two revisions (commit `1fca54b`)
+
+`0025` converts `extractions.status` to `extraction_status_new`; `0026` drops `idx_tasks_user_story_id`,
+the physical copy of the index `0001` already created. The last two lines left `_KNOWN_DRIFT` with them.
+
+`0025` documents four things a person about to run it needs: the pre-flight check and why the mitigation
+lives in the revision rather than in an operator's memory; the default moving in three steps and why
+(`0002`'s `server_default='pending'` cannot survive the type change), including that the window with no
+default is unobservable because the revision commits or aborts as one; that the **deploy order is
+order-agnostic**, with the reason; and that it does not create the enum type (`0018` owns it) nor drop it
+in `downgrade` (a revision that dropped another's object would break that other revision's own
+`downgrade`).
+
+The order-agnostic claim is argued rather than asserted, and the argument found something the plan had
+not: the only behavioural difference between the two sides is **ordering** — an enum sorts in declaration
+order, a `VARCHAR` in collation order — and nothing in the repository orders or range-compares the column
+(the only predicate is an equality against `ExtractionStatus.PENDING`), so no observable behaviour depends
+on which side is live.
+
+### WU-C — proving the mitigation (commit `cf0b624`), added because nothing exercised it
+
+The plan put the mitigation in the revision: check the stored values first and name a stray one instead of
+letting Postgres emit a cast error. Then the writing agent found that **the failure branch was executed by
+nothing** — CI's container database is empty, so in CI *and* locally only the happy path runs, and the
+raise was proven by reading alone. That is precisely the class of defect this workstream exists to
+eliminate, so it was fixed inside this feature rather than recorded as debt.
+
+The decision moved into a pure function, `_values_outside_labels(labels, stored)`, handed the values
+instead of reading them; the connection read stays in `_stray_statuses()`. **Thirteen tests now cover it
+with no database**, including the revision's own use of it against a real SQLite engine, that the argument
+decides rather than a hardcoded list, that a label valid for a *different* enum is still stray, and that
+the revision follows `0024`.
+
+**Load-bearing verified by mutation, not by reading.** Returning `[]` (never report a stray) fails **six**
+of the thirteen, including the one that reads a real engine. Treating no value as an allowed label fails
+the all-valid case with `assert ['failed', 'pending'] == []`. So the branch the plan cares most about is
+now proven by tests that run on this machine, which is more than the plan asked for.
+
+### What an empty literal does **not** mean
+
+It makes **autogenerate-visible** drift zero. It does not make the models and the migrations agree. Ten
+`server_default`s are invisible to this ratchet, and **this change adds one to that class**:
+`extractions.status` now carries `server_default='pending'` in the database while the model declares only
+a Python-side `default`. The ratchet guarding the hardest of the six differences is blind to precisely the
+detail that made that difference hard.
+
+So the machinery stays, and the literal being empty is recorded as the **target state** rather than a
+placeholder. The honest counterpoint is recorded with it: with the set empty, `stale_entries` is
+unreachable — untested code — and a reviewer arguing YAGNI would not be wrong. It stays because the
+two-directional comparison is what forced each fix to land atomically with its own line, and because
+deleting it would leave no proven place to record a difference that is next understood and deliberately
+accepted.
+
+### A correction to this plan's own brief, and an input for Fase 1
+
+The brief told the writer that a revision must be readable "by a person who is about to run them against
+production". Measured, that is not achievable through offline rendering, and the reason is not this
+feature's: `alembic upgrade --sql` is already dead, because a revision that reads rows cannot be rendered
+without a connection.
+
+**The parent got the localisation wrong and the record keeps the correction.** It first stated that the
+chain fails at `0022`. Measured independently afterwards:
+
+| Range | Result | Named in the traceback |
+|---|---|---|
+| `base:0020` | exit 0, 360 lines | — |
+| `base:0021` | exit 1, 373 lines | `versions/0021_add_custom_providers.py` |
+| `0020:0021` | exit 1, 16 lines | `0021` |
+| `0021:0022` | exit 1, 3 lines | `0022` |
+
+The first blocker is **`0021`**, and `0022` fails on its own as well. `0021:59` calls
+`_backfill_existing_custom_providers()`, and at `:81` that function opens `Session(op.get_bind())` — an ORM
+Session whose bind, in offline mode, is a `MockConnection` with no `close()`. The failure mode that
+produced the wrong localisation is worth keeping: the claim came from `base:head`, and **a range that
+contains the culprit is indistinguishable from the culprit**. The tell was available and missed —
+`base:0022` printed 374 lines, the same length as `base:0021`, so it had never advanced past it.
+
+Two consequences for **Fase 1**: a hand-applied revision means an online `alembic upgrade`, never a SQL
+file; and `0024`'s guard is the model to copy, because it fails loudly, names the missing variable and says
+re-running is safe, where `0021` and `0022` fail with an opaque `AttributeError`.
