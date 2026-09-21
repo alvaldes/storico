@@ -145,7 +145,10 @@ Frontend: `@sentry/astro` en `astro.config.mjs`. Free tier: 5k events/mes.
 
 ### 6. Conector Trello
 
-Hoy sólo existe el valor `'trello'` en el enum `ExportFormat` y en i18n — no hay adapter.
+Hoy el valor `'trello'` ya no existe: se retiró del enum `ExportFormat`, del schema Pydantic y
+de la opción del selector, junto con la clave `export_format_trello` de i18n — no hay adapter.
+Sigue pendiente el copy de la landing en i18n (`en.json`/`es.json`), que todavía promete
+exportación a Trello.
 Reutilizar la lógica probada de `csv2trello/core/` (autenticación, boards/listas/cards):
 crear `ExportPort` + `TrelloAdapter`, endpoint `POST /api/v1/export/trello`, y conectar
 `ExportPanel`.

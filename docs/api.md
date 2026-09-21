@@ -93,11 +93,20 @@ como toda ruta de colección. La única ruta vigente es la workspace-scoped.
 | PATCH | `/api/v1/users/me/onboarding` | Completar onboarding (opcionalmente renombra el workspace) |
 
 `/users/me/settings` transporta **una sola preferencia**: `preferences.export.defaultFormat`
-(`trello`, `json` o `markdown`). No lleva configuración de LLM ni credencial alguna. Antes
+(`json` o `markdown`). No lleva configuración de LLM ni credencial alguna. Antes
 declaraba un bloque `llm` con un `model`/`api_key`/`base_url` por proveedor que nada leía —la
 configuración viva es por **workspace**— y la revisión `0022` removió esa clave de lo guardado.
 `PUT` rechaza con `422` un body que traiga `llm` (el schema usa `extra="forbid"`), y `GET`
 tolera una fila heredada que todavía lo tenga: descarta esa clave y responde el resto.
+
+`trello` era un valor seleccionable que la exportación del workspace siempre respondía con
+`400` (`GET /api/v1/workspaces/{wsId}/export/tasks?format=trello`), así que también queda
+retirado: el `Literal` se angostó a `json` y `markdown`. Un valor retirado no se puede
+descartar como una clave —`extra="forbid"` nunca ve un valor y sólo rechaza miembros que el
+modelo no declara, así que un `trello` guardado llega al `Literal` y lo falla—; por eso `GET`
+normaliza un `trello` guardado a `json` en vez de fallar (sin esa normalización la fila
+heredada sería un `500`), `PUT` lo rechaza con `422`, y la normalización no se escribe de
+vuelta, así que el almacenamiento conserva lo que tenía.
 
 ### LLM Config (scoped a workspace)
 
