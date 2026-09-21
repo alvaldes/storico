@@ -1,12 +1,15 @@
 # ODD Feature: prod-checklist-honesty
 
-> **Status**: **PR 1 landed on `main`; PR 2 committed on `fix/retire-trello-option-and-dead-settings`
-> and awaiting native review.** This record is the resume point — read it first, then the section
-> "Resuming in a fresh session" at the end.
-> - **PR 2 (code) — COMMITTED, NOT LANDED.** Branch `fix/retire-trello-option-and-dead-settings` off
->   `main` @ `fc59dc5`, four commits (`c5683b8` WU4, `79d57dc` WU5 settings, `f5f82e0` WU6, `073a5f8`
->   WU5 `.env.example`), 15 files. Backend gates green (705 passed, 1 skipped, 1 pre-existing
->   `ResourceWarning`); frontend green (`tsc` clean, 421 tests). Native review pending.
+> **Status**: **PR 1 landed on `main`; PR 2 committed on `fix/retire-trello-option-and-dead-settings`,
+> independently verified, and awaiting native review.** This record is the resume point — read it
+> first, then the section "Resuming in a fresh session" at the end.
+> - **PR 2 (code) — COMMITTED AND VERIFIED, NOT LANDED.** Branch
+>   `fix/retire-trello-option-and-dead-settings` off `main` @ `fc59dc5`, six commits (`c5683b8` WU4,
+>   `79d57dc` + `073a5f8` WU5, `f5f82e0` WU6, `84b0c64` this record, `1af649d` WU7), 18 files. All five
+>   gates re-run independently and green: backend `ruff check`, `ruff format --check`, `pytest -q`
+>   (705 passed, 1 skipped, 1 pre-existing `RuntimeWarning`); frontend `tsc --noEmit`, `vitest run`
+>   (421 passed, 36 files). No blocking finding; see "Independent verification" below. Native review
+>   pending.
 > - **PR 1 (docs) — DONE.** Branch `docs/honest-prod-claims`, four commits (`f147029`, `6f480c8`,
 >   `d523492`, `b196589`), fast-forwarded into `main` (`fb48732` → `b196589`), branch deleted, pushed,
 >   CI green (run `35554779323`). The backend deploy did not trigger, correctly: its `paths` are
@@ -113,8 +116,9 @@ from the per-workspace prompt config (`extraction_task.py:349` →
 | WU | Files | Change |
 |----|-------|--------|
 | WU4 | `backend/src/storico/api/schemas/settings.py`, `frontend/src/types/settings.ts`, `frontend/src/components/react/AccountPage.tsx`, both frontend tests | D3: `Literal` narrowed, option removed from the UI and the type, and a stored `trello` normalised to `json` on read with a test that fails without the normalisation. |
-| WU5 | `backend/src/storico/config/settings.py`, `backend/.env.example` | D5: both settings and the three `STORICO_RAG_*` lines removed. |
+| WU5 | `backend/src/storico/config/settings.py`, `backend/.env.example` | D5: both settings removed, and so was the `# RAG settings` block — its two `STORICO_RAG_*` placeholders, their header, and the blank line below it (four lines). |
 | WU6 | `backend/pyproject.toml`, `backend/tests/test_integration/test_projects_integration.py`, `odd/tasks/ci-postgres-integration-test.md` | D6, as corrected: `testcontainers.postgres` → `testcontainers.community.postgres`, **and the floor raised to `>=4.15.0`**, because the new path does not exist below it. The prior record's claim that the boundary is "≤4.12" is also corrected to `<4.15.0` — leaving it would have created the seventh stale claim this batch exists to close. |
+| WU7 | `docs/api.md`, `todo.md` | **Not in the original plan.** Two claims WU4 invalidated, found by the independent verifier and approved by the operator: `docs/api.md` described the endpoint's `defaultFormat` as still accepting `trello`, and `todo.md` asserted the enum still carried the value. The pre-existing landing copy in `i18n` that promises Trello export is deliberately **not** here — approved as a follow-up. |
 
 ## Non-goals
 
@@ -157,8 +161,9 @@ from the per-workspace prompt config (`extraction_task.py:349` →
       of the retired value alongside the API. The `export_format_trello` key left `en.json` and
       `es.json` together, keeping parity.
 - [x] WU5 — landed as **two** commits, because of a tool-level guard and not ambiguity: `79d57dc`
-      removed both settings from `backend/src/storico/config/settings.py`; `073a5f8` removed the three
-      `STORICO_RAG_*` placeholders from `backend/.env.example`. The guard (`read`/`write`/`edit`, no
+      removed both settings from `backend/src/storico/config/settings.py`; `073a5f8` removed the
+      `# RAG settings` block from `backend/.env.example` — its two `STORICO_RAG_*` placeholders and
+      its header. The guard (`read`/`write`/`edit`, no
       allowlist) refuses that path name, so `79d57dc` declined to work around it and recorded the gap
       in its own message; the operator authorized the second edit explicitly.
 - [x] WU6 — landed as `f5f82e0`. `backend/pyproject.toml`, the integration test, and
@@ -166,7 +171,11 @@ from the per-workspace prompt config (`extraction_task.py:349` →
       corrected**: the canonical path exists only from 4.15.0, so the floor moved with it, and the prior
       record's "≤4.12" boundary was corrected to "<4.15.0".
 - [x] Gates for PR 2: backend `ruff check src tests`, `ruff format --check src tests`, `pytest -q`;
-      frontend `pnpm exec tsc --noEmit`, `pnpm vitest run`.
+      frontend `pnpm exec tsc --noEmit`, `pnpm vitest run`. Re-run independently rather than taken from
+      the writers' reports: all five green.
+- [x] WU7 — correct the two claims WU4 invalidated (`docs/api.md`, `todo.md`). Added after the
+      independent verification, with operator approval. The landing copy in `i18n` that promises
+      Trello export is deliberately **not** here; it is an approved follow-up.
 - [ ] Branch, commit, native review, land PR 2.
 
 ## Evidence
@@ -207,9 +216,13 @@ ran the suites and reported them green, but neither returned the observed-red ou
 for, so the parent reproduced it by reverting only a work unit's *source* while keeping its tests, then
 re-running. Backend WU4 with `api/schemas/settings.py` and `api/routes/settings.py` at `HEAD~1`:
 **3 failed, 8 passed**, the write test failing as `assert 200 == 422`. Frontend WU4 with
-`types/settings.ts` and `stores/settingsStore.ts` at `HEAD~1`: **2 failed, 9 passed**, both
-`expected 'trello' to be 'json'`. Restored and verified clean at the fix commit before continuing.
-Without that re-derivation the tests would have been green with nothing showing they are load-bearing.
+`types/settings.ts` and `stores/settingsStore.ts` at `HEAD~1`: **3 failed, 12 passed** across the two
+changed files. Restored and verified clean at the fix commit before continuing. Without that
+re-derivation the tests would have been green with nothing showing they are load-bearing.
+**Self-correction:** this paragraph first recorded the frontend red as "2 failed, 9 passed" — that
+figure came from a partial run in which `AccountPage.test.tsx` failed to load, so only 11 of the 15
+tests executed. The independent verifier caught the undercount; the figure above was re-derived
+directly.
 
 - **WU4 — `c5683b8`**, 10 files. Backend: `ExportSettings.default_format` narrowed to
   `Literal["json", "markdown"]`; a new `RETIRED_EXPORT_FORMATS = {"trello": "json"}` sits beside
@@ -229,8 +242,12 @@ Without that re-derivation the tests would have been green with nothing showing 
   a rehydrate test that drives the real `persist` path.
 - **WU5 — `79d57dc` and `073a5f8`**, split by a tool-level guard rather than by design. `79d57dc` removed
   `rag_similarity_threshold` and `rag_max_examples` and left a comment in their place naming why they
-  are gone, so they are not re-added as knobs. `073a5f8` removed the three `STORICO_RAG_*` placeholders
-  from `backend/.env.example`. The guard matches `.env`-family path names for `read`/`write`/`edit` with
+  are gone, so they are not re-added as knobs. `073a5f8` removed the `# RAG settings` block from
+  `backend/.env.example`: two `STORICO_RAG_*` placeholders and their header, plus the separating blank
+  line — four lines. (An earlier draft of this record called them "three `STORICO_RAG_*` lines",
+  conflating the header with a variable; the verifier counted the variables and found two. The
+  committed diff removes four lines.)
+  The guard matches `.env`-family path names for `read`/`write`/`edit` with
   no allowlist, so the first commit could not include that file; it recorded the gap in its own message
   instead of quietly narrowing the work unit, and the operator authorized a second, explicit edit.
 - **WU6 — `f5f82e0`**, three files. `backend/pyproject.toml` floor `>=4.9.0` → `>=4.15.0` with its real
@@ -249,6 +266,63 @@ than left standing: that the testcontainers change was "one import" (it forces t
 that `PostgresContainer(...)` could be constructed without a Docker daemon (it cannot); and that the
 4.15.0 shim is six lines (it is fifteen). One further self-correction: the parent first reported the
 `backend/.env.example` edit as committed when it was still only in the working tree; it is `073a5f8`.
+
+- **WU7 — `1af649d`**, two files, and not in the original plan. The independent verification found
+  three stale claims beyond the plan's scope. Two of them **this change invalidated** — true before
+  WU4, false after: `docs/api.md` described `/users/me/settings` as still transporting a `trello`
+  `defaultFormat`, and `todo.md` asserted the enum still carried the value. The operator approved
+  fixing exactly those two and deferring the third. The new `docs/api.md` paragraph records the
+  retirement in the same shape that file already uses for the removed `llm` key — including the
+  read/write asymmetry — and cites the route that actually exists.
+
+### Independent verification
+
+A separate read-only verifier re-derived every number in this record and every product claim of
+WU4–WU6, without being told to trust any of them. It ran in an isolated clone plus a detached
+worktree at `fc59dc5`, with `PYTHONPATH` pointed at the clone to defeat the editable install's `.pth`
+that would otherwise resolve `storico` back to the real repository. The real tree was never mutated
+and was left clean at its head.
+
+**Result: no blocking finding.** Confirmations worth recording:
+
+- All five gates green, with the skip and the warning each reproduced on the base tree.
+- The asymmetry holds and its tests are load-bearing. Re-derived red for both halves, and the sharper
+  variant that reverts **only** the route (leaving the narrowed `Literal` in place) fails the read
+  with the exact `ValidationError` the docstring predicts. That same run proved the write rejection is
+  owned by the **schema** rather than the route: the write test still passed.
+- The read rewrite is pure — the nested `export` dict is copied before mutation, so there is no ORM
+  dirty-tracking and no write-back. The copy is load-bearing, not cosmetic.
+- No counterexample to the asymmetry was found in either direction: `ExportSettings` has exactly one
+  other reference (its own schema module), the only writer of export preferences is the settings
+  `PUT`, and the only reader of `user_preferences.preferences` goes through `_for_schema`.
+  `setExportFormat` is typed and reachable only from a `Select` whose items no longer include the
+  retired value.
+- `testcontainers>=4.15.0` is exactly the required floor, re-measured by downloading the wheels rather
+  than by reading a comment.
+
+**Three claims of this record were refuted by that run and are corrected above or here:** the frontend
+red count (2 → 3, from a partial run misread as complete); the `STORICO_RAG_*` count ("three lines" →
+two variables plus a header, four lines removed); and the warning's type (`ResourceWarning` →
+`RuntimeWarning: coroutine 'Connection._cancel' was never awaited`). The warning is pre-existing and
+environmental — it comes from the remote `STORICO_DATABASE_URL` in `.env`, and both base and candidate
+are silent without that file, so comparing them from different directories yields a false
+"candidate-caused" reading. The verifier corrected its own first comparison for exactly that reason.
+
+**One claim of this record's *brief* was false and survives in history.** The brief — and therefore
+`c5683b8`'s commit message — says `POST /api/v1/export` answers `400` for `trello`. No such route
+exists or ever existed: `api/routes/export.py` mounts one route,
+`GET /api/v1/workspaces/{workspace_id}/export/tasks`, and its `format` **query parameter** is the
+guard. The record corrects it here rather than leaving it. Rewriting the message would mean rewriting
+five commit hashes that this record and the verification cite as evidence, so it was reported to the
+operator instead of done unilaterally.
+
+**Follow-ups this candidate deliberately does not carry**, all approved as separate work: the landing
+copy in `frontend/src/i18n/{en,es}.json` that still promises Trello export — the same false-promise
+class as C3, closed for `AGENTS.md` in PR 1 but not for the UI — and the six live `Settings` fields
+(`embedding_provider`, `google_api_key`, `google_embedding_model`, `ollama_host`, `openai_api_key`,
+`openai_embedding_model`) that `backend/.env.example` omits. The latter is a documentation gap rather
+than a dead knob, and it is pre-existing: this candidate removed three lines from that file and added
+none.
 
 ## Resuming in a fresh session
 
