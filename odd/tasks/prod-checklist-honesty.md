@@ -1,27 +1,28 @@
 # ODD Feature: prod-checklist-honesty
 
-> **Status**: **PR 1 landed on `main`; PR 2 committed on `fix/retire-trello-option-and-dead-settings`,
-> independently verified, and awaiting native review.** This record is the resume point — read it
-> first, then the section "Resuming in a fresh session" at the end.
-> - **PR 2 (code) — COMMITTED AND VERIFIED, NOT LANDED.** Branch
->   `fix/retire-trello-option-and-dead-settings` off `main` @ `fc59dc5`. Five work-unit commits —
+> **Status**: **Closed — both PRs landed on `main`.** This record is the batch's record; the resume
+> point it once carried is spent.
+> - **PR 2 (code) — LANDED.** Branch `docs/honest-prod-claims` is PR 1's; this one is
+>   `fix/retire-trello-option-and-dead-settings`, off `main` @ `fc59dc5`: five work-unit commits —
 >   `c5683b8` (WU4), `79d57dc` + `073a5f8` (WU5), `f5f82e0` (WU6), `1af649d` (WU7) — plus this
 >   record's own commits, which add no code; 18 files. `git log fc59dc5..HEAD` is authoritative for the
 >   tip, since counting this record's commits here would be self-referential. All five gates re-run
 >   independently and green: backend `ruff check`, `ruff format --check`, `pytest -q` (705 passed,
 >   1 skipped, 1 pre-existing `RuntimeWarning`); frontend `tsc --noEmit`, `vitest run` (421 passed,
->   36 files). No blocking finding; see "Independent verification" below. **Native review approved and
->   burned** — `review-bde8183340bdb47b`, `risk_tier: medium`, one lens (`review-reliability`),
->   `changed_files: 18`, `original_changed_lines: 472`, `correction_budget: 200`, two non-blocking
->   advisories. **Landed**: `git merge --ff-only` `fc59dc5` → `61a132b`, pushed, CI run `35563349443`
->   green and backend deploy run `35563349521` green; production probed healthy afterwards.
+>   36 files). No blocking finding; see "Independent verification" below. Native review
+>   `review-bde8183340bdb47b` **approved and burned** — `risk_tier: medium`, one lens
+>   (`review-reliability`), `changed_files: 18`, `original_changed_lines: 472`,
+>   `correction_budget: 200`, two non-blocking advisories. Landed with `git merge --ff-only`
+>   `fc59dc5` → `61a132b`, pushed; CI run `35563349443` green, backend deploy run `35563349521` green,
+>   and production probed healthy afterwards.
 > - **PR 1 (docs) — DONE.** Branch `docs/honest-prod-claims`, four commits (`f147029`, `6f480c8`,
 >   `d523492`, `b196589`), fast-forwarded into `main` (`fb48732` → `b196589`), branch deleted, pushed,
 >   CI green (run `35554779323`). The backend deploy did not trigger, correctly: its `paths` are
 >   `backend/**` and its own workflow file. Native review `review-bf9c1b2604557eac` came back
 >   **approved** and its authority is **burned** (`gentle-ai.review-acknowledged/v1`).
-> - **PR 2 (code) — NOT STARTED.** Branch `fix/retire-trello-option-and-dead-settings`; work units
->   WU4–WU6 below. Nothing has been written for it.
+> - **What actually remains** is not a PR of this batch: the advisories both reviews returned, the
+>   i18n landing copy that still promises Trello export, and — the largest — the deploy's migration
+>   policy. The section below is kept as the record of what was open *at handoff*.
 >
 > Receipt-driven development is **on** in this clone (`~/.gentle-ai/state.json`,
 > `rdd_mode_recorded_at = 2026-09-19T18:49:02Z`), so a native review is expected per candidate — but
@@ -383,6 +384,12 @@ of its own review or landing. Anyone treating the branch tip as "the reviewed ar
 target identity above instead — it names what was actually reviewed.
 
 ## Resuming in a fresh session
+
+> **Spent.** Both PRs landed, so this section is a record of what was open *at handoff* rather than a
+> live to-do list. Anything below that names PR 2 as pending, or `fc59dc5` as the tip, is historical:
+> after both landings the tip is `305b5da`. The follow-ups that genuinely remain are the advisories
+> both reviews returned, the i18n landing copy that promises Trello export, and the deploy's migration
+> policy.
 
 State of the world at handoff, in the order it matters.
 
