@@ -422,6 +422,21 @@ later work and never as a reason to re-run review on that candidate.
 The reviewer's line numbers appear to run one below the file's own; the locations above are the lines
 whose content matches the id.
 
+**`R3-waf-3` and `R3-pubip-1` are closed, and each had a wider blast radius than the advisory named.**
+Closing them required correcting **every live document that states the claim as its own fact**, not the one
+file the id pointed at: a one-file fix would have left the repository contradicting itself, which is the
+defect class being cleaned. Measured with `git grep` over tracked files:
+
+| Claim | Named by the advisory | Also stated in |
+|-------|----------------------|----------------|
+| "Vercel WAF" for rate limiting | `prod.todo.md` | `docs/security.md`, `todo.md` |
+| The VM's public address | `docs/deployment.md` | `AGENTS.md` (ADR-005) |
+
+A third row of the same class was found while measuring — the env-var audit said "in Vercel" — and was
+corrected in the same batch. These records and `odd/tasks/schema-drift-reconciliation.md` were deliberately
+left as written: they are the history of what was corrected, and rewriting them would erase the evidence.
+The whole batch, with its measurements and decisions, is in `odd/tasks/advisory-closures.md`.
+
 ### 3. Two mechanical lessons that cost time and will cost it again otherwise
 
 - A delegated writer that returns **its own** unresolved consent envelope cannot have that envelope

@@ -338,6 +338,16 @@ exercised against real rows — and it is precisely the branch no test can exerc
 database is empty. Read the other way: the check's **refusal** path is still unexercised against production,
 and the only thing that exercises it is production one day holding a bad value.
 
+> **Addendum, 2026-09-21 — the paragraph above is no longer true.** The refusal path is now exercised by a
+> test. `2252640` (`test(db): exercise 0025's refusal path against a real database`) seeds
+> `pending, processing, processing, failed` at the `0024` schema and asserts that `upgrade()` raises **before**
+> any DDL, that the message names the offending value exactly once, and that the rows are still there
+> afterwards. It holds on SQLite precisely because the guard runs before the Postgres-only cast — which is
+> why an empty CI container could never reach it and a seeded one can. The test passed 14/14 on its file, and
+> the candidate went through native review before landing: lineage `review-8635d52fa755e325`, tier `medium`,
+> one lens (`review-reliability`), **approved and burned**, with no advisories. Getting there cost two
+> harness defects, both recorded in `odd/tasks/advisory-closures.md`.
+
 Readiness then answered 200 with `schema: ok`, and the deploy was re-run on the same commit to confirm the
 pipeline end to end: **green**. So the whole designed sequence — land, fail loudly, migrate, confirm — ran
 once, for real, on the change that most needed it.
