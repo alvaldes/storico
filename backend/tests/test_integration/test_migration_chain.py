@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -101,6 +101,25 @@ _ALEMBIC_VERSION = sa.Table(
 # last two entries were paid off by ``0025_convert_extractions_status_to_enum.py`` and
 # ``0026_drop_duplicate_tasks_user_story_index.py``, each line leaving this literal in the same
 # commit that fixed it.
+#
+# **Read the empty set as "no autogenerate-visible drift", never as "the models and the migrations
+# agree".** The second reading is false, and the difference is a disabled setting rather than a
+# subtlety: ``compare_server_default`` is ``False`` by default in Alembic and ``env.py`` never
+# enables it, so no ``modify_default`` difference can appear in this comparison however many exist.
+# Ten columns have a ``server_default`` that lives in the database and not in the model —
+# ``projects.description``, ``tasks.description``, ``tasks.priority``, ``extractions.status``,
+# ``user_preferences.preferences``, ``user_stories.status``, ``tasks.status``,
+# ``users.is_first_login``, ``extractions.user_story_status`` and ``user_stories.updated_at`` —
+# and this comparison is structurally unable to see any of them. Note the irony worth keeping:
+# ``extractions.status``'s database default is the very expression that made 0025 hard, and 0025
+# re-created it on purpose as the enum's label, so the column this workstream reasoned about most
+# is one the ratchet cannot check. It was already among the ten before that revision; the revision
+# kept it there deliberately rather than quietly dropping the default.
+#
+# ``odd/tasks/schema-drift-gate.md`` records the class under D4 and why enabling the setting is its
+# own change (it reports all ten at once, and Alembic's own documentation warns the comparison's
+# accuracy varies by backend). The assertion below carries a tripwire for the day somebody does
+# enable it. An empty set is a state to be read with that in mind, not a certificate.
 #
 # It stays a `frozenset` used by the two-directional comparison below instead of collapsing into a
 # bare equality assertion. The two shapes cost the same; keeping this one preserves the branch that
@@ -343,6 +362,17 @@ def _diff_signature(diff: tuple[Any, ...]) -> str:
     return f"{op}:{scalars}" if scalars else op
 
 
+def _modify_default_signatures(signatures: Iterable[str]) -> list[str]:
+    """The ``modify_default:`` signatures in a run's diff, sorted.
+
+    Extracted from the tripwire below so that the half which *is* provable on a machine with no
+    Docker daemon can be exercised: a synthetic ``modify_default`` tuple can be run through
+    ``_diff_signature`` here, which is the only way to show locally that the tripwire recognises
+    the difference it watches for instead of silently passing on an unfamiliar signature shape.
+    """
+    return sorted(signature for signature in signatures if signature.startswith("modify_default:"))
+
+
 @pytest.mark.integration
 @_needs_docker
 @pytest.mark.asyncio(loop_scope="module")
@@ -352,10 +382,13 @@ async def test_the_migrated_schema_drift_equals_the_recorded_gap(
 ) -> None:
     """The autogenerate diff equals ``_KNOWN_DRIFT`` exactly — a ratchet, not a tolerance.
 
-    ``_KNOWN_DRIFT`` is empty, so this asserts that the migrated schema and the models agree with
-    no exceptions. The fixture already proves ``alembic upgrade head`` runs on Postgres; what is
-    left to prove is that it lands on the schema the models describe, and — on the way to CI —
-    that the two revisions which made that true actually execute.
+    ``_KNOWN_DRIFT`` is empty, so this asserts that **no autogenerate-visible difference remains**
+    — which is a weaker statement than "the models and the migrations agree", because the
+    comparison cannot see everything. ``compare_server_default`` is off, so ten database-only
+    defaults are invisible to it; see ``_KNOWN_DRIFT`` above. The fixture already proves
+    ``alembic upgrade head`` runs on Postgres; what is left to prove is that it lands on the schema
+    the models describe, and — on the way to CI — that the two revisions which made that true
+    actually execute.
 
     The assertion is an exact set match in **both** directions, and that is what makes this a
     ratchet rather than a tolerance:
@@ -379,6 +412,33 @@ async def test_the_migrated_schema_drift_equals_the_recorded_gap(
         # No differences at all: every recorded entry is now stale, and the comparison says so.
         found = set()
 
+    # A deliberate tripwire. This is **not** evidence that the schema and the models agree, and it
+    # is asserted before the equality check on purpose.
+    #
+    # `compare_server_default` is off, so a `modify_default` difference cannot be reported at all
+    # today and this assertion holds vacuously. It exists to fire the day somebody enables that
+    # comparison: at that moment the ten database-only `server_default`s listed above `_KNOWN_DRIFT`
+    # all become visible at once, and the correct response is to land the model-side defaults in the
+    # *same change* as the flag — not to record ten differences and make the comparison permanently
+    # uninformative.
+    #
+    # Ordering matters. With the flag on, `found` is non-empty, so the ratchet's equality assertion
+    # would fail too — and its message would send the reader hunting for drift instead of looking at
+    # the setting they just changed. This one names the actual cause and what to do about it.
+    newly_visible = _modify_default_signatures(found)
+    assert not newly_visible, (
+        "a `modify_default` difference has appeared, which means `compare_server_default` has been "
+        "enabled (in alembic/env.py, or by a change to how the context is configured). This "
+        "assertion is a tripwire, not a report of drift: it is not saying the schema moved, it is "
+        "saying the comparison changed.\n"
+        f"  differences the comparison can now see: {newly_visible}\n"
+        "Ten columns declare a `server_default` in the database and none in the model, so enabling "
+        "this comparison surfaces all ten at once. Land the model-side `server_default`s in the "
+        "same change as the flag that reveals them, then update or delete this tripwire "
+        "deliberately — do not simply record the ten as known drift, which would leave this "
+        "comparison permanently uninformative. See odd/tasks/schema-drift-gate.md, section D4."
+    )
+
     new_differences = sorted(found - _KNOWN_DRIFT)
     stale_entries = sorted(_KNOWN_DRIFT - found)
 
@@ -392,3 +452,30 @@ async def test_the_migrated_schema_drift_equals_the_recorded_gap(
         "See odd/tasks/schema-drift-gate.md, 'WU3 — the chain measured', for what each one is and "
         "which side looks authoritative."
     )
+
+
+def test_the_tripwire_recognises_a_modify_default_difference() -> None:
+    """The tripwire's own logic, which is the half provable without a database.
+
+    The assertion in the ratchet test cannot be exercised on this machine: it fires only against a
+    live Postgres with ``compare_server_default`` enabled, and there is no Docker daemon here. This
+    test does not claim to have exercised it. What it pins is the predicate the tripwire rests on —
+    that a ``modify_default`` difference reduces to a ``modify_default:`` signature and is picked
+    up, so the day the comparison is enabled the assertion fails loudly instead of passing quietly
+    on a signature shape nobody checked.
+
+    The tuples are synthetic for the same reason: the real ones cannot be produced while the
+    comparison is off. Their shape mirrors what ``AlterColumnOp.to_diff_tuple`` returns and what
+    the six recorded differences were measured to look like, with the plain column name at index 3
+    that the ``modify_*`` ops carry.
+    """
+    default_diff = ("modify_default", "public", "extractions", "status", None, "'pending'")
+    type_diff = ("modify_type", "public", "extractions", "status")
+
+    assert _diff_signature(default_diff) == "modify_default:extractions.status"
+    assert _modify_default_signatures({_diff_signature(default_diff)}) == [
+        "modify_default:extractions.status"
+    ]
+    # The neighbouring op must not be caught: `modify_type` is exactly what this ratchet is for, and
+    # a tripwire that swallowed it would make every type change look like a changed comparison.
+    assert _modify_default_signatures({_diff_signature(type_diff)}) == []
