@@ -16,8 +16,10 @@ This module executes it against a Postgres 16 container and asserts two things:
    check`` semantics. A difference is drift between the two and is reported as a failure, not
    accommodated here.
 
-This test is marked ``@pytest.mark.integration`` and disabled unless the Docker daemon is reachable,
-so it skips on a laptop without a daemon and runs for real on GitHub runners, which do have one.
+The two container tests are marked ``@pytest.mark.integration`` individually and disabled unless the
+Docker daemon is reachable, so they skip on a laptop without a daemon and run for real on GitHub
+runners, which do have one. The markers sit on those two tests rather than on the module so that the
+URL-shape test below — which needs no Docker — still runs on a machine without a daemon.
 
 To run manually (docker daemon up):
 
@@ -50,8 +52,8 @@ def _docker_reachable() -> bool:
     """Best-effort check — is the docker daemon pickable in $DOCKER_HOST?
 
     Same probe as ``tests/test_integration/test_projects_integration.py``, copied rather than
-    shared: ``pytestmark`` below evaluates it at import time, and this test file's edit surface has
-    no home for a shared helper module. The two copies must move together, or their skip semantics
+    shared: the marks below evaluate it at import time, and this test file's edit surface has no
+    home for a shared helper module. The two copies must move together, or their skip semantics
     silently diverge.
     """
     host = os.environ.get("DOCKER_HOST", "")
@@ -64,13 +66,12 @@ def _docker_reachable() -> bool:
     return os.path.exists(socket_path) and os.access(socket_path, os.W_OK)
 
 
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        not _docker_reachable(),
-        reason="Docker daemon unreachable — this integration test needs docker to spawn a Postgres container via testcontainers.",
-    ),
-]
+# Applied to the two container tests individually, never to the module: the URL-shape test below is
+# pure and must run on a machine with no Docker daemon at all.
+_needs_docker = pytest.mark.skipif(
+    not _docker_reachable(),
+    reason="Docker daemon unreachable — this integration test needs docker to spawn a Postgres container via testcontainers.",
+)
 
 # The migration scripts sit beside the package they migrate. Resolved from the installed package
 # rather than from the working directory (CI runs pytest from ``backend/``, and this repository is
@@ -102,20 +103,56 @@ def _alembic_config(url: str) -> Config:
     return config
 
 
-@pytest.fixture(scope="module")
-def pg_url() -> Iterator[str]:
-    """Start Postgres 16 in a testcontainer and yield an asyncpg URL for it.
+def _alembic_ready_url(container_url: str) -> str:
+    """The container's URL in, the URL string Alembic receives out.
 
     The container keeps its own *sync* driver, which is what its readiness probe wants; only the URL
-    handed to Alembic moves to asyncpg. ``env.py`` uses a supplied URL verbatim, so what is passed
-    here must already be asyncpg-acceptable.
+    handed to Alembic moves to asyncpg. ``env.py`` uses a supplied URL verbatim, so what is returned
+    must already be asyncpg-acceptable.
+
+    ``render_as_string(hide_password=False)`` is load-bearing, not a style choice: ``URL.__str__``
+    **masks the password as ``***``**, so ``str(make_url(...).set(drivername=...))`` hands the
+    container the literal password ``***`` and it answers ``InvalidPasswordError`` while the call
+    site looks perfectly correct. This code path has no way around it by passing the ``URL`` object
+    the way the other integration test does — ``env.py`` puts this value into a ``configparser``
+    option, which requires a string.
+    """
+    return (
+        make_url(container_url)
+        .set(drivername="postgresql+asyncpg")
+        .render_as_string(hide_password=False)
+    )
+
+
+def test_the_alembic_url_carries_the_real_password() -> None:
+    """The string handed to Alembic keeps the password the container was created with.
+
+    No Docker, no database, no event loop: this is a pure string transformation, and it exists so the
+    masking trap cannot come back unnoticed. It fails the moment ``_alembic_ready_url`` renders the
+    URL through ``URL.__str__`` again — the edit that caused the original failure.
+    """
+    alembic_url = _alembic_ready_url("postgresql+psycopg2://test:test@localhost:32769/test")
+
+    assert "***" not in alembic_url, (
+        "URL.__str__ masks the password as '***'; Alembic would then authenticate with that "
+        f"literal string and the container would reject it: {alembic_url}"
+    )
+    assert alembic_url == "postgresql+asyncpg://test:test@localhost:32769/test"
+
+
+@pytest.fixture(scope="module")
+def pg_url() -> Iterator[str]:
+    """Start Postgres 16 in a testcontainer and yield an Alembic-ready asyncpg URL for it.
+
+    The URL is rendered by ``_alembic_ready_url``, which keeps the password SQLAlchemy would
+    otherwise mask; that function's own test pins the behaviour without needing the daemon.
     """
     # Import lazily so the module import itself never blocks on testcontainers — testcontainers
     # imports docker, which is heavy and may pull images.
     from testcontainers.community.postgres import PostgresContainer
 
     with PostgresContainer("postgres:16-alpine") as pg:
-        yield str(make_url(pg.get_connection_url()).set(drivername="postgresql+asyncpg"))
+        yield _alembic_ready_url(pg.get_connection_url())
 
 
 @pytest.fixture(scope="module")
@@ -139,6 +176,8 @@ async def migrated_engine(pg_url: str, alembic_config: Config) -> AsyncGenerator
     await engine.dispose()
 
 
+@pytest.mark.integration
+@_needs_docker
 @pytest.mark.asyncio(loop_scope="module")
 async def test_the_chain_from_scratch_reaches_the_head_the_scripts_declare(
     alembic_config: Config,
@@ -161,6 +200,8 @@ async def test_the_chain_from_scratch_reaches_the_head_the_scripts_declare(
     )
 
 
+@pytest.mark.integration
+@_needs_docker
 @pytest.mark.asyncio(loop_scope="module")
 async def test_the_migrated_schema_matches_the_models(
     alembic_config: Config,
