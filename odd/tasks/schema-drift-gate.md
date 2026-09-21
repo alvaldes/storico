@@ -1,8 +1,8 @@
 # ODD Feature: schema-drift-gate
 
-> **Status**: **PR 1 (WU1 + WU2) committed and independently verified; PR 2 not started.** Branch
-> `feat/schema-drift-gate` off `main` @ `305b5da`, commits `aee59ff` (WU1) and `68b9781` (WU2) plus this
-> record's own. PR 2 is the pair that makes the migration chain prove itself — WU3 and WU4.
+> **Status**: **PR 1 (WU1 + WU2) committed, independently verified, and native-reviewed — approved and
+> burned. Awaiting the operator's landing decision.** Branch `feat/schema-drift-gate` off `main` @
+> `305b5da`. PR 2 is the pair that makes the migration chain prove itself — WU3 and WU4.
 > **Created**: 2026-09-21
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -267,9 +267,6 @@ pre-existing code trap came up while chasing the live check and is noted only be
 `_normalize_db_url` in `infrastructure/database/base.py` rewrites **any** URL scheme to
 `postgresql+asyncpg`, so a `sqlite+…` URL silently becomes a postgres URL on `localhost:5432`.
 
-_(per-work-unit records land here as each unit closes; no measurement above is copied from prose
-without its file and line.)_
-
 **Verification, all of it observed.** The YAML parses; `bash -n` is clean on the extracted remote script
 (95 lines) and on the block alone (74 lines); a grep for the `alembic` subcommands finds **no**
 invoction; every line is ≤ 80 characters. The readiness branch was exercised with a throwaway harness
@@ -288,5 +285,57 @@ and the deprecation as outstanding debt — because that batch bumped the floor 
 without updating this file. Both are corrected. The "Orden de las migraciones" row stated one order as
 if one order existed; it now records that this was the order of those three revisions and not a rule.
 
-_(per-work-unit records land here as each unit closes; no measurement above is copied from prose
-without its file and line.)_
+### PR 1 review
+
+Native review `review-2eb84c2a08108260`, target
+`sha256:1d798b8112525b507e9cd0c0f608df57357a0f76895cda62d842793ea109c12c`: `state: approved`,
+`risk_tier: **high**` — not `medium` like the previous two candidates, because this one contains shell
+source: `risk_reasons: [{"code": "shell_source", "signal": "shell_process", "path":
+".github/workflows/deploy-backend.yml"}]`. All four lenses were required and all four ran (`review-risk`,
+`review-resilience`, `review-readability`, `review-reliability`), 8 files,
+`original_changed_lines: 1153`, `correction_budget: 200`. The group forecast was four model runs over
+`pi_host_relay`; all four were prepared and submitted (prompt ≈ 86 kB each; results 5121 / 4481 / 3341 /
+5148 bytes). Acknowledgement burned the authority: `authority: burned`,
+`burn_evidence: gentle-ai.review-acknowledged/v1`, `delivery: ordinary-repository-policy`.
+
+**Thirteen advisory findings, none of which opened a correction.** Eleven are `SUGGESTION`; two are
+`WARNING`, and both are the *same design point* seen from two lenses:
+
+| Finding | Lens | Where |
+|---|---|---|
+| `R3-latched-unknown` | reliability | `schema_status.py:104-116` |
+| `R4-cached-unknown-head` | resilience | `schema_status.py:92-104` |
+
+They flag that the **failed** expected-head read is cached, so one failure latches `unknown` for the life
+of the process and readiness stays 503 with no self-healing. That behaviour is not the writing agent's
+invention — this record's brief asked for it in as many words ("a failed read is cached too, so an
+unreadable script directory does not re-parse on every request"). The reviewers are right that **caching
+success while not caching failure** is the better shape: the cheap path stays cheap, and a transient
+failure heals instead of pinning the instance out of rotation. It is **not** applied here, because
+editing the tree after approval would deliver something other than what was approved. It is the first
+follow-up.
+
+The other eleven, named so a follow-up can open them instead of re-deriving them:
+`R1-info-readiness-leak`, `R2-duplicated-alembic-table-decl`, `R2-inconsistent-version-failure-mode`,
+`R2-timeout-name-conflates-attempts-and-seconds`, `R3-drift-direction-blind`, `R3-gate-after-swap`,
+`R3-gate-unproven-e2e`, `R3-liveness-latency`, `R3-version-assert-literal`,
+`R4-gate-after-swap-no-rollback`, `R4-sequential-probe-latency`. The closure envelope carries ids,
+lenses, locations and severities only, so this record does not paraphrase their content.
+
+Worth noting that three of them **confirm what this record already states rather than contradict it**:
+`R3-drift-direction-blind` is the direction-blindness recorded under "What readiness means", and
+`R3-gate-after-swap` with `R4-gate-after-swap-no-rollback` is the "the gate reports, it does not prevent"
+qualification. Reviewers landing on the same limits the record declares is corroboration.
+
+**A harness quirk worth recording, because it has now cost time twice.** The first START minted a consent
+envelope whose binding **expired after 10 minutes unanswered**, and the provider's prescribed
+continuation was `restart-for-fresh-consent` — never a resend of the dead binding. Every rejection on
+that path was pre-authority (`lineage_created: false`, `mutation_performed: false`), so nothing was
+created and nothing was lost. The second START created the lineage, and an eligible interactive host
+resolved the consent envelope before it reached the model — host-owned permission, not something this
+record grants.
+
+This section, like the ones above it, was written **after** the approval in a commit the approved
+candidate did not contain. The reviewed artifact is the target identity named here, not the branch tip.
+
+_(PR 2's per-work-unit records land below as WU3 and WU4 close.)_
