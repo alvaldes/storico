@@ -1,9 +1,9 @@
 # ODD Feature: deploy-migration-window
 
-> **Status**: in progress. Three commits on `feat/deploy-migration-window` off `main` @ `4410dea`: the
-> change, then the first review's warnings, then the second review's warning. Two native reviews, both
-> approved and burned: `review-70ebcd84d691fe01` for the change, `review-f69fe1c00acc9d27` for the two
-> commit slice. The third commit carries its own.
+> **Status**: landed on `main` @ `96535ae` (three commits, ff-merge). Three native reviews, all approved
+> and burned: `review-70ebcd84d691fe01` for the change, `review-f69fe1c00acc9d27` for the two-commit
+> slice, and `review-17671e1957623d8e` for the third commit. **First production run: success** (deploy run
+> `35660275213`) — the evidence is quoted at the end of this record.
 > **Created**: 2026-09-21
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -172,3 +172,37 @@ paraphrase what was not read: `R2-readability-doc-line-anchors-drift`,
 the policy stated above, with one thing worth keeping for the reader: that review was bound to the
 **workspace** candidate and this record's are bound to commits. Both are real reviews of the same bytes, and
 only the committed object is the one that lands — which is why the practice here is to review the commit.
+
+### The first production run, measured
+
+The deploy that shipped this change was also the first execution of the step, and that run's own log is the
+evidence. Quoted from the remote script's output, timestamps included:
+
+```
+21:59:50 === Keep the current image as a rollback tag ===
+21:59:51 === Stop & remove old container ===
+21:59:53 === Apply migrations (maintenance window) ===
+21:59:56 INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+21:59:56 INFO  [alembic.runtime.migration] Will assume transactional DDL.
+21:59:57 === Start new container ===
+21:59:57 55bf6426210af0c6410909a70d99f328745d3c875ac0e8bb2f063aae51ff60bd
+21:59:57 === Verify production is ready ===
+22:00:06 Ready after 9s: container running,
+22:00:06 http://localhost:8000/api/v1/health/ready answered 2xx.
+```
+
+**What that proves:**
+
+- **The container path works.** `Context impl PostgresqlImpl.` is `env.py` having loaded and connected from
+  inside the image, which is what the `COPY alembic.ini` and the `%(here)s` paths made possible. Alembic
+  printed no `Running upgrade` line, which is the no-op this record predicted: production already stood at
+  `0026`, the head of the commit being deployed.
+- **The window is what was advertised.** The migration took about three seconds, and the API was ready nine
+  seconds after the container started. The whole remote script took 17.7 s.
+- **No failure branch fired.** The run printed the tag echo and never the "no image tagged" line, so
+  `storico-api:previous` exists on the VM now, and nothing printed "Migration failed or timed out".
+
+**What it does not prove, stated so nobody reads this as more than it is:** that a *pending* migration
+applies correctly inside the window. That cannot be observed without a revision to apply, and the next
+schema change is what will exercise it. Nor does it prove the container command behaves when the database
+is unreachable: the fail-closed branch is still unexercised in production, which is deliberate.
