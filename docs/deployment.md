@@ -64,23 +64,43 @@ pip install -e ".[dev]"
 pytest -v
 ```
 
-## Producción (Vercel)
+## Producción
 
 ### Stack actual
 
 - **Frontend**: Astro SSR en Vercel
-- **Backend**: FastAPI en Vercel (serverless)
-- **Base de datos**: PostgreSQL (proveedor pendiente de definir)
-- **Vector store**: Qdrant Cloud (free tier 1GB) — pendiente
+- **Backend**: FastAPI en un contenedor Docker sobre una VM de Oracle (`163.192.150.75`)
+- **Base de datos**: PostgreSQL en Neon
+- **Vector store**: Qdrant contratado, todavía no configurado en producción
 - **LLM**: OpenAI (adapter implementado)
 
 ### Variables de entorno requeridas
 
-Ver `.env.example` y `prod.todo.md` para la lista completa.
+Ver `.env.example` y `prod.todo.md` para la lista completa. En producción el contrato vive en
+`/home/ubuntu/storico/backend/.env` en la VM, que está fuera del control de versiones: el workflow
+de despliegue no lo toca, así que una variable que falte no rompe el despliegue, falla en silencio
+cuando el proceso la necesita.
 
 ### CI/CD
 
-Pendiente de definir.
+Existe y corre con cada push:
+
+| Workflow | Qué hace |
+|----------|----------|
+| `.github/workflows/ci.yml` | Backend: `ruff check`, `ruff format --check`, `pytest -q`. Frontend: `pnpm exec tsc --noEmit`, `pnpm vitest run`. |
+| `.github/workflows/deploy-backend.yml` | Despliegue del backend en la VM. |
+
+El despliegue del backend entra por SSH a la VM, hace `git fetch origin main`, resetea el árbol de
+trabajo a `origin/main`, reconstruye la imagen, detiene y elimina el contenedor anterior y arranca
+uno nuevo con `docker run --network host --env-file /home/ubuntu/storico/backend/.env`.
+
+### Migraciones
+
+**El despliegue no corre migraciones de Alembic.** Una revisión de esquema puede quedar desplegada
+sin su migración aplicada, y ese es exactamente el incidente del 2026-09-20: el esquema quedó en
+`0021` contra un head `0024` y la extracción falló 56 veces con
+`column extractions.completed_at does not exist`. `prod.todo.md` lleva el paso de migración como
+ítem abierto. La política de migraciones es una decisión aparte y no se define en este documento.
 
 ### Artefactos de build del frontend
 
