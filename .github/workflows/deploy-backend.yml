@@ -82,18 +82,28 @@ jobs:
             # adding structure: 0022 and 0024 carry idempotence guards for it
             # (odd/tasks/schema-drift-gate.md). The rest are additive.
             #
-            # Bounded on purpose: a migration that hangs on a lock or a stalled
-            # connection would otherwise hold the API down for as long as the job
-            # lives. The chain's runtime is seconds when it has anything to do at all,
-            # so 900s is a ceiling only a hang reaches. `-k 30` is the part that
-            # matters: without it `timeout` sends SIGTERM and then waits forever for a
-            # child that ignores it. The container is unnamed, so a killed CLI cannot
-            # leave a name collision with the serving container.
-            timeout -k 30 900 docker run --rm \
+            # Bounded, and bounded in the right place. Killing the CLI is not enough:
+            # `timeout` kills the watcher, not the process inside the container, and a
+            # migration that keeps running after the job failed is a worse state than
+            # one that hangs -- nothing reports it, and a re-run could overlap it. So
+            # the container is named and stopped explicitly when the ceiling is hit.
+            # The chain's runtime is seconds when it has anything to do at all, so
+            # 900s is a ceiling only a hang reaches. The status is captured rather
+            # than swallowed: it is checked on the next line and the script exits with
+            # it, which is the opposite of what a trailing `|| echo` would do here.
+            MIGRATION_CONTAINER=storico-api-migrate
+            docker rm -f "$MIGRATION_CONTAINER" >/dev/null 2>&1 || true
+            migration_status=0
+            timeout -k 30 900 docker run --rm --name "$MIGRATION_CONTAINER" \
               --network host \
               --env-file /home/ubuntu/storico/backend/.env \
               storico-api \
-              alembic upgrade head
+              alembic upgrade head || migration_status=$?
+            if [ "$migration_status" -ne 0 ]; then
+              echo "Migration failed or timed out (exit ${migration_status}); stopping the container."
+              docker stop "$MIGRATION_CONTAINER" >/dev/null 2>&1 || true
+              exit "$migration_status"
+            fi
 
             echo "=== Start new container ==="
             docker run -d \

@@ -1,8 +1,9 @@
 # ODD Feature: deploy-migration-window
 
-> **Status**: in progress. Two commits on `feat/deploy-migration-window` off `main` @ `4410dea`: the
-> change, and then the review's warnings fixed. Native review of the change: `review-70ebcd84d691fe01`;
-> the fix commit carries its own.
+> **Status**: in progress. Three commits on `feat/deploy-migration-window` off `main` @ `4410dea`: the
+> change, then the first review's warnings, then the second review's warning. Two native reviews, both
+> approved and burned: `review-70ebcd84d691fe01` for the change, `review-f69fe1c00acc9d27` for the two
+> commit slice. The third commit carries its own.
 > **Created**: 2026-09-21
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -140,3 +141,34 @@ cannot be rehearsed by hand beforehand either.
 That is why the two warnings were fixed before landing rather than after: the rollback tag and the timeout
 are the two things that decide what that first run costs if it fails. The migration itself is a no-op on
 that run, because production stands at `0026`, the head of the commit being deployed.
+
+### Second review, and the warning it found in the fix
+
+The fix commit was reviewed as the two-commit slice (`review-f69fe1c00acc9d27`, tier `high`, four lenses):
+**approved and burned**, no correction. Five advisories, one of them a `WARNING` that landed on this
+record's own fix.
+
+| Id | Lens | Severity | Location | Disposition |
+|---|---|---|---|---|
+| `R4-timeout-kills-cli-not-container` | resilience | WARNING | `deploy-backend.yml:96-100` | **Fixed.** The bound killed the *watcher*: `timeout` around `docker run` kills the CLI, not the process inside the container, so a migration could keep running after the job had failed — a worse state than a hang, because nothing reports it and a re-run can overlap it. The container is now named and stopped explicitly when the ceiling is reached, and its status decides the script's exit. |
+| `R4-timeout-mid-rewrite-window` | resilience | SUGGESTION | `deploy-backend.yml:96-100` | **Recorded, not fixed.** A stop delivered mid-rewrite leaves `0022`/`0024`-style work part-done. Their idempotence guards are what make the re-run safe, which is the same fact the comment above the step already states. |
+| `R1-migration-host-network-preexisting-pattern` | risk | SUGGESTION | `deploy-backend.yml:75-79` | **Recorded.** `--network host` matches the serving container instead of widening anything, and the pattern predates this change. |
+| `R3-001` | reliability | SUGGESTION | `backend/alembic.ini:3-8` | **Recorded, not fixed.** The scope of a record's own line references is not something this batch will chase; the feature stops taking advisories at this commit. |
+| `R3-002` | reliability | SUGGESTION | `deploy-backend.yml:47-52` | **Recorded, not fixed** — same reason as the row above. |
+
+**Where this feature stops taking advisories.** Two review rounds each produced a finding worth acting on,
+and both were acted on before landing because the first production run of this step is the deploy it
+modifies. This commit is the end of that: further advisories from its review are recorded here and left as
+later work, which is what the closure says to do with them and what the previous batches did.
+
+### Also reviewed by the delegated writer's session
+
+The writer that applied this commit's edits ran its own review of the same content while the changes were
+still uncommitted (`review-c148f9c0034f81cc`, tier `high`, four lenses, approved and burned). Its seven
+advisories are recorded by id, because the closure carries them without their text and nothing here should
+paraphrase what was not read: `R2-readability-doc-line-anchors-drift`,
+`R2-readability-meta-commentary-noise`, `R2-readability-timeout-reason-unexplained`,
+`R3-exit-message-conflation`, `R3-stop-default-grace`, `R4-001`, `R4-002`. They are left as later work under
+the policy stated above, with one thing worth keeping for the reader: that review was bound to the
+**workspace** candidate and this record's are bound to commits. Both are real reviews of the same bytes, and
+only the committed object is the one that lands — which is why the practice here is to review the commit.
