@@ -69,7 +69,7 @@ pytest -v
 ### Stack actual
 
 - **Frontend**: Astro SSR en Vercel
-- **Backend**: FastAPI en un contenedor Docker sobre una VM de Oracle (`163.192.150.75`)
+- **Backend**: FastAPI en un contenedor Docker sobre una VM de Oracle. El host no se escribe acá: el workflow lo toma del secret `DEPLOY_HOST`.
 - **Base de datos**: PostgreSQL en Neon
 - **Vector store**: Qdrant contratado, todavía no configurado en producción
 - **LLM**: OpenAI (adapter implementado)

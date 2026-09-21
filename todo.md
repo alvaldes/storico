@@ -163,7 +163,7 @@ Evaluación experimental con 6 expertos (Scrum Masters + POs). Métricas: TCR / 
 ## 🟤 Bajos / V2
 
 - **Dominio propio** — comprar, configurar en Vercel, actualizar OAuth redirects.
-- **Rate limiting** — Vercel WAF (sin código) o `slowapi` (serverless).
+- **Rate limiting** — `slowapi` en el backend, que corre en un contenedor y no es serverless, o un límite de tasa en el Caddy de adelante.
 - **Batch asíncrono con Redis** — la extracción *individual* ya es asíncrona
   (`asyncio.create_task` + polling); esto es el procesamiento de lotes.
 - **Jira + export CSV/XML** — post-evaluación de la tesis.

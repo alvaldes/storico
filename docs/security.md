@@ -95,9 +95,9 @@ protectedPaths = ['/dashboard', '/stories', '/kanban', '/export', '/account']
 
 ### Producción (pendiente)
 
-- [ ] Rate limiting (Vercel WAF o slowapi)
+- [ ] Rate limiting (`slowapi` en FastAPI o un límite de tasa en Caddy; el backend no está en Vercel, así que un WAF de Vercel no protege la API)
 - [ ] Error monitoring (Sentry)
-- [ ] Auditoría de variables de entorno en Vercel
+- [ ] Auditoría de variables de entorno (el `.env` de la VM **y** el proyecto de Vercel, que solo lleva las del frontend)
 - [ ] Dominio personalizado + renovar SSL
 - [ ] Restringir CORS a dominios específicos
 

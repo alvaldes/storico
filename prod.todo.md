@@ -23,9 +23,9 @@ Prerrequisitos que, si faltan, rompen algo en silencio o fallan recién en produ
 | Ítem | Estado | Detalle |
 |------|--------|---------|
 | Cifrado en reposo de las API keys | ✅ | Fernet con clave maestra en el entorno; revisión `0024`. Ver `docs/security.md`. |
-| Rate limiting | 🔲 | Vercel WAF o `slowapi`. |
+| Rate limiting | 🔲 | `slowapi` en FastAPI, o un límite de tasa en el Caddy que ya está delante del contenedor. **No** un WAF de Vercel: el backend no está en Vercel (ver `docs/deployment.md`), así que un WAF de Vercel no ve el tráfico de la API. Esta fila decía "Vercel WAF"; esa contradicción es el advisory `R3-waf-3`. |
 | Restringir CORS a dominios específicos | ✅ | Medido con una sonda sobre el contenedor de producción en ejecución, que imprimió solo booleanos y nunca los valores de origen: `ORIGENES_DECLARADOS: 1`, `USA_EL_DEFAULT_LOCALHOST: False`, `CONTIENE_LOCALHOST_O_127: False`, `CONTIENE_VERCEL_APP: True`, `CONTIENE_HTTP_SIN_TLS_NO_LOCAL: False`. Producción declara un único origen, es un dominio `https` `*.vercel.app` y no incluye ningún origen de desarrollo. Queda un cabo suelto: `.env.prod.local` en la máquina del operador declara `STORICO_AUTH_ALLOWED_ORIGINS` dos veces, así que el primer valor se ignora en silencio; se reporta, no se corrige. |
-| Auditoría de variables de entorno en Vercel | 🔲 | Que ninguna clave de desarrollo quede en el proyecto de producción. |
+| Auditoría de variables de entorno | 🔲 | Son **dos** lugares, no uno: el `.env` del backend en la VM (`/home/ubuntu/storico/backend/.env`, fuera del control de versiones) y el proyecto de Vercel, que solo lleva las variables del frontend. Que ninguna clave de desarrollo quede en ninguno de los dos. La fila decía solo "en Vercel", donde el backend no está. |
 | Rota­ción de la clave maestra | 🔲 | El prefijo `v1:` del ciphertext existe para permitirla; la herramienta no está escrita. |
 | `POST /api/v1/llm/test` ecoa el error de transporte | 🔲 | Sus cinco ramas devuelven `{e}`; admin-only, pero es la misma forma que se corrigió en el probe de modelos. Ver `odd/tasks/llm-probe-credential-leak.md`. |
 
