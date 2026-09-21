@@ -49,7 +49,7 @@ Revises: 0024
 Create Date: 2026-09-21
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
 import sqlalchemy as sa
 from alembic import op
@@ -81,15 +81,29 @@ _STATUS_COLUMN = sa.table(
 )
 
 
+def _values_outside_labels(labels: Sequence[str], stored: Iterable[str | None]) -> list[str]:
+    """The distinct values in ``stored`` that ``labels`` does not declare, sorted.
+
+    Pure on purpose: it is handed the values instead of reading them, so the decision ``upgrade``
+    depends on can be exercised with no database at all. The connection read stays in
+    ``_stray_statuses`` below, which is the only part that needs a live Postgres.
+
+    ``None`` is dropped rather than reported as a value to go and rename. The column is
+    ``NOT NULL``, so a null cannot arise through this schema, and it would not fail the cast if
+    one did — it is a different failure, not an unknown label.
+    """
+    return sorted({value for value in stored if value is not None} - set(labels))
+
+
 def _stray_statuses() -> list[str]:
-    """The distinct values in ``extractions.status`` the enum does not declare.
+    """The values ``extractions.status`` actually holds that the enum does not declare.
 
     A set of values rather than a count, because the error in ``upgrade`` has to *name* the
     offending value: "one row holds a value outside the enum" leaves an operator to find it,
     while naming the value answers the question the failure raises.
     """
-    rows = op.get_bind().scalars(sa.select(_STATUS_COLUMN.c.status).distinct()).all()
-    return sorted({value for value in rows if value is not None} - set(_ALLOWED_STATUSES))
+    stored = op.get_bind().scalars(sa.select(_STATUS_COLUMN.c.status).distinct()).all()
+    return _values_outside_labels(_ALLOWED_STATUSES, stored)
 
 
 def upgrade() -> None:
