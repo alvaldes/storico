@@ -119,7 +119,7 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 | **Testing**                | pytest + E2E (no ejecutable, falta playwright)                                      | ✅ Unitarias / 🔴 E2E | Unitarias OK; E2E existe pero no ejecutable        |
 | **Internacionalización**   | **Astro i18n**                              | ✅ Decidido    | Español e inglés. User stories solo en inglés                             |
 | **Fuentes tipográficas**   | **Google Fonts** (variable fonts)           | ✅ Decidido    | Para identidad visual de Storico                                           |
-| **Contenedores**           | Docker + Vercel (prod)                                    | ✅ Decidido    | Dev: Docker Compose; prod: Vercel                                      |
+| **Contenedores**           | Docker + Vercel (prod)                                    | ✅ Decidido    | Dev: Docker Compose; prod: contenedor Docker del backend en la VM de Oracle y el frontend Astro en Vercel                                      |
 
 ### Selección del modelo LLM (de la tesis) ⏳ PENDIENTE
 
@@ -187,10 +187,11 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 
 ### ADR-005: Despliegue
 
-- **Status**: 🔴 **PENDIENTE** (producción)
-- **Decisión**: **Docker Compose para desarrollo.** Producción sin definir.
-- **Contexto**: Para desarrollo se usará Docker Compose con los servicios necesarios (PostgreSQL, Qdrant, Redis, API). Para producción queda pendiente definir el proveedor cloud y la estrategia de despliegue.
-- **Preguntas**: Proveedor cloud? Serverless o contenedores? Cómo se alojan los modelos LLM locales vs cloud?
+- **Status**: ✅ **Decidido** (producción en marcha)
+- **Decisión**: **Docker Compose para desarrollo.** Producción: el frontend Astro se sirve desde Vercel, el backend FastAPI corre en un contenedor Docker sobre una VM de Oracle, la base de datos PostgreSQL está en Neon y Qdrant está contratado pero todavía no configurado.
+- **Contexto**: Para desarrollo se usa Docker Compose con los servicios necesarios (PostgreSQL, Qdrant, Redis, API). En producción el backend se despliega con `.github/workflows/deploy-backend.yml`, que entra por SSH a la VM (`163.192.150.75`), resetea el árbol de trabajo a `origin/main`, reconstruye la imagen y arranca el contenedor con `docker run --network host --env-file /home/ubuntu/storico/backend/.env`. La base de datos relacional vive en Neon y el vector store sigue pendiente de configuración.
+- **Consecuencias**: El despliegue **no corre migraciones de Alembic**, así que una revisión de esquema puede llegar sin su migración; ese es el mecanismo del incidente del 2026-09-20 y sigue abierto en `prod.todo.md`. Además, el archivo de variables de entorno está en la VM y fuera del control de versiones, así que el reset del árbol de trabajo no lo toca: una variable que falte falla en silencio en producción.
+- **Preguntas abiertas**: Cómo se alojan los modelos LLM locales frente a los cloud, y cuándo se habilita Qdrant en producción.
 
 ### ADR-006: UI Component Library y Estilos
 
@@ -416,10 +417,12 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 
 | #   | Feature                  | Prioridad |
 | --- | ------------------------ | --------- |
-| 25  | Conector Trello          | ✅ MVP    |
+| 25  | Conector Trello          | 🔲        |
 | 26  | Conector Jira            | V2        |
 | 27  | Conector GitHub Projects | V2        |
 | 28  | Conector Azure DevOps    | V3        |
+
+> **Nota**: el conector Trello **no existe**. No hay adaptador de exportación ni paquete de conector: `backend/src/storico/infrastructure/` contiene solo `cache, crypto, database, llm, tasks, vector`, y `trello` sobrevive únicamente como cadena de formato. La opción "Trello" de la página de Configuración se retira en el lote de código que acompaña a esta corrección; ver el detalle en `prod.todo.md`.
 
 ### 🖥️ Frontend — Astro + React Islands (MVP)
 
