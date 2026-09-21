@@ -50,4 +50,9 @@ setup: ## Install all dependencies and build images
 
 bump: ## Bump version from Conventional Commits and tag the release
 	@test -z "$$(git status --porcelain --untracked-files=no)" || { echo "error: there are uncommitted tracked changes:"; git status --short --untracked-files=no; echo "       cz bump sweeps staged AND unstaged tracked changes into the version commit."; echo "       Commit or stash them first, then re-run make bump."; exit 1; }
+	@tag=$$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//'); \
+	test -n "$$tag" || { echo "error: no tag found; cz bump needs one as its version baseline."; exit 1; }; \
+	for f in package.json frontend/package.json backend/pyproject.toml; do \
+		grep -q "$$tag" "$$f" || { echo "error: $$f does not contain the current tag version ($$tag)."; echo "       cz bump reads the version from the tag, looks for it in each version file and skips the file silently when it is absent, while still creating the tag."; exit 1; }; \
+	done
 	cz bump

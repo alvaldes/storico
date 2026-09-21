@@ -66,6 +66,11 @@ El `scope` no afecta el bump: `feat(api): ...` y `feat: ...` sueltan lo mismo.
    que escribe junto con todo cambio trackeado del worktree, así que `make bump` se
    niega a correr si hay algo sin commitear. Nunca lo corras mientras otra sesión
    tenga trabajo en vuelo en este repo: commitea y taggea, no es una lectura.
+6. **Los tres campos de versión tienen que coincidir con el tag antes de
+   bumpear.** `cz bump` saca la versión del tag, busca ese string exacto en cada
+   archivo y omite en silencio el que no lo tenga, creando el tag igual. Un campo
+   atrasado queda atrasado para siempre, y por eso `v0.3.1` y `v0.3.2` salieron con
+   manifests viejos. `make bump` se niega a correr en ese caso.
 
 Las convenciones de commit completas están en `CONTRIBUTING.md`. Cuando este
 archivo y `CONTRIBUTING.md` se contradigan, gana `CONTRIBUTING.md`.

@@ -169,6 +169,14 @@ Run `make bump` from the repository root with a clean working tree. `cz bump`
 commits the files it writes together with every tracked change in the worktree, so
 `make bump` refuses to run while the tree is dirty.
 
+The three fields must already carry the version of the last tag before you bump.
+With `version_provider = "scm"` commitizen reads the current version from the tag,
+searches each file for that exact string, and skips any file that does not contain
+it, without an error and while still creating the tag. A lagging field therefore
+never catches up, which is how `v0.3.1` and `v0.3.2` shipped with stale manifests.
+`make bump` refuses to run when a version file does not carry the current tag
+version.
+
 ## Pull requests
 
 - All submissions are reviewed; a maintainer merges after approval.
