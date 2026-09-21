@@ -10,7 +10,10 @@
 >   tip, since counting this record's commits here would be self-referential. All five gates re-run
 >   independently and green: backend `ruff check`, `ruff format --check`, `pytest -q` (705 passed,
 >   1 skipped, 1 pre-existing `RuntimeWarning`); frontend `tsc --noEmit`, `vitest run` (421 passed,
->   36 files). No blocking finding; see "Independent verification" below. Native review pending.
+>   36 files). No blocking finding; see "Independent verification" below. **Native review approved and
+>   burned** — `review-bde8183340bdb47b`, `risk_tier: medium`, one lens (`review-reliability`),
+>   `changed_files: 18`, `original_changed_lines: 472`, `correction_budget: 200`, two non-blocking
+>   advisories. **Not landed**: merging and pushing are the operator's decision, not this record's.
 > - **PR 1 (docs) — DONE.** Branch `docs/honest-prod-claims`, four commits (`f147029`, `6f480c8`,
 >   `d523492`, `b196589`), fast-forwarded into `main` (`fb48732` → `b196589`), branch deleted, pushed,
 >   CI green (run `35554779323`). The backend deploy did not trigger, correctly: its `paths` are
@@ -324,6 +327,38 @@ class as C3, closed for `AGENTS.md` in PR 1 but not for the UI — and the six l
 `openai_embedding_model`) that `backend/.env.example` omits. The latter is a documentation gap rather
 than a dead knob, and it is pre-existing: this candidate removed three lines from that file and added
 none.
+
+### PR 2 review and landing
+
+Native review `review-bde8183340bdb47b`, target
+`sha256:df55b76ed235871560e08285fffe3d3329368176a5ecae2bb251079e35a71523`:
+`state: approved`, `risk_tier: medium`, `selected_lenses: ["review-reliability"]`,
+`changed_files: 18`, `original_changed_lines: 472`, `correction_budget: 200`,
+`risk_reasons: [{"code": "configuration_change", "path": "backend/.env.example"}]`. One reviewer was
+materialised (forecast `model_runs: 1`, `transport: pi_host_relay`) and the review closed on the last
+admitted event. Acknowledgement burned the authority: `authority: burned`,
+`burn_evidence: gentle-ai.review-acknowledged/v1`, `delivery: ordinary-repository-policy`.
+
+Worth recording about this lineage specifically: the first START minted a consent envelope whose
+binding **expired after 10 minutes unanswered**, and the provider's prescribed continuation was
+`restart-for-fresh-consent` — never a resend. Every rejection on that path was pre-authority
+(`lineage_created: false`, `mutation_performed: false`), so nothing was created and nothing was lost.
+A second START then created the lineage; an eligible interactive host resolved the consent envelope
+before it reached the model, which is host-owned permission and not something this record grants.
+
+Two advisories were returned, both `SUGGESTION` / `informational`, neither opening a correction:
+`R3-suggest-fabricated-export` (`frontend/src/stores/settingsStore.ts:57-66`) and
+`R3-suggest-snake-write-coverage` (`backend/tests/test_api/test_user_settings.py:178-192`). The
+closure envelope carries only their id, lens, location and severity, so this record does **not**
+paraphrase their content — it names them so the follow-up can open them. As with PR 1, they are not
+bundled in: editing the reviewed tree after approval would mean delivering something other than what
+was reviewed.
+
+**This section was written after the approval, in a commit that the approved candidate did not
+contain.** That is deliberate and is the same shape as PR 1's handoff commit: the record is
+non-executable documentation, and freezing the record at the moment of approval would leave the batch
+with no record of its own review. Anyone treating the branch tip as "the reviewed artifact" should
+read the target identity above instead — it names what was actually reviewed.
 
 ## Resuming in a fresh session
 
