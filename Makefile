@@ -53,6 +53,10 @@ bump: ## Bump version from Conventional Commits and tag the release
 	@tag=$$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//'); \
 	test -n "$$tag" || { echo "error: no tag found; cz bump needs one as its version baseline."; exit 1; }; \
 	for f in package.json frontend/package.json backend/pyproject.toml; do \
-		grep -q "$$tag" "$$f" || { echo "error: $$f does not contain the current tag version ($$tag)."; echo "       cz bump reads the version from the tag, looks for it in each version file and skips the file silently when it is absent, while still creating the tag."; exit 1; }; \
+		case "$$f" in \
+			*.json) got=$$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$$f" | head -1) ;; \
+			*)      got=$$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$$f" | head -1) ;; \
+		esac; \
+		test "$$got" = "$$tag" || { echo "error: $$f carries version '$$got' but the current tag is '$$tag'."; echo "       cz bump reads the version from the tag, needs to find that exact value already written in each version file, and skips the file silently when it does not match, while still creating the tag."; exit 1; }; \
 	done
 	cz bump

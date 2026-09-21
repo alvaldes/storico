@@ -143,13 +143,47 @@ Deliberately **not** fixed here: the review's own closure says advisories are se
 never a reason to re-run review on this candidate, and editing the reviewed tree would mean delivering
 something other than what was reviewed.
 
+## Post-review fix
+
+`R3-grep-substring` and `R4-tag-grep-substring` — the same finding arriving from two lenses — were
+confirmed and fixed in the commit that carries this section, **after** the approval and therefore
+outside the reviewed range `4931f10..55c1c08`. The review of that range stands; this is new,
+unreviewed work.
+
+Confirmed as a false pass before touching the guard. With the tag at `v0.4.0` and all three version
+fields at `0.3.0`, the guard passed anyway, because the check was `grep -q "$tag" "$file"` and one
+file contained a dependency string reading `"^0.4.0"`:
+
+```
+package.json             "version": "0.3.0"   and   "lib": "^0.4.0"
+frontend/package.json    "version": "0.3.0"
+backend/pyproject.toml   version = "0.3.0"
+tag                      v0.4.0
+guard                    PASSED   <- fail-open, the exact drift the guard exists to stop
+```
+
+The check now extracts the value of the version field with an anchored pattern and compares it for
+equality against the tag, so containment can no longer satisfy it. Re-verified in six sandbox
+repositories, asserting the extracted recipe before trusting any result:
+
+| Condition | Result |
+| --- | --- |
+| all three fields equal the tag | passes to `cz bump` |
+| a field lagging the tag | blocks, naming the file and both values |
+| a field lagging the tag **plus** a `^<tag>` dependency string | blocks |
+| a field reading `10.4.0` while the tag is `0.4.0` | blocks |
+| no tag at all | blocks |
+| dirty tree | blocks |
+
+The remaining seven advisories are untouched and stay the owner's to disposition.
+
 ## Follow-ups (not part of this change)
 
 1. ~~**Native review for these commits has not run.**~~ **Done.** It ran on 2026-09-21 under this
    worktree's review flow, once the tree was clean and stable, and closed approved —
-   `review-85d12db7ba7103e8`, tier `high`, four lenses. Its nine advisories are the outstanding work,
-   not a correction; they are listed under "Native review" and eight of the nine are in the
-   `Makefile`.
+   `review-85d12db7ba7103e8`, tier `high`, four lenses. Its nine advisories were not a correction;
+   they are listed under "Native review" and eight of the nine are in the `Makefile`. Two of them,
+   the substring check, are fixed in "Post-review fix"; seven remain.
 2. **Nothing is pushed.** `main` is ahead of `origin/main` by the commits in the Evidence
    log above, and carries the local tag `v0.4.0`.
 3. `CONTRIBUTING.md` lists `feat`, `fix`, `refactor`, `style`, `docs`, `test`, `perf`, `chore`
