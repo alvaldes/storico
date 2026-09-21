@@ -338,4 +338,33 @@ record grants.
 This section, like the ones above it, was written **after** the approval in a commit the approved
 candidate did not contain. The reviewed artifact is the target identity named here, not the branch tip.
 
+**Landed.** `git merge --ff-only` `305b5da` → `1e5fbcb` on `main`, pushed, branch deleted with `-d`
+(which fails unless the branch is merged, so the deletion is itself the proof). `HEAD ==
+refs/remotes/origin/main == 1e5fbcb`, ahead/behind `0/0`, one branch left, working tree clean, 8 files.
+The push fired **both** workflows, because the candidate touches `backend/**` and
+`deploy-backend.yml` watches that path: CI run `35570842070` **green** and the backend deploy run
+`35570842126` **green**.
+
+**That deploy is the first live run of the gate, and it passed** — which also closes the one thing the
+independent verification explicitly could not check ("the workflow fires only on a push to `main`, so
+the gate's behaviour on the VM is unproven"). Its success means `/api/v1/health/ready` answered 2xx on
+the VM inside the bounded window after the swap, with a real container and a real database behind it.
+And it could only have passed because production's schema equals the code's head, so the first live run
+also re-confirms that production is at `0024`.
+
+Production was then probed read-only, which is where the earlier "Unverified" items become measured:
+
+| request | HTTP | version | schema |
+|---|---|---|---|
+| `GET /api/v1/health` | **200** | `0.3.0` | `ok` |
+| `GET /api/v1/health/ready` | **200** | `0.3.0` | `ok` |
+| `GET /api/v1/health/services` | 200 `degraded` | `0.3.0` | `ok` |
+
+Three things this settles at once: the hardcoded `0.1.0` is gone from a real deployment (`0.3.0` is the
+distribution's own version), the probe runs against the real Neon database and answers `ok` rather than
+`unknown` — so the packaged migration scripts *are* present in the image, which the writing agent could
+only infer from `SOURCES.txt` — and no revision leaks from any of the three bodies. The `degraded` on
+`/health/services` is Ollama and Qdrant unreachable, the documented pre-existing state, and the schema
+beside it is `ok`.
+
 _(PR 2's per-work-unit records land below as WU3 and WU4 close.)_
