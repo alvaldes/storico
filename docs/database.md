@@ -1,14 +1,14 @@
 # Base de Datos
 
 > Schema, tablas, relaciones y migraciones de Storico.
-> Última actualización: 2026-07-15
+> Última actualización: 2026-09-21
 
 ## Stack
 
 - **Relacional**: PostgreSQL 16 (vía SQLAlchemy async + asyncpg)
 - **Vectorial**: Qdrant (embeddings para RAG)
-- **Migraciones**: Alembic (11 migraciones aplicadas)
-- **Head**: `0011`
+- **Migraciones**: Alembic (24 migraciones aplicadas)
+- **Head**: `0024`
 
 ## Modelo de Datos
 
@@ -223,6 +223,19 @@ Index: `user_story_id`
 | `0009` | Align schema drift | 2026-07-15 |
 | `0010` | Reduce workspace name length 255→100 | 2026-07-15 |
 | `0011` | Add api_key to workspace_llm_configs | 2026-07-15 |
+| `0012` | Add icon to workspaces | 2026-07-16 |
+| `0013` | Add icon to projects | 2026-07-16 |
+| `0014` | CASCADE / SET NULL fixes for account deletion | 2026-07-17 |
+| `0015` | UUID v7 switchover marker (no DDL) | 2026-07-23 |
+| `0016` | UserStoryStatus + TaskStatus enums with data migration | 2026-09-05 |
+| `0017` | Add user_story_status to extractions | 2026-09-07 |
+| `0018` | Add extraction_status enum | 2026-09-08 |
+| `0019` | Add updated_at to user_stories | 2026-09-12 |
+| `0020` | Add few-shot retrieval config to workspace_prompts | 2026-09-14 |
+| `0021` | Add custom_providers table + backfill | 2026-09-17 |
+| `0022` | Drop the per-user llm block from stored preferences | 2026-09-18 |
+| `0023` | Add completed_at to extractions | 2026-09-19 |
+| `0024` | Encrypt workspace LLM API keys | 2026-09-19 |
 
 Comandos útiles:
 

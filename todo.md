@@ -208,17 +208,24 @@ aceptadas o deuda que necesita otro feature, no trabajo pendiente de esta lista.
 - **El primer run del CI puede salir rojo por infraestructura, no por código**:
   `tests/test_integration/test_projects_integration.py` se saltea **localmente** porque el daemon de Docker no
   responde, y en los runners de GitHub Docker sí está, así que va a intentar levantar
-  `PostgresContainer("postgres:16-alpine")`: el total esperado ahí es 418, o un fallo de pull de imagen. La
-  condición del skip no se tocó a propósito para no maquillar el resultado.
-- **Warning flaky preexistente**: `PytestUnraisableExceptionWarning` (`coroutine 'Connection._cancel' was
-  never awaited`) en `test_project_repo.py`, dependiente de GC y del orden de ejecución. El archivo no está
-  tocado por ningún cambio y no se pudo A/B contra el árbol limpio sin stash: latente, sin causalidad
-  establecida.
-- **22 diagnósticos de tipado preexistentes en `api/app.py`** (rigidez de overloads de FastAPI). No hay mypy
+  `PostgresContainer("postgres:16-alpine")`: el total esperado ahí es 733 passed, sin skips, o un fallo de pull
+  de imagen. La condición del skip no se tocó a propósito para no maquillar el resultado.
+- **Warning flaky preexistente**: `RuntimeWarning: coroutine 'Connection._cancel' was never awaited`,
+  dependiente de GC y del orden de ejecución, así que no tiene ubicación estable (observado en
+  `test_health.py::test_health_services_endpoint` y en `test_custom_provider_repo.py` en runs distintos).
+  Aparece solo cuando el `.env` gitignoreado está presente, porque es lo que apunta la app a una base de
+  datos remota. Es preexistente y no depende de ningún candidato.
+- **12 diagnósticos de tipado preexistentes en `api/app.py`** (rigidez de overloads de FastAPI; medidos con
+  el probe LSP de `pi-lens` a `severity=error`). No hay mypy
   ni pyright configurados, y ninguno está en el gate. Arreglarlos pide casts o `type: ignore`, o sea cambio
   de lógica: quedan reportados.
-- **Las migraciones no las cubre ningún test** — el sweep las validó compilando en memoria y con `ruff F821`,
-  no ejecutándolas. Son 50 archivos de alembic.
+- **Las migraciones: 24 revisiones y ningún test las comparaba con los modelos hasta ahora** — el sweep las
+  validó compilando en memoria y con `ruff F821`, no ejecutándolas. Hay cuatro tests unitarios de revisión en
+  `backend/tests/test_unit/` (`test_add_completed_at_migration.py`, `test_custom_provider_migration.py`,
+  `test_drop_user_preference_llm_migration.py`, `test_encrypt_workspace_api_keys_migration.py`), pero corren
+  contra SQLite. `backend/tests/test_integration/test_migration_chain.py` es nuevo: corre la cadena completa
+  desde cero contra un Postgres real en CI y hace *ratchet* del drift contra los modelos, así que el
+  comportamiento específico de Postgres lo cubre solo ese archivo.
 
 ---
 
