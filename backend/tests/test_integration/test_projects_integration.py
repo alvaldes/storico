@@ -116,10 +116,11 @@ async def pg_engine() -> AsyncGenerator[AsyncEngine, None]:
     """Startup Postgres 16 in a testcontainer and wire an async engine."""
     # Import lazily so the module import itself never blocks on testcontainers —
     # testcontainers imports docker, which is heavy and may pull images.
-    # ``testcontainers.postgres`` is the one path that exists across the >=4.9
-    # range; on 4.15+ it re-exports ``community.postgres`` with a
-    # DeprecationWarning, which pytest.ini does not turn into a failure.
-    from testcontainers.postgres import PostgresContainer
+    # ``testcontainers.community.postgres`` is the canonical module. The old
+    # ``testcontainers.postgres`` is a shim that re-exports it on 4.15+, behind a
+    # DeprecationWarning, and does not exist below 4.15.0 at all -- which is why
+    # the declared floor moved to 4.15.0.
+    from testcontainers.community.postgres import PostgresContainer
 
     # The container keeps its own *sync* driver, and only the app engine moves to
     # asyncpg. Older testcontainers releases probe readiness by running

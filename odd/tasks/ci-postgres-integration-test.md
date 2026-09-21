@@ -1,6 +1,9 @@
 # ODD Feature: ci-postgres-integration-test
 
 > **Status**: done — green CI run `35362462180` (backend + frontend success, 527 passed). Commits `2e729ae`, `0dc0e89`, `70be4bc`, `757ab72`, `65a8a3f`, `65ff243`, `a318ccf`, `6004f55` on `main`, pushed.
+> **Superseded (import path only)**: the `testcontainers.postgres` import-path decision in D3 is
+> superseded by `prod-checklist-honesty` (WU6), which moved the declared floor to
+> `testcontainers>=4.15.0` and switched the import to `testcontainers.community.postgres`.
 > **Created**: 2026-09-18
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -94,7 +97,7 @@ loop. Fixing only the probe would have moved the red line, not removed it.
 |---|----------|--------|
 | D1 | CI policy | **Fix the test so it runs in CI** (chosen over excluding `integration` from CI). GitHub runners have Docker; this is the only real-Postgres coverage in the suite — the other 526 tests run on `sqlite+aiosqlite`. The `<500ms` assertion is accepted as a shared-runner risk, not treated as free. |
 | D2 | Probe vs driver | The container keeps its **sync** driver and the test swaps the URL to `postgresql+asyncpg` itself, so the probe and the test engine never share a driver. Chosen over `driver="asyncpg"` (which relies on newer `testcontainers` probing with `psql` instead of SQLAlchemy — true since 4.9, but a version-dependent accident). |
-| D3 | Dependency | Replace the abandoned `testcontainers-postgres` 0.0.1rc1 shim with `testcontainers>=4.9.0` (floor = the release whose Postgres probe is `psql`-based, so no hidden sync DBAPI is required). Import path stays `testcontainers.postgres`, which exists across 4.x. |
+| D3 | Dependency | Replace the abandoned `testcontainers-postgres` 0.0.1rc1 shim with `testcontainers>=4.9.0` (floor = the release whose Postgres probe is `psql`-based, so no hidden sync DBAPI is required). Import path stays `testcontainers.postgres`, which exists across 4.x — **superseded by `prod-checklist-honesty` (WU6):** the floor is now `testcontainers>=4.15.0` and the import is `testcontainers.community.postgres`. |
 | D4 | Loop scope | Explicit `loop_scope="module"` on both fixtures and on the test marker. Verified working on pytest-asyncio 0.24.0 (the declared floor) and 1.4.0 (what CI installs). |
 
 ## Non-goals
@@ -117,8 +120,11 @@ loop. Fixing only the probe would have moved the red line, not removed it.
 - Modern `PostgresContainer._connect` is `psql`-based since **4.9.0**
   (`testcontainers/postgres/__init__.py:91`, `ExecWaitStrategy`/`self.exec`); 4.8.0
   waited on logs. The `[postgres]` extra is empty in both 4.9 and 4.15.
-- `testcontainers.community.postgres` does not exist in ≤4.12, so the import stays
-  `testcontainers.postgres`.
+- `testcontainers.community.postgres` does not exist below **4.15.0**, so the import had to stay
+  `testcontainers.postgres` under the old 4.9.0 floor. Measured by direct wheel inspection:
+  `4.13.3` and `4.14.2` ship only `testcontainers/postgres/__init__.py` and no `community` package;
+  `4.15.0` ships both it and a shim `testcontainers/postgres.py`. The decision it supported is
+  **superseded by `prod-checklist-honesty` (WU6)**, which moved the floor to 4.15.0.
 - `SQLAlchemy 2.0.52`: `make_url(...).set(drivername="postgresql+asyncpg")` →
   `create_async_engine(url)` yields `AsyncEngine` + `PGDialect_asyncpg`.
 - `ruff.toml`: `select = ["E", "F", "I", "UP"]`, line-length 100, so the new
