@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useSettingsStore } from '@/stores/settingsStore';
-import { DEFAULT_SETTINGS } from '@/types/settings';
+import { DEFAULT_SETTINGS, type ExportFormat } from '@/types/settings';
 import { fetchSettings, saveSettings } from '@/lib/settings-api';
 import { toast } from 'sonner';
 
@@ -81,15 +81,18 @@ describe('useSettingsStore — saving preferences', () => {
     expect(useSettingsStore.getState().apiSaving).toBe(false);
   });
 
-  it('loads what the API returns', async () => {
+  it('normalises a format this build no longer offers', async () => {
     vi.mocked(fetchSettings).mockResolvedValue({
-      preferences: { export: { defaultFormat: 'trello' } },
+      // The cast models a value arriving from outside this build's contract — exactly what a
+      // row written before `trello` was retired looks like. The point of the test is that such
+      // a value is tolerated, so narrowing the type is the wrong fix here.
+      preferences: { export: { defaultFormat: 'trello' as unknown as ExportFormat } },
       updated_at: '2026-01-01T00:00:00Z',
     });
 
     await useSettingsStore.getState().loadFromApi();
 
-    expect(useSettingsStore.getState().settings.export.defaultFormat).toBe('trello');
+    expect(useSettingsStore.getState().settings.export.defaultFormat).toBe('json');
     expect(useSettingsStore.getState().apiLoaded).toBe(true);
   });
 
@@ -173,5 +176,28 @@ describe('useSettingsStore — the legacy persisted key', () => {
     await expect(import('@/stores/settingsStore')).resolves.toBeDefined();
 
     vi.unstubAllGlobals();
+  });
+});
+
+describe('useSettingsStore — the persisted blob', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('normalises a retired format the blob already holds', async () => {
+    // `merge` is the path a returning browser takes: `partialize` writes
+    // `{ settings: { export } }`, and `trello` is what the old /account page stored.
+    localStorage.setItem(
+      'storico-settings-v2',
+      JSON.stringify({
+        state: { settings: { export: { defaultFormat: 'trello' } } },
+        version: 0,
+      }),
+    );
+
+    vi.resetModules();
+    const { useSettingsStore: rehydrated } = await import('@/stores/settingsStore');
+
+    expect(rehydrated.getState().settings.export.defaultFormat).toBe('json');
   });
 });

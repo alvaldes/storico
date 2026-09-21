@@ -32,7 +32,17 @@ class ExportSettings(CamelCaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    default_format: Literal["trello", "json", "markdown"] = "json"
+    default_format: Literal["json", "markdown"] = "json"
+
+
+#: Export-format values a previous schema version accepted and this one does not.
+#:
+#: A retired *value* cannot be dropped the way a retired *key* can. ``extra="forbid"`` never
+#: sees a value — it only refuses members the model does not declare — so a stored ``trello``
+#: reaches the ``Literal`` and fails it. The preferences route therefore rewrites the value on
+#: read (see ``_for_schema``) instead of dropping it, and the mapping lives here, beside the
+#: ``Literal`` it protects, so the pair moves together.
+RETIRED_EXPORT_FORMATS: dict[str, str] = {"trello": "json"}
 
 
 #: Keys a previous schema version stored and this one deliberately does not declare.

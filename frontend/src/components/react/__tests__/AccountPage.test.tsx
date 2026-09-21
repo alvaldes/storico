@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 
 import { AccountPage } from '@/components/react/AccountPage';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { DEFAULT_SETTINGS } from '@/types/settings';
+import { DEFAULT_SETTINGS, type ExportFormat } from '@/types/settings';
 import { fetchSettings, saveSettings } from '@/lib/settings-api';
 
 vi.mock('@/lib/settings-api', () => ({
@@ -69,7 +69,7 @@ describe('AccountPage — the default export format', () => {
     const trigger = await renderPage();
 
     await user.click(trigger);
-    await user.click(await screen.findByRole('option', { name: 'Trello' }));
+    await user.click(await screen.findByRole('option', { name: 'JSON' }));
 
     await waitFor(() =>
       expect(toast.success).toHaveBeenCalledWith(
@@ -81,15 +81,18 @@ describe('AccountPage — the default export format', () => {
     );
   });
 
-  it('shows the stored value when the page loads', async () => {
+  it('renders a retired stored value as the format it now means', async () => {
     vi.mocked(fetchSettings).mockResolvedValue({
-      preferences: { export: { defaultFormat: 'trello' } },
+      // The cast models a value arriving from outside this build's contract, which is what a
+      // row stored before `trello` was retired is. Without the normalisation the label lookup
+      // returns `undefined` and the control renders blank.
+      preferences: { export: { defaultFormat: 'trello' as unknown as ExportFormat } },
       updated_at: '2026-01-01T00:00:00Z',
     });
 
     const trigger = await renderPage();
 
-    await waitFor(() => expect(trigger).toHaveTextContent('Trello'));
+    await waitFor(() => expect(trigger).toHaveTextContent('JSON'));
   });
 
   it('reports a failed save without pretending it worked', async () => {

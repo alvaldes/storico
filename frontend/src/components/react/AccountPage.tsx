@@ -89,7 +89,6 @@ export function AccountPage({ locale }: AccountPageProps) {
   };
 
   const exportFormatLabels: Record<ExportFormat, string> = {
-    trello: t.settings.export_format_trello,
     json: t.settings.export_format_json,
     markdown: t.settings.export_format_markdown,
   };
@@ -228,12 +227,11 @@ export function AccountPage({ locale }: AccountPageProps) {
             >
               <SelectTrigger id="export-format" className="w-full">
                 {/* The label, not `<SelectValue />`: with no `items` on the root that renders the
-                    raw value, so the control read "trello" instead of "Trello". The provider
+                    raw value, so the control read "json" instead of "JSON". The provider
                     select in the workspace editor renders its label the same way. */}
                 <span>{exportFormatLabels[settings.export.defaultFormat]}</span>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="trello">{t.settings.export_format_trello}</SelectItem>
                 <SelectItem value="json">{t.settings.export_format_json}</SelectItem>
                 <SelectItem value="markdown">{t.settings.export_format_markdown}</SelectItem>
               </SelectContent>

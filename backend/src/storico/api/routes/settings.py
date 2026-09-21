@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 from storico.api.dependencies import get_current_user, get_repository
 from storico.api.schemas.settings import (
     REMOVED_PREFERENCE_KEYS,
+    RETIRED_EXPORT_FORMATS,
     AppSettings,
     DeleteAccountResponse,
     LLMTestRequest,
@@ -74,16 +75,36 @@ async def get_settings(
 
 
 def _for_schema(stored: dict) -> dict:
-    """A stored document minus the keys the schema no longer declares.
+    """A stored document the schema can accept: removed keys dropped, retired values rewritten.
 
     Applied on both directions of the contract, not only where it is needed today. The read
     needs it (a row written before the removal must not 500 the endpoint); the write response
-    does not, because ``PUT`` validates the body against ``AppSettings`` and a removed key is
-    refused there. Going through the same helper anyway is what keeps the invariant "anything
-    this endpoint hands to ``AppSettings`` from storage has the removed keys dropped" true by
-    construction, rather than by one call site remembering it.
+    does not, because ``PUT`` validates the body against ``AppSettings`` and both a removed key
+    and a retired value are refused there. Going through the same helper anyway is what keeps
+    the invariant "anything this endpoint hands to ``AppSettings`` from storage has been
+    through this reconciliation" true by construction, rather than by one call site
+    remembering it.
+
+    The two halves have to differ, and the difference is the schema's: ``extra="forbid"``
+    refuses a removed *key*, so dropping it is enough, while a retired *value* is invisible to
+    it and fails the ``Literal`` instead — so the value is rewritten, not dropped.
+
+    Both spellings the store can hold are rewritten: ``model_dump()`` writes ``default_format``
+    and a client on the old contract wrote ``defaultFormat``, and ``populate_by_name`` makes
+    either validate. Nothing else in the document is touched.
     """
-    return {key: value for key, value in stored.items() if key not in REMOVED_PREFERENCE_KEYS}
+    reconciled = {key: value for key, value in stored.items() if key not in REMOVED_PREFERENCE_KEYS}
+    export = reconciled.get("export")
+    if isinstance(export, dict):
+        export = dict(export)
+        for spelling in ("default_format", "defaultFormat"):
+            stored_value = export.get(spelling)
+            # ``isinstance`` before the membership test: a JSON document can hold any scalar,
+            # and ``in`` on a dict hashes the value.
+            if isinstance(stored_value, str) and stored_value in RETIRED_EXPORT_FORMATS:
+                export[spelling] = RETIRED_EXPORT_FORMATS[stored_value]
+        reconciled["export"] = export
+    return reconciled
 
 
 @settings_router.put(

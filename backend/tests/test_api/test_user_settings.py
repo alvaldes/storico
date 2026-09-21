@@ -91,6 +91,34 @@ class TestGetPreferences:
         assert stored is not None
         assert "llm" in stored.preferences
 
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    @pytest.mark.parametrize("spelling", ["default_format", "defaultFormat"])
+    async def test_a_retired_export_format_is_served_as_json(
+        self,
+        authed_client: AsyncClient,
+        db_session: AsyncSession,
+        authed_user: User,
+        spelling: str,
+    ) -> None:
+        """A stored ``trello`` reads as ``json`` instead of failing validation.
+
+        The ``Literal`` no longer declares the value, so without the rewrite this row raises
+        inside the route and answers 500. Both spellings the store can hold are covered:
+        ``model_dump()`` writes ``default_format``, a client on the old contract wrote
+        ``defaultFormat``. The rewrite is a read, not a write-back — storage keeps what it has.
+        """
+        repo = SQLAlchemyUserPreferencesRepository(db_session)
+        await repo.upsert(authed_user.id, {"export": {spelling: "trello"}})
+
+        response = await authed_client.get(URL)
+
+        assert response.status_code == 200
+        assert response.json()["preferences"] == {"export": {"defaultFormat": "json"}}
+        stored = await repo.get(authed_user.id)
+        assert stored is not None
+        assert stored.preferences == {"export": {spelling: "trello"}}
+
 
 class TestPutPreferences:
     """What the endpoint accepts."""
@@ -147,3 +175,18 @@ class TestPutPreferences:
         )
 
         assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_a_retired_export_format_is_refused(self, authed_client: AsyncClient) -> None:
+        """``422``, not a silent rewrite: the read tolerates a stored ``trello``, a write does not.
+
+        Rewriting here would answer ``200`` with ``json`` and tell the client it stored what it
+        sent. Refusing is the honest answer, and it is what makes the asymmetry observable.
+        """
+        response = await authed_client.put(
+            URL, json={"preferences": {"export": {"defaultFormat": "trello"}}}
+        )
+
+        assert response.status_code == 422
+        assert "trello" in response.text

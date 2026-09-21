@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { toast } from 'sonner';
-import { type AppSettings, type ExportFormat, DEFAULT_SETTINGS } from '@/types/settings';
+import { type AppSettings, type ExportFormat, DEFAULT_SETTINGS, normalizeExportFormat } from '@/types/settings';
 import { fetchSettings, saveSettings } from '@/lib/settings-api';
 import { dropLegacySettingsKey } from '@/lib/legacy-storage-cleanup';
 
@@ -54,7 +54,17 @@ export const useSettingsStore = create<SettingsState>()(
         try {
           const response = await fetchSettings();
           set({
-            settings: response.preferences,
+            // The response is untrusted runtime data: a build before this one could have
+            // served a format this build no longer offers, and the Select would render blank.
+            settings: {
+              ...response.preferences,
+              export: {
+                ...response.preferences?.export,
+                defaultFormat: normalizeExportFormat(
+                  response.preferences?.export?.defaultFormat,
+                ),
+              },
+            },
             apiLoaded: true,
           });
         } catch {
@@ -116,9 +126,22 @@ export const useSettingsStore = create<SettingsState>()(
       merge: (persisted, current) => {
         const p = persisted as { settings?: Partial<AppSettings> } | undefined;
         if (!p?.settings) return current;
+        const persistedExport = p.settings.export;
         return {
           ...current,
-          settings: { ...current.settings, ...p.settings },
+          settings: {
+            ...current.settings,
+            ...p.settings,
+            // The persisted blob is untrusted too: `trello` is exactly what a browser that
+            // visited the old /account page holds under `storico-settings-v2`.
+            export: persistedExport
+              ? {
+                  ...current.settings.export,
+                  ...persistedExport,
+                  defaultFormat: normalizeExportFormat(persistedExport.defaultFormat),
+                }
+              : current.settings.export,
+          },
         };
       },
     },

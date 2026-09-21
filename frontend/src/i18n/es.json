@@ -326,7 +326,6 @@
     "export_title": "Exportación",
     "export_description": "Formato por defecto al exportar tareas",
     "export_format": "Formato Predeterminado",
-    "export_format_trello": "Trello",
     "export_format_json": "JSON",
     "export_format_markdown": "Markdown",
     "about_title": "Acerca de Storico",
