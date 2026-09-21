@@ -1,6 +1,8 @@
 # ODD Feature: schema-drift-gate
 
-> **Status**: not started. Branch `feat/schema-drift-gate` off `main` @ `305b5da`.
+> **Status**: **PR 1 (WU1 + WU2) committed and independently verified; PR 2 not started.** Branch
+> `feat/schema-drift-gate` off `main` @ `305b5da`, commits `aee59ff` (WU1) and `68b9781` (WU2) plus this
+> record's own. PR 2 is the pair that makes the migration chain prove itself — WU3 and WU4.
 > **Created**: 2026-09-21
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -70,7 +72,7 @@ policy cannot be a position; it has to be a property of each revision.
 | D3 | What the unauthenticated endpoint may reveal | **A status, never a revision value.** The health routes are deliberately opaque about errors because they are unauthenticated (`health.py:51-58`). A public endpoint therefore reports `ok` / `drift` / `unknown` and nothing more; the actual revision strings go to the **log**, so diagnosis is `docker logs`, not HTTP. |
 | D4 | Liveness vs readiness | **Keep `/health` as liveness and add `/api/v1/health/ready`.** The machine gate needs an HTTP status code so the deploy can use `curl -sf` with `set -e`, without parsing JSON inside a shell script on the VM. `/health` keeps its current semantics and gains an informational `schema.status`. |
 | D5 | `unknown` must not read as healthy | A schema query that fails, or an absent `alembic_version`, is **`unknown` and not `ok`**, and readiness answers 503 for it. Fail closed: a fresh database nobody migrated must not look ready. |
-| D6 | Supersede the contradiction explicitly | `prod.todo.md:17-18` and the Non-goals entry in `prod-checklist-honesty.md` are both edited in this lot. Leaving a fixed-position policy standing next to this record would be the same defect class this work exists to close. |
+| D6 | Supersede the contradiction explicitly | `prod.todo.md:17-18` is edited in WU2. The Non-goals entry in `prod-checklist-honesty.md` was **not** edited, and this row first claimed it was — refuted by this lot's own `git diff`, which never contains that file. Reading it again, it already states the two-directional problem correctly, so the contradiction was one-sided and only `prod.todo.md` needed to move. |
 | D7 | The stale claims found while exploring | **Included.** `docs/database.md` says "11 migraciones aplicadas" where there are 24, with its table stopping at `0011`; `todo.md:220` says "50 archivos de alembic" and that no test covers migrations (four per-revision tests do). Same class as the batch that just closed. |
 | D8 | The `version` field | **Fix it in WU1.** `/health` returns a hardcoded `"0.1.0"` while `backend/pyproject.toml:6` declares `0.3.0` — a false claim on the very endpoint this lot is making honest, and one line to correct. |
 
@@ -106,7 +108,9 @@ red instead of reporting success over a broken release.
 - The deploy's verify step stops swallowing its own failure, asserts readiness, and also checks that the
   container is actually running — because `docker run` succeeding is not the same as the app being up.
 - Whether `deploy-backend.yml`'s `set -e` actually fails the GitHub job depends on the action's own
-  error propagation, which must be measured rather than assumed.
+  error propagation. **Measured in WU2**: the action's `script_stop` input does not exist at `v1` (gone
+  from `v1.2.1`; `v1.2.0` still declares it), its README says to use `set -e` instead, and drone-ssh
+  exits non-zero when the remote script does. The suppression was the `|| echo`, not a missing option.
 
 ## Work units
 
@@ -122,7 +126,7 @@ red instead of reporting success over a broken release.
 | WU | Files | Change |
 |----|-------|--------|
 | WU3 | `alembic/env.py`, a new integration test, `conftest` if needed | Let `env.py` honor an externally supplied URL, then add the test that runs the whole chain against a real Postgres and compares the result to the models. **Measure the drift first**: if autogenerate reports differences on day one, the gate cannot land red — either the drift is fixed or the gate is scoped to "the chain runs and reaches head". |
-| WU4 | `docs/database.md`, `todo.md` | The two stale claims in D7. |
+| WU4 | `docs/database.md`, `todo.md`, `docs/testing.md`, and the stale references inside `odd/tasks/prod-checklist-honesty.md` | The stale claims in D7, **plus the ones the verifier found that D7 did not list**: `todo.md:211` ("418"), `docs/testing.md:98` ("526 tests"), and two `testcontainers>=4.9.0` references inside `prod-checklist-honesty.md` that the same file's own WU6 superseded — along with a duplicated "PR 2 — not started" / "committed and awaiting native review" pair that this session's edits to that record left behind. Scope widened by measurement, not by preference. |
 
 ## Non-goals
 
@@ -143,17 +147,18 @@ red instead of reporting success over a broken release.
 
 ## Tasks
 
-- [ ] WU1 — schema status probe + `/health` field + `/api/v1/health/ready`, with tests that fail without
-      it. Introduce the probe as a port so the health route does not depend on the database layer
-      directly, matching how the rest of the route is wired.
-- [ ] WU2 — `deploy-backend.yml` fails when production is not ready; measure the action's error
-      propagation instead of assuming it; correct `prod.todo.md:17-18`.
-- [ ] Gates for PR 1: backend `ruff check src tests`, `ruff format --check src tests`, `pytest -q`;
-      frontend untouched.
-- [ ] Branch, commit, native review, land PR 1.
+- [x] WU1 — schema status probe + `/health` field + `/api/v1/health/ready`, with tests that fail without
+      it. The probe is **not** a port: this line first said to introduce one "so the health route does not
+      depend on the database layer directly", which `health.py`'s own `get_engine` import refutes. Landed
+      as `aee59ff`.
+- [x] WU2 — `deploy-backend.yml` fails when production is not ready; the action's error propagation was
+      measured rather than assumed; `prod.todo.md` corrected. Landed as `68b9781`.
+- [x] Gates for PR 1: backend `ruff check src tests`, `ruff format --check src tests`, `pytest -q`
+      (728 passed, 1 skipped, 1 pre-existing warning); frontend untouched. Re-run independently.
+- [ ] Native review of PR 1, then land it.
 - [ ] WU3 — `env.py` honors an explicit URL; integration test runs the chain against Postgres and
       compares the result to the models; measure the drift before choosing the gate's shape.
-- [ ] WU4 — `docs/database.md` and `todo.md`.
+- [ ] WU4 — the stale-claims sweep, scope widened by measurement (see the work-unit row above).
 - [ ] Gates for PR 2, commit, native review, land PR 2.
 
 ## Evidence
@@ -178,7 +183,7 @@ mutation, which is the only method that answers that question:
 | Mutation | Result |
 |---|---|
 | A — readiness ignores the schema (`ready = db ok`) | `test_readiness_follows_the_schema` and `test_readiness_answers_the_same_body_whatever_the_status_code` fail |
-| B — `unknown` collapses into `ok` | 5 unit tests plus `test_a_schema_that_cannot_be_read_is_unknown_and_never_ok` fail |
+| B — `unknown` collapses into `ok` | **8** tests: 5 unit, `test_a_schema_that_cannot_be_read_is_unknown_and_never_ok` (both parameters), and **`test_readiness_follows_the_schema`** — which this table first omitted. The verifier measured the undercount. |
 | C — a revision leaks **only** on `/health/ready` | **all 15 tests passed.** The guarantee was tested on `/health` alone while three unauthenticated routes publish bodies |
 
 Mutation C is the finding: it was found by breaking the code, not by reading it. A parametrized
@@ -223,8 +228,11 @@ prints the container state, the HTTP status, the response body, the `Schema stat
 last 20 container log lines, names the runbook, and exits non-zero.
 
 **The mechanism is not what this record's brief assumed.** The brief said to verify the action's
-`script_stop` input and set it. That input does not exist at the pinned major: it was present up to
-`v1.1.0` and removed in `v1.2.0`. Measured, not assumed — `raw.githubusercontent.com/appleboy/ssh-action/v1/action.yml`
+`script_stop` input and set it. That input does not exist at the pinned major: it was **present through
+`v1.2.0` and removed in `v1.2.1`**. This paragraph first said "present up to `v1.1.0` and removed in
+`v1.2.0`", which measurement refuted on both halves — `v1.2.0`'s `action.yml` still declares the input
+twice, `v1.2.1`'s declares it zero times, and the same wrong version sits in the workflow's own comment.
+Measured, not assumed — `raw.githubusercontent.com/appleboy/ssh-action/v1/action.yml`
 is 6452 bytes and contains no occurrence of `stop`, and the v1 README says in as many words: *"To mimic
 the removed `script_stop` option, add `set -e` at the top of your shell script."* The writing agent
 verified instead of adding an inert `with:` key, which would have been ignored with an
@@ -236,6 +244,31 @@ With `ScriptStop=false`, drone-ssh joins the whole script into one `session.Star
 **is** the mechanism — and it was already there. What actually suppressed the failure was the `|| echo`,
 which made the compound command's status the `echo`'s. So the fix was to remove the suppression and
 assert something real, not to add an option.
+
+The verifier measured the propagation against the real binary the action downloads (`drone-ssh 1.8.2`,
+run over a local sshd rather than reasoned about): a remote `exit 3` makes drone-ssh exit **1**, not 3,
+because it reports through `log.Fatal` — and the old `false && echo OK || echo FAILED` reproduces the
+defect as exit 0. Non-zero propagation holds, but "returns the remote exit code as its own" was
+inaccurate wording; the workflow comment now says "exits non-zero".
+
+**Two suspects the verifier recorded rather than fixed, both about the completeness of a claim.**
+First, `prod.todo.md`'s "ya no reporta éxito sobre una release rota" is only true for the schema/database
+class of broken: readiness answers 200 with a missing `STORICO_ENCRYPTION_KEY` or any other unset
+environment variable, which is the silent-failure class ADR-005 warns about. Second, the gate fires
+**after** `docker run`, so a red deploy leaves the new container live with no rollback — the gate
+reports, it does not prevent. Both are true of the design and neither is a defect in it.
+
+**Stale claims the verifier found standing outside this candidate** (all recorded for WU4's widened
+sweep rather than fixed here): `docs/testing.md:98` claims the suite is 526 tests where it is 728;
+`todo.md:211` still says the expected total is 418; and `odd/tasks/prod-checklist-honesty.md` carries
+two `testcontainers>=4.9.0` references its own WU6 superseded, plus a duplicated "PR 2 — not started" /
+"committed and awaiting native review" pair left behind by this session's edits to that record. One
+pre-existing code trap came up while chasing the live check and is noted only because it cost a run:
+`_normalize_db_url` in `infrastructure/database/base.py` rewrites **any** URL scheme to
+`postgresql+asyncpg`, so a `sqlite+…` URL silently becomes a postgres URL on `localhost:5432`.
+
+_(per-work-unit records land here as each unit closes; no measurement above is copied from prose
+without its file and line.)_
 
 **Verification, all of it observed.** The YAML parses; `bash -n` is clean on the extracted remote script
 (95 lines) and on the block alone (74 lines); a grep for the `alembic` subcommands finds **no**
