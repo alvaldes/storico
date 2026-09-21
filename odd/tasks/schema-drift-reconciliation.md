@@ -300,3 +300,48 @@ The other three are the limitations this record already states rather than new d
 path is exercised by unit tests but not through the integration path; the order-agnostic claim is argued
 from code-reading and cannot be measured without two production-shaped databases; and the tripwire is
 vacuous today, which the writing agent said itself when it added it.
+
+### Landing, and the gate's first red
+
+Landed with `git merge --ff-only` `a1d549b` → `ada0847`, pushed, branch deleted with `-d` (which fails
+unless merged, so the deletion is the proof). `HEAD == refs/remotes/origin/main == ada0847`, ahead/behind
+`0/0`, tree clean, and the tag `v0.4.0` unmoved at `af91291`.
+
+**The deploy went red on purpose, and that is this feature working in production.** The code head became
+`0026` while production's schema was `0024`, and the gate said so in one line:
+
+```
+=== READINESS GATE FAILED: 225s ===
+storico-api container running: true
+HTTP status: 503
+Schema status is drift: the code expects revision 0026, the database holds 0024
+```
+
+That is the 2026-09-20 condition — code and schema out of step — **detected in a deploy log before any
+extraction failed, instead of after 56 of them did**. Liveness was preserved throughout: `/health` answered
+200 with `schema: drift` and `version: 0.4.0`, so the new container was up and serving while readiness
+refused. The failure is the designed handoff, not a false alarm, and the workflow reported it instead of
+reporting success over a broken release.
+
+**The migration was then applied by hand, online**, as the runbook in `schema-drift-gate.md` prescribes —
+`alembic upgrade head` in an ephemeral container mounting the VM's checkout read-only for its config:
+
+```
+Running upgrade 0024 -> 0025, convert extractions.status to the extraction_status_new enum
+Running upgrade 0025 -> 0026, drop the duplicate index on tasks.user_story_id
+0026 (head)
+```
+
+**`0025`'s pre-flight did not raise, and that is a measurement rather than a passed test:** production held
+no value outside the enum's three labels, so the `USING` cast was safe. That is the mitigation's happy path
+exercised against real rows — and it is precisely the branch no test can exercise, because CI's container
+database is empty. Read the other way: the check's **refusal** path is still unexercised against production,
+and the only thing that exercises it is production one day holding a bad value.
+
+Readiness then answered 200 with `schema: ok`, and the deploy was re-run on the same commit to confirm the
+pipeline end to end: **green**. So the whole designed sequence — land, fail loudly, migrate, confirm — ran
+once, for real, on the change that most needed it.
+
+One honest note about that re-run: it replaced the failure with a success **on the same run id**, so the red
+lives in that run's first attempt and in this record rather than in the headline list. Recording it here
+means nobody later has to wonder whether it ever failed.
