@@ -264,6 +264,13 @@ directly.
   (`DockerException: Error while fetching server API version`) and is exercised by CI. The conda env
   also still carries the legacy namespace-package layout, on which the new path does not resolve at all;
   it needs the old shim uninstalled and the dev extra reinstalled.
+  **The floor is not dev-only in this repository**, which is worth knowing before landing:
+  `backend/Dockerfile` runs `pip install --no-cache-dir ".[dev]"`, so the production image installs the
+  dev extra, testcontainers included, and the declared floor therefore reaches the production build.
+  Nothing breaks — PyPI resolves 4.15.0, and pip would already have picked 4.15.0 under the old
+  `>=4.9.0` floor, so no installed version changes. But a claim that the blast radius was "CI plus
+  developer machines" would be false here, and shipping the test dependencies in the production image
+  is a separate observation this batch does not act on.
 
 **Three claims in this record's own brief were refuted by measurement** and are corrected here rather
 than left standing: that the testcontainers change was "one import" (it forces the floor up — see D6);
