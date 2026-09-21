@@ -380,6 +380,48 @@ beside it is `ok`.
 
 _(PR 2's per-work-unit records land below as WU3 and WU4 close.)_
 
+### WU4 — the stale-claims sweep (branch `docs/stale-claims-sweep`)
+
+The last work unit. Every correction below was made against a measurement, not against prose; each
+value was re-derived by the parent before the writing agent was told to use it.
+
+| File | Claim corrected | Measurement |
+|---|---|---|
+| `docs/database.md:10` | "Alembic (11 migraciones aplicadas)" → 24 | `ls …/alembic/versions/*.py` |
+| `docs/database.md:11` | head `0011` → `0024` | the chain's head |
+| `docs/database.md` table | stopped at `0011` → extended through `0024` | descriptions read from each revision file; dates taken from each file's git add-date, so none is invented |
+| `docs/testing.md:101` | "pasa en los 526 tests" → 730 | a local suite run, which is where SQLite stands in for Postgres |
+| `todo.md:211` | CI total "418" → 733 passed, zero skips | the CI run on `d9654c4`; locally the same suite is 730 + 3 skips, and the difference is exactly the three Docker-gated tests |
+| `todo.md:213-215` | a `PytestUnraisableExceptionWarning` in `test_project_repo.py` → a `RuntimeWarning: coroutine 'Connection._cancel' was never awaited` | wrong on both halves: the class is wrong, and it has **no stable home** because its attribution moves with GC (seen in `test_health.py::test_health_services_endpoint` and in `test_custom_provider_repo.py` on different runs). It is also `.env`-gated — it appears only when the gitignored `.env` points the app at a remote database |
+| `todo.md:217` | "22 diagnósticos" in `api/app.py` → 12 | the `pi-lens` LSP probe at `severity=error`; the instrument is named in the text so the next reader can re-derive it |
+| `todo.md:220-221` | "ningún test" covers migrations, "50 archivos" | 24 revision files, not 50; and four per-revision unit tests exist, plus the new chain test. The surviving truth is narrower and now stated: those four run on **SQLite**, and nothing compared the migrated schema to the models until `test_migration_chain.py` |
+| `prod-checklist-honesty.md:52,211` | `testcontainers>=4.9.0` → `>=4.15.0` | that same record's own WU6/D6 raised the floor |
+| `prod-checklist-honesty.md:155,157` | a duplicated, self-contradicting pair of PR 2 status lines | collapsed into one line recording the landing at `61a132b` |
+
+**One residual the brief missed, caught by the writing agent and then fixed by the parent:** that same
+record's own **Status block** stated three contradictory things — the summary said PR 2 awaited review, one
+bullet was headed "NOT LANDED" while ending on the very sentence that records the landing, and a third
+still said "NOT STARTED. Nothing has been written for it." The summary and bullets are now one accurate
+landing record, and "Resuming in a fresh session" is **marked spent rather than rewritten**: it is now a
+record of what was open at handoff, so its body keeps its historical value while a note at its head says
+so and points at what genuinely remains.
+
+**How the harness classifies a documentation-only candidate.** It does not require a lens: the review
+closed `risk_tier: low` with `selected_lenses: []`, `risk_reasons: [{"code": "non_executable_only"}]`,
+4 files / 85 lines, and **no reviewer was materialised**. The record states the ambiguity rather than the
+flattering half of it: the START returned `state: approved` with `action: closed`, and a target-scoped
+STATUS issued afterwards reported the candidate as **unreviewed** and offered a start. Both readings are
+true of what the provider said. Nothing was burned either way, and delivery follows ordinary repository
+policy regardless.
+
+**Three artifacts in the workspace were not this work's and were left exactly as found**: `.cz.toml` and a
+root `package.json` (both untracked — apparently a commitizen setup in progress) and an uncommitted
+`frontend/package.json` version bump. They are what made the candidate scoping need an explicit `baseRef`
+*and* an untracked exclusion, because `inspect` otherwise scopes to `frontend/package.json` alone. The
+harness lesson is recorded with it: the untracked selection travels in the START `input` as
+`untrackedScope` and `expectedUntrackedInventory`, and omitting them makes the native start reject the
+candidate view as `candidate-target-projection-drift` before any lineage is created.
+
 ### WU3 — the chain measured (branch `feat/migration-chain-gate`, draft PR #2)
 
 This work unit could not be verified locally: there is **no Docker daemon on this machine** (`docker` is
