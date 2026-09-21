@@ -41,6 +41,77 @@ jobs:
               --env-file /home/ubuntu/storico/backend/.env \
               storico-api
 
-            echo "=== Verify health ==="
-            sleep 3
-            curl -sf http://localhost:8000/api/v1/health && echo " — OK" || echo " — FAILED"
+            echo "=== Verify production is ready ==="
+            # The previous check was `curl ... && echo OK || echo FAILED`. The
+            # `||` made the compound command's status the one from `echo`, so
+            # it exited 0 no matter what: a deploy that left production down
+            # reported success, which is how the 2026-09-20 outage survived a
+            # day. Every check below is a plain command, and `set -e` at the
+            # top of this script aborts on the first non-zero status. That
+            # status reaches the job because drone-ssh returns the remote exit
+            # code as its own; the action's `script_stop` input no longer
+            # exists at v1 (removed in v1.2.0) and its README says to use
+            # `set -e` instead.
+            #
+            # Readiness means the database answers AND `alembic_version`
+            # equals the code's head, so this gate is strict on purpose. The
+            # container needs seconds to boot (engine init, startup recovery),
+            # so one sleep plus one curl would flake; poll a bounded window
+            # and report how long it actually took.
+            READY_URL=http://localhost:8000/api/v1/health/ready
+            READY_TIMEOUT_SECONDS=120
+            ready=0
+            attempts=0
+            started_at=$(date +%s)
+
+            while [ "$attempts" -lt "$READY_TIMEOUT_SECONDS" ]; do
+              attempts=$((attempts + 1))
+              if ! docker inspect -f '{{.State.Running}}' \
+                   storico-api 2>/dev/null | grep -q true; then
+                sleep 1
+                continue
+              fi
+              if curl -sf -o /dev/null "$READY_URL"; then
+                ready=1
+                break
+              fi
+              sleep 1
+            done
+
+            elapsed_seconds=$(( $(date +%s) - started_at ))
+
+            if [ "$ready" -eq 1 ]; then
+              echo "Ready after ${elapsed_seconds}s: container running,"
+              echo "${READY_URL} answered 2xx."
+            else
+              echo "=== READINESS GATE FAILED: ${elapsed_seconds}s ==="
+              container_running=$(docker inspect \
+                -f '{{.State.Running}}' storico-api 2>/dev/null \
+                || echo "container not found")
+              echo "storico-api container running: ${container_running}"
+              response=$(curl -s -w '\n%{http_code}' "$READY_URL" \
+                2>/dev/null || true)
+              echo "HTTP status: $(printf '%s' "$response" | tail -n 1)"
+              echo "Response body:"
+              printf '%s' "$response" | sed '$d'
+              echo
+              echo "Schema status logged by the container:"
+              docker logs storico-api 2>&1 \
+                | grep "Schema status is" \
+                | tail -n 3 || true
+              echo "Last 20 container log lines:"
+              docker logs --tail 20 storico-api 2>&1 || true
+              echo
+              echo "This red gate is the expected handoff, not a false alarm:"
+              echo "readiness requires the schema to equal the code's Alembic"
+              echo "head, and the three most recent revisions ask for opposite"
+              echo "orders (0022 and 0024 want the code first, 0023 wants the"
+              echo "migration first), so no fixed position inside this workflow"
+              echo "is correct. That is why this step only detects and"
+              echo "does not migrate."
+              echo 'Runbook -- odd/tasks/schema-drift-gate.md, "What readiness'
+              echo 'means, and what a red deploy means with it": deploy (this'
+              echo "run) -> read the failure above -> apply the pending"
+              echo "revision by hand -> re-check ${READY_URL}."
+              exit 1
+            fi
