@@ -1,13 +1,23 @@
 # ODD Feature: prod-checklist-honesty
 
-> **Status**: planning — no commits yet. Branching is split in two, deliberately: the claims live in
-> docs, the dead option lives in code, and a reviewer should not have to read them together.
-> - PR 1 (docs): `docs/honest-prod-claims`
-> - PR 2 (code): `fix/retire-trello-option-and-dead-settings`
+> **Status**: **PR 1 landed and pushed; PR 2 not started.** This record is the resume point — read it
+> first, then the new section "Resuming in a fresh session" at the end.
+> - **PR 1 (docs) — DONE.** Branch `docs/honest-prod-claims`, four commits (`f147029`, `6f480c8`,
+>   `d523492`, `b196589`), fast-forwarded into `main` (`fb48732` → `b196589`), branch deleted, pushed,
+>   CI green (run `35554779323`). The backend deploy did not trigger, correctly: its `paths` are
+>   `backend/**` and its own workflow file. Native review `review-bf9c1b2604557eac` came back
+>   **approved** and its authority is **burned** (`gentle-ai.review-acknowledged/v1`).
+> - **PR 2 (code) — NOT STARTED.** Branch `fix/retire-trello-option-and-dead-settings`; work units
+>   WU4–WU6 below. Nothing has been written for it.
 >
 > Receipt-driven development is **on** in this clone (`~/.gentle-ai/state.json`,
-> `rdd_mode_recorded_at = 2026-09-19T18:49:02Z`), so a native review is expected per candidate. The
-> last two candidates that ran it came back `risk_tier: low` / `non_executable_only`.
+> `rdd_mode_recorded_at = 2026-09-19T18:49:02Z`), so a native review is expected per candidate — but
+> **the tier depends on which files are touched**. The two earlier markdown-only candidates came back
+> `risk_tier: low` / `non_executable_only`; PR 1 came back **`medium`** with the `review-reliability`
+> lens required, because its `risk_reasons` named `{"code": "executable_change", "path":
+> "AGENTS.md"}`. `AGENTS.md` is the file that governs agent behaviour in this repository, so the
+> provider does not treat it as passive documentation. PR 2 touches no instruction file and should be
+> judged on its own content.
 > **Created**: 2026-09-21
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -117,27 +127,120 @@ from the per-workspace prompt config (`extraction_task.py:349` →
 
 ## Tasks
 
+**PR 1 — `docs/honest-prod-claims`** — landed on `main` @ `b196589`, pushed, CI green; native review
+`review-bf9c1b2604557eac` approved and burned.
+
 - [x] WU1 — `prod.todo.md`: C1, C2 closed with evidence; Trello detail corrected.
 - [x] WU2 — `AGENTS.md`: C3 and C6 corrected.
 - [x] WU3 — `docs/deployment.md`: production section rewritten to the architecture that runs.
-- [ ] Gates for PR 1: no doc gate exists in CI (it runs `ruff`, `pytest`, `tsc`, `vitest` and no
-      markdown check), so PR 1 is verified by reading the changed claims against the measurements in
+- [x] Gates for PR 1: no doc gate exists in CI (it runs `ruff`, `pytest`, `tsc`, `vitest` and no
+      markdown check), so PR 1 was verified by reading the changed claims against the measurements in
       this record.
-- [ ] Branch, commit, native review, land PR 1.
-- [ ] WU4 — retire the `trello` option with legacy normalisation and its test.
-- [ ] WU5 — delete the two dead settings and their `.env.example` lines.
-- [ ] WU6 — move the testcontainers import off the deprecated module.
+- [x] Branch, commit, native review, land PR 1.
+
+**PR 2 — `fix/retire-trello-option-and-dead-settings`** — not started. Branch off `main` @ `b196589`.
+
+- [ ] WU4 — retire the `trello` option with legacy normalisation and its test. Files:
+      `backend/src/storico/api/schemas/settings.py` (`ExportSettings.default_format`),
+      `frontend/src/types/settings.ts` (`ExportFormat`),
+      `frontend/src/components/react/AccountPage.tsx` (the `SelectItem` and the label record),
+      `frontend/src/stores/__tests__/settingsStore.unit.test.ts` (its fixture **is** the legacy case),
+      `frontend/src/components/react/__tests__/AccountPage.test.tsx` (fixture at line 86).
+      Per D3: narrow the `Literal` to `["json", "markdown"]` and normalise a stored legacy `trello` to
+      `json` on read, with a test that fails without the normalisation. `ExportPanel.tsx` already
+      offers only `json | markdown` and needs no change. The `export_format_trello` i18n keys become
+      unused — drop them from both files together if dropped at all, keeping `en.json`/`es.json` key
+      parity (the guard test reads only those two files).
+- [ ] WU5 — delete the two dead settings and their `.env.example` lines. Files:
+      `backend/src/storico/config/settings.py` (`rag_similarity_threshold`, `rag_max_examples`),
+      `backend/.env.example` (the three `STORICO_RAG_*` lines).
+- [ ] WU6 — move the testcontainers import off the deprecated module. File:
+      `backend/tests/test_integration/test_projects_integration.py` (`testcontainers.postgres` →
+      `testcontainers.community.postgres`); check the class name and constructor against the version
+      actually installed instead of assuming the API is identical.
 - [ ] Gates for PR 2: backend `ruff check src tests`, `ruff format --check src tests`, `pytest -q`;
       frontend `pnpm exec tsc --noEmit`, `pnpm vitest run`.
 - [ ] Branch, commit, native review, land PR 2.
 
 ## Evidence
 
-To be filled from the gate output at commit time; the measurements for C1–C6 are already in the table
-above, each with the command or file that produced it.
+The measurements for C1–C6 are in the table above, each with the command or file that produced it.
+The entries below are the per-work-unit records.
+
+### PR 1 review and landing
+
+Native review `review-bf9c1b2604557eac`, target
+`sha256:ea7377114496870a29e3f159762d28171b6bea8ec7047f9f4c2dad8a063a9b67`: `state: approved`,
+`risk_tier: medium`, `selected_lenses: ["review-reliability"]`, `changed_files: 4`,
+`original_changed_lines: 196`, `correction_budget: 98`,
+`risk_reasons: [{"code": "executable_change", "path": "AGENTS.md"}]`. One reviewer was materialised
+(forecast `model_runs: 1`, `transport: pi_host_relay`; `prompt_bytes: 39316`, `result_bytes: 2638`) and
+the review closed on the last admitted event. Acknowledgement burned the authority:
+`authority: burned`, `burn_evidence: gentle-ai.review-acknowledged/v1`,
+`delivery: ordinary-repository-policy`. Landing: `git merge --ff-only` `fb48732` → `b196589`, branch
+deleted with `-d`, `HEAD == origin/main == refs/heads/main == b196589`, ahead/behind `0/0`, CI run
+`35554779323` green.
+
+Three advisories were returned, all `SUGGESTION` / informational, none of which opened a correction:
+`R3-evid-2` (`prod.todo.md:19`), `R3-pubip-1` (`docs/deployment.md:73`) and `R3-waf-3`
+(`prod.todo.md:25`). They are deliberately **not** bundled into PR 1 — editing the reviewed tree after
+approval would mean delivering something other than what was reviewed — and are carried as follow-ups
+in `prod.todo.md`'s sibling work. See "Resuming in a fresh session" below.
 
 - **WU1 — `prod.todo.md`** (commit `docs: close two production checklist items that were already satisfied`). C1 🟡→✅: CI run `35546955633` executed `tests/test_integration/test_projects_integration.py::test_list_projects_with_counts_latency_under_500ms` and the job ended `703 passed`; `backend/pytest.ini` registers the `integration` marker without deselecting it, `.github/workflows/ci.yml` runs a bare `pytest -q` with no marker filter, `testcontainers>=4.9.0` is a dev dependency, and GitHub runners carry the Docker daemon that `_docker_reachable()` probes. C2 🔲→✅: the in-container probe printed booleans only and never an origin value — `ORIGENES_DECLARADOS: 1`, `USA_EL_DEFAULT_LOCALHOST: False`, `CONTIENE_LOCALHOST_O_127: False`, `CONTIENE_VERCEL_APP: True`, `CONTIENE_HTTP_SIN_TLS_NO_LOCAL: False`. The Trello item kept its 🔲 and its detail now states the connector does not exist (`backend/src/storico/infrastructure/` holds `cache, crypto, database, llm, tasks, vector`) and that the selectable option is retired in WU4. No markdown gate exists in CI, so both texts were verified by reading them against the measurements above.
 
 - **WU2 — `AGENTS.md`** (commit `docs: correct the Trello and deployment claims in AGENTS.md`). C3: feature table #25 went ✅ MVP → 🔲, with a `> **Nota**:` block under the Conectores table recording the real state — no export adapter and no connector package (`backend/src/storico/infrastructure/` holds `cache, crypto, database, llm, tasks, vector`; `trello` survives only as a format string) — so the three-column table stayed intact. C6: ADR-005 went 🔴 PENDIENTE / "Producción sin definir" → ✅ Decidido, naming the architecture that runs (Astro on Vercel; FastAPI container on the Oracle VM `163.192.150.75` deployed by `.github/workflows/deploy-backend.yml` via SSH + `docker run --network host --env-file /home/ubuntu/storico/backend/.env`; PostgreSQL on Neon; Qdrant contracted but not configured), and its new Consecuencias record that the deploy runs no Alembic migrations (the 2026-09-20 incident, open in `prod.todo.md`) and that the untracked VM `.env` survives the worktree reset, so a missing variable fails silently. One line adjacent to that scope was also corrected: the Stack table's **Contenedores** row said `prod: Vercel`, which is false for containers, and now names the backend container on the Oracle VM and the Astro frontend on Vercel.
 
 - **WU3 — `docs/deployment.md`** (commit `docs: describe the production architecture that actually runs`). C5 corrected in the "Producción" section (retitled from "Producción (Vercel)"): backend is a Docker container on the Oracle VM, not Vercel serverless; database is Neon, not an undefined provider; and CI/CD is no longer "pendiente de definir" — the two workflows that exist are named with the steps `ci.yml` actually runs (`ruff check`, `ruff format --check`, `pytest -q`, `pnpm exec tsc --noEmit`, `pnpm vitest run`). The deploy mechanism is described from `.github/workflows/deploy-backend.yml` itself (SSH, `git fetch origin main`, worktree reset to `origin/main`, image rebuild, stop/remove, `docker run --network host --env-file /home/ubuntu/storico/backend/.env`). A new "Migraciones" subsection records that the deploy runs no Alembic migrations (the 2026-09-20 `0021` vs `0024` incident, 56 failed extractions) and points at the open item in `prod.todo.md` without proposing a fix. The untracked VM `.env` note explains the silent failure mode, and Qdrant is recorded as contracted but not configured. The "Artefactos de build del frontend" subsection is unchanged.
+
+## Resuming in a fresh session
+
+State of the world at handoff, in the order it matters.
+
+### 1. PR 2 is the only thing left in this batch
+
+Nothing has been written for it — no branch exists. WU4 is the one that needs care: the same `Literal`
+validates reads **and** writes, so narrowing it without the normalisation turns a previously valid
+stored value into a 500 on read. Production's `user_preferences` is empty (0 rows, measured), so there
+is no data to migrate — but the frontend test that loads `defaultFormat: 'trello'` (in
+`settingsStore.unit.test.ts`) **is** the legacy case, and it should become the test for the
+normalisation rather than being deleted.
+`backend/tests/test_unit/test_drop_user_preference_llm_migration.py` also contains that value, but its
+`_seed` writes through a SQLAlchemy `Session` against the metadata table and never crosses the Pydantic
+schema, so it is unaffected.
+
+### 2. Three advisories from PR 1's review are open and non-blocking
+
+They were deliberately not bundled into PR 1. The review's own closure says to treat them as separate
+later work and never as a reason to re-run review on that candidate.
+
+| Id | Location | What it is |
+|----|----------|------------|
+| `R3-waf-3` | `prod.todo.md`, rate-limiting row | **The one that matters.** The row still recommends "Vercel WAF" while `docs/deployment.md` now records that the backend is not served by Vercel. That is an internal contradiction this batch introduced. It belongs with the rate-limiting work, not with the Trello cleanup. |
+| `R3-pubip-1` | `docs/deployment.md` | The production VM's public IP is now written into a tracked document, where the deploy workflow deliberately takes it from a `DEPLOY_HOST` secret. |
+| `R3-evid-2` | `prod.todo.md`, integration-test row | The row's evidence wording. Cosmetic. |
+
+The reviewer's line numbers appear to run one below the file's own; the locations above are the lines
+whose content matches the id.
+
+### 3. Two mechanical lessons that cost time and will cost it again otherwise
+
+- A delegated writer that returns **its own** unresolved consent envelope cannot have that envelope
+  answered by the parent: `answer-consent` reports `consent-binding-stale` /
+  `consent-binding-unknown` ("not held by this Pi session"). The parent runs START again to mint its own
+  envelope — and that binding expires after **10 minutes** unanswered. Every rejection is pre-authority
+  (`lineage_created: false`, `mutation_performed: false`), so nothing is lost by retrying; never resend
+  a binding the provider has already refused.
+- A `gentle-ai-worker` task must carry a `## Allowed edit surfaces` section containing **only**
+  repository-relative paths, one per line, with no prose in it; explanatory text belongs under the next
+  heading. The first attempt at this delegation was rejected for exactly that reason.
+
+### 4. Do not "fix" MD060
+
+`pi-lens` flags the `|------|` separator rows in every document in `odd/tasks/` and `docs/`. There is
+no markdownlint config and no markdown gate in CI. Reformatting tables to silence it would diverge from
+twenty sibling documents and bury the real change in noise.
+
+The larger items this batch deliberately did not take on — the deploy's migration policy, enabling
+Qdrant/RAG in production, rate limiting, Sentry, correlation IDs, a custom domain, a frontend build in
+CI, and the Trello connector itself — are recorded as non-goals above, with their sizes.
