@@ -33,9 +33,11 @@ class Settings(BaseSettings):
     # Vector store (Qdrant)
     qdrant_collection: str = "storico_extractions"
 
-    # RAG
-    rag_similarity_threshold: float = 0.85
-    rag_max_examples: int = 3
+    # No RAG knobs here, deliberately. ``rag_similarity_threshold`` and ``rag_max_examples``
+    # were declared here and read by nothing: the retrieval threshold is a parameter with its
+    # own default on ``QdrantAdapter.search_similar``, and the value that actually reaches it
+    # is per workspace (``extraction_task`` reads ``few_shot_threshold``). A setting nothing
+    # reads is a knob in name only.
 
     # Auth — CORS origins (comma-separated)
     auth_allowed_origins: str = "http://localhost:4321"
