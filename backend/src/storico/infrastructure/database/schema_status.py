@@ -58,10 +58,9 @@ _ALEMBIC_VERSION = sa.Table(
     sa.Column("version_num", sa.String(32), nullable=False),
 )
 
-# ``None`` is a real cached value — "the scripts could not be read" — so the cache needs its own
-# empty flag rather than reusing ``None``.
+# Only a successful read is stored here, so ``None`` means exactly "not known yet" and the next
+# caller retries. ``get_expected_head`` explains why failure is not cached.
 _expected_head: str | None = None
-_expected_head_cached = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,9 +83,8 @@ def clear_expected_head_cache() -> None:
     not belong on a health request. Production never needs to clear it; tests need the way back to a
     cold state.
     """
-    global _expected_head, _expected_head_cached
+    global _expected_head
     _expected_head = None
-    _expected_head_cached = False
 
 
 def _read_expected_head() -> str | None:
@@ -103,16 +101,24 @@ def _read_expected_head() -> str | None:
 
 
 def get_expected_head() -> str | None:
-    """The head revision the packaged migration scripts declare, read once.
+    """The head revision the packaged migration scripts declare, cached once it is known.
 
-    ``None`` means "could not tell", and every caller must treat it as ``unknown`` rather than
-    ``ok``. A failed read is cached too, so an unreadable script directory does not re-parse on
-    every request.
+    Parsing two dozen migration scripts belongs on a cold start, not on every health request, so a
+    successful read is kept. A failed read is not: ``None`` means "could not tell" and every caller
+    must treat it as ``unknown``, never ``ok``, but latching it turns one transient failure into a
+    permanent ``unknown`` — readiness answering 503 for the life of the process, with no way back
+    into rotation short of a restart. Leaving the cache empty means the next caller retries, and the
+    instance heals by itself. A chain that declares no head at all is indistinguishable from an
+    unreadable one here and re-reads too; that costs a repeat parse and still fails closed.
+
+    No TTL and no retry throttle, deliberately. While the read keeps failing readiness is already
+    answering 503, so nothing should be routing here; a retry costs a re-scan of two dozen small
+    files on a health request, cheap next to a cache that can wedge. Bounding the retries would buy
+    a saving nobody is spending and delay the recovery the instance performs on its own.
     """
-    global _expected_head, _expected_head_cached
-    if not _expected_head_cached:
+    global _expected_head
+    if _expected_head is None:
         _expected_head = _read_expected_head()
-        _expected_head_cached = True
     return _expected_head
 
 

@@ -124,6 +124,32 @@ async def test_expected_head_is_read_once_and_can_be_forgotten(
 
 
 @pytest.mark.asyncio
+async def test_a_failed_read_is_not_cached_so_a_later_call_heals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A read that failed must leave the cache empty, so the instance can recover on its own.
+
+    ``None`` from ``_read_expected_head`` is this module's whole vocabulary for "the scripts could
+    not be read", so a first call that yields it is a failed read and nothing else. Latching that
+    ``None`` turns one transient failure into a permanent ``unknown``: readiness answers 503 for the
+    life of the process and the instance never returns to rotation without a restart. Caching only
+    a successful read means the next caller retries — which is the healing this test pins.
+    """
+    reads = 0
+
+    def read_that_heals() -> str | None:
+        nonlocal reads
+        reads += 1
+        return None if reads == 1 else "0024"
+
+    monkeypatch.setattr(schema_status, "_read_expected_head", read_that_heals)
+
+    assert schema_status.get_expected_head() is None, "a failed read must report 'could not tell'"
+    assert schema_status.get_expected_head() == "0024", "the failure was cached and never retried"
+    assert reads == 2, "the second call did not try the read again"
+
+
+@pytest.mark.asyncio
 async def test_an_unreadable_script_location_is_unknown_never_ok(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
