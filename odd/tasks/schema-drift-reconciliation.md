@@ -1,6 +1,7 @@
 # ODD Feature: schema-drift-reconciliation
 
-> **Status**: not started. Branch `feat/schema-drift-reconciliation` off `main` @ `a1d549b`.
+> **Status**: **landed.** `git merge --ff-only` `a1d549b` → `ada0847` on `main`, pushed, branch deleted —
+> recorded in "Landing, and the gate's first red" below, which is the evidence.
 > **Created**: 2026-09-21
 > **Workflow**: Organic Driven Development (ODD)
 
