@@ -1,8 +1,10 @@
 """Application configuration via pydantic-settings."""
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Path to .env: resolve relative to THIS file (settings.py), not to cwd.
@@ -57,6 +59,27 @@ class Settings(BaseSettings):
     # Embedding API keys
     google_api_key: str | None = None
     openai_api_key: str | None = None
+
+    # Logging — root logger level applied by ``create_app()`` (see api/app.py).
+    # Validated loudly instead of left as a free-form string: a typo'd value
+    # (``INF0``, ``LOGLEVEL``) that pydantic accepted would flow into
+    # ``dictConfig`` and raise a deep, unrelated error — or, with a laxer
+    # design, silently degrade to some default. Same defect class that
+    # ``extra="ignore"`` hides for unknown env names, one level up.
+    log_level: str = "INFO"
+
+    @field_validator("log_level")
+    @classmethod
+    def _log_level_must_be_a_real_level(cls, value: str) -> str:
+        """Reject unknown level names with the offending value in the message."""
+        normalized = value.strip().upper()
+        valid_names = sorted(logging.getLevelNamesMapping())
+        if normalized not in logging.getLevelNamesMapping():
+            raise ValueError(
+                f"STORICO_LOG_LEVEL={value!r} is not a valid logging level name. "
+                f"Valid names: {valid_names}"
+            )
+        return normalized
 
     model_config = SettingsConfigDict(
         env_file=_ENV_FILE,
