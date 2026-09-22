@@ -57,7 +57,7 @@
     "hero": {
       "badge": "\u2728 GENERADOR DE BACKLOG CON IA",
       "title": "De historias de usuario a tareas técnicas en segundos",
-      "subtitle": "Pega una historia de usuario en lenguaje natural y obtén tareas estructuradas en un tablero Kanban listas para exportar a Trello, JSON o Markdown.",
+      "subtitle": "Pega una historia de usuario en lenguaje natural y obtén tareas estructuradas en un tablero Kanban listas para exportar a JSON o Markdown.",
       "cta_primary": "Comienza",
       "cta_secondary": "Ver demo"
     },
@@ -68,8 +68,8 @@
       "card_1_desc": "Pega una historia de usuario y obtén tareas técnicas estructuradas al instante con IA.",
       "card_2_title": "Kanban Visual",
       "card_2_desc": "Visualiza y organiza tus tareas en un tablero Kanban con drag & drop.",
-      "card_3_title": "Exportación a Trello",
-      "card_3_desc": "Exporta tus tareas a Trello, JSON o Markdown con un clic. Compatible con tu flujo de trabajo existente."
+      "card_3_title": "Exportación a JSON y Markdown",
+      "card_3_desc": "Exporta tus tareas a JSON o Markdown con un clic. Compatible con tu flujo de trabajo existente."
     },
     "faq": {
       "title": "Preguntas frecuentes",
@@ -83,7 +83,7 @@
       "q4": "¿Puedo editar las tareas generadas antes de exportar?",
       "a4": "Por supuesto. Puedes revisar, editar o eliminar cualquier tarea antes de exportar. También tienes control total sobre el tablero Kanban resultante.",
       "q5": "¿A qué formatos puedo exportar?",
-      "a5": "Puedes exportar a Trello (directamente a tus tableros), JSON o Markdown. El soporte para CSV y XML está en el roadmap.",
+      "a5": "Puedes exportar a JSON o Markdown. El soporte para CSV y XML está en el roadmap.",
       "q6": "¿Puedo usar modelos de IA locales en lugar de APIs en la nube?",
       "a6": "Sí. Storico soporta Ollama de fábrica, así que puedes ejecutarlo completamente offline con modelos locales como LLaMA 3.2 o Mistral. También soporta modelos en la nube (OpenAI, Anthropic, Gemini)."
     },
@@ -674,7 +674,7 @@
       "step_3": "Crea un proyecto — organiza tus historias de usuario en proyectos.",
       "step_4": "Pega una historia de usuario — usa el formato estándar \"As a… I want… so that…\".",
       "step_5": "Extrae tareas — deja que la IA descomponga tu historia en tareas estructuradas.",
-      "step_6": "Revisa y exporta — edita las tareas según sea necesario y expórtalas a Trello, JSON o Markdown.",
+      "step_6": "Revisa y exporta — edita las tareas según sea necesario y expórtalas a JSON o Markdown.",
       "story_format_title": "Formato de historia de usuario",
       "story_format_intro": "Storico funciona mejor con historias en formato estándar:",
       "story_format_example": "As a(n) [role], I want [feature], so that [benefit]",

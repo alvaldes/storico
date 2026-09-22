@@ -57,7 +57,7 @@
     "hero": {
       "badge": "\u2728 AI-POWERED BACKLOG GENERATOR",
       "title": "From user stories to technical tasks in seconds",
-      "subtitle": "Paste a natural language user story and get structured tasks on a Kanban board, ready to export to Trello, JSON, or Markdown.",
+      "subtitle": "Paste a natural language user story and get structured tasks on a Kanban board, ready to export to JSON or Markdown.",
       "cta_primary": "Get Started",
       "cta_secondary": "View Demo"
     },
@@ -68,8 +68,8 @@
       "card_1_desc": "Paste a user story and instantly get structured technical tasks powered by AI.",
       "card_2_title": "Visual Kanban",
       "card_2_desc": "Visualize and organize your tasks on a Kanban board with drag & drop.",
-      "card_3_title": "Trello Export",
-      "card_3_desc": "Export your tasks to Trello, JSON, or Markdown with one click. Compatible with your existing workflow."
+      "card_3_title": "JSON and Markdown Export",
+      "card_3_desc": "Export your tasks to JSON or Markdown with one click. Compatible with your existing workflow."
     },
     "faq": {
       "title": "Frequently asked questions",
@@ -83,7 +83,7 @@
       "q4": "Can I edit the generated tasks before exporting?",
       "a4": "Absolutely. You can review, edit, or delete any task before exporting. You also have full control over the resulting Kanban board.",
       "q5": "What formats can I export to?",
-      "a5": "You can export to Trello (directly to your boards), JSON, or Markdown. CSV and XML support are on the roadmap.",
+      "a5": "You can export to JSON or Markdown. CSV and XML support are on the roadmap.",
       "q6": "Can I use local AI models instead of cloud APIs?",
       "a6": "Yes. Storico supports Ollama out of the box, so you can run entirely offline with local models like LLaMA 3.2 or Mistral. Cloud models (OpenAI, Anthropic, Gemini) are also supported."
     },
@@ -674,7 +674,7 @@
       "step_3": "Create a project \u2014 organize your user stories into projects.",
       "step_4": "Paste a user story \u2014 use the standard \u201cAs a\u2026 I want\u2026 so that\u2026\u201d format.",
       "step_5": "Extract tasks \u2014 let AI break down your story into structured tasks.",
-      "step_6": "Review and export \u2014 edit tasks as needed and export to Trello, JSON, or Markdown.",
+      "step_6": "Review and export \u2014 edit tasks as needed and export to JSON or Markdown.",
       "story_format_title": "User story format",
       "story_format_intro": "Storico works best with stories in standard format:",
       "story_format_example": "As a(n) [role], I want [feature], so that [benefit]",
