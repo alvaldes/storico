@@ -1,10 +1,9 @@
 # ODD Feature: qdrant-few-shot-verification
 
-> **Status**: **T10 closed — the end-to-end level is verified**. Levels N0, N1, N2 and N3 all ran against real
-> services (real Ollama embeddings, the real Qdrant cluster, the real chat transport) on 2026-09-22 and the
-> full N2/N3 table passes. Three new findings came out of the run (F10, F11, F12); F11 corrects two claims
-> this record had made about itself. **T11 (the work-unit commits and the version decision) is what remains.**
-> Nothing is committed: all of this still sits in the working tree.
+> **Status**: **landed**. Levels N0, N1, N2 and N3 all ran against real services (real Ollama embeddings, the real
+> Qdrant cluster, the real chat transport) on 2026-09-22, the full N2/N3 table passes, the eight work units and
+> the version bump are on `main`, and `v0.5.0` is tagged. Three findings came out of the run (F10, F11, F12) plus
+> a fourth from the landing (F13); F11 corrects two claims this record had made about itself.
 > **Created**: 2026-09-21
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `main` (the owner's practice for docs work here; the code fixes may want a branch).
@@ -84,7 +83,7 @@ error above, GREEN after the one-key payload change. The blocker is **cleared** 
 - [x] T8 Fix F9: `"stream": False` in the Ollama chat payload, with an opt-in live test that does not mock the transport. (`2 passed`; full suite `763 passed, 21 skipped`)
 - [x] T9 Clean the seven orphan Qdrant points (authorized). Cluster back to `0` points, one collection.
 - [x] T10 **Re-run N2 end-to-end through the API.** Done 2026-09-22; see "T10 — the end-to-end re-run" below.
-- [ ] T11 Close: report outcome, pending checks, and the version decision.
+- [x] T11 Close: report outcome, pending checks, and the version decision. Landed 2026-09-22; see "T11" below.
 
 ## Verification case TC-FS-QDRANT-01
 
@@ -261,8 +260,68 @@ The work-unit commits still have to be made, with the review switch deciding whe
 | Ollama | `nomic-embed-text` pulled (274 MB) and `nomic-embed-text` + `llama3.1:8b` served; `ollama serve` was started by this session |
 | `.env` (gitignored) | `STORICO_ENCRYPTION_KEY` added; the pre-change copy is at `~/.storico-env-backups/.env.bak-20260921170846` — keep the key, losing it makes the one encrypted workspace credential unreadable |
 
-**What remains — T11, in this order:**
+## T11 — the landing (2026-09-22)
 
-1. Land the work units on a branch. The concerns separate cleanly by file: `fix(llm)` F9 (`ollama_adapter.py` + `test_ollama_adapter.py` + `test_ollama_chat_live.py`); `fix(vector)` F3/D1/D2 (`seed_few_shot.py`, `vector_store_port.py`, `qdrant_adapter.py`, `test_seed_few_shot.py`, `test_vector_store.py`); `feat(observability)` F4/D3 (`extraction_service.py` + `test_few_shot_retrieval.py`); `fix(config)` F5/D4 (`docker-compose.yml`, `README.md`, both `.env.example`, `test_env_contract.py`); two isolation units for F7 and F8 (`conftest.py` + `test_extraction.py`; `test_workspace_settings_llm_config.py` + `test_encrypt_workspace_api_keys_migration.py`); `test(integration)` D5 (`test_few_shot_rag_qdrant.py`); and `docs(odd)` this record.
-2. `make bump` refuses a dirty tree and sweeps every tracked change into its own commit, so all of it has to land first. Today the next bump yields **0.5.0**, not 1.0.0: `.cz.toml` sets `major_version_zero = true`, so even `feat!`/`BREAKING CHANGE:` stays inside 0.x. Reaching 1.0.0 needs that flag flipped (or `cz bump --increment MAJOR`, outside the documented path) — a policy decision, and with the thesis evaluation still pending, not one this case can justify.
-3. F13 and F10 are recorded follow-ups, deliberately **not** fixed here: both are pre-existing, neither is part of this feature's diff, and fixing them would change code that the verification just certified as green.
+**The eight work units, one commit each, in this order** (`main` fast-forwarded from `7230c33`):
+
+| Commit | Unit | Files |
+| --- | --- | --- |
+| `08b4f85` | `fix(llm)`: disable streaming in the Ollama chat payload (F9) | `ollama_adapter.py`, `test_ollama_adapter.py`, `test_ollama_chat_live.py` |
+| `a135bb7` | `fix(vector)`: valid seed ids and an honest count (F3/D1/D2) | `seed_few_shot.py`, `vector_store_port.py`, `qdrant_adapter.py`, `test_seed_few_shot.py`, `test_vector_store.py` |
+| `03a9454` | `feat(observability)`: log the few-shot injection (F4/D3) | `extraction_service.py`, `test_few_shot_retrieval.py` |
+| `f209b6d` | `fix(config)`: name the Ollama setting the application reads (F5/D4) | `docker-compose.yml`, `README.md`, both `.env.example`, `test_env_contract.py` |
+| `d8693b3` | `test(isolation)`: stop the suite writing into the live vector store (F7) | `tests/conftest.py`, `test_api/test_extraction.py` |
+| `424d8e0` | `test(isolation)`: free the master-key tests from the developer `.env` (F8) | `test_workspace_settings_llm_config.py`, `test_encrypt_workspace_api_keys_migration.py` |
+| `28ea388` | `test(integration)`: the live Qdrant few-shot suite (D5) | `test_few_shot_rag_qdrant.py` |
+| `f4d7d91` | `docs(odd)`: this record | `odd/tasks/qdrant-few-shot-verification.md` |
+
+The two isolation units were one commit in the earlier plan. They are separate here because their root causes
+differ: one is the suite reaching the live cluster, the other is tests whose premise came from the developer's
+`.env`.
+
+**Gates, run before the first commit** (by a delegated read-only verifier, on this exact tree):
+`ruff check src tests` clean, `ruff format --check` (234 files), `pytest -q` → **`763 passed, 21 skipped, 1 warning in 30.09s`**
+and the Qdrant collection went **19 → 19** across the suite, so the F7 guard still holds. The single warning is a
+third-party SQLAlchemy `RuntimeWarning`; nothing gates on warnings.
+
+**Release**: `make bump` → `cz bump` reported `version 0.4.0 → 0.5.0`, increment MINOR, commit `78d6e23`
+(`CHANGELOG.md` + the three version files), tag **`v0.5.0`**. All three manifests read 0.5.0 and `git describe`
+reports `v0.5.0`. 1.0.0 was not reachable on the documented path: `.cz.toml` sets `major_version_zero = true`.
+
+**Nine native reviews, all approved and burned** (one per commit plus the bump), each bound to its own commit
+with an explicit `baseRef` and `committedOnly: true` and inspected from a detached HEAD at that commit:
+
+| Candidate | Tier | Lenses | Model runs | Advisories |
+| --- | --- | --- | --- | --- |
+| `08b4f85` | medium | 1 (`review-reliability`) | 1 | `R3-live-client-private` |
+| `a135bb7` | medium | 1 | 1 | `R3-adapter-upsert-result-ignored`, `R3-mock-return-contract`, `R3-uuid5-namespace`, `R3-weaker-id-assertion` |
+| `03a9454` | medium | 1 | 1 | `R3-caplog-coupling`, `R3-log-fields` |
+| `f209b6d` | medium | 1 | 1 | `R3-doc-db-default-mismatch`, `R3-test-regex-value-shape` |
+| `d8693b3` | medium | 1 | 1 | `R3-guard-scope`, `R3-helper-placement` |
+| `424d8e0` | medium | 1 | 1 | `R3-hermetic-keyless-settings` |
+| `28ea388` | medium | 1 | 1 | `R3-001` to `R3-004` |
+| `f4d7d91` | low | 0 | 0 | none, `non_executable_only` |
+| `78d6e23` (bump) | medium | 1 | 1 | none |
+
+Every finding is `SUGGESTION` / `informational`: none opened a correction, and each closure says so in its own
+words. **Sixteen non-blocking findings across the nine candidates.** The closures carry each finding's id, lens,
+location and severity but **no text**, so they are listed here as identifiers rather than paraphrased.
+
+The bump candidate is the clean measurement of the tier trap: a version-only diff (28 changed lines across
+`CHANGELOG.md` and the three manifests) came out `medium` with a lens, because `backend/pyproject.toml` is read as
+a configuration change. A docs-only commit came out `low` with zero lenses and cost no model run.
+
+**Not done, and on purpose**: nothing was pushed. Delivery follows ordinary repository policy, so `origin/main`
+is still at `7230c33` and the tag exists only locally.
+
+**Still open after this landing**:
+
+1. **F13 and F10**, recorded above and deliberately not fixed here: both pre-exist this feature's diff, and fixing
+them would change code the verification just certified green. F13 also costs one extra embedding and upsert per
+extraction.
+2. **F12**: under production's plain `uvicorn`, application INFO records are discarded, so the injection line
+this feature added is invisible there. The fix is a logging configuration the backend does not have; it is a
+change of its own.
+3. **The 16 advisories** above, none blocking, each naming a file and a line range.
+4. **The test data left in live services** (the 10 workspaces and 18 points in the table above). Removing it is a
+destructive mutation and stays a decision, not an assumption.
