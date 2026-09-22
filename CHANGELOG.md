@@ -1,3 +1,25 @@
+## v0.5.0 (2026-09-21)
+
+### Feat
+
+- **observability**: log the few-shot injection
+- **deploy**: apply migrations inside a maintenance window
+
+### Fix
+
+- **config**: name the Ollama setting the application reads
+- **vector**: give seed points valid ids and count only what landed
+- **llm**: disable streaming in the Ollama chat payload
+- **deploy**: stop the migration container, not just the watcher
+- **deploy**: bound the migration and stop swallowing the tag failure
+- **db**: convert extractions.status to its enum and drop the duplicate index
+- **build**: compare the version field instead of grepping for the tag
+- **build**: refuse to bump when a version file lags the tag
+
+### Refactor
+
+- **models**: declare JSONB by dialect variant and the two status indexes
+
 ## v0.4.0 (2026-09-21)
 
 ### Feat
