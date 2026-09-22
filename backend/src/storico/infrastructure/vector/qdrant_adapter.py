@@ -202,22 +202,24 @@ class QdrantAdapter(VectorStorePort):
         workspace_id: UUID,
         confidence_score: float | None = None,
         user_story_id: str = "",
-    ) -> None:
+    ) -> bool:
         """Store an extraction with its embedding for future RAG searches.
 
         ``workspace_id`` is written into the point payload so the point is
-        discoverable by workspace-scoped searches. Silently skips on any
-        failure (graceful degradation).
+        discoverable by workspace-scoped searches.
+
+        Returns ``True`` only when Qdrant accepted the point; every skip or
+        failure path returns ``False`` (graceful degradation, never raises).
         """
         # Generate embedding
         embedding = await self._embedding_port.embed(user_story_text)
         if not embedding:
-            return
+            return False
 
         # Get Qdrant client (lazy init)
         client = await self._get_client()
         if client is None:
-            return
+            return False
 
         # Upsert point
         try:
@@ -241,3 +243,6 @@ class QdrantAdapter(VectorStorePort):
             )
         except Exception as e:
             logger.warning("Qdrant store failed: %s", e)
+            return False
+
+        return True

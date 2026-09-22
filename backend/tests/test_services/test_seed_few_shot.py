@@ -5,6 +5,7 @@ Covers idempotence, workspace tagging, and skipping blank/short examples.
 
 from __future__ import annotations
 
+import uuid
 from unittest.mock import AsyncMock
 
 import pytest
@@ -54,7 +55,10 @@ class TestSeedFewShot:
         assert call_kwargs["workspace_id"] == ws_id
         assert call_kwargs["user_story_text"] == examples[0]["user_story"]
         assert call_kwargs["tasks_summary"] == examples[0]["tasks"]
-        assert call_kwargs["extraction_id"] == f"{ws_id}:0"
+        # Qdrant accepts only an unsigned integer or a UUID as a point id, so the
+        # asserted property is validity, not the exact derivation: a test that
+        # re-computes the formula would pass against the server's rejection.
+        uuid.UUID(call_kwargs["extraction_id"])
         assert call_kwargs["model_used"] == "seed"
 
     async def test_idempotent_rerun_uses_same_point_ids(self, db_session) -> None:
@@ -63,7 +67,7 @@ class TestSeedFewShot:
             {"user_story": "As a user, I want login", "tasks": "1. summary: T\ndescription: D"},
             {"user_story": "As an admin, I want audit", "tasks": "1. summary: A\ndescription: B"},
         ]
-        _, ws_id = await _seed_prompt(db_session, examples=examples)
+        await _seed_prompt(db_session, examples=examples)
 
         vector_store_v1 = AsyncMock(spec=VectorStorePort)
         await run_seed(db_session, vector_store_v1)
@@ -78,7 +82,9 @@ class TestSeedFewShot:
             c.kwargs["extraction_id"] for c in vector_store_v2.store_extraction.await_args_list
         ]
         assert ids_v1 == ids_v2
-        assert ids_v1 == [f"{ws_id}:0", f"{ws_id}:1"]
+        for point_id in ids_v1:
+            uuid.UUID(point_id)
+        assert len(set(ids_v1)) == 2
 
     async def test_skips_empty_example_list(self, db_session) -> None:
         """A prompt row with no legacy examples is not touched."""
@@ -97,7 +103,7 @@ class TestSeedFewShot:
             {"user_story": "As a user, I want login", "tasks": ""},
             {"user_story": "Valid story", "tasks": "1. summary: V\ndescription: D"},
         ]
-        _, ws_id = await _seed_prompt(db_session, examples=examples)
+        await _seed_prompt(db_session, examples=examples)
 
         vector_store = AsyncMock(spec=VectorStorePort)
         count = await run_seed(db_session, vector_store)
@@ -105,8 +111,41 @@ class TestSeedFewShot:
         assert count == 1
         # Only the third (fully populated) example was seeded.
         call_kwargs = vector_store.store_extraction.call_args[1]
-        assert call_kwargs["extraction_id"] == f"{ws_id}:2"
+        uuid.UUID(call_kwargs["extraction_id"])
         assert call_kwargs["user_story_text"] == "Valid story"
+
+    async def test_count_excludes_examples_the_store_rejected(self, db_session) -> None:
+        """A rejected store must not be reported as a seeded example.
+
+        This is the bug the live Qdrant probe caught: the adapter swallowed the
+        rejection and the job still printed ``Seeded N``.
+        """
+        examples = [
+            {"user_story": "As a user, I want login", "tasks": "1. summary: T\ndescription: D"},
+            {"user_story": "As a user, I want logout", "tasks": "1. summary: U\ndescription: E"},
+        ]
+        await _seed_prompt(db_session, examples=examples)
+
+        vector_store = AsyncMock(spec=VectorStorePort)
+        vector_store.store_extraction.return_value = False
+        count = await run_seed(db_session, vector_store)
+
+        assert count == 0
+        assert vector_store.store_extraction.await_count == 2
+
+    async def test_count_includes_only_stored_examples(self, db_session) -> None:
+        """A partial failure reports exactly what landed."""
+        examples = [
+            {"user_story": "As a user, I want login", "tasks": "1. summary: T\ndescription: D"},
+            {"user_story": "As a user, I want logout", "tasks": "1. summary: U\ndescription: E"},
+        ]
+        await _seed_prompt(db_session, examples=examples)
+
+        vector_store = AsyncMock(spec=VectorStorePort)
+        vector_store.store_extraction.side_effect = [True, False]
+        count = await run_seed(db_session, vector_store)
+
+        assert count == 1
 
     async def test_multiple_workspaces_isolated(self, db_session) -> None:
         """Each workspace's examples are tagged with their own workspace id."""

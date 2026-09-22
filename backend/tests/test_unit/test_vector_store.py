@@ -276,7 +276,7 @@ class TestQdrantAdapter:
         mock_client.create_payload_index = AsyncMock()
         adapter._client = mock_client
 
-        await adapter.store_extraction(
+        stored = await adapter.store_extraction(
             extraction_id="ext-123",
             user_story_text="As a user, I want login",
             tasks_summary="1. Implement auth",
@@ -286,6 +286,8 @@ class TestQdrantAdapter:
             user_story_id="story-456",
         )
 
+        # A landed point is reported as stored; the seed job counts only these.
+        assert stored is True
         mock_client.upsert.assert_called_once()
         call_args = mock_client.upsert.call_args[1]
         assert call_args["collection_name"] == self.collection
@@ -342,7 +344,7 @@ class TestQdrantAdapter:
         mock_client = AsyncMock()
         adapter._client = mock_client
 
-        await adapter.store_extraction(
+        stored = await adapter.store_extraction(
             extraction_id="ext-123",
             user_story_text="test",
             tasks_summary="tasks",
@@ -350,6 +352,8 @@ class TestQdrantAdapter:
             workspace_id=self.workspace_id,
         )
 
+        # Nothing landed, so the store reports a skip rather than success.
+        assert stored is False
         mock_client.upsert.assert_not_called()
 
     @pytest.mark.asyncio
@@ -369,13 +373,16 @@ class TestQdrantAdapter:
         mock_client.upsert.side_effect = RuntimeError("Qdrant down")
         adapter._client = mock_client
 
-        await adapter.store_extraction(
+        stored = await adapter.store_extraction(
             extraction_id="ext-123",
             user_story_text="test",
             tasks_summary="tasks",
             model_used="test",
             workspace_id=self.workspace_id,
         )
+
+        # A rejected upsert is a failure, never a silent success.
+        assert stored is False
 
     # ── Lazy init / collection ensure ─────────────────────────────────
 
@@ -478,13 +485,15 @@ class TestQdrantAdapter:
             results = await adapter.search_similar(text="test", workspace_id=self.workspace_id)
             assert results == []
 
-            await adapter.store_extraction(
+            stored = await adapter.store_extraction(
                 extraction_id="ext-1",
                 user_story_text="test",
                 tasks_summary="tasks",
                 model_used="test",
                 workspace_id=self.workspace_id,
             )
+            # No client means nothing was stored.
+            assert stored is False
 
     # ── Payload structure ────────────────────────────────────────────
 

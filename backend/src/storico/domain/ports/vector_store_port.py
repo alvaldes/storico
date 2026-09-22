@@ -63,11 +63,16 @@ class VectorStorePort(ABC):
         workspace_id: UUID,
         confidence_score: float | None = None,
         user_story_id: str = "",
-    ) -> None:
+    ) -> bool:
         """Store an extraction with its embedding for future RAG searches.
 
         ``workspace_id`` is persisted into the point payload so every search can
-        be workspace-scoped. Silently skips on any failure (graceful
-        degradation).
+        be workspace-scoped.
+
+        Returns:
+            ``True`` when the point was accepted by the vector store, ``False``
+            when it was skipped or rejected (empty embedding, unavailable
+            client, or a store error). Never raises — failures degrade
+            gracefully.
         """
         ...

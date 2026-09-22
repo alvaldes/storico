@@ -3,8 +3,14 @@
 Reads every ``workspace_prompts`` row that still has a non-empty legacy
 ``few_shot_examples`` value, embeds each example's user story with the active
 ``EmbeddingPort``, and upserts it into the vector store as a workspace-scoped
-point. Deterministic point ids (``{workspace_id}:{index}``) make the job
-idempotent: re-running it overwrites rather than duplicates.
+point. Point ids are derived from ``workspace_id`` and the example's index in
+that workspace's list, which makes the job idempotent: for the same input list
+re-running overwrites the same points instead of duplicating them. The mapping
+is index-derived, so it is stable only while the input list order is stable.
+
+The ids are UUIDv5 values because Qdrant accepts only an unsigned integer or a
+UUID as a point id; a ``"{workspace_id}:{index}"`` string is rejected by the
+server.
 
 Run::
 
@@ -19,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import TYPE_CHECKING
+from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,9 +47,10 @@ SEED_MODEL_USED = "seed"
 async def run_seed(session: AsyncSession, vector_store: VectorStorePort) -> int:
     """Iterate workspaces with legacy examples and upsert them into Qdrant.
 
-    Idempotent: point ids derive from ``{workspace_id}:{index}`` so re-running
-    overwrites existing points. Examples with a blank user story or blank tasks
-    are skipped. Returns the number of examples seeded.
+    Idempotent: point ids derive from the workspace id and the example index, so
+    re-running overwrites existing points. Examples with a blank user story or
+    blank tasks are skipped, and an example the store rejected is not counted.
+    Returns the number of examples that actually landed.
     """
     result = await session.execute(select(WorkspacePromptModel))
     rows = result.scalars().all()
@@ -68,15 +76,22 @@ async def run_seed(session: AsyncSession, vector_store: VectorStorePort) -> int:
                 )
                 continue
 
-            point_id = f"{row.workspace_id}:{index}"
-            await vector_store.store_extraction(
+            point_id = str(uuid5(NAMESPACE_URL, f"storico:seed:{row.workspace_id}:{index}"))
+            stored = await vector_store.store_extraction(
                 extraction_id=point_id,
                 user_story_text=user_story,
                 tasks_summary=tasks,
                 model_used=SEED_MODEL_USED,
                 workspace_id=row.workspace_id,
             )
-            count += 1
+            if stored:
+                count += 1
+            else:
+                logger.warning(
+                    "Store rejected example %s (workspace %s); not counted as seeded",
+                    index,
+                    row.workspace_id,
+                )
 
     return count
 
