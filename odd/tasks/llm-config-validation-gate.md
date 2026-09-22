@@ -2,7 +2,7 @@
 
 > **Status**: done — eight commits on `feat/llm-config-validation-gate` (`cc22a0c`..
 > `5e60f42`), plus the evidence commit that carries this line (nine against `main`);
-> nothing was pushed.
+> the work is on `origin/main` (every named commit is an ancestor of it, measured 2026-09-22).
 > Receipt-driven development is **off** in this clone, so no native review ran; one
 > independent verification did, recorded below with its findings and their disposition.
 > **Created**: 2026-06-30

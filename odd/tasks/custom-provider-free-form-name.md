@@ -2,7 +2,8 @@
 
 > **Status**: done — landed on `main` by fast-forward as eight commits (`0d5de36`..
 > `2e47993`, plus the evidence commit that carries this line); the feature branch was
-> deleted, and nothing was pushed. Receipt-driven development is **off** in this clone,
+> deleted; the work is on `origin/main` (every named commit is an ancestor of it, measured
+> 2026-09-22). Receipt-driven development is **off** in this clone,
 > so no native review ran; three independent verifications did, recorded below with
 > their findings.
 > **Created**: 2026-09-18

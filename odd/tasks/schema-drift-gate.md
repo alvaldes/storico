@@ -1,8 +1,10 @@
 # ODD Feature: schema-drift-gate
 
-> **Status**: **PR 1 (WU1 + WU2) committed, independently verified, and native-reviewed — approved and
-> burned. Awaiting the operator's landing decision.** Branch `feat/schema-drift-gate` off `main` @
-> `305b5da`. PR 2 is the pair that makes the migration chain prove itself — WU3 and WU4.
+> **Status**: **landed.** PR 1 (WU1 + WU2) merged `305b5da` → `1e5fbcb` on `main`, pushed, and the branch
+> `feat/schema-drift-gate` deleted — this file's own "Landed" section below records it and is the evidence.
+> PR 2 (WU3 and WU4), the pair that made the migration chain prove itself, landed too: its commits `ab00025`,
+> `206dcc8`, `d473ddb` and `b9624e6` are all ancestors of `origin/main` (`git merge-base --is-ancestor`,
+> measured 2026-09-22).
 > **Created**: 2026-09-21
 > **Workflow**: Organic Driven Development (ODD)
 

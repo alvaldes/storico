@@ -1,6 +1,7 @@
 # ODD Feature: release-versioning
 
-> **Status**: implemented and committed on `main`; **nothing pushed**. Native review ran on
+> **Status**: implemented, committed, and pushed — the work and the tags `v0.4.0` and `v0.5.0` are on
+> `origin/main` (`git ls-remote --tags origin` lists both, measured 2026-09-22). Native review ran on
 > 2026-09-21 under this worktree's review flow and **closed approved** —
 > `review-85d12db7ba7103e8`, tier `high`, four lenses, nine advisories and no correction. See
 > "Native review".
@@ -225,12 +226,12 @@ nothing, and the review had closed approved with no correction opened.
    `review-85d12db7ba7103e8`, tier `high`, four lenses. Its nine advisories were not a correction;
    they are listed under "Native review" and eight of the nine are in the `Makefile`. Two of them,
    the substring check, are fixed in "Post-review fix"; seven remain.
-2. **Nothing is pushed, and the tag least of all.** `main` is on `origin/main` as of `5c295d4`, but
-   `git ls-remote --tags origin` finds no `v0.4.0`: the tag exists only on this machine. Because
-   `version_provider = "scm"` makes the tag the version source of truth, a clean clone has `v0.3.2` as
-   its highest tag and would compute its next bump from that baseline. The guard blocks it
-   fail-closed, which is the first time that design met a case it did not invent. Pushing a tag is a
-   release decision and belongs to the owner.
+2. ~~**Nothing is pushed, and the tag least of all.**~~ **Done.** The owner pushed the branch and the
+   tags: `git ls-remote --tags origin` now lists `v0.4.0` (`af91291`) and `v0.5.0` (`78d6e23`), measured
+   2026-09-22, so the tag no longer exists only on this machine. The finding recorded inside this item
+   still stands: because `version_provider = "scm"` makes the tag the version source of truth, a clean
+   clone's next bump would compute from its highest tag — `v0.3.2`, at the time this was written — and
+   the guard blocked it fail-closed, which was the first time that design met a case it did not invent.
 3. `CONTRIBUTING.md` lists `feat`, `fix`, `refactor`, `style`, `docs`, `test`, `perf`, `chore`
    as the commit types while the history also uses `ci` and `build`, both of which the mapping
    in this change already names. The list is cosmetic drift, not a behaviour gap.

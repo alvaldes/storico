@@ -2,7 +2,8 @@
 
 > **Status**: done — three commits on `feat/normalize-blank-llm-fields` (`17e8e6f`..
 > `7bd4ce0`), plus the evidence commit that carries this line (four against the parent
-> branch); nothing was pushed. Receipt-driven development is **off** in this clone, so no
+> branch); the work is on `origin/main` (every named commit is an ancestor of it, measured
+> 2026-09-22). Receipt-driven development is **off** in this clone, so no
 > native review ran; one independent verification did, recorded below with its findings and
 > their disposition.
 > **Created**: 2026-06-30

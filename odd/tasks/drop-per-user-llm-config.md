@@ -2,7 +2,8 @@
 
 > **Status**: done — five commits on `feat/drop-per-user-llm-config` (`711d9cd`..
 > `a4c92f9`), plus the evidence commit that carries this line (six against the parent
-> branch); nothing was pushed. Receipt-driven development is **off** in this clone, so no
+> branch); the work is on `origin/main` (every named commit is an ancestor of it, measured
+> 2026-09-22). Receipt-driven development is **off** in this clone, so no
 > native review ran; one independent verification did, recorded below with its findings and
 > their disposition.
 > **Created**: 2026-06-30
