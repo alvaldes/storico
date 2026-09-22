@@ -30,7 +30,7 @@ from sqlalchemy.pool import StaticPool
 
 import storico
 from storico.api.schemas.workspace_llm_config import LLMConfigRequest
-from storico.config.settings import _reset_settings_cache
+from storico.config.settings import Settings, _reset_settings_cache
 from storico.infrastructure.crypto import FernetCipher
 from storico.infrastructure.database.models import WorkspaceLLMConfigModel
 
@@ -187,13 +187,29 @@ def test_upgrade_is_idempotent(engine: Engine) -> None:
     assert _read(engine, row_id) == once
 
 
+def _settings_without_a_master_key(cls: type[Settings]) -> Settings:
+    """Return the ``Settings`` a deployment with no master key configured would have.
+
+    Installed as ``Settings.load``, so the migration reads it exactly as it reads the real one.
+    ``_env_file=None`` drops the dotenv source — ``_cipher`` reads the absolute ``_ENV_FILE``
+    (``backend/.env`` and then the repo-root ``.env``) — and the explicit
+    ``encryption_key=None`` outranks the process environment, so the premise holds on any
+    machine. The ignore is for Pyright's pydantic plugin, which exposes only declared fields on
+    the generated ``__init__`` and so cannot see pydantic-settings' underscore parameters.
+    """
+    return Settings(_env_file=None, encryption_key=None)  # type: ignore[call-arg]
+
+
 def test_upgrade_refuses_to_run_without_a_master_key(
     engine: Engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Reporting success while leaving plaintext behind is the failure this revision removes."""
     row_id = _seed(engine, _PLAINTEXT)
-    monkeypatch.delenv("STORICO_ENCRYPTION_KEY", raising=False)
-    _reset_settings_cache()
+    # ``monkeypatch.delenv`` cannot establish this premise: ``Settings`` reads the absolute
+    # ``_ENV_FILE`` (backend/.env -> repo-root .env), so the dotenv source kept supplying the
+    # key this machine already has configured — and that production has too. Patch the lookup
+    # ``_cipher`` performs instead, with a Settings that is keyless by construction.
+    monkeypatch.setattr(Settings, "load", classmethod(_settings_without_a_master_key))
 
     with pytest.raises(RuntimeError) as caught:
         _run(engine, "upgrade")

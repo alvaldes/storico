@@ -45,6 +45,26 @@ def _settings(ollama_host: str = "http://ollama.test:11434") -> Settings:
     return Settings(ollama_host=ollama_host)
 
 
+class _SettingsWithoutAMasterKey:
+    """Stand-in for ``Settings`` where ``get_cipher`` reads the master key.
+
+    ``get_cipher`` does ``Settings.load().encryption_key``. A real ``Settings`` reads the
+    absolute ``_ENV_FILE``, so it answers with whatever key the developer's ``.env`` holds —
+    which is the environment dependence this test has to remove, not assert around.
+    """
+
+    @staticmethod
+    def load() -> Settings:
+        """A keyless ``Settings`` built without reading the developer's ``.env``.
+
+        ``_env_file=None`` drops the dotenv source, and the explicit ``encryption_key=None``
+        outranks the process environment, so the premise holds on any machine. The ignore is
+        for Pyright's pydantic plugin, which exposes only declared fields on the generated
+        ``__init__`` and so cannot see pydantic-settings' underscore parameters.
+        """
+        return Settings(_env_file=None, encryption_key=None)  # type: ignore[call-arg]
+
+
 @pytest.mark.integration
 class TestResolveLLMConfigBaseUrl:
     """The Ollama host is Ollama's default, not a universal one."""
@@ -339,8 +359,12 @@ class TestCredentialEncryptionThroughTheRoute:
     ) -> None:
         """No master key means no write -- never a plaintext one."""
         seeded = await seed_workspace(stories=0)
-        monkeypatch.delenv("STORICO_ENCRYPTION_KEY", raising=False)
-        _reset_settings_cache()
+        # ``monkeypatch.delenv`` cannot establish this premise: ``Settings`` reads the
+        # absolute ``_ENV_FILE`` (backend/.env -> repo-root .env), so the dotenv source kept
+        # supplying the key this machine already has configured — and that production has too.
+        # Patch the lookup ``get_cipher`` performs instead, with a Settings that is keyless by
+        # construction.
+        monkeypatch.setattr("storico.api.dependencies.Settings", _SettingsWithoutAMasterKey)
 
         response = await self._put(
             authed_client,
