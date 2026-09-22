@@ -1,6 +1,7 @@
 """Storico FastAPI application factory."""
 
 import logging
+import logging.config
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -58,6 +59,48 @@ from storico.infrastructure.database.base import dispose_engine, get_engine
 logger = logging.getLogger(__name__)
 
 
+def _configure_logging(settings: Settings) -> None:
+    """Configure application logging for the process.
+
+    Lives inside ``create_app()`` — never at import time: importing this module
+    must leave logging untouched, so the logging configuration is a decision
+    the application factory makes, not an import side effect.
+
+    The config owns only the root logger. Uvicorn configures ``uvicorn``,
+    ``uvicorn.error`` and ``uvicorn.access`` with their own handlers and
+    ``propagate=False``; with ``disable_existing_loggers=False`` those are
+    left exactly as uvicorn set them, so server logs keep working and an
+    application record cannot be printed twice (the ``storico.*`` chain has
+    no dedicated handler — records travel once to the root's handler).
+
+    Re-running ``dictConfig`` (a second ``create_app()``) replaces the
+    previous configuration instead of stacking handlers, so calling the
+    factory twice is safe.
+    """
+    logging.config.dictConfig(
+        {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "storico_console": {
+                    "format": "%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+                },
+            },
+            "handlers": {
+                "storico_console": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "storico_console",
+                    "stream": "ext://sys.stderr",
+                },
+            },
+            "root": {
+                "handlers": ["storico_console"],
+                "level": settings.log_level,
+            },
+        }
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """FastAPI lifespan — initializes engine on startup and disposes on shutdown."""
@@ -81,6 +124,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     settings = Settings.load()
+    _configure_logging(settings)
     app = FastAPI(
         title="Storico API",
         version="0.1.0",
@@ -140,6 +184,25 @@ def create_app() -> FastAPI:
     return app
 
 
-# Module-level instance for uvicorn (no --factory flag).
-# Kept separate from create_app() so tests can still call create_app() directly.
-app = create_app()
+def __getattr__(name: str) -> FastAPI:
+    """Lazily expose the module-level ``app`` instance (PEP 562).
+
+    Historically this module bound ``app = create_app()`` at import time,
+    which made importing the module configure logging as a side effect. The
+    attribute is now resolved on first access, so the documented entrypoints
+    keep working — ``uvicorn storico.api.app:app`` and
+    ``from storico.api.app import app`` — while importing the module alone
+    leaves logging untouched.
+
+    The instance is written back into the module namespace, which is what
+    makes it a singleton again: ``__getattr__`` is only consulted on a miss,
+    so the first access builds the app and every later access reads the global
+    instead of building a second one. Without that write the module would hand
+    out a fresh app — and re-run the logging configuration — per access, which
+    is not what the previous module-level binding did.
+    """
+    if name == "app":
+        instance = create_app()
+        globals()["app"] = instance
+        return instance
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -64,6 +64,7 @@ See [AGENTS.md](./AGENTS.md) for the full project definition, including:
 | Variable                         | Default                                                       | Description                                   |
 | -------------------------------- | ------------------------------------------------------------- | --------------------------------------------- |
 | `STORICO_DATABASE_URL`           | `postgresql+asyncpg://storico:storico@localhost:5432/storico` | PostgreSQL connection string (asyncpg driver) |
+| `STORICO_LOG_LEVEL`              | `INFO`                                                        | Root logging level for application logs       |
 | `STORICO_QDRANT_URL`             | `http://localhost:6333`                                       | Qdrant vector store URL                       |
 | `STORICO_QDRANT_API_KEY`         | (unset)                                                       | Qdrant API key for a managed cluster          |
 | `STORICO_QDRANT_COLLECTION`      | `storico_extractions`                                         | Collection holding extraction vectors         |
