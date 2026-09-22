@@ -135,6 +135,14 @@ class OllamaAdapter(LLMPort):
         provided — extraction passes the workspace-configured prompt, while
         calls without one (e.g. health check "Hello") send only the user
         message.
+
+        ``stream`` is explicit, not optional. Ollama's ``/api/chat`` defaults
+        to streaming NDJSON, so the real response for a payload without this
+        key is several JSON objects, one per line — and this adapter reads the
+        body with a single ``response.json()``, which then fails with
+        ``json.JSONDecodeError: Extra data: line 2 column 1``. ``stream: False``
+        makes the server answer with exactly one JSON object. Measured against
+        Ollama 0.32.5 in ``tests/test_integration/test_ollama_chat_live.py``.
         """
         messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
         if system_prompt:
@@ -142,6 +150,7 @@ class OllamaAdapter(LLMPort):
         return {
             "model": config.model,
             "messages": messages,
+            "stream": False,
             "options": {
                 "temperature": config.temperature,
                 "num_predict": config.max_tokens,

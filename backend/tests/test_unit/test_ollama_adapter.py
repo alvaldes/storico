@@ -157,6 +157,12 @@ class TestOllamaAdapter:
         assert payload["messages"][1]["content"] == "Test prompt"
         assert payload["options"]["temperature"] == 0.1
         assert payload["options"]["num_predict"] == 2048
+        # Ollama's /api/chat streams NDJSON by default, so a payload without
+        # this key makes the server answer several JSON objects and
+        # response.json() raises "Extra data: line 2 column 1". The live proof
+        # is tests/test_integration/test_ollama_chat_live.py; this pin is the
+        # fast-suite guard so a refactor cannot silently drop the key again.
+        assert payload["stream"] is False
 
     @pytest.mark.asyncio
     async def test_build_payload_uses_passed_system_prompt(self) -> None:
@@ -175,6 +181,7 @@ class TestOllamaAdapter:
         assert len(payload["messages"]) == 1
         assert payload["messages"][0]["role"] == "user"
         assert payload["messages"][0]["content"] == "Prompt"
+        assert payload["stream"] is False
 
     @pytest.mark.asyncio
     async def test_build_payload_custom_model(self) -> None:
