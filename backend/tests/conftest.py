@@ -54,6 +54,20 @@ class SeededWorkspace:
         return self.story_ids[0]
 
 
+QDRANT_LEAK_MESSAGE = (
+    "This test tried to build a REAL AsyncQdrantClient. The adapter's lazy client is what "
+    "embeds the story against the configured Ollama and upserts a point into "
+    "Settings.load().qdrant_collection — the developer's live cluster. Measured: the "
+    "default suite grew that collection by exactly one point per full run, each a seeded "
+    "'As a user, I want to use seeded feature 0...' story with model_used=''. Patch the "
+    "vector store in this test instead: monkeypatch.setattr(extraction_task, "
+    "'get_embedding_port', <raiser>) makes run_background_extraction take its existing "
+    "'vector store unavailable' branch (vector_store=None), or monkeypatch.setattr("
+    "extraction_task, 'QdrantAdapter', lambda **_: None) hands it a null store. When the "
+    "live client IS the point of the test, opt out with @pytest.mark.integration."
+)
+
+
 @pytest.fixture(autouse=True)
 def _reset_cached_user() -> None:
     """Wipe the in-process authenticated-user cache before each test.
@@ -65,6 +79,44 @@ def _reset_cached_user() -> None:
     mutated or deleted the user). Per-test reset keeps suites isolated.
     """
     _reset_user_cache()
+
+
+@pytest.fixture(autouse=True)
+def _forbid_real_qdrant_clients(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Refuse to construct a real Qdrant client in a test that has not opted in.
+
+    This guards the measured leak, not a hypothetical one: ``run_background_extraction``
+    builds a real ``QdrantAdapter`` with the configured collection unless its embedding
+    factory raises, and the adapter's lazy ``AsyncQdrantClient`` then talks to the live
+    cluster. On a machine with no Docker daemon that cluster is the developer's own, so a
+    default-suite run wrote real points — one per run, each a seeded
+    ``"As a user, I want to use seeded feature 0..."`` story with ``model_used=""``.
+
+    The patch targets the name the adapter actually constructs. It fails through
+    ``pytest.fail`` rather than a bare ``AssertionError`` on purpose: the adapter wraps the
+    construction in ``except Exception`` (graceful degradation) and
+    ``run_background_extraction`` wraps the whole run the same way, so an
+    ``AssertionError`` is swallowed and the leak would proceed anyway — a guard that never
+    guards. ``pytest.fail`` raises ``Failed``, which is a ``BaseException``, so it reaches
+    the test report instead.
+
+    Live tests opt out with ``@pytest.mark.integration`` (the live suite builds its own
+    real adapters). A test that mocks ``AsyncQdrantClient`` itself is unaffected: its own
+    patch replaces this one, because a test-body ``monkeypatch.setattr`` runs after this
+    fixture.
+    """
+    if request.node.get_closest_marker("integration") is not None:
+        return
+
+    def _refuse_real_qdrant_client(*args: object, **kwargs: object) -> None:
+        pytest.fail(QDRANT_LEAK_MESSAGE, pytrace=False)
+
+    monkeypatch.setattr(
+        "storico.infrastructure.vector.qdrant_adapter.AsyncQdrantClient",
+        _refuse_real_qdrant_client,
+    )
 
 
 def make_jwt_headers(user_id: str) -> dict:

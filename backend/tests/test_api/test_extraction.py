@@ -56,6 +56,25 @@ async def _create_user(db_session: AsyncSession, email: str = "test@example.com"
     return saved
 
 
+def _make_the_vector_store_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Turn the RAG dependency off before the background task builds it.
+
+    Called by tests whose subject is the extraction record, not retrieval. ``_run_extraction``
+    builds the embedding port and the ``QdrantAdapter`` inside one ``try``, and any failure
+    there takes the production "vector store unavailable" branch (``vector_store=None``) —
+    the same branch a deployment with no vector store configured runs. Raising from the
+    factory is therefore a real code path and not a stub, and it keeps the test off every
+    live service: with the real factory the adapter's lazy ``AsyncQdrantClient`` embeds the
+    seeded story against the live Ollama and upserts a point into the developer's own Qdrant
+    collection, which is the leak ``tests/conftest.py`` now refuses.
+    """
+
+    def _unavailable(_settings) -> None:
+        raise RuntimeError("vector store deliberately unavailable for this test")
+
+    monkeypatch.setattr(extraction_task, "get_embedding_port", _unavailable)
+
+
 class TestExtractEndpoint:
     """POST /api/v1/workspaces/{workspace_id}/extract/"""
 
@@ -165,6 +184,9 @@ class TestExtractEndpoint:
 
         monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
         monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: UnreachableLLM())
+        # This test is about the failure being recorded, so it must not depend on a live
+        # vector store (nor write into one) — see the helper.
+        _make_the_vector_store_unavailable(monkeypatch)
 
         await extraction_task.run_background_extraction(
             extraction_id=pending.id,
@@ -224,6 +246,9 @@ class TestExtractEndpoint:
 
         monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
         monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: AnsweringLLM())
+        # The subject here is ``completed_at``, so this test must not depend on a live
+        # vector store — and must not write into one. See the helper.
+        _make_the_vector_store_unavailable(monkeypatch)
 
         await extraction_task.run_background_extraction(
             extraction_id=pending.id,
@@ -746,6 +771,9 @@ class TestExtractionReceivesTheDecryptedCredential:
         ).scalar_one()
         # The row really is ciphertext, so a plaintext hand-off can only have come from
         # the repository decrypting it on the way out.
+        assert stored is not None, (
+            "the seeded config row must exist before its value means anything"
+        )
         assert stored.startswith("v1:")
 
         scheduled = AsyncMock()
