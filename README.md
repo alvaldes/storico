@@ -61,14 +61,23 @@ See [AGENTS.md](./AGENTS.md) for the full project definition, including:
 
 ## Environment Variables
 
-| Variable                  | Default                                                           | Description                  |
-| ------------------------- | ----------------------------------------------------------------- | ---------------------------- |
-| `STORICO_DATABASE_URL`    | `postgresql+asyncpg://storico:storico_dev@localhost:5432/storico` | PostgreSQL connection string |
-| `STORICO_QDRANT_URL`      | `http://localhost:6333`                                           | Qdrant vector store URL      |
-| `STORICO_REDIS_URL`       | `redis://localhost:6379`                                          | Redis connection string      |
-| `STORICO_OLLAMA_BASE_URL` | `http://localhost:11434`                                          | Ollama LLM API URL           |
-| `STORICO_DEBUG`           | `true`                                                            | Enable debug mode            |
-| `STORICO_APP_NAME`        | `Storico API`                                                     | Application name             |
+| Variable                         | Default                                                       | Description                                   |
+| -------------------------------- | ------------------------------------------------------------- | --------------------------------------------- |
+| `STORICO_DATABASE_URL`           | `postgresql+asyncpg://storico:storico@localhost:5432/storico` | PostgreSQL connection string (asyncpg driver) |
+| `STORICO_QDRANT_URL`             | `http://localhost:6333`                                       | Qdrant vector store URL                       |
+| `STORICO_QDRANT_API_KEY`         | (unset)                                                       | Qdrant API key for a managed cluster          |
+| `STORICO_QDRANT_COLLECTION`      | `storico_extractions`                                         | Collection holding extraction vectors         |
+| `STORICO_OLLAMA_HOST`            | `http://localhost:11434`                                      | Ollama host used by the default provider      |
+| `STORICO_EMBEDDING_PROVIDER`     | `ollama`                                                      | Embedding backend: ollama, google or openai   |
+| `STORICO_EMBEDDING_MODEL`        | `nomic-embed-text`                                            | Embedding model for the selected provider     |
+| `STORICO_EMBEDDING_DIMENSIONS`   | `768`                                                         | Vector size; must match the embedding model   |
+| `STORICO_GOOGLE_EMBEDDING_MODEL` | `text-embedding-004`                                          | Embedding model for the google provider       |
+| `STORICO_OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small`                                      | Embedding model for the openai provider       |
+| `STORICO_GOOGLE_API_KEY`         | (unset)                                                       | Google API key for the google provider        |
+| `STORICO_OPENAI_API_KEY`         | (unset)                                                       | OpenAI API key for the openai provider        |
+| `STORICO_AUTH_JWT_SECRET`        | `dev-insecure-token-change-in-production`                     | Secret used to verify proxy-generated JWTs    |
+| `STORICO_AUTH_ALLOWED_ORIGINS`   | `http://localhost:4321`                                       | Comma-separated allowed CORS origins          |
+| `STORICO_ENCRYPTION_KEY`         | (no default)                                                  | Required to store workspace credentials       |
 
 ## Project Structure
 

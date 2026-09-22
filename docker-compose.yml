@@ -57,7 +57,7 @@ services:
     environment:
       STORICO_DATABASE_URL: postgresql+asyncpg://storico:storico_dev@postgres:5432/storico
       STORICO_QDRANT_URL: http://qdrant:6333
-      STORICO_OLLAMA_BASE_URL: http://storico-ollama:11434
+      STORICO_OLLAMA_HOST: http://storico-ollama:11434
     env_file:
       - .env
     depends_on:
