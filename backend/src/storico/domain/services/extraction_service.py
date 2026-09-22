@@ -125,6 +125,22 @@ class ExtractionService:
         # Retrieve workspace-scoped few-shot examples (best-effort)
         examples = await self._fetch_rag_examples(raw_text, workspace_id, resolved_config)
 
+        if examples:
+            # Observability only: numbers and the workspace id, never user
+            # content (story text, task summaries, rendered prompt).
+            logger.info(
+                "Few-shot examples injected from the vector store",
+                extra={
+                    "workspace_id": str(workspace_id),
+                    "examples_count": len(examples),
+                    "limit": resolved_config.limit,
+                    "threshold": resolved_config.threshold,
+                    "similarity_scores": [
+                        round(example.similarity_score, 4) for example in examples
+                    ],
+                },
+            )
+
         # Render with or without examples
         prompt_kwargs: dict[str, object] = {"user_story": raw_text}
         if examples:

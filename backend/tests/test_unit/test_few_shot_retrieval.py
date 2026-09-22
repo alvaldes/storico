@@ -7,6 +7,7 @@ the enabled/disabled/cold-start/limit/search-failure paths.
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -202,3 +203,162 @@ class TestFewShotRetrieval:
 
         instruction_prompt = llm_port.generate.call_args[0][0]
         assert "## Few-Shot Examples" not in instruction_prompt
+
+
+LOGGER_NAME = "storico.domain.services.extraction_service"
+STORY_TEXT = "As a shopper I want salted caramel so that I can treat myself"
+
+
+def _injection_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    """INFO records from the extraction service that carry the injection fields."""
+    return [
+        record
+        for record in caplog.records
+        if record.name == LOGGER_NAME
+        and record.levelno == logging.INFO
+        and hasattr(record, "examples_count")
+    ]
+
+
+class TestFewShotInjectionObservability:
+    """The few-shot success path emits exactly one auditable INFO record."""
+
+    @pytest.mark.asyncio
+    async def test_injection_emits_one_info_record_with_metadata(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Examples returned emit exactly one INFO record with retrieval metadata."""
+        workspace_id = uuid4()
+        examples = [
+            ExtractionExample(
+                user_story_text="Previous story A",
+                tasks_summary="1. Task A\n2. Task B",
+                model_used="test",
+                confidence_score=0.9,
+                similarity_score=0.95123456,
+            ),
+            ExtractionExample(
+                user_story_text="Previous story B",
+                tasks_summary="1. Task C",
+                model_used="test",
+                confidence_score=None,
+                similarity_score=0.87345678,
+            ),
+        ]
+        mock_store = AsyncMock()
+        mock_store.search_similar.return_value = examples
+        service, _ = _make_service(vector_store=mock_store)
+
+        story = MagicMock()
+        story.raw_text = STORY_TEXT
+
+        caplog.set_level(logging.INFO)
+
+        await service.extract(
+            story,
+            LLMConfig(model="test"),
+            workspace_id=workspace_id,
+            few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
+        )
+
+        records = _injection_records(caplog)
+        assert len(records) == 1
+        record = records[0]
+        fields = vars(record)
+        assert "Few-shot examples injected" in record.getMessage()
+        assert fields["workspace_id"] == str(workspace_id)
+        assert fields["examples_count"] == len(examples)
+        assert fields["limit"] == 3
+        assert fields["threshold"] == 0.85
+        assert fields["similarity_scores"] == [0.9512, 0.8735]
+
+    @pytest.mark.asyncio
+    async def test_zero_examples_emits_no_info_injection_record(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A cold start (no examples) emits no INFO injection record."""
+        workspace_id = uuid4()
+        mock_store = AsyncMock()
+        mock_store.search_similar.return_value = []
+        service, _ = _make_service(vector_store=mock_store)
+
+        story = MagicMock()
+        story.raw_text = STORY_TEXT
+
+        caplog.set_level(logging.INFO)
+
+        await service.extract(
+            story,
+            LLMConfig(model="test"),
+            workspace_id=workspace_id,
+            few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
+        )
+
+        assert _injection_records(caplog) == []
+
+    @pytest.mark.asyncio
+    async def test_disabled_retrieval_emits_no_info_injection_record(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """enabled=False emits no INFO injection record."""
+        workspace_id = uuid4()
+        mock_store = AsyncMock()
+        service, _ = _make_service(
+            vector_store=mock_store, few_shot_config=FewShotConfig(enabled=False)
+        )
+
+        story = MagicMock()
+        story.raw_text = STORY_TEXT
+
+        caplog.set_level(logging.INFO)
+
+        await service.extract(
+            story,
+            LLMConfig(model="test"),
+            workspace_id=workspace_id,
+            few_shot_config=FewShotConfig(enabled=False, limit=3, threshold=0.85),
+        )
+
+        assert _injection_records(caplog) == []
+
+    @pytest.mark.asyncio
+    async def test_injection_record_carries_no_user_content(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The injection record must not leak the story text or task summaries."""
+        workspace_id = uuid4()
+        mock_store = AsyncMock()
+        mock_store.search_similar.return_value = [
+            ExtractionExample(
+                user_story_text="Previous story A",
+                tasks_summary="1. Secret task summary",
+                model_used="test",
+                confidence_score=0.9,
+                similarity_score=0.95,
+            )
+        ]
+        service, _ = _make_service(vector_store=mock_store)
+
+        story = MagicMock()
+        story.raw_text = STORY_TEXT
+
+        caplog.set_level(logging.INFO)
+
+        await service.extract(
+            story,
+            LLMConfig(model="test"),
+            workspace_id=workspace_id,
+            few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
+        )
+
+        records = _injection_records(caplog)
+        assert len(records) == 1
+        for record in records:
+            formatted = record.getMessage()
+            assert STORY_TEXT not in formatted
+            assert "Secret task summary" not in formatted
+            payload = repr(record.__dict__)
+            assert STORY_TEXT not in payload
+            assert "Secret task summary" not in payload
+        assert STORY_TEXT not in caplog.text
+        assert "Secret task summary" not in caplog.text
