@@ -18,7 +18,7 @@ from storico.config.settings import _reset_settings_cache
 from storico.domain.entities import Extraction, LLMConnectionError, User
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
-from storico.domain.ports import LLMConfig, LLMPort
+from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
 from storico.infrastructure.crypto import FernetCipher
 from storico.infrastructure.database.models import WorkspaceLLMConfigModel
 from storico.infrastructure.database.repositories import (
@@ -54,6 +54,27 @@ async def _create_user(db_session: AsyncSession, email: str = "test@example.com"
     saved = await repo.save(user)
     await repo.link_account(saved.id, "google", f"g-{email}")
     return saved
+
+
+class _RecordingVectorStore(VectorStorePort):
+    """Vector store that records ``store_extraction`` calls instead of writing anywhere."""
+
+    def __init__(self) -> None:
+        self.stored: list[dict] = []
+
+    async def search_similar(  # noqa: ARG002
+        self,
+        text: str,
+        limit: int = 3,
+        threshold: float = 0.85,
+        *,
+        workspace_id: UUID,  # noqa: ARG002
+    ) -> list:
+        return []
+
+    async def store_extraction(self, **kwargs: object) -> bool:
+        self.stored.append(kwargs)
+        return True
 
 
 def _make_the_vector_store_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -269,6 +290,75 @@ class TestExtractEndpoint:
         # Not merely non-null: after the row it completes, and not in the future.
         assert completed.completed_at >= completed.created_at.replace(tzinfo=None)
         assert len(tasks) == 2
+
+    @pytest.mark.asyncio
+    async def test_the_rag_point_records_the_real_model_and_no_judge_confidence(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The RAG point written on the happy path carries the model, not an empty string.
+
+        The ``extractions`` row and the Qdrant point come out of the same run, so they
+        must agree on ``model_used``. This runs the real background path with the vector
+        store available but replaced by a recording fake: the fake stands in for both
+        ``get_embedding_port`` and ``QdrantAdapter``, so no real embedding port or Qdrant
+        client is ever constructed and the live cluster is untouched (which the autouse
+        guard in ``tests/conftest.py`` would refuse anyway).
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            repo = SQLAlchemyExtractionRepository(session)
+            pending = await repo.save(
+                Extraction(
+                    user_story_id=seeded.story_id,
+                    model_used="llama3.1:8b",
+                    raw_response="",
+                    status=ExtractionStatus.PENDING,
+                    user_story_status=UserStoryStatus.PENDING_EXTRACTION,
+                )
+            )
+
+        class AnsweringLLM(LLMPort):
+            async def generate(
+                self,
+                prompt: str,  # noqa: ARG002
+                config: LLMConfig,  # noqa: ARG002
+                system_prompt: str | None = None,  # noqa: ARG002
+            ) -> str:
+                return "1. summary: Set up the schema\ndescription: Create the tables.\n"
+
+        store = _RecordingVectorStore()
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: AnsweringLLM())
+        # Both halves of the vector-store construction are replaced: the fake embedding
+        # port means nothing embeds, and the fake adapter means nothing is written.
+        monkeypatch.setattr(extraction_task, "get_embedding_port", lambda _settings: object())
+        monkeypatch.setattr(extraction_task, "QdrantAdapter", lambda **_: store)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.1:8b",
+            max_retries=0,
+        )
+
+        assert len(store.stored) == 1
+        point = store.stored[0]
+        assert point["extraction_id"] == str(pending.id)
+        # The point must say what actually ran — not the hardcoded "".
+        assert point["model_used"] == "llama3.1:8b"
+        # No judge ran (validate defaults to False), so the point must carry no
+        # confidence — matching the persisted row it was written alongside.
+        assert point["confidence_score"] is None
+
+        async with factory() as session:
+            completed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+        assert completed is not None
+        assert completed.status == ExtractionStatus.COMPLETED
+        assert completed.model_used == "llama3.1:8b"
+        assert completed.confidence_score is None
 
     @pytest.mark.asyncio
     async def test_extract_unauthorized(self, async_client) -> None:

@@ -457,7 +457,15 @@ async def _run_extraction(
             await task_repo.save(task)
 
         # 7. Store in vector store for future RAG
-        await _store_rag(vector_store, story, extraction_id, parsed_tasks, workspace_id)
+        await _store_rag(
+            vector_store,
+            story,
+            extraction_id,
+            parsed_tasks,
+            workspace_id,
+            model_used=model,
+            confidence_score=confidence,
+        )
 
         # 8. Transition UserStory to EXTRACTED (from EXTRACTING)
         if story.status == UserStoryStatus.EXTRACTING:
@@ -530,8 +538,15 @@ async def _store_rag(
     extraction_id: UUID,
     parsed_tasks: list,
     workspace_id: UUID,
+    model_used: str,
+    confidence_score: float | None,
 ) -> None:
-    """Store extraction result in vector store for future RAG searches."""
+    """Store extraction result in vector store for future RAG searches.
+
+    ``model_used`` and ``confidence_score`` carry the values already resolved by the
+    caller (the ``model`` parameter of ``_run_extraction`` and the optional LLM-as-a-Judge
+    score, respectively) so the point payload agrees with the persisted ``extractions`` row.
+    """
     if vector_store is None:
         logger.debug("RAG store skipped: no vector store available")
         return
@@ -543,9 +558,9 @@ async def _store_rag(
             extraction_id=str(extraction_id),
             user_story_text=getattr(story, "raw_text", str(story)),
             tasks_summary=tasks_summary,
-            model_used="",
+            model_used=model_used,
             workspace_id=workspace_id,
-            confidence_score=None,
+            confidence_score=confidence_score,
             user_story_id=str(getattr(story, "id", "")),
         )
     except Exception as exc:
