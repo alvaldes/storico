@@ -346,17 +346,27 @@ async def rename_custom_provider(
 ) -> CustomProviderResponse:
     """Rename a custom provider, and the selection that names it. Admin only.
 
-    A provider id belonging to another workspace reads as absent rather than as
-    a cross-workspace write. Renaming the provider this workspace has selected
-    also rewrites the selection, so the two cannot drift apart.
+    The path declares the workspace, so containment is a different fact from
+    existence — the same rule ``routes/projects.py`` and ``routes/extraction.py``
+    follow: an absent id answers 404, and an id that exists but belongs to another
+    workspace answers 403, so the two are distinguishable. The earlier rationale —
+    reporting the foreign id as absent so it could not be probed for existence — was
+    replaced by this rule (issue #5, 2026-09-24), not refuted. Renaming the
+    provider this workspace has selected also rewrites the selection, so the two
+    cannot drift apart.
     """
     workspace, _ = ctx
 
     existing = await provider_repo.get(provider_id)
-    if existing is None or existing.workspace_id != workspace.id:
+    if existing is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Custom provider not found",
+        )
+    if existing.workspace_id != workspace.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This custom provider does not belong to the specified workspace",
         )
 
     # A rename to the name it already has is a no-op, not a duplicate: reporting a
