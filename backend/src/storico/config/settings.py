@@ -26,13 +26,26 @@ class Settings(BaseSettings):
     ollama_host: str = "http://localhost:11434"
 
     # Embedding
+    #
+    # ``embedding_model`` is the **Ollama** model only. Each cloud provider reads its own
+    # field (``google_embedding_model``, ``openai_embedding_model``); the provider→field
+    # mapping has exactly one home, ``embedding_model_for()`` in
+    # ``infrastructure/vector/__init__.py``. Do not read ``embedding_model`` to report
+    # which model is in use: it names the wrong one for two of the three providers.
     embedding_model: str = "nomic-embed-text"
     embedding_dimensions: int = 768
     embedding_provider: str = "ollama"
-    google_embedding_model: str = "text-embedding-004"
+    # Google embedding model. ``text-embedding-004`` was retired by the API and now
+    # answers 404 NOT_FOUND; ``gemini-embedding-001`` is the current one and honours
+    # ``output_dimensionality`` (768 here), so the vector still matches the collection.
+    google_embedding_model: str = "gemini-embedding-001"
     openai_embedding_model: str = "text-embedding-3-small"
 
     # Vector store (Qdrant)
+    #
+    # One collection per environment: a collection belongs to the embedding model that
+    # fills it, and vectors from two different models are incomparable even at the same
+    # dimensions. A shared collection therefore silently returns meaningless neighbours.
     qdrant_collection: str = "storico_extractions"
 
     # No RAG knobs here, deliberately. ``rag_similarity_threshold`` and ``rag_max_examples``

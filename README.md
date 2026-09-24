@@ -67,12 +67,12 @@ See [AGENTS.md](./AGENTS.md) for the full project definition, including:
 | `STORICO_LOG_LEVEL`              | `INFO`                                                        | Root logging level for application logs       |
 | `STORICO_QDRANT_URL`             | `http://localhost:6333`                                       | Qdrant vector store URL                       |
 | `STORICO_QDRANT_API_KEY`         | (unset)                                                       | Qdrant API key for a managed cluster          |
-| `STORICO_QDRANT_COLLECTION`      | `storico_extractions`                                         | Collection holding extraction vectors         |
+| `STORICO_QDRANT_COLLECTION`      | `storico_extractions`                                         | Collection holding extraction vectors. **Set one per environment** — a collection belongs to the embedding model that fills it (dev `storico_extractions_dev`, prod `storico_extractions_prod`) |
 | `STORICO_OLLAMA_HOST`            | `http://localhost:11434`                                      | Ollama host used by the default provider      |
 | `STORICO_EMBEDDING_PROVIDER`     | `ollama`                                                      | Embedding backend: ollama, google or openai   |
-| `STORICO_EMBEDDING_MODEL`        | `nomic-embed-text`                                            | Embedding model for the selected provider     |
-| `STORICO_EMBEDDING_DIMENSIONS`   | `768`                                                         | Vector size; must match the embedding model   |
-| `STORICO_GOOGLE_EMBEDDING_MODEL` | `text-embedding-004`                                          | Embedding model for the google provider       |
+| `STORICO_EMBEDDING_MODEL`        | `nomic-embed-text`                                            | Embedding model. **Only the Ollama provider reads this** — google and openai have their own variables below |
+| `STORICO_EMBEDDING_DIMENSIONS`   | `768`                                                         | Vector size; must match the embedding model and the collection |
+| `STORICO_GOOGLE_EMBEDDING_MODEL` | `gemini-embedding-001`                                        | Embedding model for the google provider. `text-embedding-004` is retired and answers 404 |
 | `STORICO_OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small`                                      | Embedding model for the openai provider       |
 | `STORICO_GOOGLE_API_KEY`         | (unset)                                                       | Google API key for the google provider        |
 | `STORICO_OPENAI_API_KEY`         | (unset)                                                       | OpenAI API key for the openai provider        |

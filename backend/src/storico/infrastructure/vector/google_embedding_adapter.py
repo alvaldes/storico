@@ -19,14 +19,16 @@ class GoogleEmbeddingAdapter(EmbeddingPort):
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = "text-embedding-004",
+        model: str = "gemini-embedding-001",
         dimensions: int = 768,
     ) -> None:
         """Initialize the adapter.
 
         Args:
             api_key: Google AI API key. If None, the SDK falls back to the GOOGLE_API_KEY environment variable.
-            model: The embedding model to use (e.g., "text-embedding-004").
+            model: The embedding model to use (e.g., "gemini-embedding-001").
+                ``text-embedding-004`` used to be the default and is retired: the API
+                answers 404 ``models/text-embedding-004 is not found`` for it.
             dimensions: The output dimensionality of the embeddings (default 768 to match Ollama).
         """
         self._client = genai.Client(api_key=api_key) if api_key else genai.Client()
