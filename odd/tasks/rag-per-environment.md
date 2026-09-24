@@ -185,7 +185,10 @@ and **wired** into the API path (`extraction_task.py:378`). It is gated by `vali
   to change it;
 - the endpoint's own default is `False` (`api/schemas/extraction.py:61`);
 - **nothing in the repository sets it to `true`**;
-- and `grep -rn "validate=True" backend/tests/` returns **nothing**: the scoring path has no test.
+- and `grep -rn "validate=True" backend/tests/` returns **nothing**: the **flag-gated** path has no
+  test. What *is* covered is the arithmetic on the **ungated** path: `test_extraction_service.py:283`
+  pins `confidence_score == 45 / 50.0`, and `:306` covers the `LLMError` → `None` case. Neither looks
+  at a boundary, which is how the two defects below survived.
 
 The capability *is* reachable through the API — a client sending `run_validation: true` turns it on.
 What cannot reach it is the web application. `AGENTS.md` states the capability in four places (core
@@ -220,6 +223,36 @@ section and **re-measured here**:
    range; nothing in the code enforces it, and `JudgeResult` is a plain class with no validation.
    Latent while the flag is off, and a precondition for turning it on rather than a detail to handle
    afterwards. A `min(1.0, …)` closes one end and a clamp of `total_score` to `[0, 50]` closes both.
+
+   **Where the clamp goes matters, and it is not the caller.** There is a **second call site** of the
+   judge that does not consult the flag at all: `domain/services/extraction_service.py:266` runs
+   `if self._judge_service is not None:` and repeats the same arithmetic *and* the same silent
+   `except LLMError`. It has **no production caller** — `grep -rn "extract_and_persist" backend/src`
+   returns only its own definition, and the callers are tests — so F6's conclusion does not move, but a
+   clamp added to `extraction_task.py:415` would fix one path and leave the other byte-identical. It
+   belongs in `_parse_judge_response` or in `JudgeResult`.
+
+   **And the parser lets a whole family of type errors through the judge's own guard.** Measured
+   through `_parse_judge_response`:
+
+   | Model output | Raised | Caught by the judge's `except LLMError`? |
+   | --- | --- | --- |
+   | `total_score: "abc"` | `ValueError` | **No** |
+   | `total_score: null` | `TypeError` | **No** |
+   | `total_score: [1]` | `TypeError` | **No** |
+   | `total_score: {"x": 1}` | `TypeError` | **No** |
+   | `coherence: 5` (not a dict) | `AttributeError` | **No** |
+   | `coherence: null` | `AttributeError` | **No** |
+   | malformed JSON (control) | `LLMError` | Yes |
+   | non-dict top level (control) | `LLMError` | Yes |
+
+   `validate()` wraps only the LLM call — `return self._parse_judge_response(raw_response)` sits
+   **outside** its `try` — so nothing converts these. They reach `extraction_task.py:134`'s
+   `except Exception`, which classifies them as transient: exponential backoff, `max_retries`
+   attempts, and a failed extraction whose `error_info` says "unexpected error after N attempts". That
+   is a **deterministic** error retried as if it were a network blip, with a message pointing at the
+   wrong place. Less severe than the two silent defects, because this one does fail loudly, and the
+   same family: judge output entering the system unvalidated.
 
 ## Still open
 
