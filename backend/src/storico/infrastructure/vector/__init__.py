@@ -18,6 +18,23 @@ except ImportError as e:
     QdrantAdapter = None
 
 
+def embedding_model_for(settings: Settings) -> str:
+    """The embedding model ``get_embedding_port`` will actually use.
+
+    Single home for the provider→setting mapping. ``STORICO_EMBEDDING_MODEL`` is only the
+    *Ollama* model; each cloud provider reads its own field. Any caller that wants to
+    report which model is in use — a diagnostics probe, a log line — must ask this
+    function rather than reading ``embedding_model`` directly, because that field names
+    the wrong model for two of the three providers.
+    """
+    provider = settings.embedding_provider.lower()
+    if provider == "google":
+        return settings.google_embedding_model
+    if provider == "openai":
+        return settings.openai_embedding_model
+    return settings.embedding_model
+
+
 def get_embedding_port(settings: Settings) -> EmbeddingPort:
     """Factory to create an EmbeddingPort implementation based on settings.
 
@@ -36,7 +53,7 @@ def get_embedding_port(settings: Settings) -> EmbeddingPort:
         logger.info("Creating OllamaEmbeddingAdapter")
         return OllamaEmbeddingAdapter(
             base_url=settings.ollama_host,
-            model=settings.embedding_model,
+            model=embedding_model_for(settings),
         )
     if provider == "google":
         if not settings.google_api_key:
@@ -44,7 +61,7 @@ def get_embedding_port(settings: Settings) -> EmbeddingPort:
         logger.info("Creating GoogleEmbeddingAdapter")
         return GoogleEmbeddingAdapter(
             api_key=settings.google_api_key,
-            model=settings.google_embedding_model,
+            model=embedding_model_for(settings),
             dimensions=settings.embedding_dimensions,
         )
     if provider == "openai":
@@ -53,7 +70,7 @@ def get_embedding_port(settings: Settings) -> EmbeddingPort:
         logger.info("Creating OpenAIEmbeddingAdapter")
         return OpenAIEmbeddingAdapter(
             api_key=settings.openai_api_key,
-            model=settings.openai_embedding_model,
+            model=embedding_model_for(settings),
             dimensions=settings.embedding_dimensions,
         )
     logger.error("Unknown embedding provider: %s", provider)
@@ -65,6 +82,7 @@ __all__ = [
     "OllamaEmbeddingAdapter",
     "GoogleEmbeddingAdapter",
     "OpenAIEmbeddingAdapter",
+    "embedding_model_for",
     "get_embedding_port",
 ]
 

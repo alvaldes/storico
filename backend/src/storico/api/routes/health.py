@@ -19,6 +19,7 @@ Design decisions:
 import asyncio
 import importlib.metadata
 import logging
+import time
 from datetime import UTC, datetime
 
 import httpx
@@ -28,6 +29,7 @@ from sqlalchemy import literal, select
 from storico.config.settings import Settings
 from storico.infrastructure.database.base import get_engine
 from storico.infrastructure.database.schema_status import probe_schema_status
+from storico.infrastructure.vector import embedding_model_for, get_embedding_port
 
 logger = logging.getLogger(__name__)
 
@@ -133,20 +135,103 @@ async def _check_ollama() -> dict:
 
 
 async def _check_qdrant() -> dict:
-    """Check Qdrant connectivity via its /health endpoint."""
+    """Check Qdrant connectivity via its /healthz endpoint.
+
+    /health was wrong twice against Qdrant Cloud: auth is evaluated before routing, so
+    the keyless request this probe used to send got a 403 on a perfectly healthy
+    cluster — and even with a key, /health is a 404 there because that route does not
+    exist. /healthz is the liveness route Qdrant serves everywhere, and the key goes in
+    the ``api-key`` header Qdrant expects.
+    """
     settings = Settings.load()
     start = datetime.now(UTC)
     try:
+        # Qdrant's documented auth header. Only sent when configured, so a keyless
+        # self-hosted deployment never sends an empty credential.
+        headers = {"api-key": settings.qdrant_api_key} if settings.qdrant_api_key else {}
         async with httpx.AsyncClient(timeout=SERVICE_TIMEOUT) as client:
-            resp = await client.get(f"{settings.qdrant_url}/health")
+            resp = await client.get(f"{settings.qdrant_url}/healthz", headers=headers)
             resp.raise_for_status()
         elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
         return {"status": "ok", "latency_ms": round(elapsed, 1)}
     except Exception as e:
         elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
         logger.warning("Qdrant health check failed: %s", e)
-        # Spelled, not taken from the exception: this route is unauthenticated. See `_check_database`.
+        # Spelled, not taken from the exception: this route is unauthenticated, and the
+        # failure text can now sit one step closer to the api key. See `_check_database`.
         return {"status": "error", "latency_ms": round(elapsed, 1), "error": "not reachable"}
+
+
+_EMBEDDINGS_CACHE_TTL_SECONDS = 60.0
+# (monotonic timestamp of the last probe, its result) — module level so the TTL spans
+# requests within this process. The probe performs a real, billable provider call, so
+# the cache is what keeps this public route from being used to amplify cost.
+_embeddings_probe_cache: tuple[float, dict] | None = None
+
+
+def _probe_clock() -> float:
+    """Monotonic clock for the embeddings probe cache — module level so tests can patch it."""
+    return time.monotonic()
+
+
+async def _check_embeddings() -> dict:
+    """Probe the configured embedding provider by embedding one short fixed string.
+
+    The probe performs a real, billable third-party call for cloud providers, and this
+    route is unauthenticated — without a guard, anyone could drive up cost by polling
+    this endpoint. The result is therefore cached in-process for
+    ``_EMBEDDINGS_CACHE_TTL_SECONDS`` (60s), so repeated requests within the TTL reuse
+    one provider call.
+
+    ``provider`` and ``model`` come from settings, ``dimensions`` from the port, and
+    ``vector_length`` is the length of the vector actually returned. Failures degrade to
+    a spelled reason (never the exception text, see `_check_database`) and never raise:
+    an unknown provider must not turn a diagnostics route into a 500.
+    """
+    global _embeddings_probe_cache
+    now = _probe_clock()
+    if (
+        _embeddings_probe_cache is not None
+        and now - _embeddings_probe_cache[0] < _EMBEDDINGS_CACHE_TTL_SECONDS
+    ):
+        return dict(_embeddings_probe_cache[1])
+
+    settings = Settings.load()
+    start = datetime.now(UTC)
+    try:
+        port = get_embedding_port(settings)
+        vector = await port.embed("storico health probe")
+        elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
+        if not vector:
+            # The embedding service degrades its own failures to ``[]``, so an empty
+            # vector means the provider could not be reached.
+            result = {"status": "error", "latency_ms": round(elapsed, 1), "error": "not reachable"}
+        else:
+            result = {
+                "status": "ok",
+                "latency_ms": round(elapsed, 1),
+                "provider": settings.embedding_provider,
+                # Not ``settings.embedding_model``: that field is the Ollama model, and
+                # reading it here named ``nomic-embed-text`` for a Google or OpenAI
+                # deployment while the adapter called something else entirely.
+                "model": embedding_model_for(settings),
+                "dimensions": port.dimensions,
+                "vector_length": len(vector),
+            }
+    except ValueError as e:
+        # get_embedding_port spells this itself: unknown provider, or a cloud provider
+        # selected without its API key.
+        elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
+        logger.warning("Embeddings health check failed: %s", e)
+        result = {"status": "error", "latency_ms": round(elapsed, 1), "error": "not configured"}
+    except Exception as e:
+        elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
+        logger.warning("Embeddings health check failed: %s", e)
+        # Spelled, not taken from the exception: this route is unauthenticated. See `_check_database`.
+        result = {"status": "error", "latency_ms": round(elapsed, 1), "error": "not reachable"}
+
+    _embeddings_probe_cache = (now, result)
+    return dict(result)
 
 
 @router.get("/health")
@@ -186,10 +271,11 @@ async def health_services():
     schema_result = await _check_schema()
     ollama_result = await _check_ollama()
     qdrant_result = await _check_qdrant()
+    embeddings_result = await _check_embeddings()
 
     all_ok = all(
         probe.get("status") == "ok"
-        for probe in [db_result, schema_result, ollama_result, qdrant_result]
+        for probe in [db_result, schema_result, ollama_result, qdrant_result, embeddings_result]
     )
 
     return {
@@ -201,6 +287,7 @@ async def health_services():
             "schema": schema_result,
             "ollama": ollama_result,
             "qdrant": qdrant_result,
+            "embeddings": embeddings_result,
         },
     }
 

@@ -13,8 +13,11 @@ something to catch rather than testing an absence of nothing.
 from __future__ import annotations
 
 import importlib.metadata
+import json
 import logging
 from collections.abc import Iterator
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -23,7 +26,9 @@ from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from storico.api.routes import health
+from storico.config.settings import Settings
 from storico.infrastructure.database import schema_status
+from storico.infrastructure.vector import embedding_model_for, get_embedding_port
 
 # Shaped like the real thing: a connection string with a credential in it.
 _DATABASE_FAILURE = "connection failed: postgresql://storico:sup3r-s3cret@internal-db:5432/storico"
@@ -33,10 +38,18 @@ _QDRANT_FAILURE = "ConnectError: http://internal-qdrant:6333/health refused"
 
 @pytest.fixture
 def failing_services(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make all three probes fail with a message that names something private."""
+    """Make all probes fail with a message that names something private.
+
+    The embeddings probe is pinned to ``not configured`` (a raised ``ValueError``) so the
+    route-level status assertions stay deterministic: without this, the probe would depend
+    on whatever embedding provider the developer's environment has configured.
+    """
 
     def raise_database(*_args, **_kwargs):
         raise RuntimeError(_DATABASE_FAILURE)
+
+    def raise_not_configured(*_args, **_kwargs):
+        raise ValueError("no embedding provider is configured in this test")
 
     class RefusingClient:
         def __init__(self, *_args, **_kwargs) -> None:
@@ -55,6 +68,19 @@ def failing_services(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(health, "get_engine", raise_database)
     monkeypatch.setattr(health.httpx, "AsyncClient", RefusingClient)
+    monkeypatch.setattr(health, "get_embedding_port", raise_not_configured)
+
+
+@pytest.fixture(autouse=True)
+def _cold_embeddings_probe_cache() -> Iterator[None]:
+    """Each test starts and ends with the embeddings probe cache empty.
+
+    The probe caches its result for 60 seconds at module level to protect the billable
+    provider; without this fixture one test's result would leak into the next.
+    """
+    health._embeddings_probe_cache = None
+    yield
+    health._embeddings_probe_cache = None
 
 
 @pytest.mark.asyncio
@@ -76,12 +102,14 @@ async def test_a_failing_service_is_reported_without_publishing_the_reason(
         "schema": "unknown",
         "ollama": "error",
         "qdrant": "error",
+        "embeddings": "error",
     }
 
     # The shape of the answer is kept: a caller can still tell which service failed and roughly how.
     assert body["services"]["database"]["error"] == "connection failed"
     assert body["services"]["ollama"]["error"] == "not reachable"
     assert body["services"]["qdrant"]["error"] == "not reachable"
+    assert body["services"]["embeddings"]["error"] == "not configured"
     assert all("latency_ms" in service for service in body["services"].values())
 
     # And the private detail is nowhere in it — not the credential, not the internal hostnames,
@@ -380,3 +408,396 @@ async def test_an_unreadable_package_version_does_not_break_health(
 
     assert response.status_code == 200
     assert response.json()["version"] == "unknown"
+
+
+# ---------------------------------------------------------------------------------------------
+# The Qdrant and embeddings probes
+#
+# The Qdrant probe used to request ``/health`` without the api-key header. Measured against
+# Qdrant Cloud: auth is evaluated before routing, so the keyless request got a 403 on a
+# perfectly healthy cluster — and even with a key, ``/health`` is a 404 there. ``/healthz`` is
+# the liveness route that exists everywhere. The embeddings probe is new; it performs a real,
+# billable call against the configured provider on an unauthenticated route, so its result is
+# cached in-process for 60 seconds.
+# ---------------------------------------------------------------------------------------------
+
+
+def _fake_settings(**values: object) -> type:
+    """A ``Settings`` stand-in whose ``load()`` returns the given namespace.
+
+    Seeded from a **real** ``Settings`` (with ``_env_file=None`` so the repository's
+    ``.env`` cannot leak in) and then overridden, so field names and defaults are real.
+
+    The earlier version defined only the attributes the probes read, which let a test
+    write a combination production can never produce — ``embedding_provider="google"``
+    beside ``embedding_model="gemini-embedding-001"`` — and then assert a model the probe
+    would never report. ``STORICO_EMBEDDING_MODEL`` is the *Ollama* model; the cloud
+    providers read their own field. Seeding from the real class is what makes that fake
+    unwritable.
+    """
+    resolved = Settings(_env_file=None).model_dump()
+    resolved.update(values)
+
+    class _Settings:
+        @staticmethod
+        def load() -> SimpleNamespace:
+            return SimpleNamespace(**resolved)
+
+    return _Settings
+
+
+class _RecordingClient:
+    """httpx.AsyncClient stand-in that records the URL and headers it was given."""
+
+    captured: dict = {}
+
+    def __init__(self, *_args, **_kwargs) -> None:
+        pass
+
+    async def __aenter__(self) -> _RecordingClient:
+        return self
+
+    async def __aexit__(self, *_exc) -> None:
+        return None
+
+    async def get(self, url: str, *, headers: dict | None = None, **_kwargs) -> httpx.Response:
+        _RecordingClient.captured = {"url": url, "headers": headers}
+        response = MagicMock()
+        response.raise_for_status = lambda: None
+        return response
+
+
+def _fake_embedding_port(vector: list[float] | Exception, dimensions: int = 768) -> MagicMock:
+    """An EmbeddingPort stand-in with a fixed ``embed`` result and dimensions."""
+    port = MagicMock()
+    port.dimensions = dimensions
+    port.embed = (
+        AsyncMock(return_value=vector)
+        if not isinstance(vector, Exception)
+        else AsyncMock(side_effect=vector)
+    )
+    return port
+
+
+@pytest.mark.asyncio
+async def test_the_qdrant_probe_requests_healthz_and_sends_the_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The probe asks ``/healthz`` and authenticates with the ``api-key`` header.
+
+    Pins both halves of the fix: the route Qdrant Cloud actually serves, and the header
+    Qdrant expects — without which auth is evaluated before routing and a healthy cluster
+    answers 403.
+    """
+    monkeypatch.setattr(health.httpx, "AsyncClient", _RecordingClient)
+    monkeypatch.setattr(
+        health,
+        "Settings",
+        _fake_settings(qdrant_url="http://qdrant:6333", qdrant_api_key="s3cret-key"),
+    )
+
+    result = await health._check_qdrant()
+
+    assert result["status"] == "ok"
+    assert _RecordingClient.captured["url"].endswith("/healthz")
+    assert _RecordingClient.captured["headers"] == {"api-key": "s3cret-key"}
+
+
+@pytest.mark.asyncio
+async def test_the_qdrant_probe_sends_no_api_key_header_when_none_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A keyless deployment must not send an empty ``api-key`` header."""
+    monkeypatch.setattr(health.httpx, "AsyncClient", _RecordingClient)
+    monkeypatch.setattr(
+        health,
+        "Settings",
+        _fake_settings(qdrant_url="http://localhost:6333", qdrant_api_key=None),
+    )
+
+    result = await health._check_qdrant()
+
+    assert result["status"] == "ok"
+    assert _RecordingClient.captured["url"].endswith("/healthz")
+    assert _RecordingClient.captured["headers"] == {}
+
+
+@pytest.mark.asyncio
+async def test_the_qdrant_probe_error_keeps_the_key_and_url_out_of_the_body(
+    async_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the probe fails, neither the api key nor the URL reaches the caller.
+
+    The probe now authenticates, which means the failure body is one step closer to the
+    credential than it used to be — so the route's no-leak rule is pinned with the key
+    itself planted in the settings.
+    """
+
+    def raise_database(*_args, **_kwargs):
+        raise RuntimeError(_DATABASE_FAILURE)
+
+    class RefusingClient:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self) -> RefusingClient:
+            return self
+
+        async def __aexit__(self, *_exc) -> None:
+            return None
+
+        async def get(self, url: str, *_args, **_kwargs) -> httpx.Response:
+            raise httpx.ConnectError(f"ConnectError: {url} refused")
+
+    monkeypatch.setattr(health, "get_engine", raise_database)
+    monkeypatch.setattr(health.httpx, "AsyncClient", RefusingClient)
+    monkeypatch.setattr(
+        health,
+        "Settings",
+        _fake_settings(qdrant_url="http://internal-qdrant:6333", qdrant_api_key="sup3r-s3cret"),
+    )
+    monkeypatch.setattr(health, "get_embedding_port", lambda _s: _fake_embedding_port([]))
+
+    response = await async_client.get("/api/v1/health/services")
+
+    assert response.status_code == 200
+    assert response.json()["services"]["qdrant"]["error"] == "not reachable"
+    assert "sup3r-s3cret" not in response.text
+    assert "internal-qdrant" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_the_embeddings_probe_reports_provider_model_dimensions_and_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A working probe reports who was asked, what for, and what came back."""
+    port = _fake_embedding_port([0.1] * 768, dimensions=768)
+    monkeypatch.setattr(
+        health,
+        "Settings",
+        _fake_settings(embedding_provider="google", google_embedding_model="gemini-embedding-001"),
+    )
+    monkeypatch.setattr(health, "get_embedding_port", lambda _settings: port)
+
+    result = await health._check_embeddings()
+
+    assert result["status"] == "ok"
+    assert result["provider"] == "google"
+    assert result["model"] == "gemini-embedding-001"
+    assert result["dimensions"] == 768
+    assert result["vector_length"] == 768
+    assert "latency_ms" in result
+
+
+def _adapter_model(port: object) -> object:
+    """The model an embedding adapter will actually call with, across the three shapes.
+
+    ``OllamaEmbeddingAdapter`` wraps its model inside ``EmbeddingService``; the cloud
+    adapters hold it directly. Read defensively rather than by reaching into one shape.
+    """
+    direct = getattr(port, "_model", None)
+    if direct is not None:
+        return direct
+    return getattr(getattr(port, "_service", None), "_model", None)
+
+
+@pytest.mark.parametrize(
+    ("provider", "expected_model"),
+    [
+        # Ollama is the one provider whose model comes from the generic field, so the
+        # deliberately-wrong value is the *correct* answer here and proves the other two
+        # do not read it.
+        ("ollama", "not-the-real-model"),
+        ("google", "gemini-embedding-001"),
+        ("openai", "text-embedding-3-small"),
+    ],
+)
+def test_the_reported_model_is_the_one_the_adapter_actually_uses(
+    provider: str, expected_model: str
+) -> None:
+    """The probe must name the model the port was built with, for every provider.
+
+    ``STORICO_EMBEDDING_MODEL`` is the *Ollama* model only: the cloud providers read
+    ``google_embedding_model`` and ``openai_embedding_model``. Reporting the generic field
+    named ``nomic-embed-text`` for a Google or OpenAI deployment — a diagnostics field that
+    lied about the deployment it describes, which is the defect this probe exists to
+    remove. Deliberately set to a value no provider but Ollama reads, so a report that
+    falls back to it is caught instead of accidentally right.
+
+    Real settings and real adapters, no fakes: this is the pin that a fake could not give,
+    because a fake is free to describe a configuration production cannot produce.
+    """
+    settings = Settings(
+        _env_file=None,
+        embedding_provider=provider,
+        embedding_model="not-the-real-model",
+        google_embedding_model="gemini-embedding-001",
+        openai_embedding_model="text-embedding-3-small",
+        google_api_key="test-key",
+        openai_api_key="test-key",
+    )
+
+    assert embedding_model_for(settings) == expected_model
+    assert _adapter_model(get_embedding_port(settings)) == expected_model
+
+
+@pytest.mark.asyncio
+async def test_a_google_probe_reports_the_google_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End to end through the route helper, with the fields production actually sets.
+
+    The provider-specific field is the only one set, which is how a real Google deployment
+    looks. The earlier test set the generic ``embedding_model`` and therefore asserted a
+    model the probe would never report.
+    """
+    port = _fake_embedding_port([0.1] * 768, dimensions=768)
+    monkeypatch.setattr(
+        health,
+        "Settings",
+        _fake_settings(embedding_provider="google", google_embedding_model="gemini-embedding-001"),
+    )
+    monkeypatch.setattr(health, "get_embedding_port", lambda _settings: port)
+
+    result = await health._check_embeddings()
+
+    assert result["status"] == "ok"
+    assert result["model"] == "gemini-embedding-001"
+
+
+@pytest.mark.asyncio
+async def test_the_embeddings_probe_reports_an_empty_vector_as_not_reachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty vector is the embedding service's degraded answer — spelled, not raised."""
+    port = _fake_embedding_port([])
+    monkeypatch.setattr(
+        health,
+        "Settings",
+        _fake_settings(embedding_provider="ollama", embedding_model="nomic-embed-text"),
+    )
+    monkeypatch.setattr(health, "get_embedding_port", lambda _settings: port)
+
+    result = await health._check_embeddings()
+
+    assert result["status"] == "error"
+    assert result["error"] == "not reachable"
+    assert "latency_ms" in result
+
+
+@pytest.mark.asyncio
+async def test_the_embeddings_probe_never_raises_and_never_publishes_the_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unexpected provider failure degrades to a spelled reason, never a 500.
+
+    The marker below is shaped like real exception text (it names a private host); if the
+    route ever forwards ``str(e)``, this test catches it.
+    """
+    port = _fake_embedding_port(RuntimeError("ollama at internal-host:11434 exploded"))
+    monkeypatch.setattr(
+        health,
+        "Settings",
+        _fake_settings(embedding_provider="ollama", embedding_model="nomic-embed-text"),
+    )
+    monkeypatch.setattr(health, "get_embedding_port", lambda _settings: port)
+
+    result = await health._check_embeddings()
+
+    assert result["status"] == "error"
+    assert result["error"] == "not reachable"
+    assert "internal-host" not in json.dumps(result)
+
+
+@pytest.mark.asyncio
+async def test_the_embeddings_probe_is_cached_within_the_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two calls inside the TTL cost one embed; the TTL expiry forces a fresh probe.
+
+    The probe is a real, billable provider call behind an unauthenticated route, so the
+    cache is the cost guard. The clock is a module-level function the test patches —
+    never ``sleep``.
+    """
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(health, "_probe_clock", lambda: clock["now"])
+    port = _fake_embedding_port([0.1, 0.2, 0.3], dimensions=3)
+    monkeypatch.setattr(
+        health,
+        "Settings",
+        _fake_settings(embedding_provider="google", google_embedding_model="gemini-embedding-001"),
+    )
+    monkeypatch.setattr(health, "get_embedding_port", lambda _settings: port)
+
+    first = await health._check_embeddings()
+    second = await health._check_embeddings()
+
+    assert first["status"] == "ok"
+    # Whole-dict equality is the cache assertion: the cached dict comes back verbatim,
+    # ``latency_ms`` included, which a fresh probe could not reproduce.
+    assert second == first
+    assert port.embed.await_count == 1
+
+    # Past the 60s TTL the cache must be honoured as expired, not served forever.
+    clock["now"] += 61.0
+    third = await health._check_embeddings()
+
+    # Not ``third == first``: a fresh probe measures ``latency_ms`` again with the real
+    # clock, so the dicts differ on that field by construction and comparing them whole is
+    # a race, not a test. The stable fields are compared; the call count proves the probe.
+    assert port.embed.await_count == 2
+    assert {key: third[key] for key in third if key != "latency_ms"} == {
+        key: first[key] for key in first if key != "latency_ms"
+    }
+
+
+@pytest.mark.asyncio
+async def test_no_api_key_material_leaks_into_the_services_body(
+    async_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A configured cloud key must never appear anywhere in the diagnostics body.
+
+    The embeddings probe authenticates with a real key, so this walks the whole decoded
+    body — the key is planted in settings and even in the exception text, and must still
+    not surface.
+    """
+
+    def raise_database(*_args, **_kwargs):
+        raise RuntimeError(_DATABASE_FAILURE)
+
+    class RefusingClient:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self) -> RefusingClient:
+            return self
+
+        async def __aexit__(self, *_exc) -> None:
+            return None
+
+        async def get(self, url: str, *_args, **_kwargs) -> httpx.Response:
+            raise httpx.ConnectError(f"ConnectError: {url} refused")
+
+    port = _fake_embedding_port(httpx.ConnectError("auth failed for key sup3r-s3cret"))
+    monkeypatch.setattr(health, "get_engine", raise_database)
+    monkeypatch.setattr(health.httpx, "AsyncClient", RefusingClient)
+    monkeypatch.setattr(
+        health,
+        "Settings",
+        _fake_settings(
+            qdrant_url="http://qdrant:6333",
+            qdrant_api_key="s3cret-key",
+            ollama_host="http://ollama:11434",
+            embedding_provider="google",
+            google_embedding_model="gemini-embedding-001",
+        ),
+    )
+    monkeypatch.setattr(health, "get_embedding_port", lambda _settings: port)
+
+    response = await async_client.get("/api/v1/health/services")
+
+    assert response.status_code == 200
+    published = list(_strings_in(response.json()))
+    for secret in ("sup3r-s3cret", "s3cret-key"):
+        assert secret not in published
+        assert secret not in response.text
