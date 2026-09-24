@@ -10,6 +10,11 @@
 > (all seven re-checked by the parent with `shasum -a 256`), so the verdicts apply to what shipped.
 > The verification ran against the working tree **while this session was committing to it** — a
 > process defect on the parent's side, recorded as V1.
+>
+> **Confirmed end to end in production on 2026-09-24**, after the VM's `.env` was completed: a real
+> story extracted from `storico.vercel.app` produced 12 tasks and **one point in
+> `storico_extractions_prod`** carrying the matching `workspace_id` and `user_story_id`. See
+> "Production confirmation" below.
 > **Created**: 2026-09-24
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/rag-per-environment`.
@@ -141,16 +146,64 @@ reported the following. Verdicts are the verifier's; the notes are what changed 
 | V6 | Low | A mis-provisioned prod now emits one ERROR per extraction (intended) and the probe logs exception text server-side; log volume and alerting deserve a thought. No new secret exposure. |
 | V7 | Info | `pytest --cov` cannot run in this environment: `tests/conftest.py:116` hits a numpy "cannot load module more than once" `ImportError`. Pre-existing and outside this diff; branch coverage was argued from the ten mutations instead. |
 
+## Production confirmation (2026-09-24)
+
+The VM's `.env` held **four** variables before this batch, none of them about the RAG
+(`DATABASE_URL`, `ENCRYPTION_KEY`, `AUTH_JWT_SECRET`, `AUTH_ALLOWED_ORIGINS`). Seven were appended —
+`EMBEDDING_PROVIDER=google`, `GOOGLE_API_KEY`, `GOOGLE_EMBEDDING_MODEL=gemini-embedding-001`,
+`EMBEDDING_DIMENSIONS=768`, `QDRANT_URL`, `QDRANT_API_KEY`,
+`QDRANT_COLLECTION=storico_extractions_prod` — a backup was taken first, and the container was
+**recreated** (a `restart` does not re-read `--env-file`).
+
+A session outside this one ran the end-to-end test. Its evidence was **re-measured here** rather than
+taken on trust:
+
+| Check | Result |
+| --- | --- |
+| Collection `storico_extractions_prod` | `green`, **1 point**, 768 dims, Cosine |
+| Point payload | `workspace_id` and `user_story_id` match the story that was extracted |
+| `user_story_text` | **132 characters** — the same count the UI reported when validating the story, so the exact text was stored and not a variant |
+| `/health/services` | `qdrant: ok` (517 ms, a real round trip) and `embeddings: ok` → `google` / `gemini-embedding-001` / 768 |
+
+The 517 ms against the 8.7 ms the broken probe used to report is the signature that separates a
+refused local connection from a real cloud call, which is what made the original defect invisible.
+
+### Two findings from that run
+
+| # | Finding | Disposition |
+| --- | --- | --- |
+| F5 | **`tasks_summary` looked truncated** (`"…"` in the dashboard). | **Closed, not a bug.** The stored payload is **2916 characters** and ends in a complete sentence, with no ellipsis character anywhere. It was the dashboard's table render. |
+| F6 | **`confidence_score` is `null`.** | **Closed as a finding, opened as a question.** Not a calculation bug, not a deprecated field and not something the model returns: only the LLM-as-a-Judge fills it, and nothing in the product turns the judge on. See the next section. |
+
+### F6 — the LLM-as-a-Judge is unreachable from the product
+
+The judge is implemented (`domain/services/extraction_judge_service.py`, `prompts/single_judge.j2`)
+and **wired** into the API path (`extraction_task.py:378`). It is gated by `validate`
+(`extraction_task.py:404`), and:
+
+- the frontend hardcodes `run_validation: false` (`frontend/src/lib/tasks-api.ts:107`), with no option
+  to change it;
+- the endpoint's own default is `False` (`api/schemas/extraction.py:61`);
+- **nothing in the repository sets it to `true`**;
+- and `grep -rn "validate=True" backend/tests/` returns **nothing**: the scoring path has no test.
+
+The capability *is* reachable through the API — a client sending `run_validation: true` turns it on.
+What cannot reach it is the web application. `AGENTS.md` states the capability in four places (core
+feature #6, the executive description, the pipeline step and ADR-009), so the honest options are to
+turn the judge on (one extra LLM call per extraction) or to correct those four claims, and that is the
+owner's decision, not this batch's.
+
 ## Still open
 
 1. **V2** is the most concrete debt this batch creates: a test that reaches a real provider. It needs its own slice.
 2. **V3, V4, V6** — recorded above with their measurements, each small, none blocking.
 3. **C9/F4**: a full-suite failure with no reproduction and no known cause, after 18 full-suite runs by
    the verifier and 10 by the parent. Not called flaky, because nobody has evidence.
-4. **The 19 verification points** and the now-unused `storico_extractions` collection. Deleting points
+4. **F6 — the judge**: turn it on with tests, or remove the claim from `AGENTS.md` and the pipeline docs.
+5. **The 19 verification points** and the now-unused `storico_extractions` collection. Deleting points
    is a destructive mutation and stays the owner's decision.
-5. **`task_type` on the query side.** `GoogleEmbeddingAdapter` sends `RETRIEVAL_DOCUMENT` for both the
+6. **`task_type` on the query side.** `GoogleEmbeddingAdapter` sends `RETRIEVAL_DOCUMENT` for both the
    stored document and the search query; Google's asymmetric task types (`RETRIEVAL_QUERY`) exist to
    improve retrieval. Quality, not correctness.
-6. **A collection/embedding-model marker**, so a typo in `STORICO_QDRANT_COLLECTION` cannot silently
+7. **A collection/embedding-model marker**, so a typo in `STORICO_QDRANT_COLLECTION` cannot silently
    mix spaces across environments — which is exactly the residual risk D2 left open.
