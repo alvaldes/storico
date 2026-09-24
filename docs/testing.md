@@ -156,23 +156,24 @@ base remota) y sin él, no siempre reporta lo mismo. Compará candidato y base e
 ### Cómo correr tests
 
 ```bash
-# Tests unitarios (Zustand stores)
-cd frontend && npx vitest run
+# Tests unitarios (Zustand stores y componentes)
+cd frontend && pnpm exec vitest run
 
 # Tests con watch
-cd frontend && npx vitest
+cd frontend && pnpm exec vitest
 
 # Build check (smoke test)
-cd frontend && npm run build
+cd frontend && pnpm run build
 ```
 
 ### Tests existentes
 
 - `src/stores/__tests__/authStore.unit.test.ts` — Tests del store de autenticación
+- `src/components/**/__tests__/*.test.tsx` — Tests de componentes React con
+  Testing Library (`@testing-library/react` + `jest-dom`, ya en `devDependencies`)
 
 ### Pendiente
 
-- Testing de componentes React (Vitest + Testing Library)
 - Testing de stores Zustand adicionales
 - E2E testing (Playwright o similar — futuro)
 
@@ -200,5 +201,5 @@ cd frontend && npm run build
 | Backend servicios | Unitarios con mocks | ✅ Implementado |
 | Backend unitarios | Tests aislados sin DB | ✅ Implementado |
 | Frontend stores | Unitarios con Vitest | 🔶 Parcial |
-| Frontend componentes | Testing Library | 🔲 Pendiente |
+| Frontend componentes | Testing Library | ✅ Implementado |
 | E2E | Playwright | 🔲 V2 |
