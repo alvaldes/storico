@@ -1,3 +1,19 @@
+## v0.5.1 (2026-09-24)
+
+### Fix
+
+- **config**: use gemini-embedding-001, text-embedding-004 is retired
+- **vector**: log a lost RAG point instead of dropping it silently
+- **health**: make the vector-store diagnostics tell the truth
+- **i18n**: stop promising Trello export and guard the copy
+- **observability**: configure application logging in the app factory
+- **extraction**: record the real model and confidence on the RAG point
+- **api**: report a foreign provider id as containment, not as absence
+
+### Refactor
+
+- **db**: drop the legacy few_shot_examples column
+
 ## v0.5.0 (2026-09-21)
 
 ### Feat
