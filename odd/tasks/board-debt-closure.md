@@ -3,8 +3,9 @@
 > **Status**: **complete** — closed 2026-09-24. **T2 landed** (`325410d`, 13 files) and passed an
 > independent verification; **T6 landed** (`639a585`) after asking the owner about two rows the evidence
 > contradicted; **T3 landed** (`44202d6`) with the browser run recorded in `docs/testing.md`. T1, T4 and
-> T7 sit with the vault peer, which reports the board closed. Final gates green; `make bump` handed to
-> the owner.
+> T7 sit with the vault peer, which reports the board closed. Final gates green. Delivered as PRs #17,
+> #18 and #19; the release is `make bump` on `main` **after** the merges, because this repository
+> rebase-merges and would orphan a tag created earlier — see "Delivery".
 > **Created**: 2026-09-24
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/board-debt-closure`, off `main` @ `74e72c2`.
@@ -200,7 +201,7 @@ Final gates on `fix/board-debt-closure` @ `44202d6`:
 | Frontend suite | `37 files / 425 tests passed` |
 | Alembic | `0027 (head)`, single head |
 | Live RAG suite | `16 passed` with `STORICO_TEST_LIVE_QDRANT=1` (run during T2's verification) |
-| Tree | clean; seven commits, **nothing pushed** |
+| Tree | clean; seven commits on `fix/board-debt-closure`, then split into one branch per logical unit and pushed as PRs #17, #18 and #19 |
 
 ### Handed to the owner
 
@@ -219,6 +220,47 @@ The backend (`127.0.0.1:8000`) and the frontend (`:4321`) are still up from the 
 `/tmp/storico-backend.log` and `/tmp/storico-frontend.log`. The dev database is at head `0027`, the
 local `.env` points at `storico_extractions_dev`, and the single point that run wrote is real data in
 the real cluster.
+
+## Delivery — three pull requests, and why the bump comes last
+
+The batch is three logical units, and `CONTRIBUTING.md:189` asks for one logical change per pull
+request. The owner chose the split, so each unit went out on its own branch off `main`, with no file in
+common between them:
+
+| PR | Branch | Contents |
+| --- | --- | --- |
+| [#17](https://github.com/alvaldes/storico/pull/17) | `refactor/drop-few-shot-column` | The column removal (13 files) plus this feature document, which records the batch's plan, its decisions, its verification and its open findings |
+| [#18](https://github.com/alvaldes/storico/pull/18) | `docs/prod-todo-reconcile` | `prod.todo.md` and the dev half of the per-environment collection contract |
+| [#19](https://github.com/alvaldes/storico/pull/19) | `test/e2e-browser-guion` | The orphan spec retired and the executed browser guion |
+
+This document rides with PR #17 because it is one file whose history cannot be cut three ways: slice it
+per unit and the sibling pull requests drag pieces of a document that does not exist in their own base.
+
+### The release cannot be tagged before the merge
+
+**Measured, not assumed.** This repository merges pull requests with **rebase**, so the commits are
+re-created and their SHAs change:
+
+| Evidence | What it shows |
+| --- | --- |
+| The previous batch's work-unit commits (`6e04218`, `04b743d`, `53f1693`, `ba3adc2`) are **not** ancestors of `main` | The SHAs were rewritten, so it is neither a merge commit nor a fast-forward |
+| `main` carries no commit with a `(#N)` suffix, and its history holds more than one commit per merged PR | It is not squash either |
+| `78d6e23 bump: version 0.4.0 → 0.5.0` — what `tags/v0.5.0` points at — is a direct commit on `main`, with no pull request of its own | The bump is committed **on `main`, after the merges** |
+
+A `v0.5.1` tag created on a branch would point at a commit the rebase orphans, and the tag would stop
+being reachable from `main`. Hence the release is `make bump` on `main` once the three merges land — the
+same shape as the previous four releases.
+
+### The merge deploys to production
+
+`.github/workflows/deploy-backend.yml` runs on a push to `main` that touches `backend/**`, and PR #17
+touches `backend/**`. Its merge rebuilds the image and applies `alembic upgrade head` inside the
+maintenance window — which is what drops the column in production.
+
+Safe by design, because no release is live during the migration. But **production's rows were never
+measured**: only dev was, and it showed 0 of 14 carrying content. The migration's own docstring asks
+the deploy to confirm the same shape first, since the `downgrade` restores the column but not its
+values. It is one read-only query on the VM and it needs the owner's authorization.
 
 ## Checks (authored line forecast)
 
