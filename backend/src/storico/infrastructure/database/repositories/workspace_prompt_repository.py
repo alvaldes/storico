@@ -53,9 +53,6 @@ class SQLAlchemyWorkspacePromptRepository(WorkspacePromptRepository):
             few_shot_enabled=model.few_shot_enabled,
             few_shot_limit=model.few_shot_limit,
             few_shot_threshold=model.few_shot_threshold,
-            few_shot_examples=(
-                model.few_shot_examples.get("items", []) if model.few_shot_examples else None
-            ),
             id=model.id,
             updated_at=model.updated_at,
         )
@@ -70,8 +67,5 @@ class SQLAlchemyWorkspacePromptRepository(WorkspacePromptRepository):
             "few_shot_enabled": prompt.few_shot_enabled,
             "few_shot_limit": prompt.few_shot_limit,
             "few_shot_threshold": prompt.few_shot_threshold,
-            "few_shot_examples": (
-                {"items": prompt.few_shot_examples} if prompt.few_shot_examples else None
-            ),
             "updated_at": prompt.updated_at,
         }

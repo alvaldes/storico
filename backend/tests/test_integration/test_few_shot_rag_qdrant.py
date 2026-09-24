@@ -5,10 +5,10 @@ listed as outstanding: *"runtime-only checks still to confirm: live embedding
 calls and a real workspace-scoped retrieval + end-to-end extraction — mocked
 SDKs only."* Every other automated proof of this feature mocks the vector store
 or the embedding SDK, so a green run there is compatible with Qdrant being
-unreachable, the embedding model being absent, and the seed job writing point
-ids the server rejects. This module talks to a **real Ollama** for embeddings
-and a **real Qdrant** for storage/retrieval; only the LLM is doubled, by
-``RecordingLLM``, so the rendered prompt can be asserted without a model call.
+unreachable and the embedding model being absent. This module talks to a
+**real Ollama** for embeddings and a **real Qdrant** for storage/retrieval; only
+the LLM is doubled, by ``RecordingLLM``, so the rendered prompt can be asserted
+without a model call.
 
 Gate
 ----
@@ -44,12 +44,8 @@ import pytest
 import pytest_asyncio
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qdrant_models
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from storico.cli.seed_few_shot import SEED_MODEL_USED, run_seed
 from storico.config.settings import Settings
-from storico.domain.entities.few_shot import FewShotExample
-from storico.domain.entities.workspace_prompt import WorkspacePrompt
 from storico.domain.ports import (
     EmbeddingPort,
     LLMConfig,
@@ -58,13 +54,9 @@ from storico.domain.ports import (
     VectorStorePort,
 )
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
-from storico.infrastructure.database.repositories.workspace_prompt_repository import (
-    SQLAlchemyWorkspacePromptRepository,
-)
 from storico.infrastructure.llm.prompt_manager import PromptManager
 from storico.infrastructure.llm.task_parser import TaskParser
 from storico.infrastructure.vector import QdrantAdapter, get_embedding_port
-from tests._helpers import create_workspace
 
 pytestmark = [
     pytest.mark.integration,
@@ -104,19 +96,6 @@ STORY_UNRELATED = (
 )
 TASKS_SUMMARY = "1. Implement the credential form: add email and password inputs with validation."
 LLM_RESPONSE = "1. summary: Probe task\ndescription: Probe description."
-
-# Legacy ``few_shot_examples`` payload the seed job reads. The shape is exactly
-# the one ``test_seed_few_shot.py::_seed_prompt`` persists (the repository wraps
-# this list into ``{"items": [...]}``), so the live run exercises the same
-# stored shape production writes instead of a hand-built one.
-SEED_USER_STORY = (
-    "As a registered user, I want to log in with my email and password "
-    "so that I can access my account dashboard."
-)
-SEED_TASKS = (
-    "1. summary: Implement the credential form\ndescription: Add the email and password inputs."
-)
-SEED_EXAMPLES: list[FewShotExample] = [{"user_story": SEED_USER_STORY, "tasks": SEED_TASKS}]
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,23 +232,6 @@ def _build_service(llm: RecordingLLM, vector_store: VectorStorePort) -> Extracti
         task_repo=None,  # type: ignore[arg-type]  # extract() does not persist
         vector_store=vector_store,
     )
-
-
-async def _seed_workspace_prompt(
-    session: AsyncSession, *, examples: list[FewShotExample]
-) -> uuid.UUID:
-    """Persist a workspace plus its legacy ``few_shot_examples`` and return the id.
-
-    Mirrors ``tests/test_services/test_seed_few_shot.py::_seed_prompt``: the
-    repository wraps the list into ``{"items": [...]}``, which is the shape
-    ``run_seed`` reads back. Hand-writing that wrapper here would test a
-    persistence shape production never writes.
-    """
-    workspace = await create_workspace(session)
-    await SQLAlchemyWorkspacePromptRepository(session).upsert(
-        WorkspacePrompt(workspace_id=workspace.id, few_shot_examples=examples)
-    )
-    return workspace.id
 
 
 async def _scroll_all(live_store: LiveVectorStore) -> list[qdrant_models.Record]:
@@ -435,71 +397,84 @@ class TestLiveRetrieval:
         assert len(hits) == 2
 
 
-class TestLiveSeedJob:
-    """The legacy seed job against a real server — the last mocked-only check.
+class TestLiveStoredPoint:
+    """The production write path against a real server — the last mocked-only check.
 
-    ``run_seed`` used to write ``"{workspace_id}:{index}"`` point ids that a
-    live Qdrant rejects outright, while still counting them as seeded; every
-    proof of the fix so far mocked ``VectorStorePort``, so a green run there was
-    compatible with the server rejecting every point. These two tests assert on
-    what the server actually kept, and they run on ``db_session`` (SQLite, from
-    ``tests/conftest.py``) because the seed job reads the legacy
-    ``workspace_prompts`` row from the session it is handed.
+    These tests were born as ``TestLiveSeedJob``: ``run_seed`` used to write
+    ``"{workspace_id}:{index}"`` point ids that a live Qdrant rejects outright,
+    while still counting them as seeded, and every proof of the fix mocked
+    ``VectorStorePort``, so a green run there was compatible with the server
+    rejecting every point. The legacy ``few_shot_examples`` column and the seed
+    job that read it are gone now, so the same live-server guarantees are
+    exercised through ``VectorStorePort.store_extraction`` — the write path
+    production actually uses: a valid UUID point id the server accepts, the
+    workspace id in the payload, retrieval from the owning workspace, and an
+    idempotent rewrite of the same point id.
 
-    Scope note: ``db_session`` and its ``test_engine`` carry no explicit loop
-    scope, so with ``asyncio_default_fixture_loop_scope`` unset they default to
-    their fixture scope (``function``) while these tests run on the module loop.
-    That is safe here because the fixture only builds a ``sessionmaker`` — the
-    aiosqlite connection is opened lazily on first use, which happens inside the
-    module loop — and the real constraint in this file is the module-scoped
-    ``embedding_port``, whose pooled ``httpx.AsyncClient`` cannot be reused from
-    a later loop (hence the module loop, not a weaker assertion).
+    Scope note: the assertions run against the live server's own state (scroll +
+    search), not against the adapter's return value alone.
     """
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_seed_job_stores_a_point_the_live_server_accepts(
-        self, live_store: LiveVectorStore, db_session: AsyncSession
+    async def test_stored_point_has_valid_id_workspace_payload_and_is_retrievable(
+        self, live_store: LiveVectorStore
     ) -> None:
-        """One legacy example lands as exactly one server-accepted point."""
-        workspace_id = await _seed_workspace_prompt(db_session, examples=SEED_EXAMPLES)
-
-        count = await run_seed(db_session, live_store.adapter)
-        assert count == 1, "the live store rejected the seeded example"
+        """One stored point lands with a server-acceptable UUID id and is retrievable."""
+        workspace_id = uuid.uuid4()
+        stored = await live_store.adapter.store_extraction(
+            extraction_id=str(uuid.uuid4()),
+            user_story_text=STORY_QUERY,
+            tasks_summary=TASKS_SUMMARY,
+            model_used="pytest-live",
+            workspace_id=workspace_id,
+        )
+        assert stored is True, "the live store rejected the point"
 
         points = await _scroll_all(live_store)
         assert len(points) == 1, f"expected exactly one stored point, got {len(points)}"
         point = points[0]
-        # Validity, not the derivation formula: the defect was a point id Qdrant
-        # refused, and re-computing uuid5 here would pass against that refusal.
+        # Validity, not the derivation formula: the historic defect was a point id
+        # Qdrant refused, and re-computing a formula here would pass against that
+        # refusal.
         uuid.UUID(str(point.id))
         assert point.payload is not None
         assert point.payload["workspace_id"] == str(workspace_id)
-        assert point.payload["model_used"] == SEED_MODEL_USED
 
         hits = await live_store.adapter.search_similar(
-            SEED_USER_STORY, limit=3, threshold=0.5, workspace_id=workspace_id
+            STORY_QUERY, limit=3, threshold=0.5, workspace_id=workspace_id
         )
-        assert len(hits) == 1, "the seeded point must be retrievable from its own workspace"
-        assert hits[0].user_story_text == SEED_USER_STORY
+        assert len(hits) == 1, "the stored point must be retrievable from its own workspace"
+        assert hits[0].user_story_text == STORY_QUERY
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_seed_job_rerun_does_not_duplicate_live_points(
-        self, live_store: LiveVectorStore, db_session: AsyncSession
+    async def test_rerun_with_the_same_point_id_overwrites_not_duplicates(
+        self, live_store: LiveVectorStore
     ) -> None:
-        """The deterministic ids overwrite on the server instead of duplicating."""
-        workspace_id = await _seed_workspace_prompt(db_session, examples=SEED_EXAMPLES)
+        """Re-storing the same extraction id overwrites the point instead of duplicating.
 
-        first = await run_seed(db_session, live_store.adapter)
-        second = await run_seed(db_session, live_store.adapter)
+        This preserves the idempotence coverage the seed-job rerun test carried:
+        a point id that already exists is overwritten by the server, never
+        duplicated.
+        """
+        workspace_id = uuid.uuid4()
+        point_id = str(uuid.uuid4())
+        for _ in range(2):
+            stored = await live_store.adapter.store_extraction(
+                extraction_id=point_id,
+                user_story_text=STORY_QUERY,
+                tasks_summary=TASKS_SUMMARY,
+                model_used="pytest-live",
+                workspace_id=workspace_id,
+            )
+            assert stored is True, "the live store rejected the point"
 
-        assert first == 1
-        assert second == 1
         points = await _scroll_all(live_store)
         assert len(points) == 1, (
-            f"a rerun must overwrite, not duplicate; the collection holds {len(points)} points"
+            f"a rewrite must overwrite, not duplicate; the collection holds {len(points)} points"
         )
         assert points[0].payload is not None
         assert points[0].payload["workspace_id"] == str(workspace_id)
+        assert str(points[0].id) == point_id
 
 
 class TestLivePromptRendering:

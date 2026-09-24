@@ -132,10 +132,20 @@ siguen viviendo en `workspace_llm_configs`.
 | workspace_id | UUID | FK → workspaces.id (CASCADE), UNIQUE |
 | system_prompt | Text | nullable |
 | instruction_template | Text | nullable |
-| few_shot_examples | JSONB | nullable |
+| few_shot_enabled | Boolean | NOT NULL, default true |
+| few_shot_limit | Integer | NOT NULL, default 3 |
+| few_shot_threshold | Float | NOT NULL, default 0.85 |
 | updated_at | DateTime(tz) | NOT NULL |
 
-Uno por workspace.
+Uno por workspace. Los ejemplos few-shot viven como puntos en Qdrant y se
+recuperan por workspace en el momento de la extracción; la columna legacy
+`few_shot_examples` fue eliminada por la migración `0027`. Antes del drop se
+midió que ninguna de las 14 filas tenía contenido; esa medición es previa y ya
+no es reproducible. La columna solo la leía el job de seed, eliminado en el
+mismo cambio.
+
+> Nota: `few_shot_enabled`/`few_shot_limit`/`few_shot_threshold` los añadió la
+> migración `0020` con `server_default` (`true`/`3`/`0.85`).
 
 #### projects
 

@@ -1,4 +1,3 @@
-from storico.domain.entities.few_shot import FewShotExample
 from storico.domain.ports.cipher import CipherPort
 from storico.domain.ports.custom_provider_repository import CustomProviderRepository
 from storico.domain.ports.embedding_port import EmbeddingPort
@@ -34,7 +33,6 @@ __all__ = [
     "ExtractionResult",
     "VectorStorePort",
     "ExtractionExample",
-    "FewShotExample",
     "EmbeddingPort",
     "WorkspaceRepository",
     "WorkspaceMemberRepository",
