@@ -3,9 +3,13 @@
 > **Status**: **code complete, uncommitted; production configuration still pending on the VM.**
 > The five-file change is green (`786 passed, 21 skipped`, `ruff check` clean) and the owner's UI
 > test is blocked only by the VM's `.env`, which this session cannot write.
-> **Independent verification was started and stopped by the owner** before it reported, so this
-> candidate carries no independent verdict — recorded plainly rather than glossed, and one
-> full-suite failure observed during review was never reproduced (see F4).
+> **Independent verification completed** — the owner asked for it to be stopped, and it had already
+> reached its conclusion. It confirmed C1–C8 and C10, corrected C1, C6 and C11, refuted one sub-claim
+> of C11, and could not reproduce the one-off suite failure in **18 full-suite runs**. Its findings
+> are recorded as V1–V7 below. **The delivered code files hash exactly to the snapshot it verified**
+> (all seven re-checked by the parent with `shasum -a 256`), so the verdicts apply to what shipped.
+> The verification ran against the working tree **while this session was committing to it** — a
+> process defect on the parent's side, recorded as V1.
 > **Created**: 2026-09-24
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/rag-per-environment`.
@@ -106,15 +110,47 @@ noting that `text-embedding-004` is retired.
 
 **Dev's `.env`** (blocked, F5): add `STORICO_QDRANT_COLLECTION=storico_extractions_dev`.
 
+## Independent verification (completed 2026-09-24)
+
+The verifier worked from C1–C11, ran ten mutations (each killed its target test, all reverted), and
+reported the following. Verdicts are the verifier's; the notes are what changed as a result.
+
+| Claim | Verdict | What needs saying |
+| --- | --- | --- |
+| C1 returns `False`, never raises | **CONFIRMED WITH CORRECTION** | **"Never raises" is measurably false.** `_get_client` calls `_check_dimensions()` *before* its `try` (`qdrant_adapter.py:86-87`), so a dimension mismatch raises `ValueError` out of `store_extraction` — and that path emits none of the new ERROR records, because the caller's own `except` catches it first. Pre-existing, outside the three named paths, and the port docstring is the thing that is wrong. |
+| C2 one ERROR per path, stable reasons | CONFIRMED | Four mutations killed (`empty_embedding`, `client_unavailable`, the upsert severity, and dropping the log). |
+| C3 `/healthz` + conditional `api-key`, no leakage | CONFIRMED | Reverting to `/health` kills two tests. |
+| C4 embeddings probe shape and degradation | CONFIRMED | An unknown provider measured → `not configured`, no raise. |
+| C5 the reported model is the one the adapter uses | CONFIRMED | `embedding_model_for()` is read by all three branches of `get_embedding_port`, so drift is structurally impossible; measured against real adapters for the three providers; two mutations killed. |
+| C6 the 60 s cache | **CONFIRMED WITH CORRECTIONS** | (a) the reset fixture is **local to `test_health_services.py`**, not suite-wide — `tests/test_health.py` runs the real cache with no reset. (b) **The cache stores error results too**, so an operator who fixes a provider to recover without a process restart sees the stale `error` for up to 60 s. (c) **No in-flight dedup**: 10 concurrent cold calls measured **10 provider embeds**. The cost guard holds for polling and not for concurrency. |
+| C7 no key material in the body | CONFIRMED | Planted key and a `ConnectError` carrying it; neither surfaced. |
+| C8 suite and lint green | CONFIRMED | `786 passed, 21 skipped`, `ruff` clean, reproduced on the verified snapshot. |
+| C9 the one-off suite failure | **NOT REPRODUCED** | 18 full-suite + 40 module + 60 isolated runs, all green. No order- or state-dependence found. The parent's `latency_ms` hypothesis is **not confirmed**; the cause is **unidentified**. The verifier declined to call it flaky without evidence, which is the right answer. |
+| C10 the pre-existing tests it edited | CONFIRMED | They got stronger, not weaker (the exact-services dict gained a key and an explicit reason assertion). |
+| C11 the settings fake is now hermetic | **CONFIRMED WITH CORRECTION, one sub-claim REFUTED** | OS environment variables still leak into it (measured). And the claim that seeding from a real `Settings` makes the previously-bad fake *unwritable* is **false** — measured: it is still writable. What actually prevents the misreport is `embedding_model_for()` reading the provider-specific field, not the fake's construction. The fake change removed a trap; it did not close the class. |
+
+### Findings the verifier raised that were not claimed
+
+| # | Severity | Finding |
+| --- | --- | --- |
+| V1 | **High (process)** | The verification target mutated mid-run because the parent committed while it worked. No corruption — the committed blobs equal the verified hashes, re-checked by the parent. The lesson is the parent's: a verifier and a committing hands are not compatible, and "stop" does not un-send a queue. |
+| V2 | **Medium** | `tests/test_health.py::test_health_services_endpoint` exercises the **real** `_check_embeddings` with no patch, so the default suite makes a real — possibly billable — provider call on any machine with a live Ollama or a cloud key in env, and caches it process-wide for 60 s. Environment-dependent and untested here. **The first thing to fix next.** |
+| V3 | Low-Medium | Cache stampede (C6c): the unauthenticated route's cost guard does not dedupe in-flight probes. |
+| V4 | Low | The port docstring's "Never raises" (C1). Pre-existing. |
+| V5 | Low | A record claim that the T1 log carries "the provider": the `extra` carries `extraction_id`, `collection` and `reason`. **Already corrected** by the Tasks rewrite before this section was written; the verifier read the earlier revision. |
+| V6 | Low | A mis-provisioned prod now emits one ERROR per extraction (intended) and the probe logs exception text server-side; log volume and alerting deserve a thought. No new secret exposure. |
+| V7 | Info | `pytest --cov` cannot run in this environment: `tests/conftest.py:116` hits a numpy "cannot load module more than once" `ImportError`. Pre-existing and outside this diff; branch coverage was argued from the ten mutations instead. |
+
 ## Still open
 
-1. **No independent verification** of this candidate (stopped by the owner). F2 is the kind of defect
-   that a verifier exists to find, and it was found by the parent's own read of the diff instead.
-2. **F4**: a full-suite failure with no reproduction and no known cause.
-3. **The 19 verification points** and the now-unused `storico_extractions` collection. Deleting points
+1. **V2** is the most concrete debt this batch creates: a test that reaches a real provider. It needs its own slice.
+2. **V3, V4, V6** — recorded above with their measurements, each small, none blocking.
+3. **C9/F4**: a full-suite failure with no reproduction and no known cause, after 18 full-suite runs by
+   the verifier and 10 by the parent. Not called flaky, because nobody has evidence.
+4. **The 19 verification points** and the now-unused `storico_extractions` collection. Deleting points
    is a destructive mutation and stays the owner's decision.
-4. **`task_type` on the query side.** `GoogleEmbeddingAdapter` sends `RETRIEVAL_DOCUMENT` for both the
+5. **`task_type` on the query side.** `GoogleEmbeddingAdapter` sends `RETRIEVAL_DOCUMENT` for both the
    stored document and the search query; Google's asymmetric task types (`RETRIEVAL_QUERY`) exist to
    improve retrieval. Quality, not correctness.
-5. **A collection/embedding-model marker**, so a typo in `STORICO_QDRANT_COLLECTION` cannot silently
-   mix spaces across environments.
+6. **A collection/embedding-model marker**, so a typo in `STORICO_QDRANT_COLLECTION` cannot silently
+   mix spaces across environments — which is exactly the residual risk D2 left open.
