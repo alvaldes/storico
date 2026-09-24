@@ -29,7 +29,7 @@ advisory id: each claim turned out to live in more than the one file the id name
 
 | Claim | Named by | Also stated as the document's own fact in |
 |---|---|---|
-| "Vercel WAF" for rate limiting | `prod.todo.md` (`R3-waf-3`) | `docs/security.md`, `todo.md` |
+| "Vercel WAF" for rate limiting | `prod.todo.md` (`R3-waf-3`) | `docs/security.md`, `todo.md` — the backlog was later retired (issue #3); the rate-limiting row's live home is `prod.todo.md` |
 | The VM's public address | `docs/deployment.md` (`R3-pubip-1`) | `AGENTS.md` (ADR-005 Contexto) |
 | Env-var audit "in Vercel" | — (found while measuring) | `docs/security.md` |
 
@@ -51,7 +51,8 @@ deleting.
 
 - `prod.todo.md` — rate-limiting row and env-audit row.
 - `docs/security.md` — the same two lines in its "Producción (pendiente)" list.
-- `todo.md` — the rate-limiting line.
+- `todo.md` — the rate-limiting line. (Retired afterwards, issue #3, in favour of
+  `odd/tasks/retire-todo-md.md`; the production rate-limiting row lives in `prod.todo.md`.)
 - `docs/deployment.md` — the backend host, replaced by the name of the secret that carries it.
 - `AGENTS.md` — ADR-005's Contexto, same replacement.
 - `docs/testing.md` — a new subsection on the suite's warning.

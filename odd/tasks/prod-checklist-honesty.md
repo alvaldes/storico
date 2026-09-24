@@ -124,7 +124,7 @@ from the per-workspace prompt config (`extraction_task.py:349` →
 | WU4 | `backend/src/storico/api/schemas/settings.py`, `frontend/src/types/settings.ts`, `frontend/src/components/react/AccountPage.tsx`, both frontend tests | D3: `Literal` narrowed, option removed from the UI and the type, and a stored `trello` normalised to `json` on read with a test that fails without the normalisation. |
 | WU5 | `backend/src/storico/config/settings.py`, `backend/.env.example` | D5: both settings removed, and so was the `# RAG settings` block — its two `STORICO_RAG_*` placeholders, their header, and the blank line below it (four lines). |
 | WU6 | `backend/pyproject.toml`, `backend/tests/test_integration/test_projects_integration.py`, `odd/tasks/ci-postgres-integration-test.md` | D6, as corrected: `testcontainers.postgres` → `testcontainers.community.postgres`, **and the floor raised to `>=4.15.0`**, because the new path does not exist below it. The prior record's claim that the boundary is "≤4.12" is also corrected to `<4.15.0` — leaving it would have created the seventh stale claim this batch exists to close. |
-| WU7 | `docs/api.md`, `todo.md` | **Not in the original plan.** Two claims WU4 invalidated, found by the independent verifier and approved by the operator: `docs/api.md` described the endpoint's `defaultFormat` as still accepting `trello`, and `todo.md` asserted the enum still carried the value. The pre-existing landing copy in `i18n` that promises Trello export is deliberately **not** here — approved as a follow-up. |
+| WU7 | `docs/api.md`, `todo.md` | **Not in the original plan.** Two claims WU4 invalidated, found by the independent verifier and approved by the operator: `docs/api.md` described the endpoint's `defaultFormat` as still accepting `trello`, and `todo.md` (retired since, issue #3 — see `odd/tasks/retire-todo-md.md`) asserted the enum still carried the value. The pre-existing landing copy in `i18n` that promises Trello export is deliberately **not** here — approved as a follow-up. |
 
 ## Non-goals
 
@@ -177,7 +177,7 @@ from the per-workspace prompt config (`extraction_task.py:349` →
 - [x] Gates for PR 2: backend `ruff check src tests`, `ruff format --check src tests`, `pytest -q`;
       frontend `pnpm exec tsc --noEmit`, `pnpm vitest run`. Re-run independently rather than taken from
       the writers' reports: all five green.
-- [x] WU7 — correct the two claims WU4 invalidated (`docs/api.md`, `todo.md`). Added after the
+- [x] WU7 — correct the two claims WU4 invalidated (`docs/api.md`, `todo.md` — the backlog was retired afterwards, issue #3, in favour of `odd/tasks/retire-todo-md.md`). Added after the
       independent verification, with operator approval. The landing copy in `i18n` that promises
       Trello export is deliberately **not** here; it is an approved follow-up.
 - [ ] Branch, commit, native review, land PR 2.
@@ -281,7 +281,8 @@ that `PostgresContainer(...)` could be constructed without a Docker daemon (it c
 - **WU7 — `1af649d`**, two files, and not in the original plan. The independent verification found
   three stale claims beyond the plan's scope. Two of them **this change invalidated** — true before
   WU4, false after: `docs/api.md` described `/users/me/settings` as still transporting a `trello`
-  `defaultFormat`, and `todo.md` asserted the enum still carried the value. The operator approved
+  `defaultFormat`, and `todo.md` asserted the enum still carried the value (the backlog was retired
+  later, issue #3; its verbatim text survives in `odd/tasks/retire-todo-md.md`). The operator approved
   fixing exactly those two and deferring the third. The new `docs/api.md` paragraph records the
   retirement in the same shape that file already uses for the removed `llm` key — including the
   read/write asymmetry — and cites the route that actually exists.
@@ -429,7 +430,7 @@ defect class being cleaned. Measured with `git grep` over tracked files:
 
 | Claim | Named by the advisory | Also stated in |
 |-------|----------------------|----------------|
-| "Vercel WAF" for rate limiting | `prod.todo.md` | `docs/security.md`, `todo.md` |
+| "Vercel WAF" for rate limiting | `prod.todo.md` | `docs/security.md`, `todo.md` (retired since, issue #3; the live rate-limiting row is in `prod.todo.md`) |
 | The VM's public address | `docs/deployment.md` | `AGENTS.md` (ADR-005) |
 
 A third row of the same class was found while measuring — the env-var audit said "in Vercel" — and was

@@ -84,7 +84,7 @@ policy cannot be a position; it has to be a property of each revision.
 | D4 | Liveness vs readiness | **Keep `/health` as liveness and add `/api/v1/health/ready`.** The machine gate needs an HTTP status code so the deploy can use `curl -sf` with `set -e`, without parsing JSON inside a shell script on the VM. `/health` keeps its current semantics and gains an informational `schema.status`. |
 | D5 | `unknown` must not read as healthy | A schema query that fails, or an absent `alembic_version`, is **`unknown` and not `ok`**, and readiness answers 503 for it. Fail closed: a fresh database nobody migrated must not look ready. |
 | D6 | Supersede the contradiction explicitly | `prod.todo.md:17-18` is edited in WU2. The Non-goals entry in `prod-checklist-honesty.md` was **not** edited, and this row first claimed it was — refuted by this lot's own `git diff`, which never contains that file. Reading it again, it already states the two-directional problem correctly, so the contradiction was one-sided and only `prod.todo.md` needed to move. |
-| D7 | The stale claims found while exploring | **Included.** `docs/database.md` says "11 migraciones aplicadas" where there are 24, with its table stopping at `0011`; `todo.md:220` says "50 archivos de alembic" and that no test covers migrations (four per-revision tests do). Same class as the batch that just closed. |
+| D7 | The stale claims found while exploring | **Included.** `docs/database.md` says "11 migraciones aplicadas" where there were 24 at the time of this decision (re-measured 2026-09-23: **26**, see the end of this row), with its table stopping at `0011`; `todo.md` said "50 archivos de alembic" and that no test covers migrations (four per-revision tests did) — the claim lived at line 220 of that backlog, which has since been retired in favour of `odd/tasks/retire-todo-md.md`; measured 2026-09-23: 26 revision files under `backend/src/storico/infrastructure/database/alembic/versions/`, and the chain is proven by `backend/tests/test_integration/test_migration_chain.py`. Same class as the batch that just closed. |
 | D8 | The `version` field | **Fix it in WU1.** `/health` returns a hardcoded `"0.1.0"` while `backend/pyproject.toml:6` declares `0.3.0` — a false claim on the very endpoint this lot is making honest, and one line to correct. |
 
 ### What readiness means, and what a red deploy means with it
@@ -137,7 +137,7 @@ red instead of reporting success over a broken release.
 | WU | Files | Change |
 |----|-------|--------|
 | WU3 | `alembic/env.py`, a new integration test, `conftest` if needed | Let `env.py` honor an externally supplied URL, then add the test that runs the whole chain against a real Postgres and compares the result to the models. **Measure the drift first**: if autogenerate reports differences on day one, the gate cannot land red — either the drift is fixed or the gate is scoped to "the chain runs and reaches head". |
-| WU4 | `docs/database.md`, `todo.md`, `docs/testing.md`, and the stale references inside `odd/tasks/prod-checklist-honesty.md` | The stale claims in D7, **plus the ones the verifier found that D7 did not list**: `todo.md:211` ("418"), `docs/testing.md:98` ("526 tests"), and two `testcontainers>=4.9.0` references inside `prod-checklist-honesty.md` that the same file's own WU6 superseded — along with a duplicated "PR 2 — not started" / "committed and awaiting native review" pair that this session's edits to that record left behind. Scope widened by measurement, not by preference. |
+| WU4 | `docs/database.md`, `todo.md`, `docs/testing.md`, and the stale references inside `odd/tasks/prod-checklist-honesty.md` | The stale claims in D7, **plus the ones the verifier found that D7 did not list**: `todo.md` ("418"; the backlog has since been retired in favour of `odd/tasks/retire-todo-md.md`), `docs/testing.md:98` ("526 tests"), and two `testcontainers>=4.9.0` references inside `prod-checklist-honesty.md` that the same file's own WU6 superseded — along with a duplicated "PR 2 — not started" / "committed and awaiting native review" pair that this session's edits to that record left behind. Scope widened by measurement, not by preference. |
 
 ## Non-goals
 
@@ -218,7 +218,9 @@ No migration was run.
 
 Gates: `ruff check` clean, `ruff format --check` clean (`227 files`), `pytest -q` **728 passed, 1
 skipped, 1 warning** — the warning is the pre-existing `RuntimeWarning` already recorded in
-`todo.md:213-215` and in the previous batch's record.
+`docs/testing.md`'s warning note (its live home) and in the previous batch's record; the citation that
+used to point at `todo.md:213-215` was rewritten when that backlog was retired in favour of
+`odd/tasks/retire-todo-md.md`.
 
 **Two process notes, because both cost a round trip.** First, this brief contradicted itself: it told
 the writing agent to update anything asserting the old `version` literal while listing four allowed
@@ -271,7 +273,7 @@ reports, it does not prevent. Both are true of the design and neither is a defec
 
 **Stale claims the verifier found standing outside this candidate** (all recorded for WU4's widened
 sweep rather than fixed here): `docs/testing.md:98` claims the suite is 526 tests where it is 728;
-`todo.md:211` still says the expected total is 418; and `odd/tasks/prod-checklist-honesty.md` carries
+`todo.md` still said the expected total is 418 (line 211 at the time; the backlog was retired afterwards in favour of `odd/tasks/retire-todo-md.md`); and `odd/tasks/prod-checklist-honesty.md` carries
 two `testcontainers>=4.9.0` references its own WU6 superseded, plus a duplicated "PR 2 — not started" /
 "committed and awaiting native review" pair left behind by this session's edits to that record. One
 pre-existing code trap came up while chasing the live check and is noted only because it cost a run:
@@ -402,12 +404,17 @@ value was re-derived by the parent before the writing agent was told to use it.
 | `docs/database.md:11` | head `0011` → `0024` | the chain's head |
 | `docs/database.md` table | stopped at `0011` → extended through `0024` | descriptions read from each revision file; dates taken from each file's git add-date, so none is invented |
 | `docs/testing.md:101` | "pasa en los 526 tests" → 730 | a local suite run, which is where SQLite stands in for Postgres |
-| `todo.md:211` | CI total "418" → 733 passed, zero skips | the CI run on `d9654c4`; locally the same suite is 730 + 3 skips, and the difference is exactly the three Docker-gated tests |
-| `todo.md:213-215` | a `PytestUnraisableExceptionWarning` in `test_project_repo.py` → a `RuntimeWarning: coroutine 'Connection._cancel' was never awaited` | wrong on both halves: the class is wrong, and it has **no stable home** because its attribution moves with GC (seen in `test_health.py::test_health_services_endpoint` and in `test_custom_provider_repo.py` on different runs). It is also `.env`-gated — it appears only when the gitignored `.env` points the app at a remote database |
-| `todo.md:217` | "22 diagnósticos" in `api/app.py` → 12 | the `pi-lens` LSP probe at `severity=error`; the instrument is named in the text so the next reader can re-derive it |
-| `todo.md:220-221` | "ningún test" covers migrations, "50 archivos" | 24 revision files, not 50; and four per-revision unit tests exist, plus the new chain test. The surviving truth is narrower and now stated: those four run on **SQLite**, and nothing compared the migrated schema to the models until `test_migration_chain.py` |
+| `todo.md` — CI-total claim | CI total "418" → 733 passed, zero skips | the CI run on `d9654c4`; locally the same suite is 730 + 3 skips, and the difference is exactly the three Docker-gated tests |
+| `todo.md` — warning-attribution claim | a `PytestUnraisableExceptionWarning` in `test_project_repo.py` → a `RuntimeWarning: coroutine 'Connection._cancel' was never awaited` | wrong on both halves: the class is wrong, and it has **no stable home** because its attribution moves with GC (seen in `test_health.py::test_health_services_endpoint` and in `test_custom_provider_repo.py` on different runs). It is also `.env`-gated — it appears only when the gitignored `.env` points the app at a remote database |
+| `todo.md` — app.py diagnostics claim | "22 diagnósticos" in `api/app.py` → 12 | the `pi-lens` LSP probe at `severity=error`; the instrument is named in the text so the next reader can re-derive it |
+| `todo.md` — migrations-coverage claim | "ningún test" covers migrations, "50 archivos" | at the time: 24 revision files, not 50, and four per-revision unit tests running on **SQLite**; re-measured 2026-09-23 at the backlog's retirement: **26** revision files (`ls backend/src/storico/infrastructure/database/alembic/versions/*.py | wc -l`), and `backend/tests/test_integration/test_migration_chain.py` runs the whole chain against Postgres 16 from an empty database and compares the migrated schema to the models through a two-directional ratchet that is now an empty `frozenset` (reconciled in `odd/tasks/schema-drift-reconciliation.md`) |
 | `prod-checklist-honesty.md:52,211` | `testcontainers>=4.9.0` → `>=4.15.0` | that same record's own WU6/D6 raised the floor |
 | `prod-checklist-honesty.md:155,157` | a duplicated, self-contradicting pair of PR 2 status lines | collapsed into one line recording the landing at `61a132b` |
+
+**Retirement note (2026-09-23, issue #3).** The four rows above originally cited the backlog by line
+number (`todo.md:211`, `:213-215`, `:217`, `:220-221`). That file was retired in favour of
+`odd/tasks/retire-todo-md.md`, which preserves its verbatim ledger, so the citations were rewritten to
+the claims themselves and the migration measurements were re-taken as stated in the last row.
 
 **One residual the brief missed, caught by the writing agent and then fixed by the parent:** that same
 record's own **Status block** stated three contradictory things — the summary said PR 2 awaited review, one

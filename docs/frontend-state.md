@@ -1,7 +1,7 @@
 # Frontend State Management
 
 > Modelo de estado global con Zustand 5.
-> Última actualización: 2026-07-15
+> Última actualización: 2026-09-23
 
 ## Stores
 
@@ -205,3 +205,24 @@ Módulos de dominio:
 | `prompts-api.ts` | Prompts del workspace |
 
 Todos los módulos convierten keys entre camelCase (frontend) y snake_case (API).
+
+## Redirecciones internas: `window.location.assign` vs `navigate()` de Astro
+
+Decisión pendiente **aceptada**: las redirecciones internas siguen usando `window.location.assign`
+(recarga completa) en lugar del `navigate()` de Astro con View Transitions (navegación SPA sin
+recarga). Migrar mejoraría la UX y silenciaría el scanner de open-redirect; las cinco redirecciones
+son internas por construcción (`localizedPath` clampea el locale y los destinos llevan UUIDs), así
+que el riesgo real es bajo. El trade-off que la mantiene abierta: son cinco call sites que tocar y
+el orden de montaje de las islas después de una navegación SPA no tiene hoy ningún test de navegador
+(ver las brechas de verificación en `testing.md`).
+
+Call sites medidos el 2026-09-23 con
+`grep -rn 'window\.location\.assign' frontend/src --include='*.ts' --include='*.tsx'`:
+
+| Archivo | Línea | Contexto |
+|---|---|---|
+| `frontend/src/components/react/WorkspaceSettings.tsx` | 187 | redirect al dashboard tras eliminar el workspace |
+| `frontend/src/components/react/StoriesList.tsx` | 384 | click en una story |
+| `frontend/src/components/react/ProjectsList.tsx` | 169 | click en un proyecto |
+| `frontend/src/components/react/AccountPage.tsx` | 200 | cambio de idioma (`localizedPath`) |
+| `frontend/src/components/react/DeleteAccountDialog.tsx` | 61 | post-eliminación de cuenta |
