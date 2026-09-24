@@ -70,9 +70,24 @@ pytest -v
 
 - **Frontend**: Astro SSR en Vercel
 - **Backend**: FastAPI en un contenedor Docker sobre una VM de Oracle. El host no se escribe acá: el workflow lo toma del secret `DEPLOY_HOST`.
-- **Base de datos**: PostgreSQL en Neon
-- **Vector store**: Qdrant contratado, todavía no configurado en producción
-- **LLM**: OpenAI (adapter implementado)
+- **Base de datos**: PostgreSQL en Neon. **Dev y prod no comparten base:** dev corre local contra Supabase.
+- **Vector store**: **Qdrant Cloud**, un solo cluster, usado por dev y por prod. Cada entorno escribe en **su propia colección** (ver abajo).
+- **Embeddings**: **globales, no por workspace**. Dev usa Ollama local (`nomic-embed-text`); producción usa **Google `gemini-embedding-001`**, porque la VM no tiene Ollama y el modelo de chat no puede embeber.
+- **LLM de extracción**: lo configura cada workspace (Ollama, OpenAI, Anthropic, Gemini o un proveedor propio compatible con OpenAI).
+
+### Una colección por entorno
+
+Una colección pertenece al modelo de embeddings que la llena: los vectores de dos modelos
+distintos son **incomparables aunque tengan las mismas dimensiones**, así que compartir una
+colección devuelve vecinos con una similitud que no significa nada — y sin ningún error visible.
+
+| Entorno | Colección | Embeddings |
+|---------|-----------|------------|
+| Dev | `storico_extractions_dev` | Ollama / `nomic-embed-text` |
+| Prod | `storico_extractions_prod` | Google / `gemini-embedding-001` |
+
+La colección se crea sola en el primer uso, con las dimensiones de `STORICO_EMBEDDING_DIMENSIONS`
+y su índice `workspace_id`.
 
 ### Variables de entorno requeridas
 
@@ -80,6 +95,29 @@ Ver `.env.example` y `prod.todo.md` para la lista completa. En producción el co
 `/home/ubuntu/storico/backend/.env` en la VM, que está fuera del control de versiones: el workflow
 de despliegue no lo toca, así que una variable que falte no rompe el despliegue, falla en silencio
 cuando el proceso la necesita.
+
+Para que el RAG funcione en producción, ese archivo necesita además:
+
+| Variable | Valor | Por qué |
+|----------|-------|---------|
+| `STORICO_EMBEDDING_PROVIDER` | `google` | La VM no tiene Ollama y no se instala uno |
+| `STORICO_GOOGLE_API_KEY` | la credencial de Google AI | Es la única credencial nueva que pide prod |
+| `STORICO_GOOGLE_EMBEDDING_MODEL` | `gemini-embedding-001` | `text-embedding-004` está **retirado**: la API responde `404 models/text-embedding-004 is not found` |
+| `STORICO_EMBEDDING_DIMENSIONS` | `768` | Debe coincidir con el tamaño de la colección |
+| `STORICO_QDRANT_URL` | el cluster cloud | Sin esto el cliente apunta a `localhost:6333` y no hay nada ahí |
+| `STORICO_QDRANT_API_KEY` | la key del cluster | El cluster es gestionado |
+| `STORICO_QDRANT_COLLECTION` | `storico_extractions_prod` | Para no mezclar espacios con dev |
+
+**Cuidado con el nombre de la variable del modelo:** `STORICO_EMBEDDING_MODEL` aplica **solo a
+Ollama**. Cada proveedor cloud lee la suya (`STORICO_GOOGLE_EMBEDDING_MODEL`,
+`STORICO_OPENAI_EMBEDDING_MODEL`), y el mapeo tiene un solo hogar en el código
+(`embedding_model_for()` en `infrastructure/vector/__init__.py`).
+
+Una variable que falte en ese archivo **no falla en el deploy**: la extracción completa, y el punto
+del RAG no se guarda. Desde este lote ese fallo se registra en `ERROR` (`reason=empty_embedding`,
+`client_unavailable` o `upsert_failed`) en vez de desaparecer, y `GET /api/v1/health/services`
+expone un probe de `embeddings` que reporta proveedor, modelo, dimensiones y si de verdad puede
+embeber. **Ese endpoint es la forma corta de saber si prod quedó configurado.**
 
 ### CI/CD
 
