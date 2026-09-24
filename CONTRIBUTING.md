@@ -56,9 +56,13 @@ pip install -e ".[dev]"
 
 ```bash
 cd frontend
-npm install
-npm run dev     # http://localhost:4321
+pnpm install
+pnpm run dev    # http://localhost:4321
 ```
+
+`pnpm` is the only package manager this repository uses: `frontend/package.json`
+declares `packageManager: pnpm@10.15.0` and CI installs with
+`pnpm install --frozen-lockfile`.
 
 ## Testing
 
@@ -81,12 +85,15 @@ cd backend && .venv/bin/pytest -v -m unit   # unit tests only (fast, no services
 ### Frontend
 
 ```bash
-make test-frontend                        # via Makefile
-cd frontend && npm run build              # build as smoke test
+make test-frontend                        # build as smoke test (Makefile)
+cd frontend && pnpm exec vitest run       # vitest, the frontend test runner
+cd frontend && pnpm run build             # build as smoke test
 ```
 
-The frontend does not have a test runner configured yet. The build step is the
-current smoke test — if it compiles, the structural integrity is verified.
+**Vitest is the frontend test runner.** `frontend/package.json` wires `pnpm test`
+to `vitest run` and `pnpm test:watch` to `vitest`, and CI runs `pnpm exec tsc
+--noEmit`, `pnpm vitest run` and `pnpm build` on every push. The build step stays
+the structural smoke test: if it compiles, the structural integrity is verified.
 
 ## Before you open a PR
 
@@ -94,7 +101,7 @@ For any code change:
 
 1. **Backend**: `cd backend && .venv/bin/pytest -v` passes for the tests that
    cover your change. Run with `-m unit` for a fast feedback loop.
-2. **Frontend**: `cd frontend && npm run build` compiles clean.
+2. **Frontend**: `cd frontend && pnpm run build` compiles clean.
 3. **Full stack**: `make build && make up` starts without errors and the health
    endpoints respond.
 4. **Style**: ruff lints without surprises. We follow:

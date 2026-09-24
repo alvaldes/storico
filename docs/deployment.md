@@ -50,8 +50,8 @@ make setup         # Install deps + build imágenes
 
 ```bash
 cd frontend
-npm install
-npm run dev        # http://localhost:4321
+pnpm install
+pnpm run dev       # http://localhost:4321
 ```
 
 ### Desarrollo backend standalone (sin Docker)

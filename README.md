@@ -26,7 +26,7 @@
 
 - [Docker](https://docs.docker.com/get-docker/) + [Docker Compose](https://docs.docker.com/compose/install/)
 - [Python](https://www.python.org/) 3.12+ (for backend development outside Docker)
-- [Node.js](https://nodejs.org/) 20+ (for frontend development)
+- [Node.js](https://nodejs.org/) 20+ and [pnpm](https://pnpm.io/) 10+ (for frontend development — pnpm is the only package manager this repo uses)
 
 ## Quick Start
 
@@ -137,9 +137,9 @@ pytest -v
 
 ```bash
 cd frontend
-npm install
-npm run dev        # http://localhost:4321
-npm run build      # Production build
+pnpm install
+pnpm run dev       # http://localhost:4321
+pnpm run build     # Production build
 ```
 
 ## Documentation
