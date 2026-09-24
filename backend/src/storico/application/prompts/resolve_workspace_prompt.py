@@ -36,7 +36,6 @@ def build_default_prompt(
         workspace_id=workspace_id,
         system_prompt=SYSTEM_PROMPT_TASK_GENERATION,
         instruction_template=manager.get_template_source(DEFAULT_INSTRUCTION_TEMPLATE_NAME),
-        few_shot_examples=None,
     )
 
 

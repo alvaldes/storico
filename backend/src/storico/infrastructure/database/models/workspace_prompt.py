@@ -5,8 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, Text, Uuid
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 from uuid_utils.compat import uuid7
 
@@ -24,13 +23,6 @@ class WorkspacePromptModel(Base):
     )
     system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     instruction_template: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
-    # JSONB on Postgres, plain JSON elsewhere: revision 0009 converted this column to JSONB
-    # explicitly, naming richer Postgres indexing as the reason, and nothing here queries inside
-    # the document. Same dialect variant as ``user_preferences.preferences``, and load-bearing for
-    # the same reason — see that model's comment.
-    few_shot_examples: Mapped[dict | None] = mapped_column(
-        JSON().with_variant(JSONB(), "postgresql"), nullable=True, default=None
-    )
     few_shot_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )

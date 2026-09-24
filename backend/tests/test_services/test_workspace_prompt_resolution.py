@@ -62,7 +62,9 @@ class TestResolveWorkspacePrompt:
         assert prompt.system_prompt == SYSTEM_PROMPT_TASK_GENERATION
         assert prompt.instruction_template is not None
         assert "{{user_story}}" in prompt.instruction_template
-        assert prompt.few_shot_examples is None
+        assert prompt.few_shot_enabled is True
+        assert prompt.few_shot_limit == 3
+        assert prompt.few_shot_threshold == 0.85
 
 
 class TestCreateWorkspaceSeedsPrompts:
