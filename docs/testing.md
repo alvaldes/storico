@@ -175,7 +175,7 @@ cd frontend && pnpm run build
 ### Pendiente
 
 - Testing de stores Zustand adicionales
-- E2E testing (Playwright o similar — futuro)
+- E2E automatizado en CI: el guion manual existe (abajo) y se ejecutó una vez, pero no hay runner en el repo
 
 #### Brechas de verificación abiertas (medidas, no opiniones)
 
@@ -185,12 +185,15 @@ cd frontend && pnpm run build
    secuencia a mano (render `pending` → asentar). En producción el rechazo del POST pasa por I/O, así
    que React flushea el render de `pending` primero; pero con updates completamente batcheados el toast
    no saldría, y **ningún test cubre el caso colapsado**. Es preexistente: el `catch` que se borró era
-   inalcanzable, así que tampoco lo cubría.
-2. **Falta de verificación end-to-end.** Todo el frontend está verificado con vitest + jsdom y APIs
-   mockeadas. No hay ejecución en navegador: `@playwright/test` no es dependencia del proyecto y los
-   specs de `frontend/e2e/` no son ejecutables. Quedan sin cubrir el orden real de montaje/desmontaje
-   de las islas con View Transitions en un navegador y el CSS compilado (el fix de `--color-border`
-   se validó compilando el CSS por fuera de la suite).
+   inalcanzable, así que tampoco lo cubría. **Actualización 2026-09-24:** el render de `pending` sí se
+   observó en un navegador real (paso 7 del guion), así que el orden que asume el `useEffect` ocurre en
+   la práctica; el caso colapsado sigue sin cobertura de test.
+2. **La verificación end-to-end es manual, no automatizada.** Todo el frontend está verificado con
+   vitest + jsdom y APIs mockeadas, y **no hay ejecución en navegador en CI**. Los specs de
+   `frontend/e2e/` no eran ejecutables (`@playwright/test` nunca fue dependencia) y se retiraron el
+   2026-09-24: además de no correr, manejaban un editor de ejemplos few-shot que ya no existe. El
+   2026-09-24 esa brecha se cubrió **a mano, una vez**, con el guion de abajo. Lo que sigue abierto:
+   que eso corra en CI, más de un navegador o viewport, y el camino de fallo de la extracción.
 
 ## Estrategia General
 
@@ -202,4 +205,62 @@ cd frontend && pnpm run build
 | Backend unitarios | Tests aislados sin DB | ✅ Implementado |
 | Frontend stores | Unitarios con Vitest | 🔶 Parcial |
 | Frontend componentes | Testing Library | ✅ Implementado |
-| E2E | Playwright | 🔲 V2 |
+| E2E | ego-browser, guion manual | 🔶 Guion documentado y ejecutado una vez (2026-09-24); sin runner en CI |
+
+## Verificación en navegador real (ego-browser)
+
+Guion manual, ejecutado completo el **2026-09-24** contra el servidor de desarrollo. No es
+automatizable tal cual: necesita una sesión real de OAuth y el navegador de ego-browser. Reemplaza al
+spec de Playwright que se retiró.
+
+### Preparación
+
+```bash
+# Backend. El basicConfig no es decorativo: con uvicorn pelado, los logger.info de la
+# aplicación se descartan y no se ve, por ejemplo, la inyección del few-shot.
+cd backend && set -a; . ../.env; set +a
+.venv/bin/python -c "
+import logging, uvicorn
+logging.basicConfig(level=logging.INFO, format='%(levelname)s %(name)s %(message)s')
+uvicorn.run('storico.api.app:create_app', factory=True, host='127.0.0.1', port=8000)
+"
+
+# Frontend
+cd frontend && pnpm dev
+```
+
+Precondiciones: base en `alembic head`, Ollama arriba con `nomic-embed-text` (los embeddings de dev
+salen de ahí) y el `.env` fijando `STORICO_QDRANT_COLLECTION=storico_extractions_dev`.
+
+### Los pasos
+
+| # | Paso | Qué prueba |
+| --- | --- | --- |
+| 1 | Abrir `/en/dashboard` sin sesión | Redirige a `/en/login` |
+| 2 | Iniciar sesión con Google o GitHub | OAuth real contra el backend |
+| 3 | `/en/dashboard` | Hidratación de islas + datos reales de la API (workspace, rol, métricas, historia reciente) |
+| 4 | Navegar Dashboard → Stories → Dashboard → Kanban → Settings por el sidebar | View Transitions: las islas se desmontan y remontan; títulos y URLs correctos |
+| 5 | Settings del workspace | Config de LLM (proveedor, modelo, temperatura, tokens, base URL) y Prompt Configuration con **Automatic few-shot examples** (máximo de ejemplos, umbral) |
+| 6 | Abrir una historia | Lista y detalle: estado, historia completa y partes (Actor / Feature / Benefit) |
+| 7 | **Extract Tasks** | `202` → `Extracting...` → `Extracted`, tareas renderizadas y un punto nuevo en Qdrant |
+| 8 | Kanban: arrastrar una tarjeta desde el handle | Drag & drop persistido (`PUT /api/v1/tasks/<id>` → `200`) y sobrevive a una recarga completa |
+
+### Trampas medidas
+
+| Trampa | Qué pasa realmente |
+| --- | --- |
+| **El drag & drop "no funciona"** | El handle es el **ícono de grip de 16×16** de la esquina superior izquierda: `KanbanCard.tsx` aplica `dragHandleProps` ahí, no al cuerpo. Arrastrar el cuerpo no hace nada y parece un defecto. Hacen falta además un micro-movimiento inicial y pasos lentos |
+| El detalle de la historia aparece vacío | Es **latencia**, no un fallo. En dev, las llamadas por el proxy de Astro tardan entre 1,7 s y 31,8 s. Esperá y volvé a mirar antes de concluir nada |
+| "Loading settings..." eterno | Ídem: la página sondea los modelos del proveedor (`POST …/settings/llm/models`) antes de pintar |
+| `text=Extract Tasks` matchea dos elementos | El botón y el párrafo del estado vacío. Usá `loc=role:button[name="Extract Tasks"]` |
+| `loc=href:/en/stories` matchea dos | El link del sidebar y el del encabezado de "Recent stories". Usá `>> nth=0` |
+| Cada llamada de lista cuesta un `307` | El frontend pide `/api/v1/stories?page=1` sin barra final y FastAPI redirige a `/api/v1/stories/`. Duplica los viajes en un dev ya lento |
+| El tablero se corta a la derecha | Es scroll horizontal: con un viewport de 1340 px la columna `Done` queda fuera de pantalla |
+
+### Qué NO cubre
+
+- No corre en CI ni en ningún runner: es un guion manual.
+- Un solo navegador (ego-browser, Chromium 152) y un viewport.
+- El camino de fallo de la extracción, y por lo tanto el toast de fallo.
+- El bundle de producción: se ejercitó el servidor de desarrollo. CI corre `pnpm build` como gate, pero
+  el artefacto no se probó acá.
