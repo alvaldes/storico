@@ -502,10 +502,10 @@ class TestCustomProviderRegistry:
 
         The reservation answers "what may a name be registered as", which is not a
         question about a row that does not exist. The repository's contract reads
-        ``404`` as "that row does not exist or is not reachable", and ``403`` as
-        "authenticated but not a member or an admin" — an existing row in another
-        workspace reads as absent on purpose, so that it cannot be probed for
-        existence. This pins which side of that split the rename path is on.
+        ``404`` as "that row does not exist", and ``403`` as "you are not an admin
+        for this workspace, or the row exists but is not reachable from the
+        workspace in the path" — containment is reported, not collapsed into
+        absence. This pins which side of that split the rename path is on.
         """
         from uuid import uuid4
 
@@ -521,10 +521,18 @@ class TestCustomProviderRegistry:
         assert renamed.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_rename_cannot_reach_another_workspaces_provider(
+    async def test_rename_reports_a_foreign_provider_as_forbidden(
         self, async_client, db_session, seed_workspace
     ) -> None:
-        """A provider id from another workspace reads as absent, not as a write."""
+        """A provider id from another workspace is reported as contained, not absent.
+
+        The path declares the workspace, so the row's existence and its
+        reachability from that workspace are different facts: the foreign row
+        exists, so the rename answers 403 — the same rule ``projects.py`` and
+        ``extraction.py`` follow. The anti-probing rationale this path once
+        relied on (reporting the foreign id as 404 so it could not be probed for
+        existence) was retired on purpose (issue #5, 2026-09-24).
+        """
         user = await _create_user(db_session)
         headers = _auth_headers(str(user.id))
         first = (await _seed(seed_workspace, user)).workspace_id
@@ -539,8 +547,8 @@ class TestCustomProviderRegistry:
             headers=headers,
         )
 
-        assert renamed.status_code == 404
-        # The foreign row is untouched.
+        assert renamed.status_code == 403
+        # The foreign row is untouched — the property that matters for a write path.
         listed = await async_client.get(_providers_url(second), headers=headers)
         assert [p["name"] for p in listed.json()] == ["groq"]
 

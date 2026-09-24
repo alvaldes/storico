@@ -159,7 +159,7 @@ a 50 caracteres después del recorte, cualquier carácter permitido (mayúsculas
 acentos), y `Groq` y `groq` son dos proveedores distintos. Responde `409` si el nombre ya
 existe en el workspace, si es uno de los cuatro proveedores integrados (en cualquier
 combinación de mayúsculas) o si es el valor reservado del selector
-(`__add_custom_provider__`); un `providerId` de otro workspace responde `404`. Al renombrar
+(`__add_custom_provider__`); un `providerId` de otro workspace responde `403`. Al renombrar
 el proveedor que el workspace tiene seleccionado, también se actualiza
 `workspace_llm_configs.provider`.
 
@@ -216,22 +216,22 @@ chocar contra la regla que ahora lo reserva.
 | `internal_error` | 500 |
 
 **Contrato de existencia (404 vs 403).** En los recursos con alcance de workspace la regla es
-explícita: **404** cuando la fila no existe, **403** cuando existe pero no es alcanzable para quien
-consulta (membresía o contención). Está implementada y razonada en
-`backend/src/storico/api/routes/projects.py:95-101` y
-`backend/src/storico/api/routes/extraction.py:134-139`: la existencia y la contención son hechos
-distintos y se reportan distinto. Eso implica que un id de otro workspace se puede distinguir de un
-id inexistente. Es un comportamiento **elegido**, no una inconsistencia por arreglar — el mismo
-trade-off que ya aplicaba `extraction.py` —: unificarlo al revés, 404 para todo, sería una decisión
-de contrato de API, no un fix, porque cambiaría códigos que el cliente ya recibe y que hoy nadie
-ramifica.
+explícita y uniforme: **404** cuando la fila no existe, **403** cuando existe pero no es alcanzable
+para quien consulta (membresía o contención). Está implementada y razonada en
+`backend/src/storico/api/routes/projects.py:95-101`,
+`backend/src/storico/api/routes/extraction.py:134-139` y
+`backend/src/storico/api/routes/workspace_settings.py` (el handler `rename_custom_provider`):
+la existencia y la contención son hechos distintos y se reportan distinto. Eso implica que un id de
+otro workspace se puede distinguir de un id inexistente. Es un comportamiento **elegido**, no una
+inconsistencia por arreglar — el mismo trade-off que ya aplicaba `extraction.py` —: unificarlo al
+revés, 404 para todo, sería una decisión de contrato de API, no un fix, porque cambiaría códigos que
+el cliente ya recibe y que hoy nadie ramifica.
 
-La excepción es el proveedor propio: `backend/src/storico/api/routes/workspace_settings.py:356-358`
-responde **404** cuando el `providerId` pertenece a otro workspace, así que ahí ese id **no** se
-distingue de uno inexistente (el mensaje es "Custom provider not found"). El backlog retirado
-afirmaba que la regla era uniforme en todo el backend; medido el 2026-09-23 no lo es para esa ruta.
-Alinear la excepción o mantenerla es una decisión de contrato de API, y no forma parte de este
-retiro.
+Hasta el 2026-09-24 (issue #5) el proveedor propio era la excepción:
+`rename_custom_provider` respondía **404** cuando el `providerId` pertenecía a otro workspace, así
+que ese id **no** se distinguía de uno inexistente — la lectura anti-probing era deliberada. El
+operador la retiró a propósito y alineó la ruta con el resto; el costo aceptado es que un id de otro
+workspace ahora es distinguible de uno inexistente.
 
 ### Extracción
 
