@@ -16,6 +16,7 @@
 | [Despliegue](deployment.md) | Docker Compose, producción en Vercel |
 | [Internacionalización](i18n.md) | Cómo funciona i18n, agregar idiomas |
 | [Seguridad](security.md) | Auth, OAuth, permisos |
+| [Deuda conocida](known-issues.md) | Deuda aceptada: falsos positivos y ruido de análisis estático |
 
 ## Documentos externos
 

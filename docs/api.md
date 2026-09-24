@@ -212,6 +212,24 @@ chocar contra la regla que ahora lo reserva.
 | `repository_error` | 500 |
 | `internal_error` | 500 |
 
+**Contrato de existencia (404 vs 403).** En los recursos con alcance de workspace la regla es
+explícita: **404** cuando la fila no existe, **403** cuando existe pero no es alcanzable para quien
+consulta (membresía o contención). Está implementada y razonada en
+`backend/src/storico/api/routes/projects.py:95-101` y
+`backend/src/storico/api/routes/extraction.py:134-139`: la existencia y la contención son hechos
+distintos y se reportan distinto. Eso implica que un id de otro workspace se puede distinguir de un
+id inexistente. Es un comportamiento **elegido**, no una inconsistencia por arreglar — el mismo
+trade-off que ya aplicaba `extraction.py` —: unificarlo al revés, 404 para todo, sería una decisión
+de contrato de API, no un fix, porque cambiaría códigos que el cliente ya recibe y que hoy nadie
+ramifica.
+
+La excepción es el proveedor propio: `backend/src/storico/api/routes/workspace_settings.py:356-358`
+responde **404** cuando el `providerId` pertenece a otro workspace, así que ahí ese id **no** se
+distingue de uno inexistente (el mensaje es "Custom provider not found"). El backlog retirado
+afirmaba que la regla era uniforme en todo el backend; medido el 2026-09-23 no lo es para esa ruta.
+Alinear la excepción o mantenerla es una decisión de contrato de API, y no forma parte de este
+retiro.
+
 ### Extracción
 
 ```http

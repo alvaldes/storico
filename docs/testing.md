@@ -1,7 +1,7 @@
 # Testing
 
 > Estrategia de tests para Storico.
-> Última actualización: 2026-07-15
+> Última actualización: 2026-09-23
 
 ## Backend
 
@@ -33,6 +33,12 @@ cd backend && .venv/bin/pytest tests/test_api/test_projects.py -v
 # Con cobertura
 cd backend && .venv/bin/pytest --cov=storico
 ```
+
+> **Nota**: `pytest-cov` **no es confiable en este entorno** — reporta como faltantes líneas que un
+> `sys.settrace` ve ejecutar (p. ej. `dependencies.py:259-270`, contradiciendo tests que pasan). Repro:
+> `COVERAGE_FILE=/tmp/x python -m pytest tests/test_api/test_stories.py --cov=storico.api`. No hay
+> variables `COVERAGE_*` ni `.coveragerc` que lo expliquen. Cross-checkear con un tracer antes de
+> concluir algo por coverage.
 
 ### Estructura de tests
 
@@ -89,6 +95,14 @@ ejecutan solos cuando hay un daemon de Docker accesible: en GitHub Actions el
 runner lo tiene, así que **corren en CI**; en una máquina sin Docker el módulo se
 salta (no falla) según `_docker_reachable()`. Que se salten en tu máquina es
 normal y también significa que un error ahí solo aparece en CI.
+
+**El primer run del CI puede salir rojo por infraestructura, no por código.**
+`tests/test_integration/test_projects_integration.py` se saltea **localmente** porque el daemon de
+Docker no responde, y en los runners de GitHub Docker sí está, así que va a intentar levantar
+`PostgresContainer("postgres:16-alpine")`: el total esperado ahí al retirar el backlog (2026-09-23)
+era 733 passed, sin skips, o un fallo de pull de imagen. La condición del skip se dejó intacta **a
+propósito**, para no maquillar el resultado: un rojo por infraestructura es señal, y esconderla
+tocando la condición no lo arregla.
 
 - El contenedor usa su driver **sincrónico** y el test convierte la URL a
   `postgresql+asyncpg` por su cuenta. Las versiones de `testcontainers` que
@@ -161,6 +175,21 @@ cd frontend && npm run build
 - Testing de componentes React (Vitest + Testing Library)
 - Testing de stores Zustand adicionales
 - E2E testing (Playwright o similar — futuro)
+
+#### Brechas de verificación abiertas (medidas, no opiniones)
+
+1. **El toast de fallo asume que el render de `pending` se observó antes de asentarse.** La autoridad
+   única del toast de fallo es el `useEffect` de `StoryDetail`, que dispara sólo si
+   `prevExtractionStatus === 'pending'` cuando la extracción se asienta. El test de componente arma esa
+   secuencia a mano (render `pending` → asentar). En producción el rechazo del POST pasa por I/O, así
+   que React flushea el render de `pending` primero; pero con updates completamente batcheados el toast
+   no saldría, y **ningún test cubre el caso colapsado**. Es preexistente: el `catch` que se borró era
+   inalcanzable, así que tampoco lo cubría.
+2. **Falta de verificación end-to-end.** Todo el frontend está verificado con vitest + jsdom y APIs
+   mockeadas. No hay ejecución en navegador: `@playwright/test` no es dependencia del proyecto y los
+   specs de `frontend/e2e/` no son ejecutables. Quedan sin cubrir el orden real de montaje/desmontaje
+   de las islas con View Transitions en un navegador y el CSS compilado (el fix de `--color-border`
+   se validó compilando el CSS por fuera de la suite).
 
 ## Estrategia General
 
