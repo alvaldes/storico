@@ -5,6 +5,7 @@ so no real network calls or databases are needed.
 """
 
 import inspect
+import logging
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -330,8 +331,14 @@ class TestQdrantAdapter:
     # ── store_extraction — graceful degradation ──────────────────────
 
     @pytest.mark.asyncio
-    async def test_store_extraction_embedding_fails(self) -> None:
-        """Embedding failure silently skips store (no qdrant call)."""
+    async def test_store_extraction_embedding_fails(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Embedding failure skips store (no qdrant call) and logs one loud ERROR.
+
+        The skip itself is deliberate graceful degradation — the port returns ``False``
+        and never raises. What changed is that the skip is no longer silent: an empty
+        embedding once meant an extraction's RAG point vanished with nothing observable
+        anywhere, because the embedding service degrades connection errors to ``[]``.
+        """
         port = _make_embedding_port()
         port.embed.return_value = []
 
@@ -344,17 +351,28 @@ class TestQdrantAdapter:
         mock_client = AsyncMock()
         adapter._client = mock_client
 
-        stored = await adapter.store_extraction(
-            extraction_id="ext-123",
-            user_story_text="test",
-            tasks_summary="tasks",
-            model_used="test",
-            workspace_id=self.workspace_id,
-        )
+        with caplog.at_level(logging.ERROR, logger="storico.infrastructure.vector.qdrant_adapter"):
+            stored = await adapter.store_extraction(
+                extraction_id="ext-123",
+                user_story_text="test",
+                tasks_summary="tasks",
+                model_used="test",
+                workspace_id=self.workspace_id,
+            )
 
         # Nothing landed, so the store reports a skip rather than success.
         assert stored is False
         mock_client.upsert.assert_not_called()
+
+        # Exactly one ERROR record, asserted on the record itself (not just the message
+        # string) so the structured fields are pinned, not only the prose.
+        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(error_records) == 1
+        record = error_records[0]
+        assert "empty embedding" in record.getMessage().lower()
+        assert record.extraction_id == "ext-123"
+        assert record.collection == self.collection
+        assert record.reason == "empty_embedding"
 
     @pytest.mark.asyncio
     async def test_store_extraction_qdrant_error(self) -> None:
@@ -383,6 +401,93 @@ class TestQdrantAdapter:
 
         # A rejected upsert is a failure, never a silent success.
         assert stored is False
+
+    @pytest.mark.asyncio
+    async def test_store_extraction_client_unavailable_logs_one_error_record(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """An unavailable Qdrant client logs one ERROR with the shared field shape.
+
+        The graceful-degradation contract (``False``, never raises) must survive, but
+        every failure path of ``store_extraction`` must be observable with the same
+        ``extraction_id`` / ``collection`` / ``reason`` fields, so an operator can
+        correlate a missing RAG point with its cause from the log alone.
+        """
+        port = _make_embedding_port(dimensions=3)
+        port.embed.return_value = [0.1, 0.2, 0.3]
+
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+        # Force a fresh lazy init so the client is actually built (and fails) below.
+        adapter._client = None
+
+        with caplog.at_level(logging.ERROR, logger="storico.infrastructure.vector.qdrant_adapter"):
+            with patch(
+                "storico.infrastructure.vector.qdrant_adapter.AsyncQdrantClient",
+                side_effect=RuntimeError("connection refused"),
+            ):
+                stored = await adapter.store_extraction(
+                    extraction_id="ext-42",
+                    user_story_text="test",
+                    tasks_summary="tasks",
+                    model_used="test",
+                    workspace_id=self.workspace_id,
+                )
+
+        # The port's contract: a skip, never a raise.
+        assert stored is False
+
+        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(error_records) == 1
+        record = error_records[0]
+        assert record.extraction_id == "ext-42"
+        assert record.collection == self.collection
+        assert record.reason == "client_unavailable"
+
+    @pytest.mark.asyncio
+    async def test_store_extraction_upsert_failure_logs_one_error_record(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A failed upsert logs one ERROR with the shared field shape, not a warning.
+
+        A lost RAG point is an incident-shaped outcome (it silently degraded future
+        few-shot prompts), so it must be logged at ERROR like the other skip paths.
+        """
+        port = _make_embedding_port()
+        port.embed.return_value = [0.1, 0.2, 0.3]
+
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+
+        mock_client = AsyncMock()
+        mock_client.upsert.side_effect = RuntimeError("Qdrant down")
+        adapter._client = mock_client
+
+        with caplog.at_level(logging.ERROR, logger="storico.infrastructure.vector.qdrant_adapter"):
+            stored = await adapter.store_extraction(
+                extraction_id="ext-7",
+                user_story_text="test",
+                tasks_summary="tasks",
+                model_used="test",
+                workspace_id=self.workspace_id,
+            )
+
+        assert stored is False
+
+        error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(error_records) == 1
+        record = error_records[0]
+        assert record.extraction_id == "ext-7"
+        assert record.collection == self.collection
+        assert record.reason == "upsert_failed"
 
     # ── Lazy init / collection ensure ─────────────────────────────────
 

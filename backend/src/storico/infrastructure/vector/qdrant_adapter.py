@@ -210,15 +210,40 @@ class QdrantAdapter(VectorStorePort):
 
         Returns ``True`` only when Qdrant accepted the point; every skip or
         failure path returns ``False`` (graceful degradation, never raises).
+        Every skip or failure is logged at ERROR with a shared field shape
+        (``extraction_id``, ``collection``, ``reason``) so a lost RAG point can be
+        correlated with its cause from the log alone — an empty embedding once made
+        the point vanish with nothing observable anywhere, because the embedding
+        service degrades connection errors to ``[]``.
         """
         # Generate embedding
         embedding = await self._embedding_port.embed(user_story_text)
         if not embedding:
+            # The embedding port degrades its own failures to ``[]``, so an empty
+            # vector here usually means the embedding call failed, not that the
+            # story was empty. Loud, structured, and still non-raising: the port's
+            # graceful-degradation contract is deliberate.
+            logger.error(
+                "Empty embedding returned by the embedding port; RAG point not stored",
+                extra={
+                    "extraction_id": extraction_id,
+                    "collection": self._collection_name,
+                    "reason": "empty_embedding",
+                },
+            )
             return False
 
         # Get Qdrant client (lazy init)
         client = await self._get_client()
         if client is None:
+            logger.error(
+                "Qdrant client unavailable; RAG point not stored",
+                extra={
+                    "extraction_id": extraction_id,
+                    "collection": self._collection_name,
+                    "reason": "client_unavailable",
+                },
+            )
             return False
 
         # Upsert point
@@ -242,7 +267,17 @@ class QdrantAdapter(VectorStorePort):
                 ],
             )
         except Exception as e:
-            logger.warning("Qdrant store failed: %s", e)
+            # ERROR, not the former warning: a lost point silently degraded future
+            # few-shot prompts for this workspace, which is incident-shaped.
+            logger.error(
+                "Qdrant upsert failed; RAG point not stored: %s",
+                e,
+                extra={
+                    "extraction_id": extraction_id,
+                    "collection": self._collection_name,
+                    "reason": "upsert_failed",
+                },
+            )
             return False
 
         return True
