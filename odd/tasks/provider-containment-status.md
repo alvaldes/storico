@@ -93,6 +93,43 @@ Grepped `backend/tests/`, `backend/src/`, `docs/`, `frontend/src/` for
   change. Corrected after the independent verification pointed out that this claim was originally
   narrower than the grep behind it.
 
+## Review
+
+**The native review could not complete. No candidate was admitted, no authority was burned, nothing was
+corrected.** This change is gated but **not natively reviewed**, and that must not be rounded up to
+"done".
+
+Lineage `review-de3bd6f5044ede24`, started 2026-09-24 against commit `366ed6e`: tier `medium`, one lens,
+`review-reliability`, 182 changed lines, correction budget 91. The projection was correct — exactly the
+four files of this work unit, with no accumulated drift from the other batches, because this branch
+carries one commit off `main`.
+
+The reviewer slot was captured once, after the operator authorised the forecast run (one model run, one
+lens). It failed in the transport, not in the review:
+
+```
+outcome: pi-host-relay-transport-failure
+failure: {kind: reviewer-empty-output, stage: pi, exit_code: null, timed_out: false,
+          elapsed_ms: 58917, timeout_ms: 923639, reviewer: {stopReason: length}}
+reason:  "Reviewer produced no text for review-reliability (stopReason: length)."
+mutation_performed: false
+```
+
+The model ran for about 59 seconds and returned **no text at all**: the output budget was exhausted before
+any artifact existed. `mutation_performed: false` on every attempt, and a fresh `STATUS` reoffered the
+same slot against the same revision, so the native state stayed consistent — the failure lives entirely in
+the relay, not in the review authority.
+
+This is the **second observed failure mode of the same `pi_host_relay` step**. The first is recorded in
+`odd/tasks/prod-honesty-followups.md`: four attempts, each around 55 seconds, ending in
+`Expected property name or '}' in JSON at position 1`, also with no artifact and no burned authority. Two
+distinct failure shapes in one relay step mean the relay is the blocker, not the candidate.
+
+The operator decided on 2026-09-24 to publish this change under the repository's ordinary policy with the
+review recorded as **not run**, rather than leave it unpublished while the relay is broken. That decision
+is the operator's; this record does not treat a missing review as an approval, and re-running the review
+later stays open.
+
 ## Deliberately not done
 
 - `projects.py` and `extraction.py` already implement the chosen rule — untouched.
