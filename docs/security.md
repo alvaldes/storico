@@ -98,7 +98,7 @@ protectedPaths = ['/dashboard', '/stories', '/kanban', '/export', '/account']
 - [ ] Rate limiting (`slowapi` en FastAPI o un límite de tasa en Caddy; el backend no está en Vercel, así que un WAF de Vercel no protege la API)
 - [ ] Error monitoring (Sentry)
 - [ ] Auditoría de variables de entorno (el `.env` de la VM **y** el proyecto de Vercel, que solo lleva las del frontend)
-- [ ] Dominio personalizado + renovar SSL
+- [x] Dominio personalizado — **no se usa**, decidido el 2026-09-23: producción ya sirve HTTPS con el certificado de Vercel en el front y el del host de la VM en la API, así que no se compra dominio ni se agrega un paso de renovación propio.
 - [ ] Restringir CORS a dominios específicos
 
 ## Referencias
