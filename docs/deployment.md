@@ -89,6 +89,18 @@ colección devuelve vecinos con una similitud que no significa nada — y sin ni
 La colección se crea sola en el primer uso, con las dimensiones de `STORICO_EMBEDDING_DIMENSIONS`
 y su índice `workspace_id`.
 
+**Dev tiene que fijar el nombre a mano.** El default de `STORICO_QDRANT_COLLECTION` es
+`storico_extractions`, que no es ninguna de las dos: sin esa variable, un backend de dev escribe en una
+tercera colección y el nombre "de prod" queda libre para que cualquiera lo use con otro modelo de
+embeddings. La línea va en el `.env` de la raíz del repo:
+
+```bash
+STORICO_QDRANT_COLLECTION=storico_extractions_dev
+```
+
+Medido el 2026-09-24: el `.env` local no la tenía, y el cluster tenía `storico_extractions` (19 puntos
+de verificación) y `storico_extractions_prod` (1 punto) — `storico_extractions_dev` **no existía**.
+
 ### Variables de entorno requeridas
 
 Ver `.env.example` y `prod.todo.md` para la lista completa. En producción el contrato vive en
