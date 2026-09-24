@@ -193,13 +193,42 @@ feature #6, the executive description, the pipeline step and ADR-009), so the ho
 turn the judge on (one extra LLM call per extraction) or to correct those four claims, and that is the
 owner's decision, not this batch's.
 
+**Two preconditions for the "turn it on" option**, raised by the peer session that re-verified this
+section and **re-measured here**:
+
+1. **The judge's own failure path is silent.** `extraction_task.py:418-426` catches `LLMError`, logs a
+   single `warning` and leaves `confidence = None`. With the flag **on**, a transient judge failure
+   produces the *same* `confidence_score: null` in the row and in the point as the flag-**off** case —
+   indistinguishable in the persisted data. Off, the null is intentional and consistent; on, it becomes
+   ambiguous (did the judge not run, or did it fail?). If the judge is turned on, that path has to
+   leave a mark in the payload or in `error_info`, not only in the logs. It is the same 
+   silent-degradation shape as the RAG no-op this batch fixed.
+2. **`total_score` enters unclamped, on both ends.** `extraction_judge_service.py:121,133` takes `int()`
+   straight from the model's JSON with no range check, and `extraction_task.py:415` divides by a fixed
+   `50.0` with the only cap being *downward* (0.5 when the judge did not approve). Measured by feeding
+   crafted payloads through `_parse_judge_response`:
+
+   | `total_score` from the model | `confidence_score` persisted |
+   | --- | --- |
+   | 45 | `0.9` |
+   | 50 | `1.0` |
+   | **75** | **`1.5`** — above the declared range |
+   | **-5** | **`-0.1`** — negative, also open |
+   | 75 with `approved: false` | `0.5` — the approval cap does work |
+
+   The prompt declares `"total_score": 0-50` and five criteria at `0-10`, so a compliant model stays in
+   range; nothing in the code enforces it, and `JudgeResult` is a plain class with no validation.
+   Latent while the flag is off, and a precondition for turning it on rather than a detail to handle
+   afterwards. A `min(1.0, …)` closes one end and a clamp of `total_score` to `[0, 50]` closes both.
+
 ## Still open
 
 1. **V2** is the most concrete debt this batch creates: a test that reaches a real provider. It needs its own slice.
 2. **V3, V4, V6** — recorded above with their measurements, each small, none blocking.
 3. **C9/F4**: a full-suite failure with no reproduction and no known cause, after 18 full-suite runs by
    the verifier and 10 by the parent. Not called flaky, because nobody has evidence.
-4. **F6 — the judge**: turn it on with tests, or remove the claim from `AGENTS.md` and the pipeline docs.
+4. **F6 — the judge**: turn it on with tests **and both preconditions recorded above** (a judge failure
+   that leaves a mark, and a clamped score), or remove the claim from `AGENTS.md` and the pipeline docs.
 5. **The 19 verification points** and the now-unused `storico_extractions` collection. Deleting points
    is a destructive mutation and stays the owner's decision.
 6. **`task_type` on the query side.** `GoogleEmbeddingAdapter` sends `RETRIEVAL_DOCUMENT` for both the
