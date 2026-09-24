@@ -1,13 +1,16 @@
 # ODD Feature: prod-honesty-followups
 
-> **Status**: **implemented, gated, and NOT natively reviewed.** Branch `fix/prod-honesty-followups` off
-> `main` @ `ade40ff` (`v0.5.0`, pushed), with four work-unit commits — `6e04218`, `04b743d`, `53f1693`,
-> `ba3adc2` — plus the commit that carries this record. **Nothing is pushed.** The five gates are green by
-> an independent read-only verifier, but **zero candidates were admitted by native review**, for two
-> independent blockers recorded under "Review". This batch cannot be called landed.
+> **Status**: **landed on 2026-09-24, and NOT natively reviewed.** The batch was unpushed until then: its
+> five work-unit commits (`6e04218`, `04b743d`, `53f1693`, `ba3adc2` and the commit that carried this
+> record) sat on the branch `fix/prod-honesty-followups` off `main` @ `ade40ff` (`v0.5.0`), green by an
+> independent read-only verifier, with **zero candidates admitted by native review** for the two blockers
+> recorded under "Review". It was delivered by splitting into one branch per unit and landing them as
+> PRs #11-#15, which unblocks nothing about those blockers — the review is still absent. See
+> "Delivered" below.
 > **Created**: 2026-09-22
 > **Workflow**: Organic Driven Development (ODD)
-> **Receipt-driven development**: on in this clone (decided by global).
+> **Receipt-driven development**: on in this clone when this batch was written (decided by global);
+> **off since 2026-09-24** (decided by clone_local), because the reviewer relay could not complete.
 
 ## Problem
 
@@ -255,11 +258,34 @@ natively and never Pi-authored; fabricating the reviewer artifact to unblock the
 exactly the shortcut this batch exists to remove. No native harness state was deleted or hand-edited, and
 the branch history was not rewritten.
 
+## Delivered
+
+The batch landed on **2026-09-24**, after the two blockers under "Review" kept it unpublished for two
+days. Nothing about those blockers was resolved: what changed is the delivery route.
+
+- The five work-unit commits were split into **one branch per unit off `main`**, because `inspect` derives
+  the candidate from the branch point and a branch of sequential commits cannot isolate a unit. Each unit
+  kept one commit, and the landed commits carry a `patch-id` **identical** to the ones the original branch
+  had.
+- They landed as pull requests **#11** (`fix/rag-point-model-confidence`), **#12**
+  (`fix/application-logging`), **#13** (`fix/trello-export-copy`), **#14**
+  (`docs/record-status-corrections`) and **#15** (this record). The original branch
+  `fix/prod-honesty-followups` was deleted afterwards: it held nothing the five did not.
+- Every unit was **re-verified on its own base** before landing, not merely cherry-picked. `#11`: 764
+  passed, 21 skipped. `#12`: 771 passed, 21 skipped. `#13`: `tsc` clean and 425 frontend tests passed.
+- The operator **disabled the review switch for this clone** on 2026-09-24
+  (`review mode disable --scope clone`), after the relay failed in two distinct ways: the unparseable
+  completion recorded under "Review", and later `reviewer-empty-output` with `reviewer.stopReason:
+  length` on another candidate. Delivery therefore followed the repository's ordinary policy.
+
+**This does not convert the missing review into an approval.** No lens verdict exists for any of the five
+units, none was authored by the agent, and re-attempting the review stays open.
+
 ## Still open after this batch
 
-1. **The native review of this batch.** Four work units are gated and unreviewed. The re-attempt needs a
-   working relay and, for WU2/WU3/WU4, a branch arrangement where each unit sits directly on the branch
-   point.
+1. **The native review of this batch.** The five units are landed and still unreviewed. The branch
+   arrangement the re-attempt needed now exists — one unit per branch off `main`, which is the shape
+   `inspect` can isolate — so the only remaining blocker is the relay.
 2. **F10** — the poll response's `tasks` field is always empty. Unchanged by this batch.
 3. **The duplicated extraction flow** — `ExtractionService.extract_and_persist` is production-dead while the
    background task re-implements its persistence. D1 deliberately leaves it; it is a real design decision,
