@@ -254,14 +254,39 @@ section and **re-measured here**:
    wrong place. Less severe than the two silent defects, because this one does fail loudly, and the
    same family: judge output entering the system unvalidated.
 
+   **And the obvious fix for it makes things worse.** Widening the guard to also catch
+   `ValueError`/`TypeError`/`AttributeError` moves the only *visible* failure into the silent family.
+   Measured by modelling the caller both ways:
+
+   | Case | `except LLMError` (today) | Widened `except` |
+   | --- | --- | --- |
+   | flag off | `None` | `None` |
+   | on, judge OK | `0.9` | `0.9` |
+   | on, transient failure | `None` | `None` |
+   | on, unusable output | **propagates `ValueError`** — visible | **`None`** — silent |
+
+   So the three defects are not fixed in the same place, and the third must **not** be fixed by
+   widening the catch: that is exactly the direction this record's own conclusion says not to take.
+   The shape that respects it:
+
+   1. **Coerce and clamp at the boundary** — in `_parse_judge_response` or in `JudgeResult` — so the
+      judge's output is always a well-defined score in `[0, 50]`.
+   2. **An uncoercible input becomes a classified failure**, not a swallowed one.
+   3. **The persisted result has to distinguish three states, not two.** Today the `extractions` row
+      can already separate "not requested" from "ran", through `prompt_config.validate`
+      (`extraction_task.py:439`) — but the **Qdrant point payload cannot**: measured, it carries seven
+      keys and no `prompt_config`. A `null` in the point is therefore ambiguous **by construction**,
+      whatever is done to the judge.
+
 ## Still open
 
 1. **V2** is the most concrete debt this batch creates: a test that reaches a real provider. It needs its own slice.
 2. **V3, V4, V6** — recorded above with their measurements, each small, none blocking.
 3. **C9/F4**: a full-suite failure with no reproduction and no known cause, after 18 full-suite runs by
    the verifier and 10 by the parent. Not called flaky, because nobody has evidence.
-4. **F6 — the judge**: turn it on with tests **and both preconditions recorded above** (a judge failure
-   that leaves a mark, and a clamped score), or remove the claim from `AGENTS.md` and the pipeline docs.
+4. **F6 — the judge**: turn it on with tests **and the three preconditions recorded above** (a judge
+   failure that leaves a mark, a score clamped at the boundary, and uncoercible output classified
+   rather than swallowed), or remove the claim from `AGENTS.md` and the pipeline docs.
 5. **The 19 verification points** and the now-unused `storico_extractions` collection. Deleting points
    is a destructive mutation and stays the owner's decision.
 6. **`task_type` on the query side.** `GoogleEmbeddingAdapter` sends `RETRIEVAL_DOCUMENT` for both the
