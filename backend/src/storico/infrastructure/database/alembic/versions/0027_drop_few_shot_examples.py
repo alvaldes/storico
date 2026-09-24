@@ -6,9 +6,9 @@ wrapped and unwrapped around the domain entity. Since automatic retrieval
 landed (0020), few-shot examples live as points in the vector store and are
 retrieved per workspace at extraction time; the column was kept read-only only
 so the one-time seed job (``storico.cli.seed_few_shot``) could migrate legacy
-values into Qdrant. The dev database holds 14 rows and none of them carried
-content, so there was nothing to migrate — the seed job, its tests, and this
-column go together.
+values into Qdrant. The dev database holds 14 rows and production holds 2, and
+none of them carried content, so there was nothing to migrate — the seed job,
+its tests, and this column go together.
 
 The API already rejects the field (``PromptRequest`` sets ``extra="forbid"``,
 posting it answers 422), so no API surface changes here.
@@ -49,13 +49,18 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Drop the legacy ``few_shot_examples`` column.
 
-    Measured on the **dev** database before this revision ran: 14 rows, **none of
-    them carrying content** (0 non-empty payloads), so the drop destroys no value
-    there. That measurement is pre-drop and stops being reproducible once the
-    column is gone. **Production was not measured**, because its database is Neon
-    and its credentials live in the VM's ``.env`` — so the deploy that runs this
-    revision should confirm the same shape first: the ``downgrade`` restores the
-    column but not the values it held.
+    Measured before this revision ran, on both databases: dev holds 14 rows and
+    production 2, and **none of them carries content** — 0 in each.
+
+    Both counts are shape-aware, because the obvious query lies. Every row stores
+    the JSONB *scalar* ``null``, not SQL NULL, so ``WHERE few_shot_examples IS NOT
+    NULL`` answers "14 of 14" and "2 of 2": an audit that stops there reports data
+    where there is none. What matters is an object with a non-empty ``items``
+    array, or a non-empty array, and that count is zero on both.
+
+    Both measurements are pre-drop, so neither stays reproducible once this
+    revision runs: the ``downgrade`` restores the column but not the values it
+    held.
 
     The few-shot retrieval config columns added by 0020 (``few_shot_enabled``/
     ``few_shot_limit``/``few_shot_threshold``) are untouched.

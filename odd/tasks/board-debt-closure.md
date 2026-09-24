@@ -257,10 +257,23 @@ same shape as the previous four releases.
 touches `backend/**`. Its merge rebuilds the image and applies `alembic upgrade head` inside the
 maintenance window — which is what drops the column in production.
 
-Safe by design, because no release is live during the migration. But **production's rows were never
-measured**: only dev was, and it showed 0 of 14 carrying content. The migration's own docstring asks
-the deploy to confirm the same shape first, since the `downgrade` restores the column but not its
-values. It is one read-only query on the VM and it needs the owner's authorization.
+Safe by design, because no release is live during the migration. And the drop destroys nothing:
+**production was measured** (2026-09-24, read-only, with the owner's authorization) before this PR
+opened.
+
+| Database | `workspace_prompts` rows | Carrying content |
+| --- | --- | --- |
+| dev | 14 | **0** |
+| production | 2 | **0** |
+
+Measuring it surfaced a trap worth keeping: **the obvious query lies.** Every row stores the JSONB
+*scalar* `null` rather than SQL `NULL`, so `WHERE few_shot_examples IS NOT NULL` answers "14 of 14" in
+dev and "2 of 2" in production. An audit that stops there reports data where there is none — and that
+is exactly what the producer's first pre-check numbers looked like before the shape-aware count
+corrected them. What matters is an object with a non-empty `items` array, or a non-empty array.
+
+Production also confirmed the deploy ordering: it sits at revision `0026`, so the column is still
+there and the release that stops reading it is the one this merge deploys.
 
 ## Checks (authored line forecast)
 
