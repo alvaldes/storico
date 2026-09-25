@@ -88,7 +88,8 @@ make test-backend PYTHON="conda run -n storico python"
 Usa siempre `python -m <herramienta>` en vez del nombre desnudo: el env `storico` no tiene
 el script de consola `bin/ruff`, pero `python -m ruff` funciona. El launcher canónico es
 `python -m uvicorn storico.api.app:create_app --factory --port 8000`, la misma forma que
-el CMD de `backend/Dockerfile` y `entrypoint.sh`, y el `--factory` explícito no es
+el CMD de `backend/Dockerfile` —el único launcher que existe: `entrypoint.sh` se borró el
+2026-09-25 y nunca usó `--factory`—, y el `--factory` explícito no es
 opcional: sin él, uvicorn se traga un `TypeError` levantado dentro de `create_app()` y
 deja la función desnuda como app ASGI, un servidor roto sin error de arranque; con
 `--factory`, ese mismo fallo corta el proceso. La forma de path

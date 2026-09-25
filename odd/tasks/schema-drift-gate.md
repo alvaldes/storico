@@ -149,7 +149,10 @@ red instead of reporting success over a broken release.
 - **Versioned image tags, and rollback.** The workflow tags every build `storico-api` and has no
   rollback step; that is a separate deficiency with its own decision.
 - **`backend/entrypoint.sh` is dead code** (never copied, no `ENTRYPOINT`), so it is not the place to put
-  a pre-flight check. Recorded, not fixed.
+  a pre-flight check. Recorded, not fixed. **Deleted 2026-09-25**
+  (`odd/tasks/retire-vercel-api-project.md`), which removes the hazard and a false citation with it:
+  `AGENTS.md` offered it as an example of the canonical `--factory` launcher, and it never passed
+  `--factory` at all.
 - **The `env.py` statement-cache asymmetry** versus the application engine. Recorded as an unverified
   risk; whether production even connects through Neon's pooler is not known from the repository.
 - **Incidental drift found while classifying**: `0016` creates `idx_tasks_user_story_id` while `0001`

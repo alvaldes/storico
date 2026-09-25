@@ -39,6 +39,11 @@ repository's last merge — consistent with the Vercel check that runs on every 
 artifacts D5 contemplated deleting are the build configuration of a live project**, and deleting them
 would break it.
 
+**Correction, 2026-09-25.** The project was deleted that day, so the paragraph above no longer holds as
+stated: with nothing pointing at `backend/`, those artifacts configure nothing, and they are deleted in
+`odd/tasks/retire-vercel-api-project.md`. The paragraph stays as written because it records what was
+measured on 2026-09-23, and that measurement was correct.
+
 Whether that project serves real traffic is a different question, and the operator's answer is that it does
 not: the endpoint in use is the VM. That distinction is the reason this record exists.
 
@@ -58,6 +63,8 @@ not: the endpoint in use is the VM. That distinction is the reason this record e
   repository (`odd/tasks/prod-checklist-honesty.md`). If the project wants the host out of every document,
   `docs/api.md` is a second place to change, not the first — say so and it changes.
 - **Nothing was deleted.** D5's artifacts stay until the Vercel project's role is decided.
+  **Superseded 2026-09-25:** the role was decided — the project was deleted for capacity, not for
+  security — and the artifacts went with it (`odd/tasks/retire-vercel-api-project.md`).
 - **D5's own record was not edited**: it is on a branch that is not on `main`, and editing a branch under
   review from here would mix two batches. This record is the answer that branch's record cannot yet carry.
 

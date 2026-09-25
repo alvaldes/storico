@@ -209,7 +209,13 @@ substitute for the other.
 2. **`backend/api/index.py` fails `ruff check`** (I001, one fixable import order) and
    `backend/spec-tasks-api-endpoints.md` fails `ruff format` on its embedded Python blocks. Neither
    is linted by CI because both sit outside `src tests`. Either widen the CI scope or fix them; a
-   gate that does not cover a real file is a gate with a hole in it.
+   gate that does not cover a real file is a gate with a hole in it. **Half resolved 2026-09-25:**
+   `backend/api/index.py` was deleted (`odd/tasks/retire-vercel-api-project.md`) and `ruff check .`
+   from the repository root is now green. The other half does not reproduce today: `ruff format
+   --check .` reports 237 files already formatted and refuses a `.md` path without preview mode, so
+   `spec-tasks-api-endpoints.md` cannot fail it as measured. What remains is the hole itself — CI
+   still runs `ruff check src tests`, so a Python file outside those two directories is still
+   unguarded, and that widening is a follow-up rather than part of this batch.
 3. **Gemini's built-in branch has no positive-construction test** in `test_llm_test_route.py`.
 4. **`api/schemas/workspace_llm_config.py:35` re-types `max_length=50`** rather than importing the
    shared `NAME_MAX_LENGTH` — the fourth copy of a provider bound, and the one the new guard does

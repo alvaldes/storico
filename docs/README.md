@@ -13,7 +13,7 @@
 | [API](api.md) | Referencia de endpoints REST |
 | [Testing](testing.md) | Estrategia de tests, cómo correrlos |
 | [Estado Frontend](frontend-state.md) | Stores Zustand, modelo de datos |
-| [Despliegue](deployment.md) | Docker Compose, producción en Vercel |
+| [Despliegue](deployment.md) | Docker Compose; producción: frontend en Vercel, API en la VM |
 | [Internacionalización](i18n.md) | Cómo funciona i18n, agregar idiomas |
 | [Seguridad](security.md) | Auth, OAuth, permisos |
 | [Deuda conocida](known-issues.md) | Deuda aceptada: falsos positivos y ruido de análisis estático |
