@@ -1,7 +1,8 @@
 # ODD Feature: vm-disk-hygiene
 
-> **Status**: in progress on `chore/vm-disk-hygiene` (cut after `retire-vercel-api-project` lands).
-> **Receipt-driven development is off in this clone** (decided by clone_local on 2026-09-24).
+> **Status**: closed on `chore/vm-disk-hygiene` — WU1 (`9134e78`) and WU2 (this commit) landed, and the
+> cleanup was measured on the production host before this record was closed. **Receipt-driven
+> development is off in this clone** (decided by clone_local on 2026-09-24).
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 
@@ -53,7 +54,8 @@ release still up.
 
 | # | Unit | Commit | Files |
 | --- | --- | --- | --- |
-| WU1 | Bounded cleanup in the deploy + its contract test + the doc line | _pending_ | `.github/workflows/deploy-backend.yml`, `backend/tests/test_unit/test_deploy_workflow_contract.py`, `docs/deployment.md` |
+| WU1 | Bounded cleanup in the deploy + its contract test + the doc line | `9134e78` | `.github/workflows/deploy-backend.yml`, `backend/tests/test_unit/test_deploy_workflow_contract.py`, `docs/deployment.md` |
+| WU2 | The measured cleanup on the host, recorded | _this commit_ | this record, updated with the measurement |
 
 ## What lands
 
@@ -74,11 +76,39 @@ release still up.
   branch on Vercel; its bundles are small, and after `retire-vercel-api-project` the team's Functions
   Storage sits near 1 GB of 10 GB.
 
+## Measured result (2026-09-25, production host)
+
+Run by hand with the exact commands WU1 puts in the workflow, so the deploy path is not the first
+place they execute:
+
+| | Before | After |
+| --- | --- | --- |
+| Filesystem | 31 GB used, 15 GB free, **69 %** | 17 GB used, 28 GB free, **38 %** |
+| Images | 10 (3.82 GB) | **2** — `storico-api:latest` and `storico-api:previous` |
+| Build cache | 25.71 GB | 13.55 GB |
+
+`docker builder prune -f --filter until=168h` reported **`Total: 12.16GB`** reclaimed, and the image
+prune took the 8 untagged images. Two things the numbers say that the policy should be read against:
+
+- **The rollback survived**, which is the invariant D2 is about: `docker images` still lists
+  `storico-api:previous` after both prunes, and the container was never touched (`Up 14 hours`
+  throughout).
+- **13.55 GB of cache is the floor of a week.** Most of the cache came from the 2026-09-20..24 commit
+  burst, so the ~20 builds of the last seven days are what remains. That is the price of the fast
+  rebuild, and it is the reason this window is a decision rather than a default: `docker builder
+  prune -af` would take that 13.55 GB too, and the next deploy would rebuild the dependency layer
+  from scratch.
+
+Production was verified from outside with the cleanup already done: `/api/v1/health` 200,
+`/api/v1/health/ready` 200, frontend 302.
+
 ## Verification
 
-| Claim | How |
-| --- | --- |
-| The cleanups are bounded exactly as decided | `pytest -q -m unit backend/tests/test_unit/test_deploy_workflow_contract.py` |
-| The workflow script is still valid shell | extract the `script:` block and run `bash -n` on it |
-| The commands do what they claim | run the same two prunes on the VM and compare `df -h /` and `docker system df` before and after |
-| The rollback survives the cleanup | `docker images storico-api` still lists `:previous` after the image prune |
+| Claim | How | Result |
+| --- | --- | --- |
+| The cleanups are bounded exactly as decided, and ordered after the gate | `pytest -q -m unit tests/test_unit/test_deploy_workflow_contract.py` | **8 passed** |
+| The workflow is still valid YAML and the script survives parsing | `js-yaml` over the file, then reading `steps[1].with.script` back | parses; its tail is the two prunes, the `echo` and the `df` |
+| The script is still valid shell | `bash -n` over the extracted 195-line body | clean |
+| The commands do what they claim | the two prunes on the VM, before/after | **14 GB freed**, table above |
+| The rollback survives the cleanup | `docker images` after the image prune | `storico-api:previous` still there |
+| The deploy path is untouched | full suite, lint, format | `857 passed, 21 skipped`; `ruff check`/`format --check` green |
