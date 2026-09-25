@@ -10,8 +10,9 @@ Desarrollo: http://localhost:8000
 Producción: https://storico-api.163.192.150.75.sslip.io (el contenedor en la VM)
 ```
 
-El proyecto de Vercel `storico-api` también construye y deploya en cada push, pero **no** es el endpoint
-en uso: producción corre en el contenedor de la VM (ver [deployment.md](deployment.md)).
+El proyecto de Vercel `storico-api`, que construía y deployaba en cada push, se **borró el 2026-09-25**:
+nunca fue el endpoint en uso. Producción corre en el contenedor de la VM
+(ver [deployment.md](deployment.md)).
 
 Autenticación vía header `Authorization: Bearer <token>`. El token se obtiene automáticamente vía Auth.js.
 
