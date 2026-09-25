@@ -125,6 +125,21 @@ entre por COPY en la imagen, no instrucciones para crear uno.
    archivo y omite en silencio el que no lo tenga, creando el tag igual. Un campo
    atrasado queda atrasado para siempre, y por eso `v0.3.1` y `v0.3.2` salieron con
    manifests viejos. `make bump` se niega a correr en ese caso.
+7. **Los `version_files` de `.cz.toml` van anclados por archivo, nunca por el
+   string de versión.** Es la otra mitad del mecanismo de la regla 6, y es un
+   **reemplazo**, no una búsqueda: sin el patrón, commitizen arma su regex con la
+   versión actual sola (`re.escape(version)` en `_resolve_files_and_regexes`,
+   `commitizen/bump.py`) y la sustituye en **toda** línea que matchee. El `0.6.1`
+   pelado también matcheaba la dev-dependency `ruff>=0.6.1`, que el commit inicial
+   había fijado en `ruff>=0.5.0` con el proyecto en `0.1.0`: los dos números nunca
+   tuvieron relación. Los bumps `v0.5.1`, `v0.6.0` y `v0.6.1` le movieron el piso
+   cada uno; el `v0.6.2` es donde se encontró. Es inocuo mientras la versión del proyecto va por
+   detrás de la de ruff, y es una rotura dura en `1.0.0`: el pin queda en
+   `ruff>=1.0`, no existe tal ruff, y `pip install -e ".[dev]"` deja de resolver
+   para CI y para el deploy. Cada entrada nombra la línea que **declara** la
+   versión (`'backend/pyproject.toml:^version = "'`), y se prueba sin tocar el
+   repo: copiá los manifests a `/tmp` y llamá a
+   `commitizen.bump.update_version_in_files`.
 
 Las convenciones de commit completas están en `CONTRIBUTING.md`. Cuando este
 archivo y `CONTRIBUTING.md` se contradigan, gana `CONTRIBUTING.md`.

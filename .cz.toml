@@ -8,8 +8,9 @@ major_version_zero = true
 # makes commitizen build its regex from the current version alone — `re.escape(version)`
 # in `_resolve_files_and_regexes` (`commitizen/bump.py`) — and then replace that string on
 # EVERY line the regex matches. The bare `0.6.1`, then, also matched the dev dependency
-# `ruff>=0.6.1`, and every bump from `v0.5.1` to `v0.6.2` rewrote that floor, which the
-# initial commit had set to `ruff>=0.5.0`.
+# `ruff>=0.6.1`, which the initial commit had set to `ruff>=0.5.0` while the project itself was
+# at `0.1.0` — the two numbers were never related. The `v0.5.1`, `v0.6.0` and `v0.6.1` bumps
+# each moved that floor; the `v0.6.2` bump is where it was caught.
 #
 # It was harmless while the project version trailed ruff's, and it is a hard break the day
 # this project reaches `1.0.0`: the pin would become `ruff>=1.0`, no such ruff exists, and
