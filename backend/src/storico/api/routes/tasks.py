@@ -175,16 +175,11 @@ async def list_tasks(
         # No filter provided: return tasks from all workspaces the user is a member of
         memberships = await member_repo.list_by_user(current_user.id)
         workspace_ids = [m.workspace_id for m in memberships]
-        if not workspace_ids:
-            all_tasks = []
-        else:
-            # Collect tasks from all user's workspaces
-            all_tasks = []
-            for ws_id in workspace_ids:
-                ws_tasks = await repo.list_by_workspace(ws_id)
-                all_tasks.extend(ws_tasks)
-            # Sort by created_at descending for consistent ordering
-            all_tasks.sort(key=lambda t: t.created_at, reverse=True)
+        # One statement for all the workspaces, not one per workspace: this branch used to await
+        # `list_by_workspace` in a loop, which cost a statement each (~2s against the dev pooler,
+        # where even a bare SELECT 1 measures 800ms). Ordering is applied below, same as before.
+        all_tasks = await repo.list_by_workspaces(workspace_ids)
+        all_tasks.sort(key=lambda t: t.created_at, reverse=True)
 
     total = len(all_tasks)
     start = (params.page - 1) * params.size

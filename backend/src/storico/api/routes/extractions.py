@@ -118,16 +118,11 @@ async def list_extractions(
         # No filter provided: return extractions from all workspaces the user is a member of
         memberships = await member_repo.list_by_user(current_user.id)
         workspace_ids = [m.workspace_id for m in memberships]
-        if not workspace_ids:
-            all_extractions = []
-        else:
-            # Collect extractions from all user's workspaces
-            all_extractions = []
-            for ws_id in workspace_ids:
-                ws_extractions = await repo.list_by_workspace(ws_id)
-                all_extractions.extend(ws_extractions)
-            # Sort by created_at descending for consistent ordering
-            all_extractions.sort(key=lambda e: e.created_at, reverse=True)
+        # One statement for all the workspaces, not one per workspace: this branch used to await
+        # `list_by_workspace` in a loop, which cost a statement each (~2s against the dev pooler,
+        # where even a bare SELECT 1 measures 800ms). Ordering is applied below, same as before.
+        all_extractions = await repo.list_by_workspaces(workspace_ids)
+        all_extractions.sort(key=lambda e: e.created_at, reverse=True)
 
     total = len(all_extractions)
     start = (params.page - 1) * params.size

@@ -147,16 +147,11 @@ async def list_stories(
         # No filter provided: return stories from all workspaces the user is a member of
         memberships = await member_repo.list_by_user(current_user.id)
         workspace_ids = [m.workspace_id for m in memberships]
-        if not workspace_ids:
-            all_stories = []
-        else:
-            # Collect stories from all user's workspaces
-            all_stories = []
-            for ws_id in workspace_ids:
-                ws_stories = await repo.list_by_workspace(ws_id)
-                all_stories.extend(ws_stories)
-            # Sort by created_at descending for consistent ordering
-            all_stories.sort(key=lambda s: s.created_at, reverse=True)
+        # One statement for all the workspaces, not one per workspace: this branch used to await
+        # `list_by_workspace` in a loop, which cost a statement each (~2s against the dev pooler,
+        # where even a bare SELECT 1 measures 800ms). Ordering is applied below, same as before.
+        all_stories = await repo.list_by_workspaces(workspace_ids)
+        all_stories.sort(key=lambda s: s.created_at, reverse=True)
 
     total = len(all_stories)
     start = (params.page - 1) * params.size

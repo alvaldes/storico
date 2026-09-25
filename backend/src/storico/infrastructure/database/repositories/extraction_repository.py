@@ -54,6 +54,27 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
 
+    async def list_by_workspaces(self, workspace_ids: list[UUID]) -> list[Extraction]:
+        """One ``IN`` statement instead of one per workspace.
+
+        The caller that needed this fans out over the workspaces a user belongs to. Against the
+        dev pooler a statement costs ~2s — a bare ``SELECT 1`` already measures 800ms in
+        ``/api/v1/health`` — so a caller in 12 workspaces paid for 12 of them and the request
+        measured 25-32s. An empty list is answered here rather than sent as ``IN ()``: no
+        memberships means no rows, not a statement.
+        """
+        if not workspace_ids:
+            return []
+
+        stmt = (
+            select(ExtractionModel)
+            .join(UserStoryModel)
+            .join(ProjectModel)
+            .where(ProjectModel.workspace_id.in_(workspace_ids))
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_domain(row) for row in result.scalars()]
+
     async def list(self) -> list[Extraction]:
         result = await self._session.execute(select(ExtractionModel))
         return [self._to_domain(row) for row in result.scalars()]
