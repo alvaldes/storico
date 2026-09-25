@@ -1,3 +1,11 @@
+## v0.6.2 (2026-09-25)
+
+### Fix
+
+- **release**: anchor the bump replacement to the version line
+- **status**: stop reading one provider as the whole platform
+- **health**: degrade the diagnostics status only for required probes
+
 ## v0.6.1 (2026-09-25)
 
 ### Fix
