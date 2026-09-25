@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import { getInitials } from '@/lib/initials';
+
 interface UserAvatarProps {
   src: string | null | undefined;
   name: string;
@@ -25,7 +27,7 @@ export function UserAvatar({
   fallbackClass,
 }: UserAvatarProps) {
   const [failed, setFailed] = useState(false);
-  const initial = name?.charAt(0)?.toUpperCase() || '?';
+  const initial = getInitials(name ?? '', 1);
 
   if (src && !failed) {
     return (

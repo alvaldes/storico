@@ -25,6 +25,15 @@ const L = (path: string) => localizedPath(path, locale);
 const session = await getSession(Astro.request);
 const isLoggedIn = !!session?.user;
 
+// Plain serializable identity for the nav islands; `image` is Auth.js' avatar field.
+const navUser = session?.user
+  ? {
+      name: session.user.name ?? '',
+      email: session.user.email ?? '',
+      avatarUrl: session.user.image ?? null,
+    }
+  : null;
+
 // Preserve current page on language switch
 const cleanPath = Astro.url.pathname.replace(/^\/(en|es)/, '') || '/';
 const currentPath = Astro.url.pathname;
@@ -111,6 +120,7 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
       mobileNavLinks={mobileNavLinks}
       ctaLink={ctaLink}
       isLoggedIn={isLoggedIn}
+      user={navUser}
     />
 
     <!-- ════════════════════════════════════════════ -->
