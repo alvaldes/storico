@@ -6,6 +6,40 @@ import { config } from '@/lib/config';
 
 const locale = (Astro.params.locale as Locale) || 'en';
 const t = useTranslations(locale);
+
+/**
+ * The endpoints this page documents.
+ *
+ * Hand-written, because the page is prose the backend cannot generate — but no longer
+ * unchecked: `src/i18n/__tests__/api-docs-copy.test.ts` composes the paths the routers
+ * declare, out of `backend/src/storico/api/routes/*.py`, and fails for any path listed
+ * here that no router serves. This list once advertised a batch endpoint that has never
+ * existed in this codebase, plus two extraction paths the API had already left behind.
+ * The guard also fails on a retired path mentioned anywhere in this file, comments
+ * included: prose that names a dead route is what gets copied next.
+ *
+ * Paths are the ones FastAPI publishes in `/openapi.json`, which is why the extraction
+ * route keeps its trailing slash.
+ */
+const endpoints = [
+  {
+    method: 'POST',
+    path: '/api/v1/workspaces/{workspace_id}/extract/',
+    description: t.pages.api.endpoint_extract_desc,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/workspaces/{workspace_id}/extract/status/{extraction_id}',
+    description: t.pages.api.endpoint_status_desc,
+  },
+];
+
+// Both badges spelled out literally: Tailwind reads class names out of the source text, so
+// the pair has to stay visible here rather than be built from the method name.
+const methodBadgeClass = (method: string) =>
+  method === 'POST'
+    ? 'bg-(--color-method-post-bg) text-(--color-method-post-text)'
+    : 'bg-(--color-method-get-bg) text-(--color-method-get-text)';
 ---
 
 <PublicLayout
@@ -42,27 +76,21 @@ const t = useTranslations(locale);
       <h2 class="text-xl font-bold text-(--color-text)">{t.pages.api.endpoints_title}</h2>
 
       <div class="rounded-lg border border-(--color-border) divide-y divide-(--color-border)">
-        <div class="p-4">
-          <div class="flex items-center gap-3 mb-1">
-            <span class="rounded bg-(--color-method-post-bg) px-2 py-0.5 text-xs font-bold text-(--color-method-post-text)">POST</span>
-            <code class="text-sm font-mono text-(--color-text)">/api/v1/extract</code>
-          </div>
-          <p class="text-sm text-(--color-text-secondary)">{t.pages.api.endpoint_extract_desc}</p>
-        </div>
-        <div class="p-4">
-          <div class="flex items-center gap-3 mb-1">
-            <span class="rounded bg-(--color-method-post-bg) px-2 py-0.5 text-xs font-bold text-(--color-method-post-text)">POST</span>
-            <code class="text-sm font-mono text-(--color-text)">/api/v1/batch</code>
-          </div>
-          <p class="text-sm text-(--color-text-secondary)">{t.pages.api.endpoint_batch_desc}</p>
-        </div>
-        <div class="p-4">
-          <div class="flex items-center gap-3 mb-1">
-            <span class="rounded bg-(--color-method-get-bg) px-2 py-0.5 text-xs font-bold text-(--color-method-get-text)">GET</span>
-            <code class="text-sm font-mono text-(--color-text)">/api/v1/status/{'{id}'}</code>
-          </div>
-          <p class="text-sm text-(--color-text-secondary)">{t.pages.api.endpoint_status_desc}</p>
-        </div>
+        {
+          endpoints.map((endpoint) => (
+            <div class="p-4">
+              <div class="flex items-center gap-3 mb-1">
+                <span
+                  class={`rounded px-2 py-0.5 text-xs font-bold ${methodBadgeClass(endpoint.method)}`}
+                >
+                  {endpoint.method}
+                </span>
+                <code class="text-sm font-mono text-(--color-text)">{endpoint.path}</code>
+              </div>
+              <p class="text-sm text-(--color-text-secondary)">{endpoint.description}</p>
+            </div>
+          ))
+        }
       </div>
 
       <p class="pt-4">
