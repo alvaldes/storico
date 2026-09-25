@@ -73,6 +73,46 @@ def failing_services(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(health, "get_embedding_port", raise_not_configured)
 
 
+@pytest.fixture
+def probe_outcomes(monkeypatch: pytest.MonkeyPatch):
+    """Patch the five probes with spelled, deterministic results.
+
+    The route-level classification must not depend on the deployment it runs on: a real
+    database would make "the required probes are ok" a property of the machine rather
+    than of the route — the mistake an earlier version of
+    ``test_the_global_health_route_is_unaffected`` made and CI caught. The probes
+    themselves are covered by their own tests below; here only the classification
+    matters, so each probe is replaced by a result shaped like the real one, with the
+    same spelled reasons the probes publish.
+    """
+
+    spelled_errors = {
+        "database": "connection failed",
+        "ollama": "not reachable",
+        "qdrant": "not reachable",
+        "embeddings": "not reachable",
+    }
+
+    def _install(failing: set[str]) -> None:
+        def result(name: str) -> dict:
+            if name not in failing:
+                return {"status": "ok", "latency_ms": 0.1}
+            if name == "schema":
+                # The schema probe never spells "error": its failure is `unknown` (or
+                # `drift`), which already is not-ok. Shaped like the real probe.
+                return {"status": "unknown", "latency_ms": 0.1}
+            return {"status": "error", "latency_ms": 0.1, "error": spelled_errors[name]}
+
+        for name in ("database", "schema", "ollama", "qdrant", "embeddings"):
+
+            async def fake_probe(_name: str = name) -> dict:
+                return result(_name)
+
+            monkeypatch.setattr(health, f"_check_{name}", fake_probe)
+
+    return _install
+
+
 @pytest.fixture(autouse=True)
 def _cold_embeddings_probe_cache() -> Iterator[None]:
     """Each test starts and ends with the embeddings probe cache empty.
@@ -368,6 +408,143 @@ async def test_the_revisions_reach_the_log(
 
     assert head in caplog.text
     assert "0001" in caplog.text
+
+
+# ---------------------------------------------------------------------------------------------
+# The required/optional classification
+#
+# The route folds five probes into one top-level `status`, and until now an optional
+# integration counted the same as a required dependency: production runs no Ollama on
+# purpose, so it answered `status: degraded` forever while everything that matters was
+# ok — a permanent false alarm for anyone alerting on `status != ok` (finding F2). The
+# tests below pin the new contract: `scope` on every probe, `status` computed from the
+# required probes only, and a classification that covers the published probes exactly.
+# ---------------------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_optional_probe_failing_does_not_degrade_the_status(
+    async_client, probe_outcomes
+) -> None:
+    """The regression this change exists for, asserted on the payload itself.
+
+    Every required probe ok and every optional probe failing must still answer
+    `status: ok`: ollama, qdrant and embeddings are integrations a workspace may never
+    use, and their failure degrades a feature, not the deployment. This is exactly the
+    shape production answers with today, which read as a permanent "degraded".
+    """
+    probe_outcomes({"ollama", "qdrant", "embeddings"})
+
+    response = await async_client.get("/api/v1/health/services")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    # The failures are still published, per probe: the route reports them, it just no
+    # longer lets them paint the whole deployment.
+    assert body["services"]["ollama"]["status"] == "error"
+    assert body["services"]["qdrant"]["status"] == "error"
+    assert body["services"]["embeddings"]["status"] == "error"
+    assert body["services"]["database"]["status"] == "ok"
+    assert body["services"]["schema"]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failing",
+    [
+        pytest.param({"database"}, id="database"),
+        pytest.param({"schema"}, id="schema"),
+    ],
+)
+async def test_a_required_probe_failing_degrades_the_status(
+    async_client, probe_outcomes, failing: set[str]
+) -> None:
+    """`degraded` keeps its meaning: a required probe is not ok.
+
+    The two required probes are pinned separately because they fail differently — the
+    database spells `error`, the schema spells `unknown` — and both must degrade the
+    top-level status.
+    """
+    probe_outcomes(failing)
+
+    response = await async_client.get("/api/v1/health/services")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "degraded"
+    # The optional probes are healthy here, so `degraded` can only come from the
+    # required one that is failing.
+    assert body["services"]["ollama"]["status"] == "ok"
+    assert body["services"]["qdrant"]["status"] == "ok"
+    assert body["services"]["embeddings"]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_every_probe_declares_its_scope(async_client, probe_outcomes) -> None:
+    """The payload is self-describing: each probe carries its own classification.
+
+    The explicit mapping below is the contract a consumer reads; the membership check
+    afterwards ties it to the backend constants, so the published scope and the tuple
+    that drives the top-level status cannot drift apart.
+    """
+    probe_outcomes(set())
+
+    response = await async_client.get("/api/v1/health/services")
+
+    body = response.json()
+    assert {name: probe["scope"] for name, probe in body["services"].items()} == {
+        "database": "required",
+        "schema": "required",
+        "ollama": "optional",
+        "qdrant": "optional",
+        "embeddings": "optional",
+    }
+    for name, probe in body["services"].items():
+        if name in health.REQUIRED_PROBES:
+            assert probe["scope"] == "required"
+        else:
+            assert probe["scope"] == "optional"
+
+
+@pytest.mark.asyncio
+async def test_the_classification_covers_the_published_probes_exactly(
+    async_client, probe_outcomes
+) -> None:
+    """A future probe that lands in neither tuple would silently read as optional.
+
+    The union of the two tuples must equal the probes the route actually publishes, and
+    the tuples must not overlap: otherwise the next probe added to `services` gets no
+    classification, and its failure either degrades the deployment unannounced or is
+    silently forgiven.
+    """
+    probe_outcomes(set())
+
+    response = await async_client.get("/api/v1/health/services")
+
+    published = set(response.json()["services"])
+    required = set(health.REQUIRED_PROBES)
+    optional = set(health.OPTIONAL_PROBES)
+    assert required | optional == published
+    assert not required & optional
+
+
+@pytest.mark.asyncio
+async def test_the_liveness_and_readiness_routes_publish_no_scope(
+    async_client, probe_outcomes
+) -> None:
+    """`scope` belongs on the diagnostics probes, not on the top-level sections.
+
+    `/health` and `/health/ready` publish `database` and `schema` at the top level,
+    where everything they carry is required by construction: a `scope` there would say
+    nothing and would only widen a contract two other consumers already read.
+    """
+    probe_outcomes(set())
+
+    for path in ("/api/v1/health", "/api/v1/health/ready"):
+        body = (await async_client.get(path)).json()
+        assert "scope" not in body["database"], f"{path} grew a scope on database"
+        assert "scope" not in body["schema"], f"{path} grew a scope on schema"
 
 
 # ---------------------------------------------------------------------------------------------

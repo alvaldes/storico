@@ -27,7 +27,14 @@ canónica.
 | Método | Path | Descripción |
 |--------|------|-------------|
 | GET | `/api/v1/health` | Health check: base de datos (la única dependencia requerida) |
-| GET | `/api/v1/health/services` | Diagnóstico completo: base de datos, Ollama y Qdrant |
+| GET | `/api/v1/health/services` | Diagnóstico completo: cinco probes (`database`, `schema`, `ollama`, `qdrant`, `embeddings`), cada uno con su `scope` |
+
+`/api/v1/health/services` clasifica cada probe con un campo `scope`: `required` (el
+deployment no es útil sin él: `database` y `schema`) u `optional` (una integración que
+un workspace puede no usar nunca: `ollama`, `qdrant`, `embeddings`, cuya falla degrada
+una función, no el servicio). El `status` superior se calcula solo con los probes
+requeridos, de modo que una integración opcional inalcanzable no pinta el deployment
+como degradado.
 
 ### Workspaces
 
