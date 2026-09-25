@@ -97,7 +97,7 @@ protectedPaths = ['/dashboard', '/stories', '/kanban', '/export', '/account']
 
 - [ ] Rate limiting (`slowapi` en FastAPI o un límite de tasa en Caddy; el backend no está en Vercel, así que un WAF de Vercel no protege la API)
 - [ ] Error monitoring (Sentry)
-- [ ] Auditoría de variables de entorno (el `.env` de la VM **y** el proyecto de Vercel, que solo lleva las del frontend)
+- [x] Auditoría de variables de entorno — hecha el 2026-09-24 sobre el `.env` de la VM **y** los dos proyectos de Vercel (el del frontend, que es el deploy en uso, y el que no está en uso), comparando por hash SHA-256 y sin imprimir ningún valor: las 11 de la VM y las 7 del front de producción están completas, y el `AUTH_SECRET` del front coincide con `STORICO_AUTH_JWT_SECRET` de la VM. Quedan anotadas dos observaciones **sin remediar por decisión del operador**: dev y prod comparten el secreto de firma y el cliente OAuth de Google, y el proyecto de Vercel en desuso conserva la `STORICO_DATABASE_URL` de producción en scope Preview. Detalle en `prod.todo.md`.
 - [x] Dominio personalizado — **no se usa**, decidido el 2026-09-23: producción ya sirve HTTPS con el certificado de Vercel en el front y el del host de la VM en la API, así que no se compra dominio ni se agrega un paso de renovación propio.
 - [ ] Restringir CORS a dominios específicos
 

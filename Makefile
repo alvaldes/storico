@@ -2,6 +2,19 @@
 
 .DEFAULT_GOAL := help
 
+# Backend interpreter. The default assumes the environment is already active,
+# which is the same contract CI uses: `.github/workflows/ci.yml` installs with
+# `pip install -e ".[dev]"` and then runs bare `pytest` / `ruff`. This repository
+# does not standardise on venv or on conda — it standardises on "an environment
+# that has the dev extra installed". Override when the environment is not active:
+#
+#   make test-backend PYTHON="conda run -n storico python"
+#
+# `python -m <tool>` rather than a bare tool name on purpose: the console script
+# can be missing while the module is perfectly importable (the conda `storico`
+# environment ships `python -m ruff` with no `bin/ruff`).
+PYTHON ?= python
+
 help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -27,7 +40,7 @@ ps: ## List running services
 	docker compose ps
 
 test-backend: ## Run backend tests with pytest
-	cd backend && .venv/bin/pytest -v
+	cd backend && $(PYTHON) -m pytest -v
 
 test-frontend: ## Run frontend tests (build as smoke test)
 	cd frontend && pnpm run build
@@ -43,8 +56,8 @@ shell-frontend: ## Open a shell in the frontend directory
 clean: ## Stop and remove all volumes (destructive)
 	docker compose down -v
 
-setup: ## Install all dependencies and build images
-	cd backend && python -m venv .venv && .venv/bin/pip install -e ".[dev]"
+setup: ## Install dependencies and build images (needs an active Python env)
+	cd backend && $(PYTHON) -m pip install -e ".[dev]"
 	cd frontend && pnpm install
 	docker compose build
 

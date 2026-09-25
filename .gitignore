@@ -70,3 +70,12 @@ backend/fly.toml
 
 # Pi harness config (gentle-ai) — local only
 .pi/
+
+# direnv — local only. El .envrc de este repo activa el env de conda `storico`,
+# que es la eleccion del owner y no un mandato del repo (ver AGENTS.md). Si se
+# versionara, cualquiera que clone con direnv se comeria un `layout_anaconda`
+# que ademas crea el env si no existe.
+# .direnv/ entra por las dudas: `layout python` crea un venv ahi adentro, y este
+# repo ya tuvo un incidente de .venv accidental en el working tree.
+.envrc
+.direnv/

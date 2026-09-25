@@ -46,10 +46,12 @@ The API will be at **<http://localhost:8000>** and the frontend at
 ### Backend only (outside Docker)
 
 ```bash
+# Bootstrap, once, from the repo root; canonical env is conda `storico`
+conda create -n storico python=3.12 -y
+conda activate storico
+
 cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 ```
 
 ### Frontend only (outside Docker)
@@ -72,8 +74,8 @@ Run tests with **pytest**:
 
 ```bash
 make test-backend                        # via Makefile
-cd backend && .venv/bin/pytest -v        # or directly
-cd backend && .venv/bin/pytest -v -m unit   # unit tests only (fast, no services)
+cd backend && python -m pytest -v        # or directly, with the env active
+cd backend && python -m pytest -v -m unit   # unit tests only (fast, no services)
 ```
 
 - Tests use `asyncio_mode = auto` — async test functions are detected automatically.
@@ -99,8 +101,10 @@ the structural smoke test: if it compiles, the structural integrity is verified.
 
 For any code change:
 
-1. **Backend**: `cd backend && .venv/bin/pytest -v` passes for the tests that
-   cover your change. Run with `-m unit` for a fast feedback loop.
+1. **Backend**: `cd backend && python -m pytest -v` passes for the tests that
+   cover your change. Run with `-m unit` for a fast feedback loop. With the
+   environment not active, use the override:
+   `make test-backend PYTHON="conda run -n storico python"`.
 2. **Frontend**: `cd frontend && pnpm run build` compiles clean.
 3. **Full stack**: `make build && make up` starts without errors and the health
    endpoints respond.

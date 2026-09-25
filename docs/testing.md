@@ -19,19 +19,19 @@
 make test-backend
 
 # Tests unitarios (rápidos, sin servicios externos)
-cd backend && .venv/bin/pytest -v -m unit
+cd backend && python -m pytest -v -m unit
 
 # Tests de integración (requieren Docker)
-cd backend && .venv/bin/pytest -v -m integration
+cd backend && python -m pytest -v -m integration
 
 # Tests de API
-cd backend && .venv/bin/pytest tests/test_api/ -v
+cd backend && python -m pytest tests/test_api/ -v
 
 # Tests de un archivo específico
-cd backend && .venv/bin/pytest tests/test_api/test_projects.py -v
+cd backend && python -m pytest tests/test_api/test_projects.py -v
 
 # Con cobertura
-cd backend && .venv/bin/pytest --cov=storico
+cd backend && python -m pytest --cov=storico
 ```
 
 > **Nota**: `pytest-cov` **no es confiable en este entorno** — reporta como faltantes líneas que un
@@ -219,7 +219,7 @@ spec de Playwright que se retiró.
 # Backend. El basicConfig no es decorativo: con uvicorn pelado, los logger.info de la
 # aplicación se descartan y no se ve, por ejemplo, la inyección del few-shot.
 cd backend && set -a; . ../.env; set +a
-.venv/bin/python -c "
+python -c "
 import logging, uvicorn
 logging.basicConfig(level=logging.INFO, format='%(levelname)s %(name)s %(message)s')
 uvicorn.run('storico.api.app:create_app', factory=True, host='127.0.0.1', port=8000)

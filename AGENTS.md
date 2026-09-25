@@ -49,6 +49,59 @@ El tipo de commit es lo que decide el release:
 
 El `scope` no afecta el bump: `feat(api): ...` y `feat: ...` sueltan lo mismo.
 
+### Entorno de desarrollo: conda `storico`, sin `.venv`
+
+El entorno canónico es el entorno de conda `storico` (Python 3.12). En este repositorio
+**no existe `backend/.venv`** y no hay que crearlo: si un comando o documento tuyo apunta a
+un `.venv`, está desactualizado. El repo es agnóstico al gestor de entornos — conda es la
+elección del owner, no un mandato del repo; lo único que el repo exige es un entorno con el
+extra `dev` instalado, igual que CI (`.github/workflows/ci.yml` instala con
+`pip install -e ".[dev]"` y corre `pytest`/`ruff` sin venv).
+
+Bootstrap, desde la raíz del repo:
+
+```bash
+conda create -n storico python=3.12 -y
+conda activate storico
+cd backend && python -m pip install -e ".[dev]"
+```
+
+Comandos canónicos, desde `backend/` con el entorno activo:
+
+```bash
+python -m pytest -v                       # suite completa
+python -m pytest -v -m unit               # unitarios (rápidos, sin servicios externos)
+python -m pytest -v -m integration        # integración (requieren servicios)
+python -m pytest --cov=storico            # cobertura
+python -m ruff check src tests            # lint
+python -m ruff format --check src tests   # chequeo de formato
+python -m uvicorn storico.api.app:create_app --factory --port 8000   # servidor dev
+```
+
+Headless / con el entorno sin activar (agentes, scripts):
+
+```bash
+conda run -n storico python -m pytest -v
+make test-backend PYTHON="conda run -n storico python"
+```
+
+Usa siempre `python -m <herramienta>` en vez del nombre desnudo: el env `storico` no tiene
+el script de consola `bin/ruff`, pero `python -m ruff` funciona. El launcher canónico es
+`python -m uvicorn storico.api.app:create_app --factory --port 8000`, la misma forma que
+el CMD de `backend/Dockerfile` y `entrypoint.sh`, y el `--factory` explícito no es
+opcional: sin él, uvicorn se traga un `TypeError` levantado dentro de `create_app()` y
+deja la función desnuda como app ASGI, un servidor roto sin error de arranque; con
+`--factory`, ese mismo fallo corta el proceso. La forma de path
+(`fastapi dev backend/src/storico/api/app.py`) no funciona: `fastapi-cli` descubre la app
+con `dir(mod)` y `app` se expone vía PEP 562 `__getattr__`, de modo que nunca aparece en
+`dir()` (y fastapi-cli no tiene flag `--factory`).
+`fastapi dev --entrypoint storico.api.app:create_app` sí funciona (verificado el
+2026-09-24), pero cede esa garantía de fábrica explícita; por eso se prefiere uvicorn.
+
+Las entradas `.venv` de `.gitignore` y `.dockerignore` (raíz y `backend/`) están a
+propósito: son reglas de ignore que impiden que un venv accidental futuro se comprometa o
+entre por COPY en la imagen, no instrucciones para crear uno.
+
 ### Reglas duras para agentes
 
 1. **Nunca edites a mano** el campo `version` de `package.json`,
@@ -158,7 +211,7 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 | **Routing frontend**       | **Astro Routing** + **View Transitions**    | ✅ Decidido    | Routing nativo de Astro con transiciones fluídas entre páginas           |
 | **Tema**                   | Claro / Oscuro                              | ✅ Decidido    | Soporte nativo con shadcn + Tailwind                                      |
 | **API Client**             | **fetch** nativo                            | ✅ Decidido    | Abstracción intercambiable para migrar a Axios si es necesario            |
-| **Backend API**            | **FastAPI** (Python 3.9+)                   | ✅ De la tesis | Async, tipado fuerte, OpenAPI automático                                  |
+| **Backend API**            | **FastAPI** (Python 3.12)                   | ✅ De la tesis | Async, tipado fuerte, OpenAPI automático                                  |
 | **Arquitectura**           | **Hexagonal** (Ports & Adapters)            | ✅ De la tesis | Separación dominio / aplicación / infraestructura                         |
 | **Modelos LLM cloud**      | Gemini + OpenAI + Anthropic                 | ✅ MVP         | Los tres adapters existen; extracción y probe los alcanzan                |
 | **Modelos LLM local**      | **Ollama** (LLaMA 3.2, Mistral, etc.)       | ✅ MVP         | Prioridad inicial                                                         |

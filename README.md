@@ -126,12 +126,24 @@ make setup         # Install all deps + build images
 
 ### Backend (outside Docker)
 
+The canonical environment is the conda env `storico` (Python 3.12). There is no
+`.venv` in this repository; see `AGENTS.md` for the full contract.
+
 ```bash
+# Bootstrap, once, from the repo root
+conda create -n storico python=3.12 -y
+conda activate storico
+
 cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-pytest -v
+python -m pip install -e ".[dev]"
+
+# Canonical commands, from backend/ with the environment active
+python -m pytest -v                       # full suite
+python -m pytest -v -m unit               # unit tests (fast, no external services)
+python -m uvicorn storico.api.app:create_app --factory --port 8000   # dev server
+
+# Environment not active (agents, scripts)
+make test-backend PYTHON="conda run -n storico python"
 ```
 
 ### Frontend (outside Docker)

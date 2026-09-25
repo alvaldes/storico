@@ -18,7 +18,7 @@ Gate
 ----
 The tests are opt-in and never probe reachability:
 
-    cd backend && STORICO_TEST_LIVE_OLLAMA=1 .venv/bin/pytest \\
+    cd backend && STORICO_TEST_LIVE_OLLAMA=1 python -m pytest \\
         tests/test_integration/test_ollama_chat_live.py -v
 
 Without ``STORICO_TEST_LIVE_OLLAMA=1`` every test skips. Once an operator sets

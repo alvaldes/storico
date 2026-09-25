@@ -57,11 +57,11 @@ pnpm run dev       # http://localhost:4321
 ### Desarrollo backend standalone (sin Docker)
 
 ```bash
+# entorno canónico: conda `storico` (bootstrap y comandos en AGENTS.md)
+conda activate storico
 cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-pytest -v
+python -m pip install -e ".[dev]"
+python -m pytest -v
 ```
 
 ## Producción
@@ -214,7 +214,7 @@ El checklist completo está en [`prod.todo.md`](../prod.todo.md). Resumen de pri
 |-----------|------|--------|
 | 🔴 Crítico | OpenAI adapter (extracción en prod sin Ollama) | ✅ Implementado |
 | 🟡 Medio | Qdrant Cloud + Embedding adapter | 🔲 Pendiente |
-| 🟡 Medio | Vercel env audit | 🔲 Pendiente |
+| 🟡 Medio | Vercel env audit | ✅ Hecho (2026-09-24) |
 | 🟡 Medio | Error monitoring (Sentry) | 🔲 Pendiente |
 | 🟡 Medio | Trello connector | 🔲 Pendiente |
 | 🟡 Medio | Juicio de expertos (evaluación tesis) | 🔲 Pendiente |

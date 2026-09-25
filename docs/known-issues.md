@@ -14,8 +14,8 @@ así que construirla sin argumentos es correcto. El checker ve una firma stale d
 ningún defecto de producción. Verificado el 2026-09-23 **sólo el lado del código**, leyendo ambos
 archivos: la columna 34 cae exactamente sobre el constructor, y el modelo sigue teniendo sus dos
 campos con default. **La emisión del diagnóstico no fue re-medida**: no hay pyright ni mypy
-instalados en `backend/.venv`, así que lo verificado es que el código no tiene defecto, no que el
-checker siga reportándolo.
+instalados en el entorno del backend (conda `storico`; re-verificado el 2026-09-24), así que lo
+verificado es que el código no tiene defecto, no que el checker siga reportándolo.
 
 **No se agregó ninguna supresión** (ni `# type: ignore` ni `cast`), a propósito: el defecto es del
 checker, no del código, y una supresión enseñaría a los lectores del archivo que hay algo que esconder
@@ -29,8 +29,9 @@ tiene test.
 de `pi-lens` a `severity=error` (medida durante el sweep de `schema-drift-gate`, 2026-09-21; antes de
 esa medición el número que circulaba era 22 y era falso). **Re-medición en este retiro: no fue
 posible** — el instrumento (`pi-lens`, probe LSP) no está disponible para este agente y no hay mypy ni
-pyright instalados en `backend/.venv` que la repliquen. El 12 queda entonces como *último valor
-medido*, con su instrumento nombrado para que el próximo lector lo re-derive, no como verdad actual.
+pyright instalados en el entorno del backend (conda `storico`; re-verificado el 2026-09-24) que la
+repliquen. El 12 queda entonces como *último valor medido*, con su instrumento nombrado para que el
+próximo lector lo re-derive, no como verdad actual.
 
 No hay mypy ni pyright configurados y ninguno de esos diagnósticos está en el gate. Arreglarlos pide
 `cast`s o `type: ignore`, o sea cambio de lógica o de señal: quedan reportados, no arreglados.
