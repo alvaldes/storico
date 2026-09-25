@@ -165,9 +165,9 @@ class TestListTasks:
     async def test_list_tasks(self, authed_client, seed_workspace):
         """POST one task against a seeded story, GET returns it in the items list.
 
-        The "no filter" branch fans out over the caller's memberships and joins
-        tasks to their story and project, so the task only comes back when the
-        whole chain exists.
+        The "no filter" branch folds the caller's memberships into a single statement that
+        joins tasks to their story and project, so the task only comes back when the whole
+        chain exists. The fold itself is asserted in ``test_unfiltered_list_queries.py``.
         """
         story_id = (await seed_workspace()).story_id
         await authed_client.post(

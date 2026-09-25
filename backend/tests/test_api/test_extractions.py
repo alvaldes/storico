@@ -66,11 +66,12 @@ class TestListExtractions:
     ):
         """GET without user_story_id returns all extractions in the user's workspaces.
 
-        This is the "no filter" branch: it fans out over the caller's
-        memberships (``member_repo.list_by_user``) and then, per workspace, over
-        extractions joined to their story and project. Both halves are needed —
-        a membership with no extractions returns 0, and an extraction whose story
-        is not in one of those workspaces is dropped by the join.
+        This is the "no filter" branch: it reads the caller's memberships
+        (``member_repo.list_by_user``) and then, in **one** statement, the extractions joined
+        to their story and project across those workspaces. Both halves are needed — a
+        membership with no extractions returns 0, and an extraction whose story is not in one
+        of those workspaces is dropped by the join. The fold is asserted in
+        ``test_unfiltered_list_queries.py``; here it is only the setup for the filtering.
         """
         seeded = await seed_workspace(stories=3)
         repo = SQLAlchemyExtractionRepository(db_session)

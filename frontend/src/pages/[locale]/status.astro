@@ -2,33 +2,29 @@
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { config } from '@/lib/config';
+import {
+  HEALTH_SERVICES_PATH,
+  parseServicesHealth,
+  serviceStatus,
+  type ServicesHealth,
+  type ServiceStatus,
+} from '@/lib/health';
 
 const locale = (Astro.params.locale as Locale) || 'en';
 const t = useTranslations(locale);
 
-interface ServiceStatus {
-  status: 'ok' | 'error';
-  latency_ms: number | null;
-  error?: string;
-  model_count?: number;
-}
-
-interface HealthResponse {
-  status: 'ok' | 'degraded';
-  version: string;
-  timestamp: string;
-  services: Record<string, ServiceStatus>;
-}
-
-let health: HealthResponse | null = null;
+let health: ServicesHealth | null = null;
 let fetchError: string | null = null;
 
 try {
-  const response = await fetch(`${config.apiUrl}/api/v1/health`, {
+  // The diagnostics route, not `/health`: this page renders a row per service, and only
+  // this document carries them. See `@/lib/health` for the regression that caused.
+  const response = await fetch(`${config.apiUrl}${HEALTH_SERVICES_PATH}`, {
     signal: AbortSignal.timeout(10_000),
   });
   if (response.ok) {
-    health = await response.json();
+    health = parseServicesHealth(await response.json());
+    if (!health) fetchError = 'Unexpected health payload';
   } else {
     fetchError = `HTTP ${response.status}`;
   }
@@ -74,6 +70,76 @@ const statusTextClass = (state: string) => {
   return 'text-red-800 dark:text-red-300';
 };
 
+/**
+ * Four states, not two. "Unavailable" means the backend did not report the probe;
+ * "Error" means it probed and failed; "Unknown" is the backend's own degraded answer when it
+ * could not determine a status at all (the schema probe publishes it). Collapsing the first
+ * into the second would claim a measurement nobody took — and a missing probe is exactly when
+ * this page matters most.
+ */
+type BadgeState = 'ok' | 'error' | 'unknown' | 'unavailable';
+
+const badgeState = (probe: ServiceStatus | null): BadgeState => {
+  if (!probe) return 'unavailable';
+  return probe.status;
+};
+
+const badgeDotClass = (state: BadgeState) => {
+  if (state === 'ok') return 'bg-(--color-success)';
+  if (state === 'unknown') return 'bg-amber-500';
+  return 'bg-red-500';
+};
+
+const badgeTextClass = (state: BadgeState) => {
+  if (state === 'ok') return 'text-(--color-success-text)';
+  if (state === 'unknown') return 'text-amber-800 dark:text-amber-300';
+  return 'text-red-600 dark:text-red-400';
+};
+
+const badgeLabel = (state: BadgeState) => {
+  if (state === 'ok') return t.pages.status.operational;
+  if (state === 'error') return t.pages.status.error;
+  if (state === 'unknown') return t.pages.status.unknown;
+  return t.pages.status.unavailable;
+};
+
+// One row per probe, rendered by a single loop. The four rows used to be four copies of
+// the same markup, which is also how the services read went wrong in three places at once.
+const serviceRows: { key: string; title: string; description: string; state: BadgeState }[] = [
+  {
+    key: 'api',
+    title: t.pages.status.api_server,
+    description: t.pages.status.api_server_desc,
+    // The document arrived, so the API answered: this row reports that, not a probe.
+    state: health ? 'ok' : 'unavailable',
+  },
+  {
+    key: 'ollama',
+    title: t.pages.status.llm_runner,
+    description: t.pages.status.llm_runner_desc,
+    state: badgeState(serviceStatus(health, 'ollama')),
+  },
+  {
+    key: 'database',
+    title: t.pages.status.database,
+    description: t.pages.status.database_desc,
+    state: badgeState(serviceStatus(health, 'database')),
+  },
+  {
+    // The newest probe, and the one that would have caught the 2026-09-20 incident, where the
+    // code ran four revisions ahead of the schema and 56 extractions failed on a missing column.
+    key: 'schema',
+    title: t.pages.status.schema,
+    description: t.pages.status.schema_desc,
+    state: badgeState(serviceStatus(health, 'schema')),
+  },
+  {
+    key: 'qdrant',
+    title: t.pages.status.vector_store,
+    description: t.pages.status.vector_store_desc,
+    state: badgeState(serviceStatus(health, 'qdrant')),
+  },
+];
 ---
 
 <PublicLayout
@@ -111,101 +177,22 @@ const statusTextClass = (state: string) => {
       <h2 class="text-xl font-bold text-(--color-text)">{t.pages.status.services_title}</h2>
 
       <div class="rounded-lg border border-(--color-border) divide-y divide-(--color-border)">
-        <!-- API Server -->
-        <div class="flex items-center justify-between p-4">
-          <div>
-            <p class="font-medium text-(--color-text)">{t.pages.status.api_server}</p>
-            <p class="text-sm text-(--color-text-secondary)">{t.pages.status.api_server_desc}</p>
-          </div>
-          {
-            health ? (
-              <span class="inline-flex items-center gap-1.5 text-sm font-medium text-(--color-success-text)">
-                <span class="h-2 w-2 rounded-full bg-(--color-success)" />
-                {t.pages.status.operational}
-              </span>
-            ) : (
-              <span class="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
-                <span class="h-2 w-2 rounded-full bg-red-500" />
-                {t.pages.status.unavailable}
-              </span>
-            )
-          }
-        </div>
-
-        <!-- LLM Runner (Ollama) -->
-        <div class="flex items-center justify-between p-4">
-          <div>
-            <p class="font-medium text-(--color-text)">{t.pages.status.llm_runner}</p>
-            <p class="text-sm text-(--color-text-secondary)">{t.pages.status.llm_runner_desc}</p>
-          </div>
-          {
-            health ? (
+        {
+          serviceRows.map((row) => (
+            <div class="flex items-center justify-between p-4">
+              <div>
+                <p class="font-medium text-(--color-text)">{row.title}</p>
+                <p class="text-sm text-(--color-text-secondary)">{row.description}</p>
+              </div>
               <span
-                class={`inline-flex items-center gap-1.5 text-sm font-medium ${health.services.ollama.status === 'ok' ? 'text-(--color-success-text)' : 'text-red-600 dark:text-red-400'}`}
+                class={`inline-flex items-center gap-1.5 text-sm font-medium ${badgeTextClass(row.state)}`}
               >
-                <span
-                  class={`h-2 w-2 rounded-full ${health.services.ollama.status === 'ok' ? 'bg-(--color-success)' : 'bg-red-500'}`}
-                />
-                {health.services.ollama.status === 'ok' ? t.pages.status.operational : t.pages.status.error}
+                <span class={`h-2 w-2 rounded-full ${badgeDotClass(row.state)}`} />
+                {badgeLabel(row.state)}
               </span>
-            ) : (
-              <span class="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
-                <span class="h-2 w-2 rounded-full bg-red-500" />
-                {t.pages.status.unavailable}
-              </span>
-            )
-          }
-        </div>
-
-        <!-- Database (PostgreSQL) -->
-        <div class="flex items-center justify-between p-4">
-          <div>
-            <p class="font-medium text-(--color-text)">{t.pages.status.database}</p>
-            <p class="text-sm text-(--color-text-secondary)">{t.pages.status.database_desc}</p>
-          </div>
-          {
-            health ? (
-              <span
-                class={`inline-flex items-center gap-1.5 text-sm font-medium ${health.services.database.status === 'ok' ? 'text-(--color-success-text)' : 'text-red-600 dark:text-red-400'}`}
-              >
-                <span
-                  class={`h-2 w-2 rounded-full ${health.services.database.status === 'ok' ? 'bg-(--color-success)' : 'bg-red-500'}`}
-                />
-                {health.services.database.status === 'ok' ? t.pages.status.operational : t.pages.status.error}
-              </span>
-            ) : (
-              <span class="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
-                <span class="h-2 w-2 rounded-full bg-red-500" />
-                {t.pages.status.unavailable}
-              </span>
-            )
-          }
-        </div>
-
-        <!-- Vector Store (Qdrant) -->
-        <div class="flex items-center justify-between p-4">
-          <div>
-            <p class="font-medium text-(--color-text)">{t.pages.status.vector_store}</p>
-            <p class="text-sm text-(--color-text-secondary)">{t.pages.status.vector_store_desc}</p>
-          </div>
-          {
-            health ? (
-              <span
-                class={`inline-flex items-center gap-1.5 text-sm font-medium ${health.services.qdrant.status === 'ok' ? 'text-(--color-success-text)' : 'text-red-600 dark:text-red-400'}`}
-              >
-                <span
-                  class={`h-2 w-2 rounded-full ${health.services.qdrant.status === 'ok' ? 'bg-(--color-success)' : 'bg-red-500'}`}
-                />
-                {health.services.qdrant.status === 'ok' ? t.pages.status.operational : t.pages.status.error}
-              </span>
-            ) : (
-              <span class="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
-                <span class="h-2 w-2 rounded-full bg-red-500" />
-                {t.pages.status.unavailable}
-              </span>
-            )
-          }
-        </div>
+            </div>
+          ))
+        }
       </div>
 
       <p class="text-sm text-(--color-text-tertiary)">
