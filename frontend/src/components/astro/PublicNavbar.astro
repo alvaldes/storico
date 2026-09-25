@@ -26,11 +26,11 @@ const L = (path: string) => localizedPath(path, locale);
 ---
 
 <header class="border-b border-(--color-border)" data-public-nav>
-  <div class="mx-auto flex max-w-7xl items-center px-4 py-4 md:px-8 lg:px-20 lg:py-5">
+  <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-8 lg:px-20 lg:py-5">
     <!-- Left: Logo -->
     <!-- `flex` for the same reason as the avatar trigger below: a block wrapper would put
          the inline-flex link on a text baseline and lift it off the row's centre. -->
-    <div class="flex-1 flex">
+    <div class="flex">
       <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline">
         <img src="/favicon.svg" alt="" class="h-7 w-auto md:h-8" />
         <span class="text-xl font-extrabold text-(--color-primary-600) dark:text-(--color-text) md:text-[22px]">{t.app.name}</span>
@@ -57,7 +57,7 @@ const L = (path: string) => localizedPath(path, locale);
     </nav>
 
     <!-- Right: Controls -->
-    <div class="flex flex-1 items-center justify-end gap-1">
+    <div class="flex items-center gap-1">
       <!-- Lang toggle -->
       <LangToggle href={langToggleHref} locale={locale} />
 
