@@ -1,3 +1,16 @@
+## v0.6.1 (2026-09-25)
+
+### Fix
+
+- **frontend**: report the embeddings probe on the status page
+
+### Perf
+
+- **api**: page extractions in SQL with a window-count total
+- **api**: page tasks in SQL with a window-count total
+- **api**: page user stories in SQL with a window-count total
+- **api**: page projects in SQL with a window-count total
+
 ## v0.6.0 (2026-09-24)
 
 ### Feat
