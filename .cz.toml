@@ -4,4 +4,19 @@ tag_format = "v$version"
 version_provider = "scm"
 update_changelog_on_bump = true
 major_version_zero = true
-version_files = ["package.json", "frontend/package.json", "backend/pyproject.toml"]
+# Anchored per file, and the anchoring is load-bearing. An entry without a `path:pattern`
+# makes commitizen build its regex from the current version alone — `re.escape(version)`
+# in `_resolve_files_and_regexes` (`commitizen/bump.py`) — and then replace that string on
+# EVERY line the regex matches. The bare `0.6.1`, then, also matched the dev dependency
+# `ruff>=0.6.1`, and every bump from `v0.5.1` to `v0.6.2` rewrote that floor, which the
+# initial commit had set to `ruff>=0.5.0`.
+#
+# It was harmless while the project version trailed ruff's, and it is a hard break the day
+# this project reaches `1.0.0`: the pin would become `ruff>=1.0`, no such ruff exists, and
+# `pip install -e ".[dev]"` — CI and the deploy — would stop resolving. The pattern is
+# always the line that *declares* the version, never the version string itself.
+version_files = [
+    'package.json:^  "version": "',
+    'frontend/package.json:^  "version": "',
+    'backend/pyproject.toml:^version = "',
+]
