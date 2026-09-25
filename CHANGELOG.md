@@ -1,3 +1,21 @@
+## v0.7.0 (2026-09-25)
+
+### Feat
+
+- **nav**: rework the mobile sheet's groups, targets and top edge
+- **nav**: build the mobile sheet's links from the session
+- **nav**: show identity and sign-out in the mobile sheet
+- **nav**: add a profile menu to the public navbar
+
+### Fix
+
+- **nav**: give the avatar trigger breathing room in the navbar
+- **nav**: centre the navbar links between their neighbours
+- **nav**: make the mobile sheet fit a phone
+- **nav**: stop the public footer offering guarded routes to visitors
+- **nav**: centre the logo and the avatar trigger in the public navbar
+- **ui**: derive avatar initials by code point, not UTF-16 unit
+
 ## v0.6.2 (2026-09-25)
 
 ### Fix
