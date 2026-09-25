@@ -93,7 +93,13 @@ async def list_extractions(
 
     If neither filter is provided, returns extractions from all workspaces
     the current user is a member of.
+
+    The page and its total come from one statement in the database —
+    ``count(*) OVER ()`` rides on the rows' own query, so no separate
+    ``SELECT COUNT(*)`` is issued. The order is ``created_at DESC, id DESC``,
+    which makes the paging deterministic.
     """
+    offset = (params.page - 1) * params.size
     # Validate workspace access
     if workspace_id is not None:
         # Validate user is a member of the specified workspace
@@ -103,7 +109,9 @@ async def list_extractions(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not a member of this workspace",
             )
-        all_extractions = await repo.list_by_workspace(workspace_id)
+        page, total = await repo.list_page(
+            workspace_id=workspace_id, limit=params.size, offset=offset
+        )
     elif user_story_id is not None:
         # Validate user has access to the user story's workspace
         await require_story_workspace_access(
@@ -113,19 +121,21 @@ async def list_extractions(
             project_repo=project_repo,
             member_repo=member_repo,
         )
-        all_extractions = await repo.list_by_story(user_story_id)
+        page, total = await repo.list_page(
+            user_story_id=user_story_id, limit=params.size, offset=offset
+        )
     else:
         # No filter provided: return extractions from all workspaces the user is a member of
         memberships = await member_repo.list_by_user(current_user.id)
         workspace_ids = [m.workspace_id for m in memberships]
         # One statement for all the workspaces, not one per workspace: this branch used to await
         # `list_by_workspace` in a loop, which cost a statement each (~2s against the dev pooler,
-        # where even a bare SELECT 1 measures 800ms). Ordering is applied below, same as before.
-        all_extractions = await repo.list_by_workspaces(workspace_ids)
-        all_extractions.sort(key=lambda e: e.created_at, reverse=True)
+        # where even a bare SELECT 1 measures 800ms). The order is the statement's
+        # `created_at DESC, id DESC`, shared by every branch of this route.
+        page, total = await repo.list_page(
+            workspace_ids=workspace_ids, limit=params.size, offset=offset
+        )
 
-    total = len(all_extractions)
-    start = (params.page - 1) * params.size
     items = [
         ExtractionResponse(
             id=e.id,
@@ -140,7 +150,7 @@ async def list_extractions(
             created_at=e.created_at,
             completed_at=e.completed_at,
         )
-        for e in all_extractions[start : start + params.size]
+        for e in page
     ]
     return PaginatedResponse(
         items=items,

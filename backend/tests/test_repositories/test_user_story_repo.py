@@ -1,40 +1,63 @@
 """Tests for SQLAlchemyUserStoryRepository."""
 
+from datetime import datetime
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+import pytest_asyncio
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from storico.domain.entities import UserStory
-from storico.infrastructure.database.repositories import SQLAlchemyUserStoryRepository
+from storico.domain.entities import Project, UserStory
+from storico.infrastructure.database.repositories import (
+    SQLAlchemyProjectRepository,
+    SQLAlchemyUserStoryRepository,
+)
+from tests._helpers import create_workspace
 
 
-@pytest.fixture
-def project_id() -> UUID:
-    return uuid4()
+@pytest_asyncio.fixture
+async def workspace_id(db_session: AsyncSession) -> UUID:
+    """Seed a Workspace and return its id — Projects need a real FK."""
+    ws = await create_workspace(db_session)
+    return ws.id
+
+
+async def _seed_project(db_session: AsyncSession, workspace_id: UUID, name: str) -> Project:
+    """Save one project in the workspace and return it."""
+    return await SQLAlchemyProjectRepository(db_session).save(
+        Project(name=name, workspace_id=workspace_id)
+    )
+
+
+def _story(project_id: UUID, feature: str, **kwargs) -> UserStory:
+    """Build a story with a distinct feature so assertions can name rows."""
+    return UserStory(
+        project_id=project_id,
+        actor="user",
+        feature=feature,
+        benefit="value",
+        raw_text=f"As a user, I want {feature} so that value",
+        **kwargs,
+    )
 
 
 @pytest.mark.asyncio
-async def test_save_and_find_by_id(db_session: AsyncSession, project_id: UUID) -> None:
+async def test_save_and_find_by_id(db_session: AsyncSession, workspace_id: UUID) -> None:
     """Save a user story and retrieve it by id."""
     repo = SQLAlchemyUserStoryRepository(db_session)
-    story = UserStory(
-        project_id=project_id,
-        actor="user",
-        feature="log in",
-        benefit="access account",
-        raw_text="As a user, I want to log in so that I can access my account",
-    )
+    project = await _seed_project(db_session, workspace_id, "Save project")
+    story = _story(project.id, "log in")
 
     saved = await repo.save(story)
     assert saved == story
 
     found = await repo.find_by_id(story.id)
     assert found is not None
-    assert found.project_id == project_id
+    assert found.project_id == project.id
     assert found.actor == "user"
     assert found.feature == "log in"
-    assert found.benefit == "access account"
+    assert found.benefit == "value"
     assert found.raw_text.startswith("As a user")
 
 
@@ -47,40 +70,214 @@ async def test_find_by_id_returns_none(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_by_project(db_session: AsyncSession, project_id: UUID) -> None:
-    """list_by_project returns only stories for the given project."""
+async def test_list_page_by_project_returns_only_that_projects_stories(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """list_page(project_id=...) returns only that project's stories, total scoped to it.
+
+    The second project's stories must be excluded from both the page and the
+    total: a total that counted the whole table would break paging arithmetic
+    even when the page itself is filtered correctly.
+    """
     repo = SQLAlchemyUserStoryRepository(db_session)
-    other_id = uuid4()
+    mine = await _seed_project(db_session, workspace_id, "Mine")
+    other = await _seed_project(db_session, workspace_id, "Other")
 
-    s1 = UserStory(project_id=project_id, actor="user", feature="f1", benefit="b1", raw_text="t1")
-    s2 = UserStory(project_id=project_id, actor="user", feature="f2", benefit="b2", raw_text="t2")
-    s3 = UserStory(project_id=other_id, actor="admin", feature="f3", benefit="b3", raw_text="t3")
-    await repo.save(s1)
-    await repo.save(s2)
-    await repo.save(s3)
+    for feature in ("mine-1", "mine-2"):
+        await repo.save(_story(mine.id, feature))
+    for feature in ("other-1", "other-2"):
+        await repo.save(_story(other.id, feature))
 
-    project_stories = await repo.list_by_project(project_id)
-    assert len(project_stories) == 2
-    features = {s.feature for s in project_stories}
-    assert features == {"f1", "f2"}
+    page, total = await repo.list_page(project_id=mine.id, limit=10, offset=0)
+
+    assert total == 2
+    assert {s.feature for s in page} == {"mine-1", "mine-2"}
+    assert all(s.project_id == mine.id for s in page)
 
 
 @pytest.mark.asyncio
-async def test_list_by_project_empty(db_session: AsyncSession) -> None:
-    """list_by_project returns empty list when no stories match."""
+async def test_list_page_by_project_empty(db_session: AsyncSession) -> None:
+    """list_page for a project with no stories returns an empty page and total 0."""
     repo = SQLAlchemyUserStoryRepository(db_session)
-    result = await repo.list_by_project(uuid4())
-    assert result == []
+
+    page, total = await repo.list_page(project_id=uuid4(), limit=10, offset=0)
+
+    assert page == []
+    assert total == 0
 
 
 @pytest.mark.asyncio
-async def test_list_all(db_session: AsyncSession, project_id: UUID) -> None:
+async def test_list_page_mid_page_carries_the_full_total(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """limit=2 over three stories: both mid pages report the full total of 3.
+
+    The total comes from ``count(*) OVER ()`` on the rows' own statement, so
+    every page — including the short last one — reports how many rows match,
+    not how many the page holds.
+    """
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    project = await _seed_project(db_session, workspace_id, "Paged")
+    for day, feature in ((1, "oldest"), (2, "middle"), (3, "newest")):
+        await repo.save(_story(project.id, feature, created_at=datetime(2026, 1, day)))
+
+    page1, total1 = await repo.list_page(project_id=project.id, limit=2, offset=0)
+    page2, total2 = await repo.list_page(project_id=project.id, limit=2, offset=2)
+
+    assert total1 == total2 == 3
+    assert [s.feature for s in page1] == ["newest", "middle"]
+    assert [s.feature for s in page2] == ["oldest"]
+
+
+@pytest.mark.asyncio
+async def test_list_page_past_the_end_returns_empty_page_and_real_total(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """A page past the end returns ([], 3): the real total, not a page count.
+
+    This is the fallback path in ``fetch_page`` — no row comes back to carry
+    the window count, so the caller must still learn the real total.
+    """
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    project = await _seed_project(db_session, workspace_id, "Paged")
+    for feature in ("s1", "s2", "s3"):
+        await repo.save(_story(project.id, feature))
+
+    page, total = await repo.list_page(project_id=project.id, limit=2, offset=4)
+
+    assert page == []
+    assert total == 3
+
+
+@pytest.mark.asyncio
+async def test_list_page_by_workspace_returns_only_that_workspaces_stories(
+    db_session: AsyncSession,
+) -> None:
+    """list_page(workspace_id=...) returns only that workspace's stories."""
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    alpha_ws = await create_workspace(db_session, name="Alpha", slug="alpha-list-page")
+    beta_ws = await create_workspace(db_session, name="Beta", slug="beta-list-page")
+    alpha_project = await _seed_project(db_session, alpha_ws.id, "Alpha project")
+    beta_project = await _seed_project(db_session, beta_ws.id, "Beta project")
+    await repo.save(_story(alpha_project.id, "alpha-feature"))
+    await repo.save(_story(beta_project.id, "beta-feature"))
+
+    page, total = await repo.list_page(workspace_id=alpha_ws.id, limit=10, offset=0)
+
+    assert total == 1
+    assert [s.feature for s in page] == ["alpha-feature"]
+
+
+@pytest.mark.asyncio
+async def test_list_page_with_empty_workspace_ids_skips_the_database(
+    db_session: AsyncSession, test_engine: AsyncEngine
+) -> None:
+    """An empty ``workspace_ids`` returns ([], 0) without issuing any statement.
+
+    No memberships means no rows, not ``IN ()``: against the dev pooler where
+    a statement costs ~2s, an unasked statement is pure latency. Statements
+    are counted on the real engine, following ``ReadsOf`` in
+    ``tests/test_api/test_unfiltered_list_queries.py``.
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyUserStoryRepository(db_session)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        page, total = await repo.list_page(workspace_ids=[], limit=10, offset=0)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    assert page == []
+    assert total == 0
+    assert statements == [], statements
+
+
+@pytest.mark.asyncio
+async def test_list_page_requires_a_scope(db_session: AsyncSession) -> None:
+    """Calling list_page with none of the three scope arguments raises ValueError."""
+    repo = SQLAlchemyUserStoryRepository(db_session)
+
+    with pytest.raises(ValueError):
+        await repo.list_page(limit=10, offset=0)
+
+
+@pytest.mark.asyncio
+async def test_list_page_refuses_two_scopes(db_session: AsyncSession, workspace_id: UUID) -> None:
+    """Two scopes raise instead of silently resolving to one of them.
+
+    An ``if``/``elif`` chain answers a two-scope call with whichever branch
+    happens to come first in the chain. That is a wrong answer shaped like a
+    right one, which is the failure mode this paging change removes — so more
+    than one scope has to be loud.
+    """
+    repo = SQLAlchemyUserStoryRepository(db_session)
+
+    with pytest.raises(ValueError):
+        await repo.list_page(workspace_ids=[workspace_id], project_id=uuid4(), limit=10, offset=0)
+
+    with pytest.raises(ValueError):
+        await repo.list_page(workspace_id=workspace_id, project_id=uuid4(), limit=10, offset=0)
+
+    with pytest.raises(ValueError):
+        await repo.list_page(
+            workspace_id=workspace_id,
+            project_id=uuid4(),
+            workspace_ids=[workspace_id],
+            limit=10,
+            offset=0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_list_page_pins_the_order_rule_in_sql(
+    db_session: AsyncSession, test_engine: AsyncEngine, workspace_id: UUID
+) -> None:
+    """The ordering rule is part of the statement, not of one run's result.
+
+    Result-order assertions can pass by accident on a different query plan.
+    What paging actually depends on is a property of the SQL: without a total
+    order a row can repeat on page 2 or vanish between pages. So the rule is
+    asserted on the statement the database received.
+
+    Statement capture follows ``ReadsOf`` in
+    ``tests/test_api/test_unfiltered_list_queries.py``: a listener on the real
+    engine, not a mock the repository would call once.
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    project = await _seed_project(db_session, workspace_id, "Ordered")
+    await repo.save(_story(project.id, "only"))
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        await repo.list_page(project_id=project.id, limit=10, offset=0)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    page_queries = [s for s in statements if "FROM user_stories" in s]
+    assert len(page_queries) == 1, page_queries
+
+    order_by = page_queries[0].split("ORDER BY", 1)[-1]
+    assert "user_stories.created_at DESC" in order_by, order_by
+    assert "user_stories.id DESC" in order_by, order_by
+
+
+@pytest.mark.asyncio
+async def test_list_all(db_session: AsyncSession, workspace_id: UUID) -> None:
     """list returns all user stories."""
     repo = SQLAlchemyUserStoryRepository(db_session)
-    s1 = UserStory(project_id=project_id, actor="user", feature="f1", benefit="b1", raw_text="t1")
-    s2 = UserStory(project_id=project_id, actor="user", feature="f2", benefit="b2", raw_text="t2")
-    await repo.save(s1)
-    await repo.save(s2)
+    project = await _seed_project(db_session, workspace_id, "Listed")
+    await repo.save(_story(project.id, "f1"))
+    await repo.save(_story(project.id, "f2"))
 
     stories = await repo.list()
     assert len(stories) == 2

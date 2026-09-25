@@ -56,7 +56,7 @@ See [AGENTS.md](./AGENTS.md) for the full project definition, including:
 
 - Hexagonal architecture (backend)
 - Astro + React islands with View Transitions (frontend)
-- Docker Compose orchestration with 5 services
+- Docker Compose orchestration with 4 services
 - LLM integration (Ollama, OpenAI, Anthropic, Gemini, and custom OpenAI-compatible endpoints)
 
 ## Environment Variables
@@ -101,7 +101,7 @@ storico/
 │   │   ├── lib/         # Utilities (api, cn)
 │   │   └── types/       # TypeScript interfaces
 │   └── public/          # Static assets
-├── docker-compose.yml   # 5 services: API, Ollama, Postgres, Qdrant, Redis
+├── docker-compose.yml   # 4 services: API, Ollama, Postgres, Qdrant
 ├── Makefile             # build, up, down, logs, test targets
 └── .env.example         # Environment variable template
 ```

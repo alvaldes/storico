@@ -723,6 +723,8 @@
       "schema_desc": "Alembic revision applied to the database",
       "vector_store": "Vector Store",
       "vector_store_desc": "Qdrant",
+      "embeddings": "Embeddings",
+      "embeddings_desc": "Ollama / OpenAI / Google — extraction history context (RAG)",
       "operational": "Operational",
       "error": "Error",
       "unknown": "Unknown",

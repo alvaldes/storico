@@ -1,7 +1,7 @@
 # Deployment
 
 > Guía de despliegue para Storico.
-> Última actualización: 2026-07-15
+> Última actualización: 2026-09-25
 
 ## Desarrollo (Docker Compose)
 
@@ -27,7 +27,6 @@ Servicios disponibles:
 | Frontend | `http://localhost:4321` |
 | PostgreSQL | `localhost:5432` |
 | Qdrant | `localhost:6333` |
-| Redis | `localhost:6379` |
 | Ollama | `localhost:11434` |
 
 ### Comandos útiles
@@ -220,4 +219,4 @@ El checklist completo está en [`prod.todo.md`](../prod.todo.md). Resumen de pri
 | 🟡 Medio | Juicio de expertos (evaluación tesis) | 🔲 Pendiente |
 | 🟤 Bajo | Custom domain | 🔲 Pendiente |
 | 🟤 Bajo | Rate limiting | 🔲 Pendiente |
-| 🟤 Bajo | Batch processing (Redis/Celery) | 🔲 Pendiente |
+| 🟤 Bajo | Batch processing | ✅ Cerrado por decisión (2026-09-25): no hay endpoint de lote y no se va a implementar. Cada extracción es una historia y corre en segundo plano en el proceso de la API |

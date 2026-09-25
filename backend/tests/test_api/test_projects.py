@@ -3,9 +3,10 @@
 Tests exercise workspace-scoped routes at ``/api/v1/workspaces/{ws_id}/projects/``.
 """
 
+from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from storico.domain.entities.project import Project
 from storico.domain.entities.user import User
@@ -18,6 +19,7 @@ from storico.infrastructure.database.repositories.workspace_member_repository im
     SQLAlchemyWorkspaceMemberRepository,
 )
 from tests._helpers import create_workspace
+from tests.test_api.test_unfiltered_list_queries import ReadsOf
 
 
 def _make_member(db_session: AsyncSession, ws_id: UUID, user_id: UUID) -> None:
@@ -113,6 +115,114 @@ class TestListProjects:
         assert data["total"] == 0
         assert data["page"] == 1
         assert data["size"] == 20
+
+
+class TestListProjectsPagination:
+    """GET /api/v1/workspaces/{workspace_id}/projects/ with paging params."""
+
+    async def _seed_workspace_with_projects(
+        self, db_session: AsyncSession, user: User, count: int = 3
+    ) -> Workspace:
+        """Seed a workspace the caller administers, with ``count`` projects.
+
+        Projects get explicit ``created_at`` values one day apart so tests
+        assert the SQL ordering rule, not wall-clock insertion order.
+        """
+        ws = await create_workspace(db_session)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(workspace_id=ws.id, user_id=user.id, role=WorkspaceRole.ADMIN)
+        )
+        repo = SQLAlchemyProjectRepository(db_session)
+        for day in range(1, count + 1):
+            await repo.save(
+                Project(
+                    name=f"Project day {day}",
+                    workspace_id=ws.id,
+                    created_at=datetime(2026, 1, day),
+                )
+            )
+        return ws
+
+    async def test_page_one_returns_two_items_and_full_total(
+        self, authed_client, authed_user: User, db_session: AsyncSession
+    ):
+        """?page=1&size=2 returns the first two of three projects, total 3."""
+        ws = await self._seed_workspace_with_projects(db_session, authed_user)
+
+        response = await authed_client.get(f"/api/v1/workspaces/{ws.id}/projects/?page=1&size=2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 2
+        assert data["total"] == 3
+        assert data["page"] == 1
+        assert data["size"] == 2
+
+    async def test_page_two_returns_the_last_item_with_full_total(
+        self, authed_client, authed_user: User, db_session: AsyncSession
+    ):
+        """?page=2&size=2 returns the remaining project, still total 3."""
+        ws = await self._seed_workspace_with_projects(db_session, authed_user)
+
+        response = await authed_client.get(f"/api/v1/workspaces/{ws.id}/projects/?page=2&size=2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 1
+        assert data["total"] == 3
+
+    async def test_page_past_the_end_returns_no_items_and_the_real_total(
+        self, authed_client, authed_user: User, db_session: AsyncSession
+    ):
+        """?page=9&size=2 returns 0 items but total 3 — not a page count.
+
+        This is the fallback path: an empty page carries the real total so
+        clients can still render '3 projects' while showing no rows.
+        """
+        ws = await self._seed_workspace_with_projects(db_session, authed_user)
+
+        response = await authed_client.get(f"/api/v1/workspaces/{ws.id}/projects/?page=9&size=2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 3
+
+    async def test_list_orders_by_created_at_desc(
+        self, authed_client, authed_user: User, db_session: AsyncSession
+    ):
+        """The newest project comes first, per the created_at DESC rule."""
+        ws = await self._seed_workspace_with_projects(db_session, authed_user)
+
+        response = await authed_client.get(f"/api/v1/workspaces/{ws.id}/projects/")
+
+        assert response.status_code == 200
+        names = [item["name"] for item in response.json()["items"]]
+        assert names == ["Project day 3", "Project day 2", "Project day 1"]
+
+    async def test_list_reads_projects_exactly_once(
+        self,
+        authed_client,
+        authed_user: User,
+        db_session: AsyncSession,
+        test_engine: AsyncEngine,
+    ):
+        """The list reads the projects table in exactly one statement.
+
+        The dev database is a pooler where one statement costs ~2s, so the
+        page, its story counts and its total must ride on a single query —
+        no per-project count and no separate COUNT(*).
+        """
+        ws = await self._seed_workspace_with_projects(db_session, authed_user)
+
+        with ReadsOf(test_engine, "projects") as reads:
+            response = await authed_client.get(f"/api/v1/workspaces/{ws.id}/projects/")
+
+        assert response.status_code == 200
+        assert len(reads.statements) == 1, (
+            f"the project list read 'projects' {len(reads.statements)} times; "
+            "page, counts and total must come from one statement"
+        )
 
 
 class TestGetProject:

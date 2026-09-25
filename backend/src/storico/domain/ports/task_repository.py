@@ -25,20 +25,34 @@ class TaskRepository(ABC):
         ...
 
     @abstractmethod
-    async def list_by_workspace(self, workspace_id: UUID) -> list[Task]:
-        """Return all tasks belonging to a workspace."""
+    async def list_page(
+        self,
+        *,
+        workspace_id: UUID | None = None,
+        user_story_id: UUID | None = None,
+        workspace_ids: list[UUID] | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[Task], int]:
+        """Return one page of tasks matching exactly one scope, plus the total.
+
+        Exactly one of ``workspace_id``, ``user_story_id`` or ``workspace_ids``
+        must be given; calling with none raises ``ValueError``. An empty
+        ``workspace_ids`` returns an empty page without issuing any statement:
+        no memberships means no rows, not ``IN ()`` — and against the dev
+        pooler, where one statement costs ~2s (a bare ``SELECT 1`` already
+        measures 800ms in ``/api/v1/health``), an unasked statement is pure
+        latency.
+
+        The total rides on the rows' own statement as ``count(*) OVER ()``,
+        so no separate ``SELECT COUNT(*)`` is issued on the normal path, and
+        results are ordered by ``created_at DESC, id DESC`` in SQL.
+        """
         ...
 
     @abstractmethod
-    async def list_by_workspaces(self, workspace_ids: list[UUID]) -> list[Task]:
-        """Return every task belonging to any of the workspaces, in one query.
-
-        The fold for callers that used to await ``list_by_workspace`` once per workspace, which
-        cost one statement per workspace. Against the dev pooler a statement measures ~2s — a bare
-        ``SELECT 1`` already costs 800ms there (``/api/v1/health``) — so 12 of them is how a list
-        request reached 25-32s. An empty ``workspace_ids`` returns ``[]`` without querying: no
-        memberships is no rows, not a statement.
-        """
+    async def list_by_workspace(self, workspace_id: UUID) -> list[Task]:
+        """Return all tasks belonging to a workspace."""
         ...
 
     @abstractmethod

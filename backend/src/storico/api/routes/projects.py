@@ -141,17 +141,19 @@ async def list_projects(
 ) -> PaginatedResponse[ProjectResponse]:
     """List all projects in the workspace. Workspace member access.
 
-    Uses ``list_by_workspace_with_counts`` so the per-project story count
-    is folded into a single JOIN+GROUP_BY round-trip — keeps the static
-    offset-based pagination schema intact while removing the N+1
-    ``count_stories`` loop. See domain/entities/project.py:ProjectWithCount.
+    The per-project story count is folded into the page query with a LEFT
+    OUTER JOIN + GROUP BY (removes the N+1 ``count_stories`` loop), and the
+    page and its total come from that one statement in the database —
+    ``count(*) OVER ()`` rides on the rows' own query, so no separate
+    ``SELECT COUNT(*)`` is issued. The order is ``created_at DESC, id DESC``,
+    which makes the paging deterministic. See
+    domain/entities/project.py:ProjectWithCount.
     """
     workspace, _ = ctx
-    all_projects = await repo.list_by_workspace_with_counts(workspace.id)
-    total = len(all_projects)
-    start = (params.page - 1) * params.size
+    offset = (params.page - 1) * params.size
+    page, total = await repo.list_page(workspace.id, limit=params.size, offset=offset)
     items: list[ProjectResponse] = []
-    for pwc in all_projects[start : start + params.size]:
+    for pwc in page:
         project = pwc.project
         items.append(
             ProjectResponse(

@@ -6,12 +6,16 @@ The chain comes from the shared ``seed_workspace`` factory; only the foreign
 owner, which is a user rather than part of the chain, is built locally.
 """
 
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from storico.domain.entities import User
-from storico.infrastructure.database.repositories import SQLAlchemyUserRepository
+from storico.domain.entities import User, UserStory
+from storico.infrastructure.database.repositories import (
+    SQLAlchemyUserRepository,
+    SQLAlchemyUserStoryRepository,
+)
 
 RAW_TEXT = "As a user, I want to log in so that I can access my account"
 
@@ -164,6 +168,138 @@ class TestListStories:
         data = response.json()
         assert data["total"] == 1
         assert data["items"][0]["feature"] == "feature B"
+
+
+class TestListStoriesPagination:
+    """GET /api/v1/stories/ with paging params — every authorization branch.
+
+    Each branch must report ``total`` as the full count of matching stories,
+    not the page size, and a page past the end must return 0 items with the
+    real total. Stories are saved through the repository with explicit
+    ``created_at`` values so assertions pin the SQL ordering rule rather than
+    wall-clock insertion order.
+    """
+
+    async def _seed_stories(self, db_session: AsyncSession, seed_workspace, count: int):
+        """Seed an accessible workspace with ``count`` stories, one day apart.
+
+        Returns ``(workspace_id, project_id, features)`` where ``features`` is
+        the creation order (oldest first), so tests can name rows.
+        """
+        seeded = await seed_workspace(stories=0)
+        features = [f"feature {day}" for day in range(1, count + 1)]
+        for day, feature in enumerate(features, start=1):
+            await SQLAlchemyUserStoryRepository(db_session).save(
+                UserStory(
+                    project_id=seeded.project_id,
+                    actor="user",
+                    feature=feature,
+                    benefit="value",
+                    raw_text=f"As a user, I want {feature} so that value",
+                    created_at=datetime(2026, 1, day),
+                )
+            )
+        return seeded.workspace_id, seeded.project_id, features
+
+    async def test_no_filter_returns_the_full_total(self, authed_client, seed_workspace):
+        """?page=1&size=2 with no filter returns 2 of 3 stories and total 3."""
+        await seed_workspace(stories=2)
+        await seed_workspace(stories=1)
+
+        response = await authed_client.get("/api/v1/stories/?page=1&size=2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 2
+        assert data["total"] == 3
+        assert data["page"] == 1
+        assert data["size"] == 2
+
+    async def test_no_filter_past_the_end_returns_no_items_and_the_real_total(
+        self, authed_client, seed_workspace
+    ):
+        """?page=9&size=2 with no filter returns 0 items but total 3.
+
+        The fallback path: an empty page carries the real total so clients can
+        still render '3 stories' while showing no rows.
+        """
+        await seed_workspace(stories=2)
+        await seed_workspace(stories=1)
+
+        response = await authed_client.get("/api/v1/stories/?page=9&size=2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 3
+
+    async def test_workspace_filter_returns_the_full_total(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """?workspace_id=&page=1&size=2 returns 2 of 3 stories and total 3."""
+        ws_id, _project_id, _features = await self._seed_stories(db_session, seed_workspace, 3)
+
+        response = await authed_client.get(f"/api/v1/stories/?workspace_id={ws_id}&page=1&size=2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 2
+        assert data["total"] == 3
+
+    async def test_workspace_filter_past_the_end_returns_no_items_and_the_real_total(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """?workspace_id=&page=9&size=2 returns 0 items but total 3."""
+        ws_id, _project_id, _features = await self._seed_stories(db_session, seed_workspace, 3)
+
+        response = await authed_client.get(f"/api/v1/stories/?workspace_id={ws_id}&page=9&size=2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 3
+
+    async def test_workspace_filter_orders_by_created_at_desc(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """?workspace_id= orders the page by created_at DESC, the shared SQL rule."""
+        ws_id, _project_id, features = await self._seed_stories(db_session, seed_workspace, 3)
+
+        response = await authed_client.get(f"/api/v1/stories/?workspace_id={ws_id}")
+
+        assert response.status_code == 200
+        returned = [item["feature"] for item in response.json()["items"]]
+        assert returned == list(reversed(features))
+
+    async def test_project_filter_returns_the_full_total(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """?project_id=&page=1&size=2 returns 2 of 3 stories and total 3."""
+        _ws_id, project_id, _features = await self._seed_stories(db_session, seed_workspace, 3)
+
+        response = await authed_client.get(
+            f"/api/v1/stories/?project_id={project_id}&page=1&size=2"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 2
+        assert data["total"] == 3
+
+    async def test_project_filter_past_the_end_returns_no_items_and_the_real_total(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """?project_id=&page=9&size=2 returns 0 items but total 3."""
+        _ws_id, project_id, _features = await self._seed_stories(db_session, seed_workspace, 3)
+
+        response = await authed_client.get(
+            f"/api/v1/stories/?project_id={project_id}&page=9&size=2"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 3
 
 
 class TestGetStory:

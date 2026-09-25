@@ -139,6 +139,15 @@ const serviceRows: { key: string; title: string; description: string; state: Bad
     description: t.pages.status.vector_store_desc,
     state: badgeState(serviceStatus(health, 'qdrant')),
   },
+  {
+    // The probe that turns the banner "degraded" with no visible cause when it fails: the
+    // backend degrades `status` for any probe, and this row is the only place its result
+    // reaches the operator.
+    key: 'embeddings',
+    title: t.pages.status.embeddings,
+    description: t.pages.status.embeddings_desc,
+    state: badgeState(serviceStatus(health, 'embeddings')),
+  },
 ];
 ---
 

@@ -1,10 +1,12 @@
 """Tests for SQLAlchemyProjectRepository."""
 
+from datetime import datetime
 from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from storico.domain.entities import EntityNotFound, Project
 from storico.domain.entities.user_story import UserStory
@@ -23,29 +25,28 @@ async def workspace_id(db_session: AsyncSession) -> UUID:
 
 
 @pytest.mark.asyncio
-async def test_list_by_workspace_with_counts_folds_stories(
+async def test_list_page_folds_story_counts_across_pages(
     db_session: AsyncSession, workspace_id: UUID
 ) -> None:
-    """list_by_workspace_with_counts returns (project, story_count) pairs.
+    """list_page keeps per-project story counts on every page, including zero.
 
-    Guards the P0.1 perf fix: one LEFT OUTER JOIN + GROUP BY round-trip
-    instead of N+1 (list_by_workspace + count_stories per project).
-    Verifies the count is 0 for projects with no stories and correct for
-    projects with several, so a future regression that drops the LEFT
-    OUTER JOIN is caught.
+    Guards the JOIN+GROUP_BY fold that removed the N+1 pattern (one
+    ``list_by_workspace`` + ``count_stories`` per project), now under paging:
+    the LEFT OUTER JOIN must keep a project with no stories at count 0, and
+    paging must not lose the counts of projects that live on other pages.
     """
     project_repo = SQLAlchemyProjectRepository(db_session)
     story_repo = SQLAlchemyUserStoryRepository(db_session)
 
-    p_empty = Project(name="Empty", workspace_id=workspace_id)
-    p_with_two = Project(name="WithTwo", workspace_id=workspace_id)
-    await project_repo.save(p_empty)
-    await project_repo.save(p_with_two)
+    earlier = Project(name="Empty", workspace_id=workspace_id, created_at=datetime(2026, 1, 1))
+    later = Project(name="WithTwo", workspace_id=workspace_id, created_at=datetime(2026, 1, 2))
+    await project_repo.save(earlier)
+    await project_repo.save(later)
 
     for _ in range(2):
         await story_repo.save(
             UserStory(
-                project_id=p_with_two.id,
+                project_id=later.id,
                 actor="user",
                 feature="do thing",
                 benefit="value",
@@ -53,10 +54,14 @@ async def test_list_by_workspace_with_counts_folds_stories(
             )
         )
 
-    pairs = await project_repo.list_by_workspace_with_counts(workspace_id)
-    by_name = {pwc.project.name: pwc.story_count for pwc in pairs}
+    page1, total1 = await project_repo.list_page(workspace_id, limit=1, offset=0)
+    page2, total2 = await project_repo.list_page(workspace_id, limit=1, offset=1)
 
-    assert by_name == {"Empty": 0, "WithTwo": 2}
+    assert total1 == total2 == 2
+    assert [pwc.project.name for pwc in page1] == ["WithTwo"]
+    assert page1[0].story_count == 2
+    assert [pwc.project.name for pwc in page2] == ["Empty"]
+    assert page2[0].story_count == 0
 
 
 @pytest.mark.asyncio
@@ -119,29 +124,122 @@ async def test_find_by_id_returns_none(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_by_workspace(db_session: AsyncSession) -> None:
-    """list_by_workspace returns only projects for the given workspace."""
+async def test_list_page_orders_by_created_at_desc(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """list_page orders by created_at DESC.
+
+    Explicit created_at values seed the rows, so the assertion pins the SQL
+    ordering rule rather than wall-clock insertion order.
+    """
     repo = SQLAlchemyProjectRepository(db_session)
-    ws_a_id = (await create_workspace(db_session, name="Workspace A")).id
-    ws_b_id = (await create_workspace(db_session, name="Workspace B")).id
+    for day, name in ((1, "Oldest"), (2, "Middle"), (3, "Newest")):
+        await repo.save(
+            Project(name=name, workspace_id=workspace_id, created_at=datetime(2026, 1, day))
+        )
 
-    p1 = Project(name="Project 1", workspace_id=ws_a_id)
-    p2 = Project(name="Project 2", workspace_id=ws_a_id)
-    p3 = Project(name="Project 3", workspace_id=ws_a_id)
-    p4 = Project(name="Other Project", workspace_id=ws_b_id)
-    await repo.save(p1)
-    await repo.save(p2)
-    await repo.save(p3)
-    await repo.save(p4)
+    page, total = await repo.list_page(workspace_id, limit=10, offset=0)
 
-    ws_a_projects = await repo.list_by_workspace(ws_a_id)
-    assert len(ws_a_projects) == 3
-    names = {p.name for p in ws_a_projects}
-    assert names == {"Project 1", "Project 2", "Project 3"}
+    assert [pwc.project.name for pwc in page] == ["Newest", "Middle", "Oldest"]
+    assert total == 3
 
-    ws_b_projects = await repo.list_by_workspace(ws_b_id)
-    assert len(ws_b_projects) == 1
-    assert ws_b_projects[0].name == "Other Project"
+
+@pytest.mark.asyncio
+async def test_list_page_breaks_ties_by_id_desc(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """Two projects with the same created_at come back in id DESC order.
+
+    The assertion compares against the ids sorted descending, so it pins the
+    tiebreaker rule instead of the incidental result of one run.
+    """
+    repo = SQLAlchemyProjectRepository(db_session)
+    for name in ("First", "Second"):
+        await repo.save(
+            Project(name=name, workspace_id=workspace_id, created_at=datetime(2026, 1, 1))
+        )
+
+    page, _total = await repo.list_page(workspace_id, limit=10, offset=0)
+
+    ids = [pwc.project.id for pwc in page]
+    assert ids == sorted(ids, reverse=True)
+
+
+@pytest.mark.asyncio
+async def test_list_page_pins_the_order_rule_in_sql(
+    db_session: AsyncSession, test_engine: AsyncEngine, workspace_id: UUID
+) -> None:
+    """The ordering rule is part of the statement, not of one run's result.
+
+    ``test_list_page_breaks_ties_by_id_desc`` asserts the order the rows came
+    back in, and a different query plan could satisfy that by accident. What
+    paging actually depends on is a property of the SQL: without a total order
+    a row can repeat on page 2 or vanish between pages. So the rule is asserted
+    on the statement the database received.
+
+    Statement capture follows ``ReadsOf`` in
+    ``tests/test_api/test_unfiltered_list_queries.py``: a listener on the real
+    engine, not a mock the repository would call once.
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyProjectRepository(db_session)
+    # Outside the capture: ``save`` reads the row back through
+    # ``session.get``, so its own ``SELECT ... FROM projects`` would be counted
+    # as a second page query.
+    await repo.save(Project(name="Only", workspace_id=workspace_id))
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        await repo.list_page(workspace_id, limit=10, offset=0)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    page_queries = [s for s in statements if "FROM projects" in s]
+    assert len(page_queries) == 1, page_queries
+
+    order_by = page_queries[0].split("ORDER BY", 1)[-1]
+    assert "projects.created_at DESC" in order_by, order_by
+    assert "projects.id DESC" in order_by, order_by
+
+
+@pytest.mark.asyncio
+async def test_list_page_returns_disjoint_pages_with_full_total(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """limit=2 over three projects yields disjoint pages and total 3 on both."""
+    repo = SQLAlchemyProjectRepository(db_session)
+    for day in (1, 2, 3):
+        await repo.save(
+            Project(name=f"P-{day}", workspace_id=workspace_id, created_at=datetime(2026, 1, day))
+        )
+
+    page1, total1 = await repo.list_page(workspace_id, limit=2, offset=0)
+    page2, total2 = await repo.list_page(workspace_id, limit=2, offset=2)
+
+    ids1 = {pwc.project.id for pwc in page1}
+    ids2 = {pwc.project.id for pwc in page2}
+    assert len(page1) == 2
+    assert len(page2) == 1
+    assert not ids1 & ids2
+    assert total1 == total2 == 3
+
+
+@pytest.mark.asyncio
+async def test_list_page_empty_workspace_returns_zero_total(
+    db_session: AsyncSession,
+) -> None:
+    """list_page on a workspace with no projects returns ([], 0)."""
+    repo = SQLAlchemyProjectRepository(db_session)
+    ws = await create_workspace(db_session)
+
+    page, total = await repo.list_page(ws.id, limit=20, offset=0)
+
+    assert page == []
+    assert total == 0
 
 
 @pytest.mark.asyncio
@@ -151,14 +249,6 @@ async def test_delete_raises_entity_not_found(db_session: AsyncSession) -> None:
     with pytest.raises(EntityNotFound) as exc:
         await repo.delete(uuid4())
     assert "Project" in str(exc.value)
-
-
-@pytest.mark.asyncio
-async def test_list_returns_empty_for_no_matches(db_session: AsyncSession) -> None:
-    """list_by_workspace returns empty list when no projects match."""
-    repo = SQLAlchemyProjectRepository(db_session)
-    result = await repo.list_by_workspace(uuid4())
-    assert result == []
 
 
 @pytest.mark.asyncio
