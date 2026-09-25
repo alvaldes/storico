@@ -6,6 +6,15 @@
 > frontend `tsc` clean, `464 passed (40 files)`, `astro build` complete; backend `792 passed,
 > 21 skipped`, `ruff check` clean, `ruff format --check` 235 files. Nothing pushed; no PR opened.
 > `make bump` is the owner's call, and it is a MINOR because `031d826` is a `feat`.
+> **Released**: the owner chose to merge to `main` and bump there. Merge `c624ef4`
+> (`--no-ff`), bump `3defa49` → **v0.6.0**, tag on `main`. Nothing pushed.
+> `make bump`'s guard passed: the three manifests already read the tag's value. The commit you are
+> reading landed after the tag, so it is in the next release, not in `v0.6.0`.
+> **Post-release note**: the running dev backend still reports `version: 0.5.1` from
+> `/api/v1/health` and `/openapi.json`, because it reads the *installed distribution* metadata and the
+> editable install in the conda env predates the bump. That is the field working as designed — it
+> reports what is installed, never a literal — and it self-corrects on the next
+> `pip install -e ".[dev]"`. CI installs fresh, so it never sees the drift.
 > **Created**: 2026-09-24
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/public-surface-truth` (continues from `466dea6`; the four commits of
