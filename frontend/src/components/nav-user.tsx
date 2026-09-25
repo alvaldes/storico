@@ -23,6 +23,7 @@ import {
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
+import { getInitials } from '@/lib/initials';
 
 export function NavUser({ locale, currentPath }: { locale: Locale; currentPath: string }) {
   const { isMobile } = useSidebar();
@@ -41,14 +42,7 @@ export function NavUser({ locale, currentPath }: { locale: Locale; currentPath: 
       ? `/${otherLocale}`
       : currentPath.replace(/^\/(en|es)/, `/${otherLocale}`) || `/${otherLocale}`;
 
-  const initials = displayName
-    ? displayName
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
-    : '??';
+  const initials = getInitials(displayName);
 
   const handleLogout = useCallback(() => {
     signOut({ callbackUrl: `/${locale}/login` });
