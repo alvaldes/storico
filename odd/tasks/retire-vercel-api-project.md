@@ -1,8 +1,9 @@
 # ODD Feature: retire-vercel-api-project
 
-> **Status**: closed on `chore/retire-vercel-api-project` — WU1 (`5d77239`), WU2a (`700c4bb`), WU2b
-> (`2ef043a`) and WU2c (this commit) landed. **Receipt-driven development is off in this clone**
-> (decided by clone_local on 2026-09-24; global is on), so native review is not part of this batch.
+> **Status**: **landed and released.** Merged into `main` as `c305541` and tagged `v0.6.1` on
+> 2026-09-25. WU1 (`5d77239`), WU2a (`700c4bb`), WU2b (`2ef043a`), WU2c (`cc01ce8`) and WU3
+> (`58641a1`) all landed. **Receipt-driven development is off in this clone** (decided by
+> clone_local on 2026-09-24; global is on), so native review is not part of this batch.
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `chore/retire-vercel-api-project` (off `main` @ `7fe8f01`).
@@ -66,7 +67,8 @@ the VM's `.env`, `STORICO_AUTH_JWT_SECRET` equals the surviving frontend's `AUTH
 | WU1 | Delete the dead Vercel configuration | `5d77239` | the five files above, plus `backend/pyproject.toml` |
 | WU2a | Correct the repository documents | `700c4bb` | `AGENTS.md`, `prod.todo.md`, `docs/security.md`, `docs/api.md`, `docs/README.md` |
 | WU2b | Correct the ODD records | `2ef043a` | `prod-honesty-followups.md`, `production-state-and-domain-decision.md`, `schema-drift-gate.md`, `provider-literal-and-copy-drift.md` |
-| WU2c | `frontend/.env.example` | _this commit_ | the production comment line; the harness safety policy refuses `.env*` paths, so the owner authorized it explicitly and the edit was applied by shell |
+| WU2c | `frontend/.env.example` | `cc01ce8` | the production comment line; the harness safety policy refuses `.env*` paths, so the owner authorized it explicitly and the edit was applied by shell |
+| WU3 | The `env pull` redaction trap | `58641a1` | `prod.todo.md`, `docs/security.md` |
 
 ## What lands
 

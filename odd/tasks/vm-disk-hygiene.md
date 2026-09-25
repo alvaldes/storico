@@ -1,8 +1,9 @@
 # ODD Feature: vm-disk-hygiene
 
-> **Status**: closed on `chore/vm-disk-hygiene` — WU1 (`9134e78`) and WU2 (this commit) landed, and the
-> cleanup was measured on the production host before this record was closed. **Receipt-driven
-> development is off in this clone** (decided by clone_local on 2026-09-24).
+> **Status**: **landed and released.** Merged into `main` as `1aebadf` and tagged `v0.6.1` on
+> 2026-09-25. WU1 (`9134e78`) and WU2 (`b456acb`) landed, and the cleanup was measured on the
+> production host before the record closed. **Receipt-driven development is off in this clone**
+> (decided by clone_local on 2026-09-24).
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 
