@@ -92,7 +92,7 @@ const L = (path: string) => localizedPath(path, locale);
       {user ? (
         // `flex` and not `block`: a block wrapper puts the inline-flex trigger on a text
         // baseline, which lifts it ~4px above the row its siblings are centred in.
-        <div class="hidden lg:flex">
+        <div class="hidden lg:flex p-1.5">
           <PublicUserMenu client:idle locale={locale} user={user} />
         </div>
       ) : (
