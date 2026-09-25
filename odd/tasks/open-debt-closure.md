@@ -60,7 +60,7 @@ live documents still describe them as running infrastructure:
 | `AGENTS.md` | 10 lines — the header's own resync note (4, which was already a *correction* rather than a claim), stack table (220), ADR-004 (289), ADR-005's service list (295), block diagram (432-433, 442-446), layer table (461), feature #38 (548), references (1031-1032) |
 | `docs/architecture.md` | 4 — stack table (23), diagram (66), ADR-004 (134), deploy context (143) |
 | `docs/deployment.md` | 2 — service ports (30), batch row (223) |
-| `README.md` | 1 — "5 services: API, Ollama, Postgres, Qdrant, Redis" (104) |
+| `README.md` | 2 — "5 services: API, Ollama, Postgres, Qdrant, Redis" (104) and "Docker Compose orchestration with 5 services" (59) |
 
 The frontend public API reference already stopped advertising the endpoint
 (`frontend/src/i18n/__tests__/api-docs-copy.test.ts`), so the remaining drift is backend-side documentation.
@@ -71,7 +71,10 @@ rather than left behind by an edit that touched the line:
 - `AGENTS.md:175` (executive description) advertised "semantic caching". The only cache in the tree is
   `infrastructure/cache/user_cache.py`, a 30-second in-process per-user auth cache. `AGENTS.md`'s own ADR-004
   already states there is no semantic cache, so the document contradicted itself 110 lines apart.
-- `README.md:104` advertised "5 services" in `docker-compose.yml`. Compose defines four.
+- `README.md` advertised a compose service count that compose does not back, in **two** places (59, 104). The first
+  pass fixed only line 104 and the commit message then claimed the claim was gone; the independent verifier refuted
+  that by finding line 59, which a follow-up commit fixed. The refutation is kept here rather than smoothed over: it
+  is the clean demonstration that a prose sweep must be checked by something other than the sweep.
 
 Out of scope, reported and not fixed: `docs/architecture.md` ADR-005 still reads "Status: 🔴 Pendiente
 (producción)" and "Producción sin definir", while production has been running since before this note. That is a
@@ -168,7 +171,7 @@ Appended as each task closes: commit id, observed RED, observed GREEN, and the v
 | Task | Commit | RED | GREEN | Verification |
 |------|--------|-----|-------|--------------|
 | T1 | `f1fea5e` | `expected [ Array(4) ] to include 'embeddings'` — the missing-probe assertion, no syntax error; reproduced independently by the verifier by reverting only the row and the two key pairs, restore confirmed by SHA-256 | focused `3 passed`; full suite `41 files / 467 tests passed`; `tsc --noEmit` exit 0; `astro build` complete | `gentle_review` `assess` returned `unassessable` (untracked files require an explicit declaration, so no tier could be produced), and an unassessable candidate is treated as high: the writer self-verified **and** an independent `gentle-ai-verify` ran. That verifier confirmed all five points, including that the probe regex reaches the `services` object of `health_services()` and that no other `"services":` occurrence exists in the file. |
-| T2 | `e9d88bb` | **TDD exception, declared**: prose only, with no mechanical invariant to write first. A phrase blocklist ("no live document may name Redis/Celery") is the only test this admits, and its false negatives are exactly the rewordings a real drift would use, so it was rejected as a guard rather than written to look thorough. The applicable check is that no artifact depends on the changed text: `grep` for every reference to these four documents from `backend/` and `frontend/` finds only two comments, and the frontend suite reads none of them. | `cd frontend && pnpm test` → `41 files / 467 tests passed`, unchanged, confirming nothing depended on the prose | inline, by the parent (route declared in the Tasks table) — no external writer to verify, and the native `assess` tier is resolved for the commit range below |
+| T2 | `e9d88bb` + the follow-up `README.md` fix | **TDD exception, declared**: prose only, with no mechanical invariant to write first. A phrase blocklist ("no live document may name Redis/Celery") is the only test this admits, and its false negatives are exactly the rewordings a real drift would use, so it was rejected as a guard rather than written to look thorough. The applicable check is that no artifact depends on the changed text: `grep` for every reference to these four documents from `backend/` and `frontend/` finds only two comments, and the frontend suite reads none of them. | `cd frontend && pnpm test` → `41 files / 467 tests passed`, unchanged, confirming nothing depended on the prose | inline, by the parent (route declared in the Tasks table). The native `assess` returned `schema-incompatible`, so the plan required an independent verifier anyway, and it earned its keep: it confirmed 7 of the 8 checks and **refuted one** — `README.md:59` still read "5 services", so the document contradicted its own line 104. Fixed in the follow-up commit. It also proved the diagram edits changed no column and that the residual `AGENTS.md` diagram drift is pre-existing, by comparing against `git show e9d88bb^:AGENTS.md`. |
 | T3 | — | — | — | — |
 | T4 | — | — | — | — |
 | T5 | — | — | — | — |
