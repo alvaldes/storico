@@ -24,8 +24,8 @@ class ProjectWithCount:
     """Project projected alongside the count of its user stories.
 
     Returned by repository methods that fold the story count into a single
-    query (e.g. ``list_by_workspace_with_counts`` and
-    ``find_by_id_with_count``) to avoid N+1 round-trips to the database.
+    query (e.g. ``list_page`` and ``find_by_id_with_count``) to avoid N+1
+    round-trips to the database.
 
     The domain layer does NOT import SQLAlchemy — this dataclass is a pure
     domain projection. Repositories are responsible for converting the

@@ -25,17 +25,10 @@ class ProjectRepository(ABC):
         ...
 
     @abstractmethod
-    async def list_by_workspace(self, workspace_id: UUID) -> list[Project]:
-        """Return all projects scoped to a workspace."""
-        ...
-
-    @abstractmethod
-    async def list_by_workspace_with_counts(self, workspace_id: UUID) -> list[ProjectWithCount]:
-        """Return all projects in a workspace with their story counts.
-
-        Folds the per-project story count into a single JOIN+GROUP_BY query
-        so the caller avoids one extra round-trip per project (N+1).
-        """
+    async def list_page(
+        self, workspace_id: UUID, *, limit: int, offset: int
+    ) -> tuple[list[ProjectWithCount], int]:
+        """Return one page of projects with their story counts, plus the total."""
         ...
 
     @abstractmethod

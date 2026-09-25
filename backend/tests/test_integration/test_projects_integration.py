@@ -149,7 +149,7 @@ async def pg_session(pg_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, Non
 
 @pytest.mark.asyncio(loop_scope="module")
 async def test_list_projects_with_counts_latency_under_500ms(pg_session: AsyncSession) -> None:
-    """Seed 50 projects×5 stories, measure list_by_workspace_with_counts wall time.
+    """Seed 50 projects×5 stories, measure list_page wall time.
 
     Guards the perf fix from P0.1: with N=50 projects, the previous
     N+1 path (list + count_stories per project) would fire ~51 round-trips
@@ -193,11 +193,10 @@ async def test_list_projects_with_counts_latency_under_500ms(pg_session: AsyncSe
             )
 
     start = time.perf_counter()
-    pairs = await project_repo.list_by_workspace_with_counts(ws.id)
+    pairs, total = await project_repo.list_page(ws.id, limit=100, offset=0)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
 
+    assert total == 50, "the page reports the full total"
     assert len(pairs) == 50, "all 50 projects present"
     assert all(pwc.story_count == 5 for pwc in pairs), "each project has 5 stories"
-    assert elapsed_ms < 500, (
-        f"list_by_workspace_with_counts took {elapsed_ms:.1f}ms (threshold 500ms)"
-    )
+    assert elapsed_ms < 500, f"list_page took {elapsed_ms:.1f}ms (threshold 500ms)"

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from storico.domain.entities import EntityNotFound, Project, ProjectWithCount, RepositoryError
 from storico.domain.ports import ProjectRepository
 from storico.infrastructure.database.models import ProjectModel, UserStoryModel
+from storico.infrastructure.database.pagination import fetch_page, with_total
 
 
 class SQLAlchemyProjectRepository(ProjectRepository):
@@ -61,34 +62,46 @@ class SQLAlchemyProjectRepository(ProjectRepository):
         model, story_count = row
         return ProjectWithCount(project=self._to_domain(model), story_count=story_count)
 
-    async def list_by_workspace(self, workspace_id: UUID) -> list[Project]:
-        stmt = select(ProjectModel).where(ProjectModel.workspace_id == workspace_id)
-        result = await self._session.execute(stmt)
-        return [self._to_domain(row) for row in result.scalars()]
+    async def list_page(
+        self, workspace_id: UUID, *, limit: int, offset: int
+    ) -> tuple[list[ProjectWithCount], int]:
+        """Return one page of projects with their story counts, plus the total.
 
-    async def list_by_workspace_with_counts(self, workspace_id: UUID) -> list[ProjectWithCount]:
-        """List all projects in a workspace with their story counts.
+        The LEFT OUTER JOIN + GROUP BY folds the per-project story count into
+        the same round-trip as the rows — the N+1 pattern where the list was
+        followed by a ``count_stories`` call per project stays dead. That
+        matters against a remote Supabase/Neon pool where each round-trip
+        costs network latency.
 
-        Replaces the N+1 pattern where ``list_by_workspace`` is followed
-        by a ``count_stories`` call per project. The LEFT OUTER JOIN +
-        GROUP BY folds it into a single round-trip — important against a
-        remote Supabase/Neon pool where each round-trip costs ~5-50ms of
-        network latency.
+        The page and its total come from one statement: ``count(*) OVER ()``
+        rides on the rows' own query (see ``fetch_page``), so no separate
+        ``SELECT COUNT(*)`` is issued on the normal path.
 
-        Returns items in the same order ``list_by_workspace`` would
-        (no extra ``ORDER BY`` is added).
+        Results are ordered by ``created_at DESC, id DESC`` in SQL — a
+        requirement, not decoration: ``LIMIT``/``OFFSET`` over an unordered
+        set is undefined behaviour and a row could repeat or vanish between
+        pages. ``id DESC`` is the tiebreaker, so two rows written in the same
+        instant cannot swap.
         """
         stmt = (
             select(ProjectModel, func.count(UserStoryModel.id).label("story_count"))
             .outerjoin(UserStoryModel, UserStoryModel.project_id == ProjectModel.id)
             .where(ProjectModel.workspace_id == workspace_id)
             .group_by(ProjectModel.id)
+            .order_by(ProjectModel.created_at.desc(), ProjectModel.id.desc())
         )
-        result = await self._session.execute(stmt)
+        count_stmt = (
+            select(func.count())
+            .select_from(ProjectModel)
+            .where(ProjectModel.workspace_id == workspace_id)
+        )
+        rows, total = await fetch_page(
+            self._session, with_total(stmt), count_stmt, limit=limit, offset=offset
+        )
         return [
             ProjectWithCount(project=self._to_domain(model), story_count=story_count)
-            for model, story_count in result.all()
-        ]
+            for model, story_count, _total in rows
+        ], total
 
     async def list(self) -> list[Project]:
         result = await self._session.execute(select(ProjectModel))
