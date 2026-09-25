@@ -1,9 +1,8 @@
 # ODD Feature: retire-vercel-api-project
 
-> **Status**: closed on `chore/retire-vercel-api-project` — WU1 (`5d77239`), WU2a (`700c4bb`) and WU2b
-> (this commit) landed; WU2c is **blocked on one owner authorization**. **Receipt-driven development
-> is off in this clone** (decided by clone_local on 2026-09-24; global is on), so native review is not
-> part of this batch.
+> **Status**: closed on `chore/retire-vercel-api-project` — WU1 (`5d77239`), WU2a (`700c4bb`), WU2b
+> (`2ef043a`) and WU2c (this commit) landed. **Receipt-driven development is off in this clone**
+> (decided by clone_local on 2026-09-24; global is on), so native review is not part of this batch.
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `chore/retire-vercel-api-project` (off `main` @ `7fe8f01`).
@@ -66,8 +65,8 @@ the VM's `.env`, `STORICO_AUTH_JWT_SECRET` equals the surviving frontend's `AUTH
 | --- | --- | --- | --- |
 | WU1 | Delete the dead Vercel configuration | `5d77239` | the five files above, plus `backend/pyproject.toml` |
 | WU2a | Correct the repository documents | `700c4bb` | `AGENTS.md`, `prod.todo.md`, `docs/security.md`, `docs/api.md`, `docs/README.md` |
-| WU2b | Correct the ODD records | _this commit_ | `prod-honesty-followups.md`, `production-state-and-domain-decision.md`, `schema-drift-gate.md`, `provider-literal-and-copy-drift.md` |
-| WU2c | `frontend/.env.example` | **blocked** | one line naming the deleted project; the harness safety policy refuses writes to `.env*` paths, so it needs an explicit owner authorization |
+| WU2b | Correct the ODD records | `2ef043a` | `prod-honesty-followups.md`, `production-state-and-domain-decision.md`, `schema-drift-gate.md`, `provider-literal-and-copy-drift.md` |
+| WU2c | `frontend/.env.example` | _this commit_ | the production comment line; the harness safety policy refuses `.env*` paths, so the owner authorized it explicitly and the edit was applied by shell |
 
 ## What lands
 
@@ -75,9 +74,9 @@ the VM's `.env`, `STORICO_AUTH_JWT_SECRET` equals the surviving frontend's `AUTH
   and `backend/requirements.txt` deleted.
 - `backend/pyproject.toml` without the `mangum` dependency and without the `[tool.vercel]` table.
 - The records that claimed a live project: corrected with a date, not silently.
-- **Not landed:** `frontend/.env.example` still names the deleted project in its production comment.
-  It is one line, and it is blocked rather than forgotten: the harness safety policy refuses `.env*`
-  paths, so the owner authorizes that write explicitly.
+- `frontend/.env.example`: the production comment no longer names the deleted project. The harness
+  safety policy refuses `.env*` paths, so this one line waited for an explicit owner authorization
+  and was applied through a shell edit rather than the file tools.
 
 ## Deliberately not done
 
