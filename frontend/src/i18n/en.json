@@ -576,7 +576,7 @@
     "privacy": {
       "title": "Privacy Policy",
       "description": "How Storico handles your data and protects your privacy.",
-      "last_updated": "Last updated: July 11, 2026",
+      "last_updated": "Last updated: September 19, 2026",
       "intro": "Your privacy matters. This policy explains what data Storico handles, why, and the choices you have. It covers both the open source engine and the Storico Cloud service.",
       "self_hosted_title": "Open source engine collects nothing",
       "self_hosted_body": "Storico is open source software that runs on your own machines. The open source engine contains no telemetry, no analytics, and no phone-home. When you run Storico locally with a local LLM (such as Ollama), your data never leaves your machine and we receive no data about your usage.",
@@ -666,7 +666,7 @@
     "docs": {
       "title": "Documentation",
       "description": "Learn how to use Storico with guides, tutorials, and references.",
-      "last_updated": "Last updated: July 11, 2026",
+      "last_updated": "Last updated: September 22, 2026",
       "welcome": "Welcome to Storico's documentation. This section will be expanded with detailed guides, tutorials, and reference materials.",
       "getting_started_title": "Getting started",
       "step_1": "Run Storico locally \u2014 clone the repository and follow the setup guide in the README.",

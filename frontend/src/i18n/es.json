@@ -576,7 +576,7 @@
     "privacy": {
       "title": "Pol\u00edtica de Privacidad",
       "description": "C\u00f3mo maneja Storico tus datos y protege tu privacidad.",
-      "last_updated": "\u00daltima actualizaci\u00f3n: 11 de julio de 2026",
+      "last_updated": "\u00daltima actualizaci\u00f3n: 19 de septiembre de 2026",
       "intro": "Tu privacidad es importante. Esta pol\u00edtica explica qu\u00e9 datos maneja Storico, por qu\u00e9, y las opciones que tienes. Cubre tanto el motor de c\u00f3digo abierto como el servicio Storico Cloud.",
       "self_hosted_title": "El motor de c\u00f3digo abierto no recolecta nada",
       "self_hosted_body": "Storico es software de c\u00f3digo abierto que se ejecuta en tus propias m\u00e1quinas. El motor de c\u00f3digo abierto no contiene telemetr\u00eda, anal\u00edticas, ni phone-home. Cuando ejecutas Storico localmente con un LLM local (como Ollama), tus datos nunca salen de tu m\u00e1quina y no recibimos ning\u00fan dato sobre tu uso.",
@@ -629,7 +629,7 @@
     "terms": {
       "title": "T\u00e9rminos de Servicio",
       "description": "T\u00e9rminos y condiciones para usar Storico.",
-      "last_updated": "\u00daltima actualizaci\u00f3n: 11 de julio de 2026",
+      "last_updated": "\u00daltima actualizaci\u00f3n: 15 de julio de 2026",
       "intro": "Estos t\u00e9rminos rigen tu uso de Storico, tanto el software de c\u00f3digo abierto como cualquier servicio relacionado. Al usar Storico, aceptas estos términos.",
       "scope_title": "Qu\u00e9 cubren estos t\u00e9rminos",
       "scope_body": "Storico (\u201cStorico\u201d, \u201cnosotros\u201d) provee una herramienta de c\u00f3digo abierto para descomponer historias de usuario en tareas Kanban. Estos T\u00e9rminos de Servicio (los \u201cT\u00e9rminos\u201d) constituyen un acuerdo vinculante entre tú, o la organización que representas (\u201custed\u201d), y Storico, y cubren: (1) el software de c\u00f3digo abierto distribuido bajo la Licencia MIT; y (2) cualquier servicio relacionado que podamos proveer, como endpoints hosteados o integraciones con LLMs en la nube.",
@@ -666,7 +666,7 @@
     "docs": {
       "title": "Documentación",
       "description": "Aprende a usar Storico con guías, tutoriales y referencias.",
-      "last_updated": "Última actualización: 11 de julio de 2026",
+      "last_updated": "Última actualización: 22 de septiembre de 2026",
       "welcome": "Bienvenido a la documentación de Storico. Esta sección se ampliará con guías detalladas, tutoriales y materiales de referencia.",
       "getting_started_title": "Primeros pasos",
       "step_1": "Ejecuta Storico localmente — clona el repositorio y sigue la guía de instalación en el README.",
