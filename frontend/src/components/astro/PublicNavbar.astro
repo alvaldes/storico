@@ -4,6 +4,7 @@ import { ThemeToggle } from '../react/ThemeToggle';
 import { MobileNav } from '../react/MobileNav';
 import GitHubIcon from './GitHubIcon.astro';
 import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
+import { PublicUserMenu, type PublicNavUser } from '../react/PublicUserMenu';
 
 import type { MobileNavLink } from '../react/MobileNav';
 
@@ -15,9 +16,11 @@ export interface Props {
   mobileNavLinks?: MobileNavLink[];
   ctaLink: { href: string; label: string };
   isLoggedIn: boolean;
+  /** Serialized session user; null/undefined when signed out. */
+  user?: PublicNavUser | null;
 }
 
-const { locale, currentPath, langToggleHref, navLinks, mobileNavLinks, ctaLink, isLoggedIn } = Astro.props;
+const { locale, currentPath, langToggleHref, navLinks, mobileNavLinks, ctaLink, isLoggedIn, user } = Astro.props;
 const t = useTranslations(locale);
 const L = (path: string) => localizedPath(path, locale);
 ---
@@ -80,15 +83,22 @@ const L = (path: string) => localizedPath(path, locale);
         langToggleHref={langToggleHref}
         cta={ctaLink}
         activePath={currentPath}
+        user={user ?? null}
       />
 
-      <!-- Desktop CTA -->
-      <a
-        href={ctaLink.href}
-        class="hidden lg:inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground no-underline shadow transition-all hover:bg-primary/80"
-      >
-        {ctaLink.label}
-      </a>
+      <!-- Signed in: avatar dropdown replaces the Dashboard CTA (desktop only); signed out keeps the CTA -->
+      {user ? (
+        <div class="hidden lg:block">
+          <PublicUserMenu client:idle locale={locale} user={user} />
+        </div>
+      ) : (
+        <a
+          href={ctaLink.href}
+          class="hidden lg:inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground no-underline shadow transition-all hover:bg-primary/80"
+        >
+          {ctaLink.label}
+        </a>
+      )}
     </div>
   </div>
 </header>
