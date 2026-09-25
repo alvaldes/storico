@@ -185,6 +185,15 @@ usa `%(here)s`, así que el comando funciona desde cualquier directorio; la imag
   migración quedó aplicada, porque exige que `alembic_version` sea igual al head empacado con el
   código. Un gate rojo con la migración en verde ya no apunta al esquema, sino al contenedor o a su
   entorno.
+- El deploy **reclama disco de forma acotada**, después del gate de readiness: borra las imágenes sin
+  tag y el build cache de más de una semana (`docker builder prune --filter until=168h`). Medido el
+  2026-09-25: el disco de la VM es de 45 GB y estaba al **69 %**, con **25.71 GB** de build cache (207
+  registros) y 8 imágenes huérfanas — cada `docker build` dejaba su caché y **nada** la podaba. Ninguna
+  de las dos cotas es decorativa: sin `-a`, `docker image prune` borra sólo lo que no tiene tag, así
+  que `storico-api:previous` sobrevive por construcción; y el caché se conserva una semana porque es
+  lo que evita reconstruir la capa de dependencias entera en cada deploy. Corre **después** del gate a
+  propósito: `set -e` aborta antes cuando el deploy falla, así el re-intento conserva su caché. El
+  invariante está pinneado en `backend/tests/test_unit/test_deploy_workflow_contract.py`.
 - Los deploys están **serializados** (`concurrency` en el workflow): dos a la vez competirían por el
   swap y por la migración.
 

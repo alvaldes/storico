@@ -192,3 +192,33 @@ jobs:
               echo "the path is forward, not back."
               exit 1
             fi
+
+            echo "=== Reclaim disk (bounded) ==="
+            # Every deploy leaves two kinds of leftovers and, until this step
+            # existed, nothing removed either: build-cache records from each
+            # `docker build`, and the image from two releases back, which loses
+            # its tag when the next deploy re-tags `storico-api:previous`.
+            # Measured on 2026-09-25: a 45 GB disk at 69%, of which 25.71 GB
+            # was build cache (207 records) plus 8 untagged images.
+            #
+            # Bounded on purpose, and both bounds are load-bearing. Without
+            # `-a`, `docker image prune` removes only untagged images, so the
+            # rollback tag survives by construction rather than by luck. The
+            # build cache keeps a week, because the cache is what keeps the
+            # dependency layer from being rebuilt from scratch on every
+            # deploy; the unbounded alternative, `docker builder prune -af`,
+            # reclaims everything and makes the next deploy pay for it.
+            #
+            # It runs after the readiness gate for the same reason the gate
+            # runs after the migration. `set -e` aborts the job before this
+            # block when a deploy fails, so a recovery re-run still has its
+            # cache; pruning first would make the retry slower exactly when
+            # the retry is what matters. No `|| true` here either: a prune that
+            # fails means the disk is filling again, and that is a red job, not
+            # a swallowed line. The deploy has already succeeded at this point
+            # -- the container is up and answering -- so a red result here
+            # costs nothing but the truth about the disk.
+            docker image prune -f
+            docker builder prune -f --filter until=168h
+            echo "Disk after cleanup:"
+            df -h / | tail -1
