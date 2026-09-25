@@ -60,14 +60,20 @@ async def chain(db_session: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_stories_span_the_requested_workspaces_only(db_session: AsyncSession, chain) -> None:
-    """Stories from both requested workspaces, and none from the third."""
+    """Stories from both requested workspaces, and none from the third.
+
+    The half that matters: a fold with the wrong ``WHERE`` would still be fast
+    — one statement either way — so the third workspace's absence is asserted
+    explicitly rather than assumed from the row count.
+    """
     repo = SQLAlchemyUserStoryRepository(db_session)
     alpha, _ = await chain("Alpha")
     beta, _ = await chain("Beta")
     gamma, gamma_story = await chain("Gamma")
 
-    found = await repo.list_by_workspaces([alpha.id, beta.id])
+    found, total = await repo.list_page(workspace_ids=[alpha.id, beta.id], limit=10, offset=0)
 
+    assert total == 2
     assert {s.feature for s in found} == {"Alpha feature", "Beta feature"}
     assert gamma_story.id not in {s.id for s in found}
     assert gamma.id not in {s.project_id for s in found}
@@ -115,10 +121,13 @@ async def test_extractions_span_the_requested_workspaces_only(
 
 @pytest.mark.asyncio
 async def test_an_empty_workspace_list_returns_nothing(db_session: AsyncSession, chain) -> None:
-    """No memberships is not the same query with an empty ``IN ()``; it is no query at all."""
-    repo = SQLAlchemyUserStoryRepository(db_session)
+    """No memberships is not the same query with an empty ``IN ()``; it is no query at all.
+
+    The story line left with its subject: the story fold moved to
+    ``list_page`` in T4, which carries its own empty-``workspace_ids`` test
+    (``test_list_page_with_empty_workspace_ids_skips_the_database``).
+    """
     await chain("Alpha")
 
-    assert await repo.list_by_workspaces([]) == []
     assert await SQLAlchemyTaskRepository(db_session).list_by_workspaces([]) == []
     assert await SQLAlchemyExtractionRepository(db_session).list_by_workspaces([]) == []

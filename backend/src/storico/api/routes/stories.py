@@ -120,7 +120,13 @@ async def list_stories(
 
     If neither filter is provided, returns stories from all workspaces
     the current user is a member of.
+
+    The page and its total come from one statement in the database —
+    ``count(*) OVER ()`` rides on the rows' own query, so no separate
+    ``SELECT COUNT(*)`` is issued. The order is ``created_at DESC, id DESC``,
+    which makes the paging deterministic.
     """
+    offset = (params.page - 1) * params.size
     # Validate workspace access and get authorized workspace IDs
     if workspace_id is not None:
         # Validate user is a member of the specified workspace
@@ -130,7 +136,9 @@ async def list_stories(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not a member of this workspace",
             )
-        all_stories = await repo.list_by_workspace(workspace_id)
+        page, total = await repo.list_page(
+            workspace_id=workspace_id, limit=params.size, offset=offset
+        )
     elif project_id is not None:
         # Validate user has access to the project's workspace
         project = await project_repo.find_by_id(project_id)
@@ -142,19 +150,19 @@ async def list_stories(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not a member of this workspace",
             )
-        all_stories = await repo.list_by_project(project_id)
+        page, total = await repo.list_page(project_id=project_id, limit=params.size, offset=offset)
     else:
         # No filter provided: return stories from all workspaces the user is a member of
         memberships = await member_repo.list_by_user(current_user.id)
         workspace_ids = [m.workspace_id for m in memberships]
         # One statement for all the workspaces, not one per workspace: this branch used to await
         # `list_by_workspace` in a loop, which cost a statement each (~2s against the dev pooler,
-        # where even a bare SELECT 1 measures 800ms). Ordering is applied below, same as before.
-        all_stories = await repo.list_by_workspaces(workspace_ids)
-        all_stories.sort(key=lambda s: s.created_at, reverse=True)
+        # where even a bare SELECT 1 measures 800ms). An empty membership list is answered
+        # without a statement by the repository.
+        page, total = await repo.list_page(
+            workspace_ids=workspace_ids, limit=params.size, offset=offset
+        )
 
-    total = len(all_stories)
-    start = (params.page - 1) * params.size
     items = [
         UserStoryResponse(
             id=s.id,
@@ -166,7 +174,7 @@ async def list_stories(
             created_at=s.created_at,
             status=s.status,
         )
-        for s in all_stories[start : start + params.size]
+        for s in page
     ]
     return PaginatedResponse(
         items=items,
