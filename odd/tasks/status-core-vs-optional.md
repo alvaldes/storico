@@ -1,12 +1,14 @@
 # ODD Feature: status-core-vs-optional
 
-> **Status**: done — two work-unit commits on `fix/status-core-vs-optional`
-> (`b90ded2`, `8d2c2f7`), plus this evidence commit. Nothing is pushed; the push and the pull
-> request are the operator's decision. Receipt-driven development is off in this clone, so no
-> native review ran; two independent verifications did, recorded below with their findings.
+> **Status**: done, merged, released and deployed — the two work units (`b90ded2`, `8d2c2f7`),
+> the evidence commit `b5d5ba2`, the merge `d980ac8`, and the release `938f2b7` tagged `v0.6.2`.
+> `main` and the tag are on `origin`, `CI` and the deploy are green, and production answers `0.6.2`
+> with the ambiguity gone. Receipt-driven development is off in this clone, so no native review
+> ran; two independent verifications did, recorded below with their findings. The release was
+> redone once before anything was published — see "Delivery".
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
-> **Branch**: `fix/status-core-vs-optional`
+> **Branch**: `fix/status-core-vs-optional`, merged into `main` as `d980ac8`.
 > **Receipt-driven development**: off in this clone.
 
 ## Problem
@@ -199,6 +201,89 @@ from the note's condition: the writer's own re-render covered only the `down` ba
   gap today.
 - **`/health` and `/health/ready` are untouched**, including their payloads. Only the docstring of
   `/health` was corrected, because it stated the opposite of what the code did.
-- Not observed: a real browser session with a healthy production backend. The render matrix used a
-  stub serving the exact production payload, which is the same document the page consumes; the
-  live backend was unreachable in this environment and probed nothing.
+- **No real browser session against production was run**, only `curl` against the deployed
+  endpoint once the release was live ("Delivery", below). The render matrix used a stub serving the
+  exact production payload, which is the same document the page consumes.
+
+## Delivery — one branch, one local merge, and a release redone before it was published
+
+`main` had not diverged from the branch, so the merge was `git merge --no-ff` on purpose: the three
+commits stay attributable to the unit that produced them. It also matters for the tag —
+`board-debt-closure.md` measured that this repository's **pull-request** merges are rebases, which
+re-create the commits and change their SHAs. A local `--no-ff` merge preserves them, which is what
+made `v0.6.2` safe to create **after** the merge instead of on an unmerged branch tip.
+
+| Step | Result |
+| --- | --- |
+| `git push -u origin fix/status-core-vs-optional` | branch on `origin` |
+| `git merge --no-ff fix/status-core-vs-optional` | `d980ac8 Merge branch 'fix/status-core-vs-optional'` |
+| `make bump` | `938f2b7 bump: version 0.6.1 → 0.6.2`, tag `v0.6.2` at `main`'s tip |
+| `git push origin main` + `git push origin v0.6.2` | `5bd206f..938f2b7`; tag `v0.6.2` → `938f2b7` |
+| `Deploy backend to Oracle VM` (run `36188046692`) | success, 1m50s |
+| `CI` (run `36188046665`) | success, 1m29s |
+
+### The release was redone once, and the reason was a defect of the tooling
+
+The first `make bump` produced `c7e51fc`, and its diff touched a fourth file:
+`backend/pyproject.toml` had `"ruff>=0.6.1"` rewritten to `"ruff>=0.6.2"`. That was not this
+feature's doing. `.cz.toml` declared `version_files` without the `path:pattern` form, so commitizen
+built its regex from the current version alone and replaced that string on **every** matching line;
+the ruff floor, set to `ruff>=0.5.0` in the initial commit, had been moved by every bump since
+`v0.5.1`. Nothing had been pushed, so the release was redone: the local tag was deleted,
+`version_files` was anchored per file (`b72968e fix(release)`), and `make bump` recreated the
+release. The final bump commit touches the three version lines and `CHANGELOG.md` and nothing else,
+and the pin reads `ruff>=0.6.1`.
+
+The three published tags keep the moved pin — `v0.5.1`, `v0.6.0` and `v0.6.1` — because they are
+out there and are not rewritten. `ruff>=0.6.x` is satisfied by any modern ruff, so nothing is
+broken; the break would have
+arrived at `1.0.0`, where the pin becomes `ruff>=1.0` and no such ruff exists. `AGENTS.md` rule 7 now
+names the mechanism. `release-versioning.md` is left as written: its measurement of the *other* half
+of the behaviour — a version file that lags is skipped in silence — is still correct, and its
+verified-facts section is the evidence that led here.
+
+### Production, after the deploy
+
+Recorded because the page's whole defect was that a healthy deployment answered `degraded`, and this
+is the first time the change was observable outside a stub.
+
+**Before** — the document the operator reported at the start of this work, measured 2026-09-25 on
+`0.6.1`. Reproduced complete, because the point is how little of it differed: this is the same
+Ollama failure as the "after" document, and it is the global `status` that reads `degraded`.
+
+```json
+{
+  "status": "degraded",
+  "version": "0.6.1",
+  "timestamp": "2026-09-25T19:37:44.773035+00:00",
+  "services": {
+    "database":   {"status": "ok",    "latency_ms": 445.3},
+    "schema":     {"status": "ok",    "latency_ms": 446.1},
+    "ollama":     {"status": "error", "latency_ms": 9.4,  "error": "not reachable"},
+    "qdrant":     {"status": "ok",    "latency_ms": 187.1},
+    "embeddings": {"status": "ok",    "latency_ms": 254.1, "provider": "google",
+                   "model": "gemini-embedding-001", "dimensions": 768, "vector_length": 768}
+  }
+}
+```
+
+**After** — `GET https://storico-api.163.192.150.75.sslip.io/api/v1/health/services`:
+
+```json
+{
+  "status": "ok",
+  "version": "0.6.2",
+  "services": {
+    "database":   {"status": "ok",    "latency_ms": 452.1, "scope": "required"},
+    "schema":     {"status": "ok",    "latency_ms": 451.0, "scope": "required"},
+    "ollama":     {"status": "error", "latency_ms": 61.1,  "error": "not reachable", "scope": "optional"},
+    "qdrant":     {"status": "ok",    "latency_ms": 426.9, "scope": "optional"},
+    "embeddings": {"status": "ok",    "latency_ms": 279.3, "provider": "google",
+                   "model": "gemini-embedding-001", "dimensions": 768, "vector_length": 768,
+                   "scope": "optional"}
+  }
+}
+```
+
+The same failing Ollama probe now sits in a row the payload itself calls `optional` and no longer
+paints the deployment degraded.
