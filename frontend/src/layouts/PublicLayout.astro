@@ -183,7 +183,7 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
         )
       }
 
-      <PublicFooter locale={locale} langToggleHref={langToggleHref} />
+      <PublicFooter locale={locale} langToggleHref={langToggleHref} isLoggedIn={isLoggedIn} />
     </div>
 
   <script>

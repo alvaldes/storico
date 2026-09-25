@@ -5,9 +5,11 @@ import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
 export interface Props {
   locale: Locale;
   langToggleHref: string;
+  /** Whether a session exists. The Product column links to guarded routes. */
+  isLoggedIn: boolean;
 }
 
-const { locale, langToggleHref } = Astro.props;
+const { locale, langToggleHref, isLoggedIn } = Astro.props;
 const t = useTranslations(locale);
 const L = (path: string) => localizedPath(path, locale);
 ---
@@ -15,19 +17,22 @@ const L = (path: string) => localizedPath(path, locale);
 <footer>
   <div class="mx-auto flex max-w-7xl flex-col items-center gap-10 px-4 pb-8 pt-12 md:gap-12 md:px-8 md:pb-10 md:pt-8 lg:px-20 lg:pt-8">
     <div class="flex w-full flex-wrap items-start justify-between gap-10 md:flex-nowrap md:gap-12 lg:gap-20">
-      <!-- Product -->
-      <div class="flex flex-col gap-3 max-[431px]:hidden">
-        <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.product}</span>
-        <a href={L('/dashboard')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-          {t.nav.dashboard}
-        </a>
-        <a href={L('/stories')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-          {t.nav.stories}
-        </a>
-        <a href={L('/kanban')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
-          {t.nav.kanban}
-        </a>
-      </div>
+      <!-- Product — signed in only: these three routes sit behind the auth guard,
+           so listing them to an anonymous visitor is a funnel that cannot open. -->
+      {isLoggedIn && (
+        <div class="flex flex-col gap-3 max-[431px]:hidden">
+          <span class="text-sm font-semibold text-(--color-inverse-text)">{t.footer.product}</span>
+          <a href={L('/dashboard')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+            {t.nav.dashboard}
+          </a>
+          <a href={L('/stories')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+            {t.nav.stories}
+          </a>
+          <a href={L('/kanban')} class="text-sm text-(--color-inverse-muted) no-underline transition-colors hover:text-(--color-inverse-text)">
+            {t.nav.kanban}
+          </a>
+        </div>
+      )}
 
       <!-- Resources -->
       <div class="flex flex-col gap-3">
