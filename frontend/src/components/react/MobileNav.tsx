@@ -11,10 +11,11 @@ import {
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Menu, X, LogOut } from 'lucide-react';
+import { Menu, X, LogOut, ChevronRight } from 'lucide-react';
 import { signOut } from 'auth-astro/client';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { getInitials } from '@/lib/initials';
+import { Separator } from '@/components/ui/separator';
 import { type PublicNavUser } from '@/components/react/PublicUserMenu';
 
 export interface MobileNavLink {
@@ -77,7 +78,7 @@ export function MobileNav({
         side="right"
         showCloseButton={false}
         className="rounded-bl-xl rounded-br-xl data-[side=right]:border-0"
-        style={{ top: '3.75rem', bottom: 'auto', height: 'auto' }}
+        style={{ top: 'var(--public-nav-h, 4.25rem)', bottom: 'auto', height: 'auto' }}
       >
         <SheetHeader className="flex flex-row items-center justify-between">
           <SheetTitle>{brandName}</SheetTitle>
@@ -92,16 +93,25 @@ export function MobileNav({
         </SheetHeader>
 
         {user && (
-          <div className="flex items-center gap-3 px-4 pb-3">
-            <Avatar className="size-9">
-              <AvatarImage src={user.avatarUrl ?? ''} alt={user.name} />
-              <AvatarFallback className="text-xs">{getInitials(user.name)}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-foreground">{user.name}</p>
-              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-            </div>
-          </div>
+          <>
+            <a
+              href={`/${locale}/account`}
+              aria-label={t.nav.account}
+              onClick={() => setOpen(false)}
+              className="mx-4 flex items-center gap-3 rounded-lg px-3 py-3 no-underline transition-colors hover:bg-muted"
+            >
+              <Avatar className="size-9">
+                <AvatarImage src={user.avatarUrl ?? ''} alt={user.name} />
+                <AvatarFallback className="text-xs">{getInitials(user.name)}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-foreground">{user.name}</p>
+                <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+              </div>
+              <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
+            </a>
+            <Separator />
+          </>
         )}
 
         <nav className="flex flex-col px-4">
@@ -115,12 +125,9 @@ export function MobileNav({
             return Object.entries(grouped).map(([category, categoryLinks]) => (
               <div key={category} className="flex flex-col gap-0.5 pb-3 last:pb-0">
                 {category && (
-                  <div>
-                    {/* <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"> */}
-                    {/*   {category} */}
-                    {/* </p> */}
-                    <hr className="border-t border-border my-1" />
-                  </div>
+                  <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {category}
+                  </p>
                 )}
                 {categoryLinks.map((link) => {
                   const isActive = currentPath === link.href;
@@ -129,7 +136,7 @@ export function MobileNav({
                       key={link.href}
                       href={link.href}
                       onClick={() => setOpen(false)}
-                      className={`rounded-lg px-3 py-2.5 text-xs font-normal no-underline transition-colors ${
+                      className={`flex h-11 items-center rounded-lg px-3 text-sm no-underline transition-colors ${
                         isActive
                           ? 'bg-muted text-foreground font-semibold'
                           : 'text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -144,11 +151,11 @@ export function MobileNav({
           })()}
         </nav>
 
-        <SheetFooter>
+        <SheetFooter className="border-t border-border">
           <a
             href={cta.href}
             onClick={() => setOpen(false)}
-            className="flex items-center justify-center rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground no-underline transition-all hover:bg-primary/80"
+            className="flex h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground no-underline transition-all hover:bg-primary/80"
           >
             {cta.label}
           </a>

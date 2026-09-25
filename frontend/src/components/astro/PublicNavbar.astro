@@ -25,7 +25,7 @@ const t = useTranslations(locale);
 const L = (path: string) => localizedPath(path, locale);
 ---
 
-<header class="border-b border-(--color-border)">
+<header class="border-b border-(--color-border)" data-public-nav>
   <div class="mx-auto flex max-w-7xl items-center px-4 py-4 md:px-8 lg:px-20 lg:py-5">
     <!-- Left: Logo -->
     <!-- `flex` for the same reason as the avatar trigger below: a block wrapper would put
@@ -106,3 +106,26 @@ const L = (path: string) => localizedPath(path, locale);
     </div>
   </div>
 </header>
+
+<!-- Publish the header's own height as --public-nav-h so portaled overlays (the mobile
+     sheet) can align their top edge with the header's bottom border instead of hardcoding
+     it. Bundled module: re-reads after view transitions and on resize; the resize listener
+     is registered idempotently because a view transition re-runs the module. -->
+<script>
+  function updatePublicNavHeight() {
+    const header = document.querySelector('header[data-public-nav]');
+    if (header) {
+      document.documentElement.style.setProperty('--public-nav-h', `${header.offsetHeight}px`);
+    }
+  }
+
+  updatePublicNavHeight();
+
+  // Both registrations are guarded: a view transition re-runs this module, so an
+  // unconditional addEventListener would stack one more listener per navigation.
+  if (!document.documentElement.dataset.publicNavBound) {
+    document.documentElement.dataset.publicNavBound = 'true';
+    document.addEventListener('astro:after-swap', updatePublicNavHeight);
+    window.addEventListener('resize', updatePublicNavHeight);
+  }
+</script>
