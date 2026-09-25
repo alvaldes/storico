@@ -101,7 +101,7 @@ storico/
 │   │   ├── lib/         # Utilities (api, cn)
 │   │   └── types/       # TypeScript interfaces
 │   └── public/          # Static assets
-├── docker-compose.yml   # 5 services: API, Ollama, Postgres, Qdrant, Redis
+├── docker-compose.yml   # 4 services: API, Ollama, Postgres, Qdrant
 ├── Makefile             # build, up, down, logs, test targets
 └── .env.example         # Environment variable template
 ```

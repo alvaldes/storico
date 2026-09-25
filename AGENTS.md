@@ -1,7 +1,7 @@
 # Storico — Definición Completa
 
 > **Documento autónomo** — contiene TODO el contexto de la tesis y la definición de la herramienta.
-> **Última actualización**: 2026-09-12 — Resincronizado tras revisión de repo (drift corregido): Python 3.12, Celery→asyncio, Gemini adapter real, workspaces implementados, Vercel en prod, E2E no ejecutable
+> **Última actualización**: 2026-09-25 — Resincronizado tras auditar los servidores de desarrollo: Python 3.12, Celery→asyncio **y la purga de las menciones a Redis y Celery que ese cambio dejó atrás en este archivo, `docs/architecture.md`, `docs/deployment.md` y `README.md`** (los cuatro describían infraestructura que no existe en el repositorio), Gemini adapter real, workspaces implementados, Vercel en prod, E2E no ejecutable, `POST /batch` cerrado como no-goal, "caché semántico" de la descripción ejecutiva corregido a la caché de proceso que realmente existe
 >
 > Si estás leyendo esto en un proyecto nuevo, el contexto completo está aquí. No necesitas la tesis original.
 
@@ -172,7 +172,7 @@ La investigación se enmarca en el paradigma de **Design Science Research** (Hev
 
 > Storico is an LLM-powered tool that automates decomposing natural language user stories into structured Kanban tasks, exporting directly to project management tools like Trello.
 >
-> Built on a microservices-based hexagonal architecture with a FastAPI REST API and intuitive web UI, it features configurable connectors for cloud-based and local models via Ollama. Performance is optimized via semantic caching, synchronous/asynchronous batch processing, and an automated LLM-as-a-Judge validation mechanism.
+> Built on a microservices-based hexagonal architecture with a FastAPI REST API and intuitive web UI, it features configurable connectors for cloud-based and local models via Ollama. Performance is optimized via an in-process per-user cache, asynchronous per-story extraction, and an automated LLM-as-a-Judge validation mechanism.
 >
 > It enables agile teams to reduce planning time, eliminate misinterpretations, and maintain strict traceability from high-level requirements to concrete implementation tasks.
 
@@ -217,7 +217,7 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 | **Modelos LLM local**      | **Ollama** (LLaMA 3.2, Mistral, etc.)       | ✅ MVP         | Prioridad inicial                                                         |
 | **Base de datos relacional** | **PostgreSQL**                              | ✅ Decidido    | Datos de proyectos, user stories, tareas, usuarios                        |
 | **Base de datos vectorial** | **Qdrant**                                 | ✅ Decidido    | Historial de extracciones para contexto de LLM (RAG)                      |
-| **Procesamiento async**    | `asyncio.create_task` + Redis (broker)      | ✅ En uso   | Workers en proceso, sin Celery                                            |
+| **Procesamiento async**    | `asyncio.create_task`                       | ✅ En uso   | En el bucle de eventos del proceso de la API: sin Celery, sin Redis y sin worker aparte |
 | **Autenticación**          | **Auth.js** (OAuth)                          | ✅ Decidido    | Login con Google y GitHub. Registro abierto, sin passwords                 |
 | **Testing**                | pytest + E2E (no ejecutable, falta playwright)                                      | ✅ Unitarias / 🔴 E2E | Unitarias OK; E2E existe pero no ejecutable        |
 | **Internacionalización**   | **Astro i18n**                              | ✅ Decidido    | Español e inglés. User stories solo en inglés                             |
@@ -286,13 +286,13 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
   - PostgreSQL para todos los datos relacionales de la aplicación
   - Qdrant para vectores del historial de extracciones — el LLM consulta contexto previo relevante antes de extraer
   - No hay "caché semántico" automático — siempre se llama al LLM, pero con más contexto
-  - Redis queda solo como broker de Celery para procesamiento asíncrono
+  - Redis y Celery se retiraron por completo: las tareas en segundo plano corren en el bucle de eventos del proceso de la API (`asyncio.create_task`), sin broker ni worker aparte (corregido el 2026-09-25; este ADR nunca los necesitó)
 
 ### ADR-005: Despliegue
 
 - **Status**: ✅ **Decidido** (producción en marcha)
 - **Decisión**: **Docker Compose para desarrollo.** Producción: el frontend Astro se sirve desde Vercel, el backend FastAPI corre en un contenedor Docker sobre una VM de Oracle, la base de datos PostgreSQL está en Neon y Qdrant está contratado pero todavía no configurado.
-- **Contexto**: Para desarrollo se usa Docker Compose con los servicios necesarios (PostgreSQL, Qdrant, Redis, API). En producción el backend se despliega con `.github/workflows/deploy-backend.yml`, que entra por SSH a la VM (el host sale del secret `DEPLOY_HOST`), resetea el árbol de trabajo a `origin/main`, reconstruye la imagen y arranca el contenedor con `docker run --network host --env-file /home/ubuntu/storico/backend/.env`. La base de datos relacional vive en Neon y el vector store sigue pendiente de configuración.
+- **Contexto**: Para desarrollo se usa Docker Compose con los servicios necesarios (PostgreSQL, Qdrant, API). En producción el backend se despliega con `.github/workflows/deploy-backend.yml`, que entra por SSH a la VM (el host sale del secret `DEPLOY_HOST`), resetea el árbol de trabajo a `origin/main`, reconstruye la imagen y arranca el contenedor con `docker run --network host --env-file /home/ubuntu/storico/backend/.env`. La base de datos relacional vive en Neon y el vector store sigue pendiente de configuración.
 - **Consecuencias**: El despliegue **aplica las migraciones en una ventana de mantenimiento** —`alembic upgrade head` entre el `docker stop` y el `docker run`—, que es la única posición que satisface a la vez a las revisiones que piden el código primero (`0022`, `0024`) y a la que pide la migración primero (`0023`): sin ningún release vivo, los dos peligros desaparecen juntos. Cuesta downtime durante la migración, y un fallo deja la API abajo a propósito en vez de servir contra un esquema que no coincide. Ese era el mecanismo del incidente del 2026-09-20, ya cerrado; el detalle está en `prod.todo.md` y en `docs/deployment.md`. Además, el archivo de variables de entorno está en la VM y fuera del control de versiones, así que el reset del árbol de trabajo no lo toca: una variable que falte falla en silencio en producción.
 - **Preguntas abiertas**: Cómo se alojan los modelos LLM locales frente a los cloud, y cuándo se habilita Qdrant en producción.
 
@@ -426,11 +426,11 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 │  │  └─────────────────────────┘  └──────────────────────────────────┘ │   │
 │  │                                                                     │   │
 │  │  ┌─────────────────────────┐  ┌──────────────────────────────────┐ │   │
-│  │  │   Async Broker         │  │   Export Adapters                │ │   │
+│  │  │    Background Tasks    │  │   Export Adapters                │ │   │
 │  │  │                         │  │                                  │ │   │
 │  │  │  ┌───────────────────┐  │  │  ┌──────┐ ┌──────┐ ┌─────────┐ │ │   │
-│  │  │  │     Redis         │  │  │  │Trello│ │ Jira │ │ GitHub  │ │ │   │
-│  │  │  │  (Celery broker)  │  │  │  └──────┘ └──────┘ │ Projects│ │ │   │
+│  │  │  │asyncio.create_task│  │  │  │Trello│ │ Jira │ │ GitHub  │ │ │   │
+│  │  │  │  (same process)   │  │  │  └──────┘ └──────┘ │ Projects│ │ │   │
 │  │  │  └───────────────────┘  │  │  ┌──────┐ ┌──────┐ └─────────┘ │ │   │
 │  │  └─────────────────────────┘  │  │Azure │ │(fut.)│             │ │   │
 │  │                              │  │DevOps│ └──────┘             │ │   │
@@ -439,12 +439,12 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 │     ┌──────────────────────────────────────────────────────────────────┐    │
-│     │              BACKGROUND WORKERS (Celery)                         │    │
+│     │    BACKGROUND TASKS (asyncio.create_task, in the API process)    │    │
 │     │                                                                  │    │
-│     │  ┌──────────────────────────┐  ┌─────────────────────────────┐  │    │
-│     │  │  Batch Extraction Worker │  │  Data Generation Worker     │  │    │
-│     │  │  (procesa lotes async)   │  │  (LocalLLM-DataForge)       │  │    │
-│     │  └──────────────────────────┘  └─────────────────────────────┘  │    │
+│     │  ┌──────────────────────────────┐                                │    │
+│     │  │  Extraction Task             │                                │    │
+│     │  │  one story per request       │                                │    │
+│     │  └──────────────────────────────┘                                │    │
 │     └──────────────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -458,7 +458,8 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 | Application Layer     | Domain Layer (ports) | Interfaces/ABC        |
 | Domain Layer          | Nadie (puro negocio) | —                     |
 | Infrastructure        | Domain Layer (ports) | Implementa interfaces |
-| Workers (Celery)      | Redis + Domain       | Mensajes async        |
+
+> La fila "Workers (Celery) | Redis + Domain" se retiró el 2026-09-25: no hay capa de workers ni broker. Las tareas en segundo plano son `asyncio.create_task` dentro del proceso de la API.
 
 ### Flujo de datos típico
 
@@ -480,7 +481,7 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | 2   | Sistema de prompts multicapa | System prompt ("analista de requisitos ágiles") + instruction prompt + format prompt con few-shot learning (2-3 ejemplos). **Los ejemplos few-shot se recuperan automáticamente de Qdrant** (historial de extracciones del workspace), configurables por workspace vía `few_shot_enabled`/`few_shot_limit`/`few_shot_threshold` en `workspace_prompts` |
 | 3   | Editor de prompts           | Personalización de prompts del sistema desde configuración del workspace (solo admins)                                      |
 | 4   | Soporte Ollama               | Conexión con modelos locales vía API de Ollama (LLaMA 3.2, Mistral)                                                          |
-| 5   | Procesamiento batch          | Extracción asíncrona de múltiples user stories vía `asyncio.create_task` (workers en proceso)                                                                    |
+| 5   | Procesamiento asíncrono       | Extracción en segundo plano **por historia**: `asyncio.create_task` en el proceso de la API, respuesta `202 Accepted` y el cliente consulta `GET /extractions/{id}`. No hay endpoint de lote — ver la fila 10 |
 | 6   | Validación LLM-as-a-Judge    | Evaluación automática de calidad (coherencia, granularidad, relevancia)                                                      |
 | 7   | Contexto histórico (RAG)    | Consulta extracciones previas en Qdrant para incluir ejemplos similares en el prompt del LLM                                 |
 | 8   | Refinamiento post-extracción | Deduplicación, validación de dependencias, verificación de coherencia                                                        |
@@ -490,7 +491,7 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | #   | Feature               | Descripción                         |
 | --- | --------------------- | ----------------------------------- |
 | 9   | `POST /extract`       | Extrae tareas de una user story     |
-| 10  | `POST /batch`         | Procesamiento en lote y paralelo (usa múltiples GPUs si están disponibles)               |
+| 10  | `POST /batch`         | **No implementado y cerrado por decisión** (2026-09-25). Nunca existió: ningún router lo sirve, ningún cliente lo llama y cada extracción es una historia. La referencia pública de la API ya no lo anuncia y `docs/deployment.md` registra la decisión |
 | 11  | `GET /status/{id}`    | Estado de procesamiento asíncrono   |
 | 12  | CRUD de proyectos     | Crear, listar, actualizar, eliminar |
 | 13  | CRUD de workspaces    | Crear, listar, administrar miembros y equipos |
@@ -545,7 +546,7 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | #   | Feature                 | Descripción                                       |
 | --- | ----------------------- | ------------------------------------------------- |
 | 37  | Arquitectura hexagonal  | Separación dominio / aplicación / infraestructura |
-| 38  | Procesamiento asíncrono | `asyncio.create_task` + Redis (broker)                                    |
+| 38  | Procesamiento asíncrono | `asyncio.create_task` en el bucle de eventos del proceso de la API; sin Celery, sin Redis y sin worker aparte |
 | 39  | Logging estructurado    | Campos estructurados con `extra=` en los logger (28 llamadas). **Sin correlation IDs**: no hay ninguno en el backend, aunque esta fila los anunciaba. |
 | 40  | Dockerización           | Docker Compose para dev                           |
 | 41  | Permisos y workspaces  | **Implementado** (migraciones 0007‑0012) | **Antes se indicaba “V2”.**  Ahora el modelo de workspaces y permisos ya está completo (admin crea workspaces, asigna usuarios a equipos). Los permisos quedan en **V2** solo para futuras extensiones (rate‑limiting, auditoría). |
@@ -595,8 +596,8 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 │ • Enviar al modelo (Ollama)          │
 │ • Retry: 3 (backoff exp. 2^n)        │
 │ • Sin timeout explícito              │
-│ • Si falla → None, sigue con la      │
-│   siguiente fila del batch           │
+│ • Si falla → la extracción queda     │
+│   `failed`, con el motivo            │
 └──────────────┬───────────────────────┘
                │
                ▼
@@ -1028,8 +1029,6 @@ Cada ruta es una página **Astro** (`.astro`) que puede incluir cero o más **is
 - **Lucide**: <https://lucide.dev/>
 - **Zustand**: <https://zustand.docs.pmnd.rs/>
 - **Ollama**: <https://ollama.ai/>
-- **Celery**: <https://docs.celeryq.dev/>
-- **Redis**: <https://redis.io/>
 - **PostgreSQL**: <https://www.postgresql.org/>
 - **Qdrant**: <https://qdrant.tech/>
 - **Docker**: <https://www.docker.com/>

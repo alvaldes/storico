@@ -1,7 +1,7 @@
 # Architecture
 
 > Decisiones arquitectónicas de Storico, extraídas de `AGENTS.md`.
-> Última actualización: 2026-07-15
+> Última actualización: 2026-09-25
 
 ## Stack
 
@@ -20,7 +20,7 @@
 | Modelos LLM local | Ollama (LLaMA 3.2, Mistral) |
 | Base de datos relacional | PostgreSQL 16 |
 | Base de datos vectorial | Qdrant |
-| Procesamiento async | Celery + Redis |
+| Procesamiento async | `asyncio.create_task` en el proceso de la API |
 | Autenticación | Auth.js (OAuth) con Google + GitHub |
 | Testing | pytest + pytest-asyncio + httpx (backend), Vitest (frontend) |
 | Internacionalización | Astro i18n (en/es) |
@@ -63,7 +63,7 @@
 │                                │                                         │
 │  ┌─────────────────────────────▼────────────────────────────────────┐    │
 │  │                   INFRASTRUCTURE (Adapters)                       │    │
-│  │  LLM Adapters | DB | Qdrant | Redis | Export Adapters            │    │
+│  │            LLM Adapters | DB | Qdrant | Export Adapters          │    │
 │  └──────────────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
@@ -131,7 +131,7 @@
 **Consecuencias**:
 - PostgreSQL para todos los datos relacionales
 - Qdrant para vectores del historial de extracciones
-- Redis solo como broker de Celery
+- Redis y Celery se retiraron: las tareas en segundo plano corren en el bucle de eventos del proceso de la API
 - No hay caché semántico automático — siempre se llama al LLM con más contexto
 
 ### ADR-005: Despliegue
@@ -140,7 +140,7 @@
 
 **Decisión**: Docker Compose para desarrollo. Producción sin definir.
 
-**Contexto**: Desarrollo con Docker Compose (PostgreSQL, Qdrant, Redis, API). Producción pendiente.
+**Contexto**: Desarrollo con Docker Compose (PostgreSQL, Qdrant, API). Producción pendiente.
 
 **Preguntas abiertas**: Proveedor cloud? Serverless o contenedores? Modelos LLM locales vs cloud?
 
