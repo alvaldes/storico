@@ -18,7 +18,12 @@
 
 /** One probe result, shaped like every `_check_*` in the backend's health route. */
 export interface ServiceStatus {
-  status: 'ok' | 'error';
+  /**
+   * `unknown` is a state the backend publishes, not an absence: the schema probe degrades to it
+   * when it cannot read the applied Alembic revision, and its docstring says that `unknown`
+   * already is the failure. Only `ok`/`error`/`unknown` are accepted from the wire.
+   */
+  status: 'ok' | 'error' | 'unknown';
   latency_ms: number | null;
   error?: string;
   model_count?: number;
@@ -79,7 +84,7 @@ export function serviceStatus(health: ServicesHealth | null, name: string): Serv
   if (!isRecord(probe)) return null;
 
   const status = probe.status;
-  if (status !== 'ok' && status !== 'error') return null;
+  if (status !== 'ok' && status !== 'error' && status !== 'unknown') return null;
 
   return probe as unknown as ServiceStatus;
 }

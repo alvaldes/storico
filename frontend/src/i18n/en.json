@@ -719,10 +719,13 @@
       "llm_runner_desc": "Ollama / OpenAI / Anthropic / Gemini / any OpenAI-compatible endpoint",
       "database": "Database",
       "database_desc": "PostgreSQL",
+      "schema": "Database schema",
+      "schema_desc": "Alembic revision applied to the database",
       "vector_store": "Vector Store",
       "vector_store_desc": "Qdrant",
       "operational": "Operational",
       "error": "Error",
+      "unknown": "Unknown",
       "checking": "Checking…",
       "unavailable": "Unavailable",
       "last_updated": "Last updated"

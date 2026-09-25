@@ -135,12 +135,35 @@ describe('serviceStatus', () => {
     expect(serviceStatus(parseServicesHealth(LIVENESS_HEALTH_200), 'database')).toBeNull();
   });
 
-  it('returns null for a probe whose status is not ok or error', () => {
+  it('returns null for a probe whose status is not one of the published states', () => {
     const odd = parseServicesHealth({
       ...SERVICES_HEALTH_200,
       services: { ollama: { status: 'maybe', latency_ms: 1 } },
     }) as ServicesHealth;
 
     expect(serviceStatus(odd, 'ollama')).toBeNull();
+  });
+
+  it('reads the schema probe out of the diagnostics document', () => {
+    const health = parseServicesHealth(SERVICES_HEALTH_200) as ServicesHealth;
+
+    expect(serviceStatus(health, 'schema')?.status).toBe('ok');
+  });
+
+  it('keeps an unknown status, which is a measurement rather than a missing probe', () => {
+    // The schema probe degrades to `unknown` when it cannot read the applied revision, and its
+    // docstring says "`unknown` already is the failure" — the code/Alembic-head mismatch that
+    // cost 56 extractions on 2026-09-20 is exactly what it reports that way. Returning null here
+    // would render it as "Unavailable" and claim a probe nobody ran.
+    const mismatched = parseServicesHealth({
+      ...SERVICES_HEALTH_200,
+      status: 'degraded',
+      services: {
+        ...SERVICES_HEALTH_200.services,
+        schema: { status: 'unknown', latency_ms: 858.3 },
+      },
+    }) as ServicesHealth;
+
+    expect(serviceStatus(mismatched, 'schema')?.status).toBe('unknown');
   });
 });

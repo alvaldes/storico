@@ -71,25 +71,35 @@ const statusTextClass = (state: string) => {
 };
 
 /**
- * Three states, not two. "Unavailable" means the backend did not report the probe;
- * "Error" means it probed and failed. Collapsing the first into the second would claim a
- * measurement nobody took — and a missing probe is exactly when this page matters most.
+ * Four states, not two. "Unavailable" means the backend did not report the probe;
+ * "Error" means it probed and failed; "Unknown" is the backend's own degraded answer when it
+ * could not determine a status at all (the schema probe publishes it). Collapsing the first
+ * into the second would claim a measurement nobody took — and a missing probe is exactly when
+ * this page matters most.
  */
-type BadgeState = 'ok' | 'error' | 'unavailable';
+type BadgeState = 'ok' | 'error' | 'unknown' | 'unavailable';
 
 const badgeState = (probe: ServiceStatus | null): BadgeState => {
   if (!probe) return 'unavailable';
-  return probe.status === 'ok' ? 'ok' : 'error';
+  return probe.status;
 };
 
-const badgeDotClass = (state: BadgeState) => (state === 'ok' ? 'bg-(--color-success)' : 'bg-red-500');
+const badgeDotClass = (state: BadgeState) => {
+  if (state === 'ok') return 'bg-(--color-success)';
+  if (state === 'unknown') return 'bg-amber-500';
+  return 'bg-red-500';
+};
 
-const badgeTextClass = (state: BadgeState) =>
-  state === 'ok' ? 'text-(--color-success-text)' : 'text-red-600 dark:text-red-400';
+const badgeTextClass = (state: BadgeState) => {
+  if (state === 'ok') return 'text-(--color-success-text)';
+  if (state === 'unknown') return 'text-amber-800 dark:text-amber-300';
+  return 'text-red-600 dark:text-red-400';
+};
 
 const badgeLabel = (state: BadgeState) => {
   if (state === 'ok') return t.pages.status.operational;
   if (state === 'error') return t.pages.status.error;
+  if (state === 'unknown') return t.pages.status.unknown;
   return t.pages.status.unavailable;
 };
 
@@ -114,6 +124,14 @@ const serviceRows: { key: string; title: string; description: string; state: Bad
     title: t.pages.status.database,
     description: t.pages.status.database_desc,
     state: badgeState(serviceStatus(health, 'database')),
+  },
+  {
+    // The newest probe, and the one that would have caught the 2026-09-20 incident, where the
+    // code ran four revisions ahead of the schema and 56 extractions failed on a missing column.
+    key: 'schema',
+    title: t.pages.status.schema,
+    description: t.pages.status.schema_desc,
+    state: badgeState(serviceStatus(health, 'schema')),
   },
   {
     key: 'qdrant',
