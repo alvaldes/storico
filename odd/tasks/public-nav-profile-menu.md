@@ -1,7 +1,8 @@
 # ODD Feature: public-nav-profile-menu
 
-> **Status**: done — four work-unit commits on `feat/public-nav-profile-menu` (`c03e0ee` desktop
-> menu, `9373ba7` mobile sheet, `9178e5e` initials, plus `docs(odd)` carrying this record). Nothing
+> **Status**: done — five work-unit commits on `feat/public-nav-profile-menu` (`c03e0ee` desktop
+> menu, `9373ba7` mobile sheet, `9178e5e` initials, `fix(nav)` vertical centring, plus `docs(odd)`
+> carrying this record). Nothing
 > pushed. Receipt-driven development is **off** in this clone, so no native review ran; two
 > independent verifications did, both recorded below with their findings and dispositions.
 >
@@ -136,6 +137,18 @@ inside a hidden element.
 **F8 — Empty `src` on the avatar. Not a defect.** `AvatarImage` receives `src={user.avatarUrl ?? ''}`.
 Base UI short-circuits in `useImageLoadingStatus` on `!src && !srcSet`, so no request is issued and
 `AvatarFallback` renders. This matches the pre-existing `nav-user.tsx` pattern.
+
+**F9 — The navbar's vertical alignment. Fixed after the first review.** Measured in a real browser,
+not inferred: every control in the row centred at `delta −0.5px` from the header's centre line
+except two, which sat at `−3.8px` — the avatar trigger introduced by this slice, and the logo, which
+predated it. One cause for both: a `display: block` wrapper (`div.hidden.lg:block`, `div.flex-1`)
+whose only child is an inline-level element (`inline-flex`). That child gets a line box and rides
+the font's text baseline, which lifts it inside a wrapper 6.5px taller than the control it holds.
+Every sibling control is a flex item, and flex items are blockified, which is why only these two
+drifted. Changing each wrapper to `flex` puts delta at `−0.5px` for all eight controls and drops the
+header from 79.5px to 77px. Verified by measuring before and after in the live page, and by
+zooming the header at 4x. The ODD prompt for this slice missed it because no automated check looks
+at layout; the E2E suite that could have is not executable here.
 
 ## Evidence
 

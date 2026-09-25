@@ -28,7 +28,9 @@ const L = (path: string) => localizedPath(path, locale);
 <header class="border-b border-(--color-border)">
   <div class="mx-auto flex max-w-7xl items-center px-4 py-4 md:px-8 lg:px-20 lg:py-5">
     <!-- Left: Logo -->
-    <div class="flex-1">
+    <!-- `flex` for the same reason as the avatar trigger below: a block wrapper would put
+         the inline-flex link on a text baseline and lift it off the row's centre. -->
+    <div class="flex-1 flex">
       <a href={L('/')} class="inline-flex items-center gap-2.5 no-underline">
         <img src="/favicon.svg" alt="" class="h-7 w-auto md:h-8" />
         <span class="text-xl font-extrabold text-(--color-primary-600) dark:text-(--color-text) md:text-[22px]">{t.app.name}</span>
@@ -88,7 +90,9 @@ const L = (path: string) => localizedPath(path, locale);
 
       <!-- Signed in: avatar dropdown replaces the Dashboard CTA (desktop only); signed out keeps the CTA -->
       {user ? (
-        <div class="hidden lg:block">
+        // `flex` and not `block`: a block wrapper puts the inline-flex trigger on a text
+        // baseline, which lifts it ~4px above the row its siblings are centred in.
+        <div class="hidden lg:flex">
           <PublicUserMenu client:idle locale={locale} user={user} />
         </div>
       ) : (
