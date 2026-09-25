@@ -244,6 +244,8 @@ salen de ahí) y el `.env` fijando `STORICO_QDRANT_COLLECTION=storico_extraction
 | 6 | Abrir una historia | Lista y detalle: estado, historia completa y partes (Actor / Feature / Benefit) |
 | 7 | **Extract Tasks** | `202` → `Extracting...` → `Extracted`, tareas renderizadas y un punto nuevo en Qdrant |
 | 8 | Kanban: arrastrar una tarjeta desde el handle | Drag & drop persistido (`PUT /api/v1/tasks/<id>` → `200`) y sobrevive a una recarga completa |
+| 9 | `/en/status` y `/es/status` **sin sesión** | El documento de diagnósticos completo: banner, las **4** filas (`API Server`, `LLM Runner`, `Database`, `Vector Store`) y "Última actualización". Un SSR roto en Astro **no** muestra error: la página queda con la navbar y sin cuerpo (ver trampas) |
+| 10 | `/en/api` y `/es/api` **sin sesión** | Cada path listado existe en el backend: `curl -X POST -o /dev/null -w '%{http_code}' <path>` da `401`, nunca `404` |
 
 ### Trampas medidas
 
@@ -256,6 +258,8 @@ salen de ahí) y el `.env` fijando `STORICO_QDRANT_COLLECTION=storico_extraction
 | `loc=href:/en/stories` matchea dos | El link del sidebar y el del encabezado de "Recent stories". Usá `>> nth=0` |
 | Cada llamada de lista cuesta un `307` | El frontend pide `/api/v1/stories?page=1` sin barra final y FastAPI redirige a `/api/v1/stories/`. Duplica los viajes en un dev ya lento |
 | El tablero se corta a la derecha | Es scroll horizontal: con un viewport de 1340 px la columna `Done` queda fuera de pantalla |
+| **Una página pública "se ve vacía"** | Antes de culpar a la latencia, distinguí un SSR truncado: en dev Astro streamea y corta en el punto exacto donde revienta, **sin marca de error**. `curl -s http://localhost:4321/en/status | grep -c '</html>'` da `0` cuando el render murió y `1` cuando está sano. `/en/status` estuvo roto así del 2026-09-20 al 2026-09-24 |
+| `curl \| grep 'TypeError'` no encuentra nada | Por lo mismo: el error viaja por el canal de errores de Vite (WebSocket), no en el HTML. Buscalo en la consola del navegador o en la terminal de `pnpm dev` |
 
 ### Qué NO cubre
 
@@ -264,3 +268,9 @@ salen de ahí) y el `.env` fijando `STORICO_QDRANT_COLLECTION=storico_extraction
 - El camino de fallo de la extracción, y por lo tanto el toast de fallo.
 - El bundle de producción: se ejercitó el servidor de desarrollo. CI corre `pnpm build` como gate, pero
   el artefacto no se probó acá.
+
+Los pasos 9 y 10 se agregaron el 2026-09-24, después de encontrar `/en/status` roto desde el
+2026-09-20: las tres superficies públicas (`/status`, `/api` y la versión del documento OpenAPI)
+mentían y **ninguna** aparecía en este guion ni en el CI. `tsc`, `vitest` y `astro build` pasaban
+con las tres presentes. Un `TypeError` dentro de un `.astro` que rompe la página entera no lo ve
+ninguna de esas tres gates; sí lo ve el paso 9.
