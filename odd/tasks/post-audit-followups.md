@@ -10,11 +10,20 @@
 > (`--no-ff`), bump `3defa49` → **v0.6.0**, tag on `main`. Nothing pushed.
 > `make bump`'s guard passed: the three manifests already read the tag's value. The commit you are
 > reading landed after the tag, so it is in the next release, not in `v0.6.0`.
-> **Post-release note**: the running dev backend still reports `version: 0.5.1` from
-> `/api/v1/health` and `/openapi.json`, because it reads the *installed distribution* metadata and the
-> editable install in the conda env predates the bump. That is the field working as designed — it
-> reports what is installed, never a literal — and it self-corrects on the next
-> `pip install -e ".[dev]"`. CI installs fresh, so it never sees the drift.
+> **Post-release, resolved**: the running dev backend answered `version: 0.5.1` from `/api/v1/health`
+> and `/openapi.json` right after the bump, because that field reads the *installed distribution*
+> metadata and the editable install in the conda env predated it. That is the field working as
+> designed. `pip install -e ".[dev]"` moved the metadata 0.5.1 → 0.6.0, and the two readers picked it
+> up at **different times**, which is worth recording rather than smoothing over:
+> - `/api/v1/health` reported `0.6.0` on the next request — it resolves the version per request.
+> - `/openapi.json` kept answering `0.5.1` until the process restarted, because `create_app()`
+>   resolves it once at startup. A source touch triggered the dev server's reload and it moved.
+>
+> Neither is a defect: it is where each reader resolves the value, and CI installs fresh before
+> starting, so it never sees the gap.
+> **Pushed**: `main` (`54b18d3`) and `v0.6.0` (`3defa49`) are on `origin`. The tag is lightweight,
+> like every other tag in this repository, so `--follow-tags` would have skipped it silently — it was
+> pushed explicitly with `git push origin main v0.6.0`.
 > **Created**: 2026-09-24
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/public-surface-truth` (continues from `466dea6`; the four commits of
