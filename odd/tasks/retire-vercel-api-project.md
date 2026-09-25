@@ -4,6 +4,18 @@
 > 2026-09-25. WU1 (`5d77239`), WU2a (`700c4bb`), WU2b (`2ef043a`), WU2c (`cc01ce8`) and WU3
 > (`58641a1`) all landed. **Receipt-driven development is off in this clone** (decided by
 > clone_local on 2026-09-24; global is on), so native review is not part of this batch.
+> **Pushed**: `main` (`28362b5`) and `v0.6.1` (`e3dd40f`) are on `origin`. The tag is lightweight,
+> like every other tag in this repository, so `--follow-tags` would have skipped it silently — it was
+> pushed explicitly. The three merged branches (`chore/retire-vercel-api-project`,
+> `chore/vm-disk-hygiene` and `fix/open-debt-closure`) were deleted, and nothing from this batch
+> stayed local.
+> **Post-release drift, the same one `v0.6.0` recorded**: right after the bump the editable install
+> in the conda env still reported `0.6.0` from `importlib.metadata`, because it predates the bump,
+> while `pyproject.toml` reads `0.6.1`. That field reports what is *installed*, never a literal, so
+> it self-corrects on the next `pip install -e ".[dev]"` and CI installs fresh, so it never sees the
+> gap. The dev server was not running when this was written, so the per-request reader
+> (`/api/v1/health`) could not be observed this time — that is an unmeasured cell, not a zero.
+> The commit carrying this note landed **after** the tag, so it belongs to the next release.
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `chore/retire-vercel-api-project` (off `main` @ `7fe8f01`).

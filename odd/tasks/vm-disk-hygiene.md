@@ -1,9 +1,18 @@
 # ODD Feature: vm-disk-hygiene
 
-> **Status**: **landed and released.** Merged into `main` as `1aebadf` and tagged `v0.6.1` on
-> 2026-09-25. WU1 (`9134e78`) and WU2 (`b456acb`) landed, and the cleanup was measured on the
+> **Status**: **landed, released and deployed.** Merged into `main` as `1aebadf` and tagged `v0.6.1`
+> on 2026-09-25. WU1 (`9134e78`) and WU2 (`b456acb`) landed, and the cleanup was measured on the
 > production host before the record closed. **Receipt-driven development is off in this clone**
 > (decided by clone_local on 2026-09-24).
+> **The deploy ran it for real**: the push to `main` triggered a production deploy — this workflow
+> fires on `backend/**` or on its own file, so a release touches production, not just CI — and run
+> `36178166005` came back green: `Ready after 10s`, then the new `=== Reclaim disk (bounded) ===`
+> step ran and deleted the image from two releases back, the one that had just lost its tag when the
+> deploy re-tagged `:previous`. Its build-cache prune reported **`Total: 0B`**, and that is the
+> correct result rather than a failure: the 168 h window keeps everything used in the last week, so
+> the policy **bounds growth, not the floor**, and the floor is ~13-14 GB, growing only when
+> dependency layers change. After it: health 200, ready 200, frontend 302, and the VM at 18 GB used
+> of 45 GB (40 %).
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 
