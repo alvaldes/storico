@@ -9,16 +9,19 @@ import { readFileSync } from 'node:fs';
 
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
+import { CORE_PROBES } from '@/lib/health';
 
 /**
  * The status page must render one row per probe the backend publishes in
  * `GET /api/v1/health/services`, no fewer and no more.
  *
  * The backend is authoritative — `api/routes/health.py` decides which probes exist —
- * and the frontend cannot import it. A drift is not cosmetic here: the banner reads
- * `health.status`, which the backend degrades when *any* probe fails, so a probe without
- * a row turns the banner "degraded" while every visible row reads Operational — a
- * diagnosis with no visible cause. The `embeddings` probe shipped exactly this way.
+ * and the frontend cannot import it. A drift is not cosmetic here: the status page
+ * derives its banner from a local mirror of the backend's required set (`CORE_PROBES` in
+ * `@/lib/health`), because the two deploy independently (Vercel vs the VM) and the page
+ * must classify correctly even on a payload whose probes carry no `scope` yet. A probe
+ * without a row, or a mirror that drifts from `REQUIRED_PROBES`, would again let one
+ * optional integration paint the banner a color the operator cannot trace to a row.
  *
  * The probe list is extracted from the backend on every run instead of being copied:
  * a hardcoded list cannot catch the next probe the backend grows.
@@ -55,6 +58,33 @@ describe('the status page mirrors the backend probes', () => {
     0,
   );
 
+  /**
+   * The probes the backend classifies as required, extracted from `REQUIRED_PROBES` the
+   * same way the probe list above is extracted: a rename must fail here, on the missing
+   * match, instead of on a mystery comparison against `undefined`.
+   */
+  const backendRequiredProbes = (() => {
+    const tuple = healthSource.match(/^REQUIRED_PROBES = \(([^)]*)\)/m)?.[1];
+    expect(tuple, 'the backend declares REQUIRED_PROBES in health.py').toBeDefined();
+
+    const probes = [...tuple!.matchAll(/"([^"]+)"/g)].map(([, probe]) => probe);
+    expect(probes, 'REQUIRED_PROBES declares at least one probe').not.toHaveLength(0);
+    return probes;
+  })();
+
+  /**
+   * The probe names the page feeds into the banner rule (`summarizeHealth`). Extracted the
+   * same way as the reads above: a rename must fail here, on the missing match.
+   */
+  const pageDiagnosticProbes = (() => {
+    const literal = statusPageSource.match(/const DIAGNOSTIC_PROBES = \[([^\]]*)\]/)?.[1];
+    expect(literal, 'the status page declares DIAGNOSTIC_PROBES').toBeDefined();
+
+    const probes = [...literal!.matchAll(/'([^']+)'/g)].map(([, probe]) => probe);
+    expect(probes, 'DIAGNOSTIC_PROBES declares at least one probe').not.toHaveLength(0);
+    return probes;
+  })();
+
   it('renders a row for every probe the backend publishes', () => {
     for (const probe of backendProbes) {
       expect(
@@ -71,6 +101,20 @@ describe('the status page mirrors the backend probes', () => {
         `the status page reads "${probe}", which the backend does not publish`,
       ).toContain(probe);
     }
+  });
+
+  it('pins CORE_PROBES to the backend REQUIRED_PROBES', () => {
+    // The frontend falls back to this constant exactly when the payload carries no `scope`,
+    // so the fallback is only honest while the mirror matches the backend's classification.
+    expect([...CORE_PROBES]).toEqual(backendRequiredProbes);
+  });
+
+  it('feeds exactly the backend probes into the banner rule', () => {
+    // The mirror image of the defect this feature removes: a probe missing from
+    // DIAGNOSTIC_PROBES keeps every row invariant passing while `summarizeHealth` never
+    // evaluates it — a new required probe would leave the banner green over a failing core,
+    // and a new optional probe would never reach the amber note. Green with a hidden failure.
+    expect(pageDiagnosticProbes).toEqual(backendProbes);
   });
 
   it('has copy for every row in both locales', () => {

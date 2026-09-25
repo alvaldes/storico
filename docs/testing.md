@@ -244,7 +244,7 @@ salen de ahí) y el `.env` fijando `STORICO_QDRANT_COLLECTION=storico_extraction
 | 6 | Abrir una historia | Lista y detalle: estado, historia completa y partes (Actor / Feature / Benefit) |
 | 7 | **Extract Tasks** | `202` → `Extracting...` → `Extracted`, tareas renderizadas y un punto nuevo en Qdrant |
 | 8 | Kanban: arrastrar una tarjeta desde el handle | Drag & drop persistido (`PUT /api/v1/tasks/<id>` → `200`) y sobrevive a una recarga completa |
-| 9 | `/en/status` y `/es/status` **sin sesión** | El documento de diagnósticos completo: banner, las **5** filas (`API Server`, `LLM Runner`, `Database`, `Database schema`, `Vector Store`) y "Última actualización". Un SSR roto en Astro **no** muestra error: la página queda con la navbar y sin cuerpo (ver trampas) |
+| 9 | `/en/status` y `/es/status` **sin sesión** | El documento de diagnósticos completo: banner, los dos grupos de filas — **"Core services" / "Servicios principales"** (`API Server`, `Database`, `Database schema`) e **"Optional integrations" / "Integraciones opcionales"** (`Ollama default host`, `Vector Store`, `Embeddings`, esta última con proveedor y modelo en una línea secundaria) — y "Última actualización". Con Ollama caído y el núcleo sano: banner verde con una nota ámbar que nombra las integraciones opcionales no disponibles. Un SSR roto en Astro **no** muestra error: la página queda con la navbar y sin cuerpo (ver trampas) |
 | 10 | `/en/api` y `/es/api` **sin sesión** | Cada path listado existe en el backend: `curl -X POST -o /dev/null -w '%{http_code}' <path>` da `401`, nunca `404` |
 
 ### Trampas medidas

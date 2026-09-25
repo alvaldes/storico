@@ -27,6 +27,22 @@ export interface ServiceStatus {
   latency_ms: number | null;
   error?: string;
   model_count?: number;
+  /**
+   * The probe's classification, published by the backend since commit `b90ded2`:
+   * `required` means the deployment is not useful without the probe, `optional` means an
+   * integration a workspace may never use. Absent on payloads from a backend that predates
+   * the field — the frontend and the backend deploy independently, so the page must still
+   * classify correctly without it (see `CORE_PROBES`).
+   */
+  scope?: 'required' | 'optional';
+  /** The embeddings probe: the provider the global embedding setting selected. */
+  provider?: string;
+  /** The embeddings probe: the model the probe actually used. */
+  model?: string;
+  /** The embeddings probe: the embedding dimensions the probe measured. */
+  dimensions?: number;
+  /** The embeddings probe: the vector length configured on the store. */
+  vector_length?: number;
 }
 
 export interface ServicesHealth {
@@ -87,4 +103,67 @@ export function serviceStatus(health: ServicesHealth | null, name: string): Serv
   if (status !== 'ok' && status !== 'error' && status !== 'unknown') return null;
 
   return probe as unknown as ServiceStatus;
+}
+
+/**
+ * The probes whose failure means the deployment is not useful. A local mirror of the
+ * backend's `REQUIRED_PROBES` (`backend/src/storico/api/routes/health.py`), which is
+ * authoritative: `status-probes-mirror.test.ts` reads the Python source on every run and
+ * pins this constant to it, so the two cannot drift silently.
+ *
+ * The mirror exists for the deploy-skew window: the frontend deploys on Vercel and the
+ * backend on the VM, independently, so the page can receive a payload whose probes carry
+ * no `scope` yet and must still classify the banner correctly.
+ */
+export const CORE_PROBES: readonly string[] = ['database', 'schema'];
+
+/**
+ * Whether a probe belongs to the core. The wire wins: when the probe carries a published
+ * `scope` — one of the two values the backend actually publishes — that is the backend's
+ * own answer. When it does not, the local `CORE_PROBES` mirror decides by probe name; a
+ * scope value outside the published set falls through to the mirror rather than being
+ * trusted.
+ */
+export function isCoreProbe(name: string, probe: ServiceStatus | null): boolean {
+  if (probe?.scope === 'required') return true;
+  if (probe?.scope === 'optional') return false;
+  return CORE_PROBES.includes(name);
+}
+
+export type HealthBanner = 'ok' | 'degraded' | 'down';
+
+export interface HealthSummary {
+  banner: HealthBanner;
+  /** The non-core probes that are not `ok`, in the order given. */
+  degradedOptional: string[];
+}
+
+/**
+ * The banner rule for the `/status` page, in one tested place.
+ *
+ * The backend's top-level `status` is its own answer about the required probes, and the
+ * page must not re-derive a different one by accident — nor inherit the pre-`b90ded2`
+ * contract, where any probe degraded it. Here: `down` when the document did not arrive;
+ * `degraded` when any core probe is not `ok` (a core probe missing from the document, or
+ * malformed, counts as not ok — never as fine); `ok` otherwise, with the failing optional
+ * probes listed so the page can show a caveat instead of a bare green light.
+ */
+export function summarizeHealth(
+  health: ServicesHealth | null,
+  names: readonly string[],
+): HealthSummary {
+  if (!health) return { banner: 'down', degradedOptional: [] };
+
+  const degradedOptional: string[] = [];
+  let degraded = false;
+
+  for (const name of names) {
+    const probe = serviceStatus(health, name);
+    if (!probe || probe.status !== 'ok') {
+      if (isCoreProbe(name, probe)) degraded = true;
+      else degradedOptional.push(name);
+    }
+  }
+
+  return { banner: degraded ? 'degraded' : 'ok', degradedOptional };
 }
