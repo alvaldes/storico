@@ -106,6 +106,45 @@ describe('MobileNav — signed in', () => {
   });
 });
 
+describe('MobileNav — accessible name', () => {
+  // The single-SheetTitle rule: when the identity row is shown the title is
+  // sr-only, when signed out it is visible, but the panel must stay a dialog
+  // named after the brand in BOTH states.
+  it('exposes the panel as a dialog named after the brand in both session states', async () => {
+    const user = userEvent.setup();
+    const sharedProps = {
+      brandName: 'Storico',
+      locale: 'en',
+      langToggleHref: '/es/',
+    } as const;
+
+    // Signed in: the visible title is replaced by the identity row.
+    const signedIn = render(
+      <MobileNav
+        {...sharedProps}
+        links={signedInLinks}
+        cta={{ href: '/en/dashboard', label: t.nav.dashboard }}
+        user={enUser}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: t.nav.toggleMenu }));
+    expect(await screen.findByRole('dialog', { name: 'Storico' })).toBeInTheDocument();
+    signedIn.unmount();
+
+    // Signed out: the title is rendered visibly again.
+    render(
+      <MobileNav
+        {...sharedProps}
+        links={signedOutLinks}
+        cta={{ href: '/en/login', label: t.landing.cta.button }}
+        user={null}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: t.nav.toggleMenu }));
+    expect(await screen.findByRole('dialog', { name: 'Storico' })).toBeInTheDocument();
+  });
+});
+
 describe('MobileNav — signed out', () => {
   it('shows no identity block, no sign-out control, and a login CTA', async () => {
     await openSheet({

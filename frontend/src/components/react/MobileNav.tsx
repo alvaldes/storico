@@ -15,7 +15,6 @@ import { Menu, X, LogOut, ChevronRight } from 'lucide-react';
 import { signOut } from 'auth-astro/client';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { getInitials } from '@/lib/initials';
-import { Separator } from '@/components/ui/separator';
 import { type PublicNavUser } from '@/components/react/PublicUserMenu';
 
 export interface MobileNavLink {
@@ -77,11 +76,36 @@ export function MobileNav({
       <SheetContent
         side="right"
         showCloseButton={false}
-        className="rounded-bl-xl rounded-br-xl data-[side=right]:border-0"
+        className="max-h-[calc(100dvh-var(--public-nav-h,4.25rem))] rounded-bl-xl rounded-br-xl data-[side=right]:border-0"
         style={{ top: 'var(--public-nav-h, 4.25rem)', bottom: 'auto', height: 'auto' }}
       >
-        <SheetHeader className="flex flex-row items-center justify-between">
-          <SheetTitle>{brandName}</SheetTitle>
+        <SheetHeader className="flex shrink-0 flex-row items-center justify-between gap-2 border-b border-border px-3 py-2">
+          {user ? (
+            <>
+              <a
+                href={`/${locale}/account`}
+                aria-label={t.nav.account}
+                onClick={() => setOpen(false)}
+                className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1.5 no-underline transition-colors hover:bg-muted"
+              >
+                <Avatar className="size-8">
+                  <AvatarImage src={user.avatarUrl ?? ''} alt={user.name} />
+                  <AvatarFallback className="text-xs">{getInitials(user.name)}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-foreground">{user.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                </div>
+                <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
+              </a>
+              {/* Exactly one SheetTitle stays in the DOM so the dialog keeps its
+                  accessible name; it is hidden here because the identity row
+                  already fills the header. */}
+              <SheetTitle className="sr-only">{brandName}</SheetTitle>
+            </>
+          ) : (
+            <SheetTitle>{brandName}</SheetTitle>
+          )}
           <button
             type="button"
             onClick={() => setOpen(false)}
@@ -92,29 +116,12 @@ export function MobileNav({
           </button>
         </SheetHeader>
 
-        {user && (
-          <>
-            <a
-              href={`/${locale}/account`}
-              aria-label={t.nav.account}
-              onClick={() => setOpen(false)}
-              className="mx-4 flex items-center gap-3 rounded-lg px-3 py-3 no-underline transition-colors hover:bg-muted"
-            >
-              <Avatar className="size-9">
-                <AvatarImage src={user.avatarUrl ?? ''} alt={user.name} />
-                <AvatarFallback className="text-xs">{getInitials(user.name)}</AvatarFallback>
-              </Avatar>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-foreground">{user.name}</p>
-                <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-              </div>
-              <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
-            </a>
-            <Separator />
-          </>
-        )}
-
-        <nav className="flex flex-col px-4">
+        {/* flex-1 is intentionally absent: in an auto-height flex container it is
+            `flex: 1 1 0%`, which sets the item's hypothetical main size to 0 and
+            collapses the nav. Shrink-only with min-h-0 shrinks the nav exactly
+            when the panel's max-height is reached and leaves it content-sized
+            otherwise; the header and footer are pinned with shrink-0. */}
+        <nav className="flex min-h-0 flex-col overflow-y-auto px-4">
           {(() => {
             const grouped: Record<string, MobileNavLink[]> = {};
             for (const link of links) {
@@ -122,10 +129,19 @@ export function MobileNav({
               if (!grouped[cat]) grouped[cat] = [];
               grouped[cat].push(link);
             }
-            return Object.entries(grouped).map(([category, categoryLinks]) => (
+            const groups = Object.entries(grouped);
+            // With three or more groups the first one is the primary destination
+            // and renders full width, while the remaining short groups pair up in
+            // a two-column grid — that is what lets an iPhone SE fit without
+            // scrolling. With two or fewer groups everything shares the grid.
+            // Below 360px the grid collapses to one column rather than squeezing
+            // the text.
+            const leadGroup = groups.length > 2 ? groups[0] : null;
+            const gridGroups = groups.length > 2 ? groups.slice(1) : groups;
+            const renderGroup = ([category, categoryLinks]: [string, MobileNavLink[]]) => (
               <div key={category} className="flex flex-col gap-0.5 pb-3 last:pb-0">
                 {category && (
-                  <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <p className="px-2 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                     {category}
                   </p>
                 )}
@@ -136,10 +152,10 @@ export function MobileNav({
                       key={link.href}
                       href={link.href}
                       onClick={() => setOpen(false)}
-                      className={`flex h-11 items-center rounded-lg px-3 text-sm no-underline transition-colors ${
+                      className={`flex h-11 items-center whitespace-nowrap rounded-lg px-2 text-[13px] no-underline transition-colors ${
                         isActive
                           ? 'bg-muted text-foreground font-semibold'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          : 'text-foreground hover:bg-muted hover:text-foreground'
                       }`}
                     >
                       {link.label}
@@ -147,11 +163,19 @@ export function MobileNav({
                   );
                 })}
               </div>
-            ));
+            );
+            return (
+              <>
+                {leadGroup && renderGroup(leadGroup)}
+                <div className="grid grid-cols-1 gap-x-2 min-[360px]:grid-cols-2">
+                  {gridGroups.map(renderGroup)}
+                </div>
+              </>
+            );
           })()}
         </nav>
 
-        <SheetFooter className="border-t border-border">
+        <SheetFooter className="shrink-0 border-t border-border">
           <a
             href={cta.href}
             onClick={() => setOpen(false)}
