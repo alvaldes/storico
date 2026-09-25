@@ -723,6 +723,8 @@
       "schema_desc": "Revisión de Alembic aplicada a la base de datos",
       "vector_store": "Almacén vectorial",
       "vector_store_desc": "Qdrant",
+      "embeddings": "Embeddings",
+      "embeddings_desc": "Ollama / OpenAI / Google — contexto del historial de extracciones (RAG)",
       "operational": "Operativo",
       "error": "Error",
       "unknown": "Desconocido",
