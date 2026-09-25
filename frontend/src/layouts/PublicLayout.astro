@@ -46,11 +46,17 @@ const navLinks = [
   { href: L('/status'), label: t.footer.status_page },
 ];
 
+// Built from the session: Product lists only routes an anonymous visitor can
+// actually open (D2/D3 in odd/tasks/mobile-nav-functional.md) — the footer CTA
+// carries "Dashboard" for signed-in users and points at /login when signed out.
 const mobileNavLinks = [
-  // ── Product ──
-  { href: L('/dashboard'), label: t.nav.dashboard, category: t.footer.product },
-  { href: L('/stories'), label: t.nav.stories, category: t.footer.product },
-  { href: L('/kanban'), label: t.nav.kanban, category: t.footer.product },
+  // ── Product ── signed in only
+  ...(isLoggedIn
+    ? [
+        { href: L('/stories'), label: t.nav.stories, category: t.footer.product },
+        { href: L('/kanban'), label: t.nav.kanban, category: t.footer.product },
+      ]
+    : []),
   // ── Resources ──
   { href: L('/docs'), label: t.footer.documentation, category: t.footer.resources },
   { href: L('/api'), label: t.footer.api_reference, category: t.footer.resources },
