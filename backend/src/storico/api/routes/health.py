@@ -7,8 +7,10 @@ Design decisions:
     dependency of being useful: that mismatch stayed invisible until 56
     extractions failed with a missing column.
   - Ollama and Qdrant are optional, per-workspace services (users configure
-    them in workspace settings, saved to DB). They are NOT checked at the
-    global health level. Use /api/v1/health/services for full diagnostics.
+    them in workspace settings, saved to DB). /api/v1/health itself does not
+    check them; /api/v1/health/services publishes them with their scope, and
+    its top-level status is computed from the required probes only, so an
+    unused integration never paints the deployment degraded.
   - /api/v1/health is liveness and stays 200 through schema drift;
     /api/v1/health/ready is readiness and answers 503 unless the database
     answers AND the schema matches. See the readiness route for why.
@@ -224,8 +226,10 @@ async def _check_embeddings() -> dict:
 async def health():
     """Return API health status.
 
-    Only checks the database — the single required dependency. Ollama and Qdrant are optional
-    per-workspace services and are not checked at the global health level.
+    Only checks the database — the single required dependency. Ollama, Qdrant and the
+    embeddings provider are optional integrations: /health does not check them, and
+    /health/services publishes them as optional probes without letting them degrade its
+    status.
 
     The schema is reported next to the database but does not change ``status`` or the HTTP code:
     this is a liveness probe, and a schema behind the code is a reason not to send traffic, not a
@@ -245,13 +249,33 @@ async def health():
     }
 
 
+# The classification the diagnostics route publishes. Required means the deployment is
+# not useful without the probe — the 2026-09-20 incident was exactly a
+# useful-but-unhealthy deployment: code at head, schema behind, 56 extractions failed.
+# Optional means an integration a workspace may never use; its failure degrades a
+# feature, not the service. The top-level status of /health/services is computed from
+# the required probes only: production runs no Ollama on purpose, and it must not
+# answer "degraded" forever for an integration nobody there uses.
+REQUIRED_PROBES = ("database", "schema")
+OPTIONAL_PROBES = ("ollama", "qdrant", "embeddings")
+
+
+def _scoped(probe: dict, scope: str) -> dict:
+    """The probe's own document, annotated with the classification it belongs to."""
+    return {**probe, "scope": scope}
+
+
 @router.get("/health/services")
 async def health_services():
-    """Full diagnostics — checks all configured services.
+    """Full diagnostics — every probe, published with its scope.
 
-    This is a debugging endpoint only. Use /api/v1/health for standard
-    health checks (required services only). ``schema`` is reported here too: this
-    is the route that answers "what state is this deployment in".
+    Each probe carries ``"scope": "required" | "optional"``. Required means the
+    deployment is not useful without it; optional means an integration a workspace may
+    never use, whose failure degrades a feature rather than the service. The top-level
+    ``status`` reflects the required probes only, so an optional integration being
+    unreachable does not paint the whole deployment degraded. This is a debugging
+    endpoint: use /api/v1/health for the liveness answer and /api/v1/health/ready for
+    readiness.
     """
     db_result = await _check_database()
     schema_result = await _check_schema()
@@ -259,21 +283,25 @@ async def health_services():
     qdrant_result = await _check_qdrant()
     embeddings_result = await _check_embeddings()
 
-    all_ok = all(
-        probe.get("status") == "ok"
-        for probe in [db_result, schema_result, ollama_result, qdrant_result, embeddings_result]
-    )
+    results = {
+        "database": db_result,
+        "schema": schema_result,
+        "ollama": ollama_result,
+        "qdrant": qdrant_result,
+        "embeddings": embeddings_result,
+    }
+    required_ok = all(results[name].get("status") == "ok" for name in REQUIRED_PROBES)
 
     return {
-        "status": "ok" if all_ok else "degraded",
+        "status": "ok" if required_ok else "degraded",
         "version": package_version(),
         "timestamp": datetime.now(UTC).isoformat(),
         "services": {
-            "database": db_result,
-            "schema": schema_result,
-            "ollama": ollama_result,
-            "qdrant": qdrant_result,
-            "embeddings": embeddings_result,
+            "database": _scoped(db_result, "required"),
+            "schema": _scoped(schema_result, "required"),
+            "ollama": _scoped(ollama_result, "optional"),
+            "qdrant": _scoped(qdrant_result, "optional"),
+            "embeddings": _scoped(embeddings_result, "optional"),
         },
     }
 

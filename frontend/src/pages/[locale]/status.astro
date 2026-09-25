@@ -6,6 +6,7 @@ import {
   HEALTH_SERVICES_PATH,
   parseServicesHealth,
   serviceStatus,
+  summarizeHealth,
   type ServicesHealth,
   type ServiceStatus,
 } from '@/lib/health';
@@ -32,25 +33,44 @@ try {
   fetchError = e instanceof Error ? e.message : 'Connection failed';
 }
 
-const allOk = health?.status === 'ok';
+// The probe names the banner rule evaluates: the five the backend publishes. The `api` row
+// is synthetic — the document arrived, so the API answered — and is never a probe.
+const DIAGNOSTIC_PROBES = ['database', 'schema', 'ollama', 'qdrant', 'embeddings'] as const;
+
+// The banner is derived here, from the core probes only — not read off `health.status`, which
+// is the backend's own answer about its required probes (and which before commit `b90ded2` was
+// degraded by any probe). One pure, tested rule keeps the page and the backend from
+// disagreeing: `summarizeHealth` in `@/lib/health`.
+const summary = summarizeHealth(health, DIAGNOSTIC_PROBES);
 
 let bannerTitle: string;
 let bannerDesc: string;
-let bannerState: 'ok' | 'degraded' | 'down';
+const bannerState = summary.banner;
 
 if (!health) {
   bannerTitle = t.pages.status.down_title;
   bannerDesc = fetchError ? `${t.pages.status.down_desc} (${fetchError})` : t.pages.status.down_desc;
-  bannerState = 'down';
-} else if (allOk) {
+} else if (bannerState === 'ok') {
   bannerTitle = t.pages.status.all_operational;
   bannerDesc = t.pages.status.running_normally;
-  bannerState = 'ok';
 } else {
   bannerTitle = t.pages.status.degraded_title;
   bannerDesc = t.pages.status.degraded_desc;
-  bannerState = 'degraded';
 }
+
+// Decision D2, "OK con avisos": when the core is healthy but an optional integration is not,
+// the banner stays green and this note names what is unavailable, using the same translated
+// row titles the table below renders. An unknown probe name falls back to the raw name
+// instead of disappearing from the note.
+const optionalTitle = (name: string): string => {
+  const titles: Record<string, string> = {
+    ollama: t.pages.status.llm_runner,
+    qdrant: t.pages.status.vector_store,
+    embeddings: t.pages.status.embeddings,
+  };
+  return titles[name] ?? name;
+};
+const optionalNote = summary.degradedOptional.map(optionalTitle).join(', ');
 
 const statusDotClass = (state: string) => {
   if (state === 'ok') return 'bg-(--color-success)';
@@ -103,24 +123,33 @@ const badgeLabel = (state: BadgeState) => {
   return t.pages.status.unavailable;
 };
 
-// One row per probe, rendered by a single loop. The four rows used to be four copies of
-// the same markup, which is also how the services read went wrong in three places at once.
-const serviceRows: { key: string; title: string; description: string; state: BadgeState }[] = [
+// Read once so the embeddings row's state and its provider/model detail come from the same
+// validated probe. Declared before `serviceRows` because the embeddings entry reads it.
+const embeddingsProbe = serviceStatus(health, 'embeddings');
+
+// Two groups, in the order the deployment needs them: the core the page cannot serve without,
+// then the optional integrations a workspace may never use. The banner is computed from the
+// core probes only (`summarizeHealth` above), so an optional row failing shows up here and in
+// the amber note — never in the banner color.
+const serviceRows: {
+  key: string;
+  group: 'core' | 'optional';
+  title: string;
+  description: string;
+  state: BadgeState;
+  detail?: string;
+}[] = [
   {
     key: 'api',
+    group: 'core',
     title: t.pages.status.api_server,
     description: t.pages.status.api_server_desc,
     // The document arrived, so the API answered: this row reports that, not a probe.
     state: health ? 'ok' : 'unavailable',
   },
   {
-    key: 'ollama',
-    title: t.pages.status.llm_runner,
-    description: t.pages.status.llm_runner_desc,
-    state: badgeState(serviceStatus(health, 'ollama')),
-  },
-  {
     key: 'database',
+    group: 'core',
     title: t.pages.status.database,
     description: t.pages.status.database_desc,
     state: badgeState(serviceStatus(health, 'database')),
@@ -129,26 +158,50 @@ const serviceRows: { key: string; title: string; description: string; state: Bad
     // The newest probe, and the one that would have caught the 2026-09-20 incident, where the
     // code ran four revisions ahead of the schema and 56 extractions failed on a missing column.
     key: 'schema',
+    group: 'core',
     title: t.pages.status.schema,
     description: t.pages.status.schema_desc,
     state: badgeState(serviceStatus(health, 'schema')),
   },
   {
+    // Decision D5: this row used to claim to speak for every LLM provider under the title
+    // "LLM Runner", but the only probe behind it is the server's default Ollama host. The
+    // cloud providers are per-workspace configuration verified when that workspace saves it,
+    // so the row now says what is actually measured and where the rest is configured.
+    key: 'ollama',
+    group: 'optional',
+    title: t.pages.status.llm_runner,
+    description: t.pages.status.llm_runner_desc,
+    state: badgeState(serviceStatus(health, 'ollama')),
+  },
+  {
     key: 'qdrant',
+    group: 'optional',
     title: t.pages.status.vector_store,
     description: t.pages.status.vector_store_desc,
     state: badgeState(serviceStatus(health, 'qdrant')),
   },
   {
-    // The probe that turns the banner "degraded" with no visible cause when it fails: the
-    // backend degrades `status` for any probe, and this row is the only place its result
-    // reaches the operator.
+    // Decision D6: the payload carries the provider and model the probe actually used, and
+    // this row is the only place they reach the operator.
     key: 'embeddings',
+    group: 'optional',
     title: t.pages.status.embeddings,
     description: t.pages.status.embeddings_desc,
-    state: badgeState(serviceStatus(health, 'embeddings')),
+    state: badgeState(embeddingsProbe),
+    detail:
+      embeddingsProbe?.provider && embeddingsProbe?.model
+        ? `${embeddingsProbe.provider} / ${embeddingsProbe.model}`
+        : undefined,
   },
 ];
+
+// The per-group views of `serviceRows`, declared after the array they read — after the
+// 2026-09-20 incident this repo does not ship a page whose frontmatter can throw before the
+// layout: vitest never renders .astro, and with `output: 'server'` the build never executes
+// this code, so a TDZ here would 500 every request with a green build.
+const coreRows = serviceRows.filter((row) => row.group === 'core');
+const optionalRows = serviceRows.filter((row) => row.group === 'optional');
 ---
 
 <PublicLayout
@@ -183,15 +236,55 @@ const serviceRows: { key: string; title: string; description: string; state: Bad
         </div>
       </div>
 
+      {
+        // Decision D2: a green banner with a visible caveat, never a bare "degraded".
+        // `bannerState === 'ok'` already implies the document arrived: the summary answers
+        // `down` otherwise, so no separate `health` check is needed here.
+        bannerState === 'ok' &&
+          optionalNote && (
+            <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+              {t.pages.status.optional_unavailable_note.replace('{list}', optionalNote)}
+            </div>
+          )
+      }
+
       <h2 class="text-xl font-bold text-(--color-text)">{t.pages.status.services_title}</h2>
+
+      <h3 class="text-sm font-semibold tracking-wide text-(--color-text-secondary) uppercase">
+        {t.pages.status.core_group}
+      </h3>
 
       <div class="rounded-lg border border-(--color-border) divide-y divide-(--color-border)">
         {
-          serviceRows.map((row) => (
+          coreRows.map((row) => (
             <div class="flex items-center justify-between p-4">
               <div>
                 <p class="font-medium text-(--color-text)">{row.title}</p>
                 <p class="text-sm text-(--color-text-secondary)">{row.description}</p>
+              </div>
+              <span
+                class={`inline-flex items-center gap-1.5 text-sm font-medium ${badgeTextClass(row.state)}`}
+              >
+                <span class={`h-2 w-2 rounded-full ${badgeDotClass(row.state)}`} />
+                {badgeLabel(row.state)}
+              </span>
+            </div>
+          ))
+        }
+      </div>
+
+      <h3 class="text-sm font-semibold tracking-wide text-(--color-text-secondary) uppercase">
+        {t.pages.status.optional_group}
+      </h3>
+
+      <div class="rounded-lg border border-(--color-border) divide-y divide-(--color-border)">
+        {
+          optionalRows.map((row) => (
+            <div class="flex items-center justify-between p-4">
+              <div>
+                <p class="font-medium text-(--color-text)">{row.title}</p>
+                <p class="text-sm text-(--color-text-secondary)">{row.description}</p>
+                {row.detail && <p class="text-xs text-(--color-text-tertiary)">{row.detail}</p>}
               </div>
               <span
                 class={`inline-flex items-center gap-1.5 text-sm font-medium ${badgeTextClass(row.state)}`}
