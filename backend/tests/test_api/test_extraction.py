@@ -666,7 +666,11 @@ class TestExtractionRefusesAnIncompleteConfig:
 
         # The side effects the refusal exists to prevent: no extraction record, and
         # a story still sitting in its pre-extraction status.
-        assert await SQLAlchemyExtractionRepository(db_session).list_by_story(seeded.story_id) == []
+        page, total = await SQLAlchemyExtractionRepository(db_session).list_page(
+            user_story_id=seeded.story_id, limit=10, offset=0
+        )
+        assert page == []
+        assert total == 0
         story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
         assert story is not None
         assert story.status == UserStoryStatus.PENDING_EXTRACTION
