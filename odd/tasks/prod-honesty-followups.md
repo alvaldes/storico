@@ -137,7 +137,7 @@ class being cleaned.
 | D2 | F12's shape | **Operator-selected.** `dictConfig` inside `create_app()`, not at import time (configuring the root logger as a library import side effect is what the missing configuration was supposed to avoid), with the level read from a new `Settings.log_level` defaulting to `INFO`. |
 | D3 | Historical records | **Extrapolated.** Stale `Status` headers and present-tense claims are corrected because they are navigation, not evidence; the *bodies* that record what was true at the time are left as written. |
 | D4 | The env templates | **Operator-selected.** `.env.example` and `backend/.env.example` are blocked for both the parent and its subagents by the harness safety policy, which refuses reads and writes on `.env*` paths. The owner authorized one scoped write and the parent applied exactly the three lines per template. |
-| D5 | The dead deploy artifacts | **Operator-selected.** Documented here and deferred, not deleted: `backend/api/index.py`, `backend/vercel.json`, `backend/entrypoint.sh` and the `mangum` dependency describe a backend-on-Vercel deployment that does not exist, but nobody has verified whether a Vercel project still points at `backend/`. |
+| D5 | The dead deploy artifacts | **Operator-selected.** Documented here and deferred, not deleted: `backend/api/index.py`, `backend/vercel.json`, `backend/entrypoint.sh` and the `mangum` dependency describe a backend-on-Vercel deployment that does not exist, but nobody has verified whether a Vercel project still points at `backend/`. **Resolved 2026-09-25.** The unverified premise is answered: a Vercel project *did* point at `backend/`, and it was deleted that day — it held 6.94 GB of the team's 10 GB of Functions Storage, deployed on every push to every branch, and served nothing (`storico-api.vercel.app/` answered 404 while production pointed at the VM). The four artifacts above are deleted in `retire-vercel-api-project.md`, together with two this row never listed: `backend/api/__init__.py`, the package marker the entrypoint needed, and `backend/requirements.txt`, whose whole content was `-e .` for Vercel. |
 | D6 | The RDD clauses | **Operator-selected.** The eleven records that say `Receipt-driven development is **off** in this clone` are **not** corrected. Flipping them to "on" would be false — it was off when that work landed, which is why no native review ran. The honest correction is a dated note, and that is a sweep of its own. |
 
 ## What lands
@@ -297,4 +297,6 @@ units, none was authored by the agent, and re-attempting the review stays open.
    transport error echoed by `POST /api/v1/llm/test`, Sentry, correlation IDs, Qdrant Cloud plus an
    embedding adapter, the domain and SSL, the Trello connector, and the thesis evaluation.
 7. **Three tracked artifacts describe a backend-on-Vercel deployment that does not exist** (D5).
+   **Resolved 2026-09-25:** the Vercel project that still pointed at `backend/` was found and deleted,
+   and the artifacts followed — `odd/tasks/retire-vercel-api-project.md`.
 8. **The RDD clauses in eleven records** (D6).

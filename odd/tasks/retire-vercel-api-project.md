@@ -1,8 +1,9 @@
 # ODD Feature: retire-vercel-api-project
 
-> **Status**: in progress on `chore/retire-vercel-api-project` — WU1 lands with this record, WU2a and
-> WU2b follow on the same branch. **Receipt-driven development is off in this clone** (decided by
-> clone_local on 2026-09-24; global is on), so native review is not part of this batch.
+> **Status**: closed on `chore/retire-vercel-api-project` — WU1 (`5d77239`), WU2a (`700c4bb`) and WU2b
+> (this commit) landed; WU2c is **blocked on one owner authorization**. **Receipt-driven development
+> is off in this clone** (decided by clone_local on 2026-09-24; global is on), so native review is not
+> part of this batch.
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `chore/retire-vercel-api-project` (off `main` @ `7fe8f01`).
@@ -63,9 +64,10 @@ the VM's `.env`, `STORICO_AUTH_JWT_SECRET` equals the surviving frontend's `AUTH
 
 | # | Unit | Commit | Files |
 | --- | --- | --- | --- |
-| WU1 | Delete the dead Vercel configuration | _this commit_ | the five files above, plus `backend/pyproject.toml` |
-| WU2a | Correct the repository documents | _pending_ | `AGENTS.md`, `prod.todo.md`, `docs/security.md`, `docs/api.md`, `docs/README.md`, `frontend/.env.example` |
-| WU2b | Correct the ODD records | _pending_ | `prod-honesty-followups.md`, `production-state-and-domain-decision.md`, `schema-drift-gate.md`, `provider-literal-and-copy-drift.md` |
+| WU1 | Delete the dead Vercel configuration | `5d77239` | the five files above, plus `backend/pyproject.toml` |
+| WU2a | Correct the repository documents | `700c4bb` | `AGENTS.md`, `prod.todo.md`, `docs/security.md`, `docs/api.md`, `docs/README.md` |
+| WU2b | Correct the ODD records | _this commit_ | `prod-honesty-followups.md`, `production-state-and-domain-decision.md`, `schema-drift-gate.md`, `provider-literal-and-copy-drift.md` |
+| WU2c | `frontend/.env.example` | **blocked** | one line naming the deleted project; the harness safety policy refuses writes to `.env*` paths, so it needs an explicit owner authorization |
 
 ## What lands
 
@@ -73,6 +75,9 @@ the VM's `.env`, `STORICO_AUTH_JWT_SECRET` equals the surviving frontend's `AUTH
   and `backend/requirements.txt` deleted.
 - `backend/pyproject.toml` without the `mangum` dependency and without the `[tool.vercel]` table.
 - The records that claimed a live project: corrected with a date, not silently.
+- **Not landed:** `frontend/.env.example` still names the deleted project in its production comment.
+  It is one line, and it is blocked rather than forgotten: the harness safety policy refuses `.env*`
+  paths, so the owner authorizes that write explicitly.
 
 ## Deliberately not done
 
@@ -95,4 +100,5 @@ the VM's `.env`, `STORICO_AUTH_JWT_SECRET` equals the surviving frontend's `AUTH
 | CI format is green | `ruff format --check src tests` | `237 files already formatted` |
 | Unit suite is green | `pytest -q -m unit` | `131 passed, 739 deselected` |
 | A parked debt closes | `ruff check .` (from the repository root) | **green** — it was red on exactly one error, the `I001` in `backend/api/index.py` that `provider-literal-and-copy-drift.md:159` recorded as unreachable by CI |
+| Formatting is green repo-wide too | `ruff format --check .` (from the repository root) | `237 files already formatted` |
 | Production is untouched | `curl` frontend + VM `/health/ready` | `302` and `200` |
