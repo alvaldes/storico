@@ -10,8 +10,12 @@ import {
   SheetFooter,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Menu, X } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Menu, X, LogOut } from 'lucide-react';
+import { signOut } from 'auth-astro/client';
 import { useTranslations, type Locale } from '@/i18n/utils';
+import { getInitials } from '@/lib/initials';
+import { type PublicNavUser } from '@/components/react/PublicUserMenu';
 
 export interface MobileNavLink {
   href: string;
@@ -26,6 +30,8 @@ interface MobileNavProps {
   langToggleHref: string;
   cta: { href: string; label: string };
   activePath?: string;
+  /** Serialized session user; null/undefined when signed out. */
+  user?: PublicNavUser | null;
 }
 
 export function MobileNav({
@@ -35,6 +41,7 @@ export function MobileNav({
   langToggleHref,
   cta,
   activePath: _activePath,
+  user,
 }: MobileNavProps) {
   const t = useTranslations(locale as Locale);
   const [open, setOpen] = useState(false);
@@ -84,6 +91,19 @@ export function MobileNav({
           </button>
         </SheetHeader>
 
+        {user && (
+          <div className="flex items-center gap-3 px-4 pb-3">
+            <Avatar className="size-9">
+              <AvatarImage src={user.avatarUrl ?? ''} alt={user.name} />
+              <AvatarFallback className="text-xs">{getInitials(user.name)}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-foreground">{user.name}</p>
+              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+            </div>
+          </div>
+        )}
+
         <nav className="flex flex-col px-4">
           {(() => {
             const grouped: Record<string, MobileNavLink[]> = {};
@@ -132,6 +152,19 @@ export function MobileNav({
           >
             {cta.label}
           </a>
+          {user && (
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => {
+                setOpen(false);
+                signOut({ callbackUrl: `/${locale}/login` });
+              }}
+            >
+              <LogOut className="size-4" />
+              {t.nav.logout}
+            </Button>
+          )}
         </SheetFooter>
       </SheetContent>
     </Sheet>
