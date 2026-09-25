@@ -39,6 +39,7 @@ from storico.api.routes import (
 from storico.api.routes import (
     settings as settings_routes,
 )
+from storico.api.version import package_version
 from storico.config.settings import Settings
 from storico.domain.entities import (
     CannotRemoveOwnerError,
@@ -127,7 +128,7 @@ def create_app() -> FastAPI:
     _configure_logging(settings)
     app = FastAPI(
         title="Storico API",
-        version="0.1.0",
+        version=package_version(),
         lifespan=lifespan,
     )
 

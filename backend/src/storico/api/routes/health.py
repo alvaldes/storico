@@ -17,7 +17,6 @@ Design decisions:
 """
 
 import asyncio
-import importlib.metadata
 import logging
 import time
 from datetime import UTC, datetime
@@ -26,6 +25,7 @@ import httpx
 from fastapi import APIRouter, Response
 from sqlalchemy import literal, select
 
+from storico.api.version import package_version
 from storico.config.settings import Settings
 from storico.infrastructure.database.base import get_engine
 from storico.infrastructure.database.schema_status import probe_schema_status
@@ -65,20 +65,6 @@ async def _check_database() -> dict:
         # operator can read it. The timeout branch above already made this choice; this branch now
         # makes it too.
         return {"status": "error", "latency_ms": round(elapsed, 1), "error": "connection failed"}
-
-
-def _package_version() -> str:
-    """The installed distribution's version, or ``"unknown"``.
-
-    Read rather than hardcoded: the literal ``"0.1.0"`` this field used to carry had been wrong
-    since the package reached ``0.3.0``. The lookup goes to installed metadata, so it is allowed
-    to fail — a health endpoint that raises is worse than one that admits it does not know.
-    """
-    try:
-        return importlib.metadata.version("storico-backend")
-    except Exception:
-        logger.warning("Could not read the installed package version", exc_info=True)
-        return "unknown"
 
 
 async def _check_schema() -> dict:
@@ -252,7 +238,7 @@ async def health():
 
     return {
         "status": overall,
-        "version": _package_version(),
+        "version": package_version(),
         "timestamp": datetime.now(UTC).isoformat(),
         "database": db_result,
         "schema": schema_result,
@@ -280,7 +266,7 @@ async def health_services():
 
     return {
         "status": "ok" if all_ok else "degraded",
-        "version": _package_version(),
+        "version": package_version(),
         "timestamp": datetime.now(UTC).isoformat(),
         "services": {
             "database": db_result,
@@ -315,7 +301,7 @@ async def health_ready(response: Response):
 
     return {
         "status": "ok" if ready else "degraded",
-        "version": _package_version(),
+        "version": package_version(),
         "timestamp": datetime.now(UTC).isoformat(),
         "database": db_result,
         "schema": schema_result,

@@ -3,8 +3,10 @@
 The route has no authentication, which is the whole reason these tests exist: whatever it
 publishes is published to anyone who asks. It used to answer with the failed driver's own message
 (``str(e)``), and a driver's message can name an internal host, a port, a database or a credential.
-Nothing consumed that field — the frontend never called this route — so the detail was cost without
-a reader, while the risk was anonymous.
+Nothing consumed that field at the time — the frontend did not call this route then — so the detail
+was cost without a reader, while the risk was anonymous. The frontend's `/status` page reads this
+route now (it shows a row per service), which makes the spelled-out reason more load-bearing, not
+less.
 
 The exceptions below carry a marker that looks the way a real one does, so the assertions have
 something to catch rather than testing an absence of nothing.

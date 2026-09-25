@@ -17,6 +17,35 @@ def test_can_import():
     assert app.title == "Storico API"
 
 
+def test_the_openapi_version_matches_the_package():
+    """Two readers of one fact: `/docs` said 0.1.0 while `/api/v1/health` said 0.5.1.
+
+    The health route had already stopped carrying the literal ``"0.1.0"`` and reads the
+    installed distribution. The FastAPI metadata kept the literal, so a visitor to
+    ``:8000/docs`` was told the API was version 0.1.0 while the health route answered
+    0.5.1 — same process, same request, two answers.
+    """
+    from storico.api.app import create_app  # noqa: F811
+
+    app = create_app()
+
+    assert app.version == importlib.metadata.version("storico-backend")
+    assert app.version != "0.1.0"
+
+
+def test_an_unreadable_package_version_does_not_break_the_app(monkeypatch: pytest.MonkeyPatch):
+    """The OpenAPI document must be servable even when the distribution is unreadable."""
+
+    def missing(*_args, **_kwargs):
+        raise importlib.metadata.PackageNotFoundError("storico-backend")
+
+    monkeypatch.setattr(importlib.metadata, "version", missing)
+
+    from storico.api.app import create_app  # noqa: F811
+
+    assert create_app().version == "unknown"
+
+
 @pytest.mark.asyncio
 async def test_health_endpoint(async_client):
     """GET /api/v1/health returns 200 with database check only."""
