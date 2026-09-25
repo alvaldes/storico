@@ -150,7 +150,13 @@ async def list_tasks(
 
     If neither filter is provided, returns tasks from all workspaces
     the current user is a member of.
+
+    The page and its total come from one statement in the database —
+    ``count(*) OVER ()`` rides on the rows' own query, so no separate
+    ``SELECT COUNT(*)`` is issued. The order is ``created_at DESC, id DESC``,
+    which makes the paging deterministic.
     """
+    offset = (params.page - 1) * params.size
     # Validate workspace access
     if workspace_id is not None:
         # Validate user is a member of the specified workspace
@@ -160,7 +166,9 @@ async def list_tasks(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not a member of this workspace",
             )
-        all_tasks = await repo.list_by_workspace(workspace_id)
+        page, total = await repo.list_page(
+            workspace_id=workspace_id, limit=params.size, offset=offset
+        )
     elif user_story_id is not None:
         # Validate user has access to the user story's workspace
         await require_story_workspace_access(
@@ -170,19 +178,21 @@ async def list_tasks(
             project_repo=project_repo,
             member_repo=member_repo,
         )
-        all_tasks = await repo.list_by_story(user_story_id)
+        page, total = await repo.list_page(
+            user_story_id=user_story_id, limit=params.size, offset=offset
+        )
     else:
         # No filter provided: return tasks from all workspaces the user is a member of
         memberships = await member_repo.list_by_user(current_user.id)
         workspace_ids = [m.workspace_id for m in memberships]
         # One statement for all the workspaces, not one per workspace: this branch used to await
         # `list_by_workspace` in a loop, which cost a statement each (~2s against the dev pooler,
-        # where even a bare SELECT 1 measures 800ms). Ordering is applied below, same as before.
-        all_tasks = await repo.list_by_workspaces(workspace_ids)
-        all_tasks.sort(key=lambda t: t.created_at, reverse=True)
+        # where even a bare SELECT 1 measures 800ms). An empty membership list is answered
+        # without a statement by the repository.
+        page, total = await repo.list_page(
+            workspace_ids=workspace_ids, limit=params.size, offset=offset
+        )
 
-    total = len(all_tasks)
-    start = (params.page - 1) * params.size
     items = [
         TaskResponse(
             id=t.id,
@@ -196,7 +206,7 @@ async def list_tasks(
             created_at=t.created_at,
             updated_at=t.updated_at,
         )
-        for t in all_tasks[start : start + params.size]
+        for t in page
     ]
     return PaginatedResponse(
         items=items,

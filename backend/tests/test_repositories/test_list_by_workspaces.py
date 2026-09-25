@@ -81,7 +81,13 @@ async def test_stories_span_the_requested_workspaces_only(db_session: AsyncSessi
 
 @pytest.mark.asyncio
 async def test_tasks_span_the_requested_workspaces_only(db_session: AsyncSession, chain) -> None:
-    """Tasks follow their story's project back to the workspace."""
+    """Tasks follow their story's project back to the workspace, under ``list_page``.
+
+    The task fold moved to ``list_page`` in T5. The half that matters is
+    unchanged from the fold it replaced: a query with the wrong ``WHERE`` would
+    still be fast — one statement either way — so the third workspace's absence
+    is asserted explicitly rather than assumed from the row count.
+    """
     repo = SQLAlchemyTaskRepository(db_session)
     alpha, alpha_story = await chain("Alpha")
     beta, beta_story = await chain("Beta")
@@ -91,8 +97,9 @@ async def test_tasks_span_the_requested_workspaces_only(db_session: AsyncSession
     await repo.save(Task(user_story_id=beta_story.id, title="Beta task"))
     await repo.save(Task(user_story_id=gamma_story.id, title="Gamma task"))
 
-    found = await repo.list_by_workspaces([alpha.id, beta.id])
+    found, total = await repo.list_page(workspace_ids=[alpha.id, beta.id], limit=10, offset=0)
 
+    assert total == 2
     assert {t.title for t in found} == {"Alpha task", "Beta task"}
 
 
@@ -123,11 +130,11 @@ async def test_extractions_span_the_requested_workspaces_only(
 async def test_an_empty_workspace_list_returns_nothing(db_session: AsyncSession, chain) -> None:
     """No memberships is not the same query with an empty ``IN ()``; it is no query at all.
 
-    The story line left with its subject: the story fold moved to
-    ``list_page`` in T4, which carries its own empty-``workspace_ids`` test
-    (``test_list_page_with_empty_workspace_ids_skips_the_database``).
+    The story and task lines left with their subject: the story fold moved to
+    ``list_page`` in T4 and the task fold in T5, which each carry their own
+    empty-``workspace_ids`` test. The module docstring still describes the old
+    fold — T6 finishes this file when the extraction line moves too.
     """
     await chain("Alpha")
 
-    assert await SQLAlchemyTaskRepository(db_session).list_by_workspaces([]) == []
     assert await SQLAlchemyExtractionRepository(db_session).list_by_workspaces([]) == []
