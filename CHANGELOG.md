@@ -1,3 +1,21 @@
+## v0.6.0 (2026-09-24)
+
+### Feat
+
+- **status**: show the schema probe, and render `unknown` as itself
+
+### Fix
+
+- **i18n**: date the three page sections whose content actually moved
+- **proxy**: forward the caller's trailing slash instead of dropping it
+- **api**: publish the installed version in the OpenAPI document
+- **api-docs**: stop advertising endpoints the API does not serve
+- **status**: read the services health document, not the liveness one
+
+### Perf
+
+- **api**: fold the unfiltered list into one statement instead of one per workspace
+
 ## v0.5.1 (2026-09-24)
 
 ### Fix
