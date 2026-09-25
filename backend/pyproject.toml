@@ -20,7 +20,6 @@ dependencies = [
     # Web framework
     "fastapi[standard]>=0.115.0",
     "uvicorn[standard]>=0.32.0",
-    "mangum>=0.17.0",
 
     # Data validation
     "pydantic>=2.0.0",
@@ -85,9 +84,6 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 storico = ["**/*.j2"]
-
-[tool.vercel]
-entrypoint = "api.index:app"
 
 [project.urls]
 Source = "https://github.com/alvaldes/storico"
