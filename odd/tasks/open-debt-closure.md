@@ -1,6 +1,7 @@
 # ODD Feature: open-debt-closure
 
-> **Status**: in progress on `fix/open-debt-closure`
+> **Status**: closed on `fix/open-debt-closure` — six work-unit commits, `10ebd0b` through `6ed2667`. Not pushed:
+> the operator asked for commits, not delivery, and the stacked branches are cut when they ask for them.
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 > **Source**: `~/Documents/second-brain/00 - Inbox/Storico — deuda de ingeniería abierta por decisión.md`, points 1, 3 and 4
@@ -172,7 +173,63 @@ Appended as each task closes: commit id, observed RED, observed GREEN, and the v
 |------|--------|-----|-------|--------------|
 | T1 | `f1fea5e` | `expected [ Array(4) ] to include 'embeddings'` — the missing-probe assertion, no syntax error; reproduced independently by the verifier by reverting only the row and the two key pairs, restore confirmed by SHA-256 | focused `3 passed`; full suite `41 files / 467 tests passed`; `tsc --noEmit` exit 0; `astro build` complete | `gentle_review` `assess` returned `unassessable` (untracked files require an explicit declaration, so no tier could be produced), and an unassessable candidate is treated as high: the writer self-verified **and** an independent `gentle-ai-verify` ran. That verifier confirmed all five points, including that the probe regex reaches the `services` object of `health_services()` and that no other `"services":` occurrence exists in the file. |
 | T2 | `e9d88bb` + the follow-up `README.md` fix | **TDD exception, declared**: prose only, with no mechanical invariant to write first. A phrase blocklist ("no live document may name Redis/Celery") is the only test this admits, and its false negatives are exactly the rewordings a real drift would use, so it was rejected as a guard rather than written to look thorough. The applicable check is that no artifact depends on the changed text: `grep` for every reference to these four documents from `backend/` and `frontend/` finds only two comments, and the frontend suite reads none of them. | `cd frontend && pnpm test` → `41 files / 467 tests passed`, unchanged, confirming nothing depended on the prose | inline, by the parent (route declared in the Tasks table). The native `assess` returned `schema-incompatible`, so the plan required an independent verifier anyway, and it earned its keep: it confirmed 7 of the 8 checks and **refuted one** — `README.md:59` still read "5 services", so the document contradicted its own line 104. Fixed in the follow-up commit. It also proved the diagram edits changed no column and that the residual `AGENTS.md` diagram drift is pre-existing, by comparing against `git show e9d88bb^:AGENTS.md`. |
-| T3 | — | — | — | — |
-| T4 | — | — | — | — |
-| T5 | — | — | — | — |
-| T6 | — | — | — | — |
+| T3 | `c3f789a` | helper: `assert 0 == 5` — a past-the-end page reported a total of 0 instead of the real count (the fallback is genuinely load-bearing). Repository: three behavioural failures against `list_page` without `ORDER BY` — story counts landing on the wrong page, `created_at` order reversed, and the `id DESC` tiebreaker absent. Route: insertion order instead of `created_at DESC`. | focused `34 passed`; full suite `804 passed, 21 skipped`; `ruff check` and `ruff format --check` clean. The order test was then hardened and the suite re-run at `805 passed, 21 skipped`. | `gentle_review` `assess` → `unassessable` again (untracked files need an explicit declaration), so the plan required an independent verifier. It confirmed 8/8, including the four load-bearing claims, and executed them rather than reading them: it built the real query against SQLite with 5 projects and asserted the total was 5 and not 2 under `limit=2`; it captured engine statements to prove the fallback fires only past the end and not at `offset == 0`; and it confirmed the emitted SQL carries the ordering. It also **flagged** the tiebreaker test as a result-pin whose RED depends on SQLite returning ascending ids — true today, not durable — so the parent added `test_list_page_pins_the_order_rule_in_sql`, which asserts the ordering on the statement the database received, and proved its RED by removing `.id.desc()` (both tests fail) and restoring it. It further noted the stale `list_by_workspace_with_counts` reference in `domain/entities/project.py`'s docstring, fixed in the same commit. |
+| T4 | `7d380c1` | repository: `AttributeError: ... has no attribute 'list_page'` on the new tests; route: `['feature 1', 'feature 2', 'feature 3'] == ['feature 3', 'feature 2', 'feature 1']` — the workspace branch returning insertion order, because the old code never ordered it. The total-only route tests passed against the pre-change code by design, since the old Python slice already reported `len()`. | focused `42 passed`; full suite `818 passed, 21 skipped`; `ruff` clean | `assess` → `unassessable` (`schema-incompatible`), so the plan again required an independent verifier. It confirmed 8/8, including the load-bearing check: for all three scopes it compared the emitted page SQL against the emitted `count_stmt` SQL and against its own hand-written counts, and found scopes and joins agreeing in every branch (totals 3/3/5 with the decoy workspace excluded), so the "wrong total only on a filtered page past the end" failure mode does not exist here. It **flagged** two things: passing two scope arguments silently resolved to one (latent, because the route always passes exactly one), and stale `list_by_project` references in two spec documents. The silent precedence was fixed with a guard whose RED was proven by removing it; the spec documents were classified as a dated historical change record (`Change: api-endpoints`, 2026-07-06) and left as written, on the same rule D2 applies to `odd/tasks/*.md`. |
+| T5 | `9f4d3b6` | same two groups: missing `list_page`, and the workspace branch returning insertion order instead of `created_at DESC`. The writer also hit a self-inflicted `NameError` mid-task by not recomputing `offset` when deleting the Python slice — the new route tests caught it, which is the useful part of the record. | focused `49 passed`; full suite `835 passed, 21 skipped`; `ruff` clean | `assess` → `unassessable`. The independent verifier confirmed every point and ran the highest-risk check explicitly: per branch it captured both statements and compared them, reporting identical joins and `WHERE` for `workspace_id` and `workspace_ids`, and no join on either statement for `user_story_id`. It also verified the reported `NameError` fix (`offset` assigned exactly once, read only in the three `list_page` calls) and that the authorization region differs from `HEAD` only by a rewritten comment. |
+| T6 | `6ed2667` | repository: missing `list_page`; route: insertion order instead of `created_at DESC`. `workspace_ids=[]` returning `([], 0)` with zero statements was already the pre-change behaviour, so it is a regression guard rather than a RED. | focused `65 passed`; full suite `849 passed, 21 skipped`; `ruff` clean | `assess` → `unassessable`. The verifier confirmed every point, including that the extraction `count_stmt` matches its page query in scope **and** joins on all three branches, that the three removed methods have no live caller while the identically named methods on the story and task repositories survive for `export.py` and `task_service.py`, and that the large `test_extraction.py` was edited in a single five-line hunk. It **flagged** one documentation overclaim, which is the same defect class as this batch: the rewritten `test_list_by_workspaces.py` docstring said its empty-list test would catch a regression that reintroduces `IN ()`, and the verifier proved an empty `IN ()` executes cleanly and returns zero rows, so only the per-repository zero-statement tests can tell "no statement" from "a statement that matched nothing". Corrected in the same commit. |
+
+## Forecast against actual
+
+The forecast above was **wrong, and low**: ~+930 / −450 ≈ 1380 authored lines. The measured result, from the
+work-unit commits themselves (`git show --shortstat` per commit, the ODD documents excluded because they are the
+record rather than the work):
+
+| Slice | Commit | Files | Additions + deletions |
+|---|---|---|---|
+| S1 — point 4 | `f1fea5e` | 4 | 109 |
+| S2 — point 3 | `e9d88bb` + `35244a1` | 6 | 69 |
+| S3 — helper + projects | `c3f789a` | 9 | 582 |
+| S4 — stories | `7d380c1` | 6 | 582 |
+| S5 — tasks | `9f4d3b6` | 6 | 623 |
+| S6 — extractions | `6ed2667` | 7 | 711 |
+| **Total** | | **35** | **2676** |
+
+Why it was low: the estimate treated each entity as a small diff, but every entity replicates the *full* coverage
+shape — three scopes, the mid-page total, the past-the-end fallback, the zero-statement empty case, both scope-guard
+cases, the decoy-workspace exclusion and the SQL ordering pin. Tests are roughly two-thirds of S3-S6.
+
+Consequence for the delivery strategy: **S3, S4, S5 and S6 each exceed the ~400-line budget on their own**, so the
+chained split does not fit the budget as sliced. One honest further slicing pass is available and is recorded here
+rather than applied silently: cut each entity at the layer boundary — port + repository + repository tests, then
+route + route tests — which yields eight slices of roughly 300 lines each and keeps every test with the unit it
+verifies. That split cuts *within* the four entity commits, so it needs those commits re-cut when the branches are
+created; it cannot be expressed as a commit range, which is why it is left as a decision rather than assumed. Per
+`chained-pr`, if that split is not wanted, the recommendation is `size:exception` for S3-S6 with this table as the
+rationale.
+
+## Closure
+
+Three debts from the operator's note are closed. Point 2 stays out of scope by decision: Supabase is the development
+database, and the operator worries about that latency only if Neon, the production database, shows it.
+
+Two findings came out of this batch that were not in the note, plus one pre-existing item. They are recorded rather
+than absorbed:
+
+- **Fixed, because an edit already touched the same sentence**: the executive description's "semantic caching"
+  (`AGENTS.md:175`) and the second compose service count in `README.md`.
+- **Reported, not fixed**: `docs/architecture.md` ADR-005 still reads "Status: 🔴 Pendiente (producción)" and
+  "Producción sin definir", while production has been running since before the note was written. That is drift about
+  deployment state — a different class from a component that does not exist — and it was outside the scope the
+  operator set. It is the one live-document contradiction this batch knowingly left standing.
+- **Pre-existing dead port methods**: `ProjectRepository.count_stories` and `count_by_workspace` had no caller before
+  this batch either. D5 scopes the removal to methods this change strands, so they were left alone deliberately, and
+  they are noted here so the next reader does not read them as this batch's miss.
+
+A process observation worth keeping: the native risk assessment (`gentle_review` `assess`) never produced a tier in
+this environment. It returned `unassessable` for every candidate — `non-zero` while untracked files were present, and
+`schema-incompatible` afterwards — so the controller's plan was the high-risk one every time: writer
+self-verification **plus** a separate independent verifier. Five independent verification runs were spent on this
+feature as a result. They found three things the writers' own green runs did not: the second `"5 services"` in
+`README.md`, the silent two-scope precedence, and the `IN ()` docstring overclaim. That is the argument for keeping
+them, and also the argument for fixing `assess` before the next large batch, since a tier that always resolves to
+"high" carries no risk information at all.
