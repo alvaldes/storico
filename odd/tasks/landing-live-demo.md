@@ -79,24 +79,20 @@ Checked only when the outcome was observed, not when the edit was made.
   rendered DOM of both locales; the primary CTA and the two `PublicLayout` links still go to
   `/login`, on purpose.
 - [x] **T6 — Storico: the sender.** `attachDemoLeaveForwarding()` wired from the page script.
-- [ ] **T7 — Storico: document the variable.** **BLOCKED, not skipped.** The Gentle AI safety
-  policy refuses writes to any `.env*` path — for the bounded writer *and* for this parent
-  session (`Gentle AI safety policy blocked access to sensitive path: …/.env.example`). Routing
-  around it with `bash` would defeat a deliberate control, so it is the operator's edit. Paste
-  this into the root `.env.example`, at the end of the `## ── Frontend (Astro — no prefix) ──`
-  section, and mirror it in `frontend/.env.example`:
-
-  ```
-  ## Live-demo embed URL — the landing hero iframes the demo at this base
-  ## (`<base>/en/`, `<base>/es/`). Unset means the demo's own dev server.
-  ## The PUBLIC_ prefix is deliberate and is the one exception to this section's
-  ## "no prefix" rule: the value is rendered into the page, so the name has to
-  ## guarantee it is safe to expose. It is not a secret and never carries one.
-  PUBLIC_DEMO_URL=http://localhost:4322
-  ```
-
-  Nothing breaks without it: `config.demoUrl` falls back to `DEFAULT_DEMO_BASE`, which is the same
-  value. The cost of leaving it undocumented is that nobody learns the knob exists at deploy time.
+- [x] **T7 — Storico: document the variable.** **Closed by the operator, with a different value
+  than the one proposed.** The Gentle AI safety policy refuses writes to any `.env*` path — for the
+  bounded writer *and* for this session — and routing around it with `bash` would defeat a
+  deliberate control, so the edit was the operator's. Root `.env.example` now carries
+  `PUBLIC_DEMO_URL=https://alvaldes.github.io/storico-live-demo`, which is not the default
+  (`DEFAULT_DEMO_BASE = http://localhost:4322`): the example documents the deployed home, the code
+  default keeps a fresh clone working against a local demo. `demoEmbedUrl` handles the subpath
+  correctly — verified: the landing renders `src="https://alvaldes.github.io/storico-live-demo/en/"`
+  and `data-target-origin="https://alvaldes.github.io"`, which matches, so `postMessage` still has a
+  valid origin.
+  **Mirror closed by the operator too:** `frontend/.env.example` now lists the same variable with
+  the same value (measured: identical string in both files). That file is a reference document, so
+  the entry is for discoverability — and both edits were the operator's, because the policy blocks
+  `.env*` for this session.
 - [x] **T8 — Verify.** See **Verification** below.
 - [x] **T9 — Close.** Four work-unit commits, listed below.
 
@@ -116,26 +112,47 @@ Commands run by this session, not reported second-hand.
 | Demo receiver, measured in its own realm (`:4322`) | story `textContent` `147 → 0 → 28` after `postMessage({source:'storico-landing',type:'demo-leave'})` |
 | Landing sender, measured by intercepting `HTMLIFrameElement.prototype.contentWindow` | exactly `{source:'storico-landing',type:'demo-leave'}` + `http://localhost:4322` on parent `blur` and on `pointerdown` outside; **no send** for `pointerdown` on the frame or a visible `visibilitychange` |
 | Desktop light + dark, mobile 390px | screenshots reviewed; the frame draws once and fills the box |
+| **Deployed pair** (landing → `alvaldes.github.io/storico-live-demo`) | frame flush to the iframe box on all four edges, story typing inside it, no dev toolbar in the built artifact |
+| Pages rollout | run 36275721453 `build`+`deploy` success; the first `curl` after it read stale — GitHub's CDN needed a cache-buster to show `data-embedded`. A 200 is not a fresh deploy |
+
+The landing's own `.env` also carries the Pages URL, so `pnpm dev` on 4321 now embeds the
+**deployed** demo, not the local one on 4322. Editing the demo locally no longer shows up in the
+landing until the variable is unset or pointed back at `:4322`.
 
 ## Recorded debt (decided, not discovered late)
 
 1. **The typing story is clipped on mobile.** At the 420px mobile height the embedded demo shows its
    header, its own `h1` and the metadata row, and the `FULL USER STORY` card — the thing that types —
    falls below the frame's bottom edge. The operator chose to ship it and record it rather than fix
-   it in this branch. The fix that was measured and rejected is: hide the demo's own page framing
-   when `data-embedded` (inside the hero it repeats what the landing already said) and raise the
-   mobile height. The demo's `main` scrolls, so the content is reachable, just not first-paint.
-2. **The landing's theme and the demo's theme do not agree.** Photographed: dark landing, light
-   demo. `localStorage['theme']` is per-origin, so the contract recorded on 2026-09-26 holds only
-   when the two share an origin. Deferred with D1: it disappears if the "dónde" decision in
-   `~/Documents/second-brain/01 - Projects/Storico Live Demo/Notas/Cuándo el demo necesita un
-   despliegue.md` lands on a same-origin `/demo`. The alternative that was considered and deferred
-   is passing the resolved theme as `?theme=` on the iframe src.
-3. **The Astro dev toolbar renders inside the iframe** in development, because the demo's own dev
-   server injects it. It is not in the built output and is not part of this change.
-4. **Pre-existing demo defect, out of scope:** at 390px the story metadata row wraps
+   it in this branch, and reconfirmed on 2026-09-26 that it is a later conversation ("el tema del
+   mobile lo vemos despues"). The fix that was measured and rejected is: hide the demo's own page
+   framing when `data-embedded` (inside the hero it repeats what the landing already said) and raise
+   the mobile height. The demo's `main` scrolls, so the content is reachable, just not first-paint.
+2. **The landing's theme and the demo's theme do not agree — and this no longer fixes itself.**
+   Photographed: dark landing, light demo. `localStorage['theme']` is per-origin, so the contract
+   recorded on 2026-09-26 holds only when the two share an origin. The deferral assumed the "dónde"
+   question was open; the operator answered it by deploying the demo to **GitHub Pages**
+   (`alvaldes.github.io/storico-live-demo`, `build_type: workflow`, `site` + `base` set in
+   `astro.config.mjs`), which is a *different* origin from `storico.vercel.app`. So the gap is now
+   permanent unless something closes it deliberately: either the landing passes the resolved theme
+   as `?theme=` on the iframe src and the demo's inline bootstrap honours it, or the demo moves
+   under the product's origin. The first is a small change on both sides; the second is the deploy
+   decision, re-opened.
+3. **The fake browser chrome now states a URL that is not where the demo lives.**
+   `DemoLayout.astro:59` passes `url="storico.vercel.app/demo"` and the component's default is
+   `storico.vercel.app` — both written when the intended home was a `/demo` route on the product.
+   The deployed page's address bar therefore reads `storico.vercel.app/demo` while the page is
+   served from GitHub Pages. Cosmetic, but it is a false statement on a marketing surface, and it is
+   now contradicted by the operator's own deploy. (The modal's `storico.vercel.app/dashboard` link
+   is *not* affected: that one points at the real product on purpose.)
+4. **The Astro dev toolbar renders inside the iframe** in development, because the demo's own dev
+   server injects it. Confirmed absent in the deployed artifact, so it is not part of this change.
+5. **Pre-existing demo defect, out of scope:** at 390px the story metadata row wraps
    ("Creada 25 de septiembre de 2026" over four lines). Reproduced on the standalone demo page, so
    it is not caused by the embed.
+6. **Minor cosmetic:** the landing's iframe carries `rounded-2xl` while the embedded frame's corners
+   are square in embedded mode, so a small wedge shows at the top corners. Visible in the deployed
+   screenshot; not worth a change until the frame's radius is decided.
 
 ## A measurement lesson worth keeping
 
