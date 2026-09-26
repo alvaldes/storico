@@ -61,6 +61,14 @@ export const useStoryStore = create<StoryState>((set, get) => ({
 
   fetchStories: async (projectId?: string, workspaceId?: string) => {
     const requestId = ++storiesRequestSeq;
+    // Snapshot before the eager clear: if the fetch fails, the list the user was
+    // looking at is restored instead of leaving an empty screen next to a success
+    // banner (the import dialog says "created 2" over an empty list, for example).
+    // This is safe for the workspace-switch case the eager clear protects: `reset()`
+    // already empties `stories` on a switch, so the snapshot taken right after a
+    // switch is the empty array and restoring it changes nothing. Proven by the
+    // "leaves the list empty" test in storyStore.unit.test.ts.
+    const previousStories = get().stories;
     set({ loading: true, stories: [] });
     try {
       const inflightKey = `stories:${projectId ?? 'all'}:${workspaceId ?? 'all'}`;
@@ -70,8 +78,10 @@ export const useStoryStore = create<StoryState>((set, get) => ({
       if (requestId !== storiesRequestSeq) return;
       set({ stories: response.items, loading: false });
     } catch {
+      // Same guard as the success branch: only the newest call may write. A
+      // superseded call writes nothing at all — not even the snapshot restore.
       if (requestId !== storiesRequestSeq) return;
-      set({ loading: false });
+      set({ stories: previousStories, loading: false });
     }
   },
 
@@ -146,8 +156,9 @@ export const useStoryStore = create<StoryState>((set, get) => ({
         //
         // A failed refresh must not reject the action: the import itself already succeeded,
         // and the report is the caller-facing contract. `fetchStories` contains its own
-        // failures — its catch clears `loading` and never rethrows — so a refresh that
-        // cannot load resolves here as a stale list, never as a failed import.
+        // failures — its catch restores the pre-request list and never rethrows — so a
+        // refresh that cannot load resolves here with the pre-existing list intact, never
+        // as a failed import and never as an empty screen.
         await get().fetchStories(params.projectId, params.workspaceId);
       }
       set({ saving: false });

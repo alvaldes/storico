@@ -569,3 +569,103 @@ describe('storyStore — CSV import', () => {
     expect(useStoryStore.getState().saving).toBe(false);
   });
 });
+
+describe('storyStore — failed fetch keeps the previous list', () => {
+  // Mirrors the CSV-import describe setup: a real observed scope and a workspace store,
+  // so the switch in the last test fires the real `reset()` path.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetScopedWorkspace();
+    vi.mocked(projectsApi.listProjects).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 100,
+    });
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace('ws-a'), makeWorkspace('ws-b')],
+      currentWorkspace: makeWorkspace('ws-a'),
+      loading: false,
+      saving: false,
+    });
+    useStoryStore.setState({ stories: [], loading: false, saving: false });
+  });
+
+  it('keeps the pre-existing list and clears loading when the fetch fails', async () => {
+    useStoryStore.setState({ stories: [storyA] });
+    vi.mocked(api.listStories).mockRejectedValueOnce(new Error('boom'));
+
+    await useStoryStore.getState().fetchStories('p1', 'ws-a');
+
+    // A failed refresh must not blank the screen: the list the user was looking
+    // at stays, and only `loading` settles.
+    expect(useStoryStore.getState().stories).toEqual([storyA]);
+    expect(useStoryStore.getState().loading).toBe(false);
+  });
+
+  it('returns the import report and keeps the pre-existing story when the post-import refresh fails', async () => {
+    // The exact screen the defect produced: the dialog reports "created 2" while
+    // the list below had been wiped to empty by the failed refresh.
+    setScopedWorkspaceId('ws-a');
+    useStoryStore.setState({ stories: [storyA] });
+    const report = makeReport();
+    vi.mocked(api.importStories).mockResolvedValueOnce(report);
+    vi.mocked(api.listStories).mockRejectedValueOnce(new Error('refresh boom'));
+
+    const result = await useStoryStore.getState().importStories({
+      workspaceId: 'ws-a',
+      projectId: 'p1',
+      file: makeCsvFile(),
+    });
+
+    // The import succeeded: the caller still gets the report to render.
+    expect(result).toBe(report);
+    // And the list was not blanked by the failed refresh.
+    expect(useStoryStore.getState().stories).toEqual([storyA]);
+    expect(useStoryStore.getState().loading).toBe(false);
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+
+  it('leaves the list empty after a workspace switch followed by a failed fetch', async () => {
+    // This is the guard against the snapshot-restore fix going too far: the eager
+    // clear in fetchStories exists so a stale query never shows the previous
+    // workspace's rows. On a switch, `reset()` has already emptied `stories`, so
+    // the snapshot taken by the failing fetch is the empty array — restoring it
+    // must change nothing, and the list must stay empty rather than repopulate.
+    useStoryStore.setState({ stories: [storyA] });
+
+    // The user switches to ws-b: the switch fires the real `reset()` via the
+    // workspace store, exactly as the neighbouring scope-guard tests drive it.
+    useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
+    await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
+    expect(useStoryStore.getState().stories).toEqual([]);
+
+    vi.mocked(api.listStories).mockRejectedValueOnce(new Error('boom'));
+    await useStoryStore.getState().fetchStories('p1', 'ws-b');
+
+    // The snapshot restore is a no-op here: empty before, empty after.
+    expect(useStoryStore.getState().stories).toEqual([]);
+    expect(useStoryStore.getState().loading).toBe(false);
+  });
+
+  it('writes nothing when a superseded fetch fails after the newer one settled', async () => {
+    const pendingOld = deferred<PaginatedResponse<UserStory>>();
+    vi.mocked(api.listStories)
+      .mockImplementationOnce(() => pendingOld.promise)
+      .mockImplementationOnce(() => Promise.resolve(page([storyB])));
+
+    const older = useStoryStore.getState().fetchStories('p1', 'ws-a');
+    const newer = useStoryStore.getState().fetchStories('p1', 'ws-b');
+
+    await newer;
+    expect(useStoryStore.getState().stories).toEqual([storyB]);
+
+    // The older call fails last. Its guard must make it write nothing at all —
+    // not even the snapshot restore, which would wipe the newer result.
+    pendingOld.reject(new Error('stale boom'));
+    await older;
+
+    expect(useStoryStore.getState().stories).toEqual([storyB]);
+    expect(useStoryStore.getState().loading).toBe(false);
+  });
+});
