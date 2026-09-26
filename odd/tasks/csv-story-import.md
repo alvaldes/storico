@@ -285,7 +285,7 @@ of workspace A could import into a project of workspace B. It mirrors the 403 co
 `routes/extraction.py`, and a test seeds two workspaces the caller belongs to and imports across
 them.
 
-## The comma, resolved in four layers
+## The comma, resolved in four layers (the fourth one refuted and corrected)
 
 The user's question was how the comma problem gets solved. It turned out there were three separate
 ways for a comma to corrupt an import, not one, and the count check that closed the second one
@@ -324,8 +324,85 @@ ok    ('user', 'log in', 'so that users retry')       not flagged
 ok    ('power user', 'I want reports', 'see data')    "As a" away from the start
 ```
 
-No per-field prefix heuristics were added, and nothing constrains what a part may contain. The
-residual case is narrow and recorded as a follow-up below.
+No per-field prefix heuristics were added, and nothing constrains what a part may contain.
+
+### Refuted: the first version of layer 4 was bypassed, and it over-refused
+
+The second independent verification falsified this section, and the correction is recorded here
+rather than quietly applied. The first version joined **only the three parts** and used
+`parse_user_story`, which uses `re.search`. Two consequences, both measured:
+
+**Bypass, silent corruption (HIGH).** Under an `actor,feature,benefit,raw_text` header — a supported
+shape, since the `raw_text` column is optional — the canonical story with one extra comma yields
+exactly **four** fields, so the count guard is silent; the three-cell join was
+`"As a user, I want A, B"`, which has no `so that`, so it did not parse and was not flagged, and a
+garbage story was written with no error at all:
+
+```
+bytes in: b'actor,feature,benefit,raw_text\nAs a user, I want A, B, so that C\n'
+before -> STORED actor='As a user' feature='I want A' benefit='B' raw_text='so that C'
+```
+
+It reproduced the same way with a five-column header and with `;` as the delimiter. The four layers
+were three layers plus a rule that only held for a three-column header.
+
+**Over-refusal (MEDIUM).** Because the match was unanchored, a legitimate row was refused whenever
+any part merely *quoted* a story:
+
+```
+bytes in: b"actor,feature,benefit\nuser,\"build the page that parses As a user, I want X, so that Y\",access\n"
+before -> 422 parts_look_like_a_full_story
+```
+
+The precision table above was measured against six cases and none of them contained a part whose own
+text was story-shaped, so it did not show this.
+
+**The corrected rule**: join **every cell present on the row** — `actor`, `feature`, `benefit`, and
+`raw_text` when it is present and not blank — and require the match **anchored at the start**
+(`_STORY_PATTERN.match`, not `parse_user_story`). `parse_user_story` keeps `search` on purpose: it is
+the port of the frontend parser, it asks whether a text *contains* a story, and the guard asks
+whether the whole row *is* one. That difference is exactly what stops a quoted story inside a part
+from being refused.
+
+| cells | result |
+|---|---|
+| `('As a user', ' I want A', ' so that B')` — 3-column header | **refused** |
+| `('As a user', ' I want A', ' B', ' so that C')` — 4-column header, the bypass | **refused** |
+| `('As a user', ' I want A', ' B', ' so that C', ' D')` — 5-column header | **refused** |
+| `('user', 'log in', 'access', '<canonical text>')` — legitimate, only when quoted | accepted |
+| `('user', 'build the page that parses As a user, I want X, so that Y', 'access')` | accepted |
+| `('admin, senior', 'export, save', 'share, collaborate')` | accepted |
+| `('user', 'log in', 'so that users retry')` | accepted |
+| `('power user', 'I want reports', 'see data')` | accepted |
+| `('As a service owner', 'I want metrics', 'so that I monitor')` | **refused — intended** |
+
+The last row stays refused deliberately and it is not a residual to fix: the app renders an actor as
+`As a(n) {actor}`, so an actor carrying the story opening is malformed for this model and would be
+stored as `As a(n) As a service owner`. The user's fix is to write `service owner`. The earlier
+version of this section called the false-positive trade "narrow" and gave the `As a service owner`
+case as its justification; that understated it, because the real over-refusal was a quoted story
+inside a part, which has nothing to do with pasted prefixes.
+
+### Defect found by the same pass: two inputs answered `500`
+
+Neither was related to the comma, and both were pre-existing to the two corrections but introduced
+with this parser at `901bb89`:
+
+```
+b"actor,feature,benefit\ruser,log in,access\r"     -> 500   (classic-Mac CR-only line endings)
+b"story\n" + b"x" * 200_000 + b"\n"                -> 500   (a field past csv's 131072 limit)
+```
+
+Both are `csv.Error` escaping the parser uncaught, so a malformed upload looked like a server fault
+instead of any contract status. Three changes: `newline=""` on the `StringIO`, which is `csv`'s
+documented requirement and is what makes CR-only files parse at all; `csv.field_size_limit` raised
+once at import to `MAX_FILE_BYTES`, so a very long field is read and then reported by the normal
+length rule as `too_long` with its exact `length` and `max` rather than failing to parse; and a
+`csv.Error` backstop raising `story_csv.malformed_csv`, which after the first two is unreachable from
+real input and exists so no `csv` failure can ever become a 500 again. Raising the process-global
+limit is bounded and deliberate: the body is already capped at the same number, and this module is the
+only `csv` consumer under `src/` (checked). Both are pinned at the HTTP layer, because that is where
+the 500 was observed — a parser-level assertion alone would not have caught it.
 
 ## Spec correction: the published path was unreachable, and the prefix behind it is poisoned
 
@@ -417,8 +494,12 @@ on warnings, so a new one would have sat there quietly.
 | Everything but integration, after the verification fixes | `conda run -n storico python -m pytest -q -m "not integration"` | **848 passed** (+4), 109 deselected, 1 warning |
 | Parser tests after the single-column fix | `conda run -n storico python -m pytest -q -m unit tests/test_unit/test_story_csv.py` | **24 passed** (21 from before, 3 added for the comma, quoted and multi-line cases) |
 | Mutation check, V2 | delete the `file.size` guard, re-run | `test_an_oversized_upload_is_refused_without_being_read` **fails**; restored and green |
-| Parser and validation units, after the structural guards | `conda run -n storico python -m pytest -q -m unit tests/test_unit/test_story_csv.py tests/test_unit/test_story_import.py` | **60 passed** |
+| Parser and validation units, after the structural guards | `conda run -n storico python -m pytest -q -m unit tests/test_unit/test_story_csv.py tests/test_unit/test_story_import.py` | **69 collected**, 69 passed — the earlier `60` in this table counted test *functions*, not parametrized cases |
 | Import API tests, after the workspace scoping | `conda run -n storico python -m pytest -q tests/test_api/test_stories_import.py` | **19 passed** |
+| Everything but integration, after the second verification | `conda run -n storico python -m pytest -q -m "not integration"` | **885 passed**, 109 deselected |
+| Parser and validation units, final | `--collect-only -q` filtered by `::` | **82 collected** |
+| Import API tests, final | `--collect-only -q` filtered by `::` | **21 collected** |
+| Mutations, second round | delete `newline=""` and the `field_size_limit` call, re-run the API tests | **both new `TestImportHostileInput` tests fail**; restored and green at 21 |
 | Everything but integration, final | `conda run -n storico python -m pytest -q -m "not integration"` | **870 passed**, 109 deselected, 2 warnings |
 | The route really moved | `POST /api/v1/workspaces/{id}/stories/import` unauthenticated | **401** — the scoped path is served. `POST /api/v1/stories/import` now answers **405**: the flat registration is gone |
 | The corruption is dead on the wire | multipart POST of `story\nAs a user, I want A, so that B\n` | **201, `created: 1`** — the natural shape imports intact |
@@ -442,19 +523,36 @@ on warnings, so a new one would have sat there quietly.
    pre-existing**, both raised by `tests/test_repositories/test_custom_provider_repo.py`, a file
    this feature never touches. They are the same aiosqlite teardown artefact attributed to
 different tests across runs. `docs/testing.md` records that nothing gates on warnings.
-3. **The one comma case the fourth layer does not catch.** `actor='As a user'`, `feature='log in'`,
-   `benefit='access'` — the pasted prefix sits in the actor column but the rest is sane, so the joined
-   row is not a complete story (`As a user, log in, access` has no `I want`) and nothing fires. The
-   outcome is a strange actor — the app renders it as `As a(n) As a user` — not a corrupted story, and
-   it is visible in the story list. A per-field prefix check would close it, at the cost of rejecting
-   an actor that legitimately starts with "As a" ("As a service owner"). That trade was declined
-   without evidence of a real user hitting it; if one appears, the check is a few lines in
-   `_first_error` and the reason code already has the right shape.
-4. **The verification of the structural guards and the workspace scoping has not been independent.**
-   The first verification covered `901bb89..2e2a8d4`. The two corrections that followed — the comma
-   guards and the route move — were written by this session and reviewed only by this session, with
-   the mutation checks recorded above as the strongest evidence for them. A second independent pass
-   over `a38f18f..HEAD` is worth running before the frontend is built on this contract.
+3. **An actor carrying the story opening is refused on purpose.** `actor='As a service owner'`,
+   `feature='I want metrics'`, `benefit='so that I monitor'` is refused as
+   `parts_look_like_a_full_story`, and it stays that way. Three cells that read as the three clauses
+   of a story are indistinguishable from a story the header split, and the app renders an actor as
+   `As a(n) {actor}`, so this value would be stored as `As a(n) As a service owner`. The user's fix is
+   to write `service owner`. Recorded so the behaviour is not mistaken for a bug.
+4. **A header with a trailing column whose rows omit it is refused.** Header `…,notes` with rows
+   ending `…,` is fine, but rows that omit the trailing comma answer `field_count_mismatch`
+   (`observed 3, expected 4`). Kept deliberately: the header declares four columns and the row has
+   three, the error names both numbers, and the remedy is one character. Tolerating it would mean
+   inventing a rule that trailing missing columns are empty, which is the kind of silent
+   interpretation the rest of this feature refuses.
+
+## Second independent verification (read-only) over `a38f18f..HEAD`
+
+Run for the same reason as the first, and it paid the same way. Three findings, two of them defects
+in code that the first pass had already blessed, and one of them a contradiction of this record's own
+central claim.
+
+| # | Sev | Finding | Disposition |
+|---|-----|---------|-------------|
+| W1 | **high** | The split-story guard was bypassed on any parts header with **four or more columns**: the four-field story matched the header count by coincidence, the three-cell join had no `so that`, and a garbage story was written with no error. | **Fixed** — the guard joins every cell present on the row, `raw_text` included, and anchors the match. Three refused cases and six accepted ones now pin it. |
+| W2 | medium | The same guard **over-refused** a legitimate row whose part merely quoted a story, because the match was unanchored. | **Fixed** by the same anchoring. The precision claim above was rewritten: the earlier "narrow trade" framing was wrong about which case was at risk. |
+| W3 | medium | **Two inputs returned `500` instead of any contract status**: a classic-Mac CR-only file, and any field past `csv`'s 131072-character limit. | **Fixed** — `newline=""`, the field-size limit raised to the byte cap, and a `csv.Error` backstop. Pinned at the HTTP layer with two tests, **mutation-verified**: reverting the two changes fails exactly those two. |
+
+Also confirmed without correction: the route move in full (13 request shapes covering membership, containment in both directions, unknown workspace, unknown project, and auth), both structural guards firing **end to end** rather than only from unit tests with the database checked directly, layer 3 not misfiring on quoted parts files, single-column files, or trailing empty columns, and eleven other hostile shapes — `\r\n`, BOM, doubled quotes, mixed quoting, mid-field quotes, delimiters inside quoted values, NUL bytes — all intact with no silent corruption found.
+
+One number was refuted and corrected: this record said `60` unit tests where pytest collects **69**, because `60` counted test functions and not parametrized cases. The warning count also differs between runs (1 vs 2), which the first pass's V4 already recorded as unstable attribution.
+
+The verifier also reported a tooling trap worth keeping: `conda run … python - <<'PY'` **silently discards stdin**, so a heredoc probe is a no-op that looks like a pass. Its first mutation attempt was lost that way and redone with script files. The probes in this record's evidence tables are all file-based (`/tmp/probe_*.py`) and therefore reproducible, but a heredoc probe must be written to a file first or it will report nothing and look fine — this session hit the same wall earlier and worked around it the same way without realising what it was.
 
 ## Independent verification (read-only) over `901bb89..2e2a8d4`
 
@@ -501,3 +599,4 @@ returns the input entities, which is only correct while `UserStory.id` is pre-ge
 | verification fixes | `a38f18f` | 848 tests with integration excluded, 24 parser tests, 15 API tests, ruff clean, mutation-verified |
 | comma guards | `f67896c` | 866 tests with integration excluded, 60 unit tests across the parser and the domain |
 | workspace scoping | `446cf2e` | 870 tests with integration excluded, 19 API tests, mutation-verified |
+| second verification fixes | `f928568` | 885 tests with integration excluded, 82 unit + 21 API tests, mutation-verified |
