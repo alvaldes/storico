@@ -75,23 +75,45 @@ Consequences, which are requirements rather than niceties:
 ## The contract
 
 ```
-POST /api/v1/projects/{project_id}/stories/import
-Content-Type: multipart/form-data     field: file (.csv)
+POST /api/v1/stories/import
+Content-Type: multipart/form-data     fields: project_id (form), file (.csv)
 
-201 — every row valid
+201 — nothing to block on. Re-uploading the same file is idempotent.
 { "created": 41, "skipped": 3, "total_rows": 44,
-  "duplicates": [{ "line": 19, "existing_story_id": "...", "actor": "...", "feature": "..." }],
+  "duplicates": [ { "line": 19, "reason": "duplicate", "existing_story_id": "..." },
+                  { "line": 31, "reason": "duplicate_in_file", "first_line": 12 } ],
   "story_ids": [ ... ] }
 
-422 — at least one validation error. Nothing written.
+422 — at least one blocking error. Nothing written.
 { "detail": { "error_code": "IMPORT_VALIDATION_FAILED", "created": 0, "total_rows": 44,
     "errors": [
       { "line": 7,  "reason": "missing_field", "field": "feature" },
       { "line": 19, "reason": "too_long", "field": "benefit", "length": 340, "max": 300 },
-      { "line": 23, "reason": "unparsable_story" },
-      { "line": 31, "reason": "duplicate_in_file", "first_line": 12 } ],
-    "duplicates": [ { "line": 88, "existing_story_id": "..." } ] } }
+      { "line": 23, "reason": "unparsable_story" } ],
+    "duplicates": [ ... ] } }
+
+413 — over the byte cap
+{ "detail": { "error_code": "IMPORT_FILE_TOO_LARGE", "size": 3145728, "max": 2097152 } }
+
+422 — the file itself cannot be read at all
+{ "detail": { "error_code": "IMPORT_FILE_REJECTED", "reason": "header_unrecognized" } }
 ```
+
+### Spec inconsistency found and resolved: where `duplicate_in_file` lives
+
+The first version of this block listed `duplicate_in_file` inside `errors`, which contradicts
+D9 — and D9 was chosen to agree with D5. D9 wins: **only** `missing_field`, `empty_field`,
+`too_long` and `unparsable_story` block the import. Both duplicate kinds — the one already in the
+project and the one repeated inside the upload — live in `duplicates` with their `reason`, and the
+key that tells them apart is `reason` plus the presence of `existing_story_id` or `first_line`.
+
+### Deviation from the promised duplicate shape
+
+The 201 example originally showed `actor` and `feature` on each duplicate entry. They are not there.
+`RowDuplicate` carries only the line, the reason and whichever identifier applies, and the user
+fixing a rejected file has the file in front of them — the line number is the actionable datum, and
+`existing_story_id` says which story was matched. Adding the parts would mean widening the domain
+model for display sugar. Recorded as a deliberate narrowing, not an oversight.
 
 Delimiter and encoding: decoded as UTF-8 with the BOM stripped; an invalid encoding is a
 file-level error. The delimiter is read off the **header line**, not guessed from the data — see
@@ -143,7 +165,7 @@ Two further defects were found while reviewing the parser's output and fixed in 
       constant's exact value on the backend side instead.
 - [x] 3. Repository: one query for the project's existing tuples, plus `save_many` in a single
       commit — `list_parts_by_project` and `save_many` on the port and its only implementation
-- [ ] 4. The `import` route: membership, caps, `201`/`422` report, API tests
+- [x] 4. The `import` route: membership, caps, `201`/`422` report, API tests
 - [ ] 5. `ImportStoriesDialog.tsx`: file input, upload, report with lines and reasons
 - [ ] 6. `importStories` in the API layer plus the store action, with the `isScopeUnchanged` guard
       and a list refresh
@@ -176,6 +198,72 @@ which silently slices the parts to their maxima on its own path. The practical c
 is roughly 730 characters, and the `raw_text` limit is unreachable there. Left as is, on purpose:
 padding a prompt with text the user did not write is exactly the silent change this feature refuses.
 
+## Spec correction: the published path was unreachable, and the prefix behind it is poisoned
+
+The approved contract put the route at `POST /api/v1/projects/{project_id}/stories/import`.
+That path **can never be served**, and the implementation proved it rather than the review
+doing so: the first full run of the API tests came back with **14 failures, every one a `410
+Gone`** carrying the retirement message.
+
+`routes/projects.py:39` declares a legacy catch-all — `@router.api_route("/{path:path}",
+methods=[...], status_code=410, include_in_schema=False)` under `prefix="/api/v1/projects"` —
+because non-workspace-scoped project routes were retired on purpose. `app.py` registers it at
+line 169, before every real router. FastAPI matches in registration order, so the catch-all
+answered first. Measured directly:
+
+```
+POST /api/v1/projects/{id}/stories/import   -> 410  {'detail': 'This endpoint has been removed. ...'}
+POST /api/v1/stories/import                 -> 401  {'detail': 'Invalid or missing authentication token'}
+```
+
+The 401 is the useful half: it proves the flat path reaches the handler and fails only on auth.
+Note what the 410 looked like from outside — the app started cleanly, and the route was listed in
+the OpenAPI schema at the nested path it could never serve. A silent, self-describing lie.
+
+The route moved to **`POST /api/v1/stories/import`**, with `project_id` as a multipart form field.
+Three reasons, in order of weight:
+
+1. The retired prefix *means* "gone". A live route under it contradicts the decision that put the
+   catch-all there. The alternative — registering the import before the catch-all — works but makes
+   correctness depend on registration order, which is the exact invisible mechanism that produced
+   the 410 in the first place.
+2. It needs no new router and no `app.py` registration at all: it sits on the existing
+   `stories.router`, whose only other `POST` path is `/`.
+3. It matches the sibling it belongs to. `create_story` is `POST /api/v1/stories/` and also takes
+   `project_id` in the payload, so the project id arrives the same way it always has. D6 is
+   untouched: the project still comes from the selector in the UI; only its position in the request
+   changed.
+
+The nested path is not shadowed "for now" — it is permanently retired, so no future route should
+be placed under `/api/v1/projects/...`. That is recorded as a follow-up below rather than fixed
+here: reordering the retirement's registration is its own change, with its own justification.
+
+## Four defects found in the first draft of the API tests
+
+The writer produced a solid file and then stopped correctly when every request 410'd. Reviewing it
+found four defects of its own, all repaired before the suite went green:
+
+| Defect | Effect | Fix |
+|---|---|---|
+| Path pointed at the unreachable nested URL | every test 410 | flat path plus `project_id` as form data |
+| A local `canonical_text` retyped the sentence as `As a {actor}, ...` | the parts-mode assertion expected the wrong prompt text | the helper now formats `CANONICAL_RAW_TEXT_TEMPLATE` imported from the domain module, so a test-side copy cannot drift from the contract again |
+| `seed_workspace(stories=1)` seeds `use seeded feature 0`, the test looked for `1` | the "existing story is a duplicate" test would not have exercised a duplicate | corrected to `0` |
+| `assert not data["errors"]` on a 201 body | `KeyError`: the success shape has no `errors` key at all | `assert "errors" not in data`, which also pins that only the blocked path carries errors |
+
+Separately, the tests initially read `error_code` off the top level while the route nests the typed
+payload under `detail` — the shape this record published, and the one the extraction route already
+uses for `LLM_CONFIG_INCOMPLETE`. The route was right and the tests were wrong; a single
+`_error_envelope` helper now unwraps it, so the envelope is asserted in one place.
+
+## The route introduced two fresh deprecation warnings, and fixed them
+
+The first run of the API tests emitted `StarletteDeprecationWarning` for
+`HTTP_422_UNPROCESSABLE_ENTITY` and `HTTP_413_REQUEST_ENTITY_TOO_LARGE`. A grep over `src/` showed
+the three usages were **all new, all in this route** — the rest of the codebase never used those
+constants. Renamed to `HTTP_422_UNPROCESSABLE_CONTENT` and `HTTP_413_CONTENT_TOO_LARGE`, and the
+warnings are gone. Worth recording because the repo's own `docs/testing.md` notes that nothing gates
+on warnings, so a new one would have sat there quietly.
+
 ## Evidence
 
 | Check | Command | Result |
@@ -190,9 +278,29 @@ padding a prompt with text the user did not write is exactly the silent change t
 | Whole unit suite | `conda run -n storico python -m pytest -q -m unit` | **187 passed**, 745 deselected |
 | Repository tests | `conda run -n storico python -m pytest -q tests/test_repositories/test_user_story_repo.py` | **19 passed** (13 pre-existing, 6 new) |
 | Everything but integration | `conda run -n storico python -m pytest -q -m "not integration"` | **830 passed**, 109 deselected, 1 warning |
+| Import API tests | `conda run -n storico python -m pytest -q tests/test_api/test_stories_import.py` | **14 passed**, no warnings after the status-constant rename |
+| Everything but integration, after | `conda run -n storico python -m pytest -q -m "not integration"` | **844 passed** (+14), 109 deselected, 2 warnings |
+| Lint and format, whole tree | `conda run -n storico python -m ruff check src tests` and `ruff format --check src tests` | All checks passed; 244 files already formatted |
 | The warning is not ours | `conda run -n storico python -m pytest -q -m "not integration" 2>&1 \| grep -B4 warnings summary` | raised by `test_custom_provider_repo.py::test_list_is_empty_for_a_fresh_workspace`, a file this feature never touches. Pre-existing, and `docs/testing.md` records that nothing gates on warnings |
 | Lint | `conda run -n storico python -m ruff check src/storico/infrastructure/parsers tests/test_unit/test_story_csv.py` | All checks passed |
 | Formatting | `conda run -n storico python -m ruff format --check ...` | 3 files already formatted |
+
+## Follow-ups this surfaced, recorded rather than bundled
+
+1. **`/api/v1/projects/...` is a poisoned prefix.** The legacy catch-all on `projects.router` is
+   registered before every real router, so any future live route under that prefix is silently
+   answered `410 Gone` — while still appearing in the OpenAPI schema. Nothing is broken today
+   (the only route there is the retirement itself), which is exactly why it is easy to step on.
+   The fix is to register the catch-all last, or to keep every real route off the prefix. It is a
+   change to a deliberate retirement, so it deserves its own slice and its own test.
+2. **The two `RuntimeWarning: coroutine 'Connection._cancel' was never awaited` warnings are
+   pre-existing**, both raised by `tests/test_repositories/test_custom_provider_repo.py`, a file
+   this feature never touches. They are the same aiosqlite teardown artefact attributed to
+different tests across runs. `docs/testing.md` records that nothing gates on warnings.
+
+## Independent verification
+
+Pending — the backend half is complete and this is the candidate for PR 1.
 
 ## Task log
 
@@ -200,4 +308,5 @@ padding a prompt with text the user did not write is exactly the silent change t
 |------|--------|----------|
 | 1 | `901bb89` | 21 unit tests, ruff clean |
 | 2 | `26bfab5` | 27 unit tests, 187 unit tests whole suite, ruff clean |
-| 3 | this commit | 19 repository tests, 830 tests with integration excluded, ruff clean |
+| 3 | `3f55d07` | 19 repository tests, 830 tests with integration excluded, ruff clean |
+| 4 | this commit | 14 import API tests, 844 tests with integration excluded, ruff clean |
