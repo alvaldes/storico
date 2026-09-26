@@ -16,6 +16,8 @@ import csv
 import io
 from uuid import uuid4
 
+from starlette.datastructures import UploadFile as StarletteUploadFile
+
 from storico.domain.services.story_import import CANONICAL_RAW_TEXT_TEMPLATE
 
 IMPORT_PATH = "/api/v1/stories/import"
@@ -295,6 +297,28 @@ class TestImportSizeLimit:
         assert data["error_code"] == "IMPORT_FILE_TOO_LARGE"
         assert data["size"] == len(payload)
         assert data["max"] == 2097152
+
+    async def test_an_oversized_upload_is_refused_without_being_read(
+        self, authed_client, seed_workspace, monkeypatch
+    ):
+        """The cap is decided from ``UploadFile.size``, so the bytes are never pulled in.
+
+        This pins the honest half of the claim. Starlette has already parsed the request body
+        by the time the handler runs, so what is testable — and what matters for this process —
+        is that this code refuses the upload without taking a second full copy of it. Making
+        ``read`` explode is what turns that into an observation.
+        """
+        seeded = await seed_workspace(stories=0)
+        payload = b"actor,feature,benefit\n" + b"a" * (3 * 1024 * 1024)
+
+        async def _explode(self):
+            raise AssertionError("UploadFile.read must not be called for an oversized upload")
+
+        monkeypatch.setattr(StarletteUploadFile, "read", _explode)
+        response = await _import_file(authed_client, seeded.project_id, payload)
+
+        assert response.status_code == 413
+        assert _error_envelope(response)["size"] == len(payload)
 
 
 class TestImportAuthorization:

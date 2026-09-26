@@ -121,6 +121,47 @@ def test_a_tab_delimited_file_is_detected() -> None:
 
 
 @pytest.mark.unit
+def test_a_single_column_story_file_is_not_split_at_its_commas() -> None:
+    """A one-column file keeps each line whole, commas and all.
+
+    This is the primary shape of a one-column upload, and it was broken: with no delimiter in
+    the header the fallback was comma, which split the canonical story text at its own commas
+    and left every row as ``"As a user"``. The canonical format contains commas by
+    construction, so this was not an edge case.
+
+    The semicolon test below passed while this was broken, which is the point of having both:
+    a fix aimed at one delimiter says nothing about the others, and the canonical text carries
+    commas rather than semicolons.
+    """
+    stories = [f"As a user, I want A{i}, so that B{i}" for i in range(30)]
+
+    parsed = parse_story_csv(_csv("story", *stories))
+
+    assert parsed.mode == "full"
+    assert [row.raw_text for row in parsed.rows] == stories
+
+
+@pytest.mark.unit
+def test_a_single_column_row_may_be_quoted() -> None:
+    """Quoting is still honoured when the file has one column, so Excel output works."""
+    story = "As a user, I want to log in, so that I can access my account"
+
+    parsed = parse_story_csv(_csv("story", f'"{story}"'))
+
+    assert parsed.rows[0].raw_text == story
+
+
+@pytest.mark.unit
+def test_a_quoted_multiline_row_in_a_single_column_file_keeps_its_first_line() -> None:
+    story = "As a user, I want to log in,\nso that I can access my account"
+
+    parsed = parse_story_csv(_csv("story", f'"{story}"', "As a user, I want B, so that C"))
+
+    assert [row.line_number for row in parsed.rows] == [2, 4]
+    assert parsed.rows[0].raw_text == story
+
+
+@pytest.mark.unit
 def test_a_story_text_containing_a_semicolon_is_not_split() -> None:
     """A single-column file must not be read as semicolon-delimited.
 

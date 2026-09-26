@@ -342,10 +342,27 @@ async def import_stories(
             detail="Not a member of this workspace",
         )
 
+    # The cap bounds this handler's own work — parsing, validation and storage — not the wire
+    # size. Starlette's multipart parser has already consumed the request body by the time this
+    # runs, so the earlier claim that the file is sized "before reading the body" was wrong, and
+    # the 413 body's own ``size`` field is the proof: 3145750 was only knowable after a read.
+    #
+    # ``file.size`` is checked first because Starlette populates it while spooling, so an
+    # oversized upload is refused without a second full copy into this process. The check after
+    # the read stays as the authoritative one: ``size`` can be absent, and only the bytes we
+    # actually hold can be parsed.
+    if file.size is not None and file.size > MAX_FILE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail={
+                "detail": "The file is too large.",
+                "error_code": "IMPORT_FILE_TOO_LARGE",
+                "size": file.size,
+                "max": MAX_FILE_BYTES,
+            },
+        )
+
     data = await file.read()
-    # Byte cap before parsing: an oversized upload is rejected outright
-    # instead of spending parse work (and error noise) on a file that can
-    # never be accepted.
     if len(data) > MAX_FILE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,

@@ -28,6 +28,11 @@ _FULL_COLUMNS = ("story", "input", "raw_text")
 # Ordered so the choice is deterministic if a header ever carried two candidates. Every
 # name in the recognized vocabulary is delimiter-free, so this cannot happen today.
 _DELIMITER_PREFERENCE = (",", ";", "\t")
+# Used when the header carries no candidate delimiter at all, which means the file has one
+# column and its punctuation belongs to the story text. A byte that cannot appear in text
+# makes the whole line a single field, while csv's quoting rules still apply — so a quoted
+# field is still unwrapped, including one that spans several lines.
+_SINGLE_COLUMN = "\x00"
 _FAILURE_REASONS = frozenset(
     {"invalid_encoding", "header_unrecognized", "too_many_rows", "empty_file"}
 )
@@ -117,7 +122,7 @@ def parse_story_csv(data: bytes) -> ParsedStoryCsv:
 
 
 def _detect_delimiter(header_line: str) -> str:
-    """Pick the delimiter from the header line, defaulting to comma.
+    """Pick the delimiter from the header line, defaulting to a single-column read.
 
     Reading it off the header rather than letting ``csv.Sniffer`` guess from the data is a
     correctness requirement, not a shortcut. Sniffing the data made the verdict depend on
@@ -127,13 +132,20 @@ def _detect_delimiter(header_line: str) -> str:
     that surfaced as ``unparsable_story`` on rows the user had written correctly.
 
     The header is authoritative because the recognized vocabulary is fixed and every name
-    in it is delimiter-free, so a header containing no candidate means the file genuinely
-    has one column and its punctuation belongs to the story text.
+    in it is delimiter-free. A header containing no candidate therefore means the file has
+    **one** column, and that column is returned whole.
+
+    Returning one *whole* column is the part that is easy to get wrong, and it was: choosing
+    comma as a fallback for a header with no delimiter split the canonical story text at its
+    own commas — ``"As a user, I want A0, so that B0"`` arrived as ``"As a user"`` on every
+    row. The canonical story format contains commas by construction, so a one-column upload
+    was broken for its primary shape. A delimiter that cannot occur in text keeps the line
+    intact and still honours CSV quoting.
     """
     for delimiter in _DELIMITER_PREFERENCE:
         if delimiter in header_line:
             return delimiter
-    return ","
+    return _SINGLE_COLUMN
 
 
 def _classify_header(header: list[str]) -> str:
