@@ -55,6 +55,10 @@ class StoryImportErrorItem(BaseModel):
     length: int | None = None
     # Serialises as "max" in JSON; that is the published contract.
     max: int | None = None
+    # Populated only for ``field_count_mismatch``: the row's field count vs
+    # the header's column count.
+    observed: int | None = None
+    expected: int | None = None
 
 
 class StoryImportDuplicateItem(BaseModel):

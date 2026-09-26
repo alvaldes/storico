@@ -181,6 +181,7 @@ def create_app() -> FastAPI:
     app.include_router(projects.projects_router)  # workspace-scoped
     app.include_router(extraction.extraction_router)  # workspace-scoped
     app.include_router(export.router)  # workspace-scoped
+    app.include_router(stories.import_router)  # workspace-scoped
 
     return app
 

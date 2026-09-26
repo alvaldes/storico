@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from storico.api.dependencies import (
     get_current_user,
     get_repository,
+    get_workspace_for_user,
     require_story_workspace_access,
 )
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
@@ -20,7 +21,7 @@ from storico.api.schemas.story import (
     UpdateUserStoryRequest,
     UserStoryResponse,
 )
-from storico.domain.entities import EntityNotFound, User, UserStory
+from storico.domain.entities import EntityNotFound, User, UserStory, Workspace, WorkspaceRole
 from storico.domain.services.story_import import ImportRow, validate_import
 from storico.infrastructure.database.repositories import (
     SQLAlchemyProjectRepository,
@@ -32,6 +33,12 @@ from storico.infrastructure.database.repositories.workspace_member_repository im
 from storico.infrastructure.parsers.story_csv import MAX_FILE_BYTES, StoryCsvError, parse_story_csv
 
 router = APIRouter(prefix="/api/v1/stories", tags=["stories"])
+
+import_router = APIRouter(
+    prefix="/api/v1/workspaces/{workspace_id}/stories",
+    tags=["stories"],
+    redirect_slashes=False,
+)
 
 StoryRepoDep = Annotated[
     SQLAlchemyUserStoryRepository,
@@ -291,21 +298,16 @@ async def delete_story(
 # CSV import
 # ═══════════════════════════════════════════════════════════════════
 #
-# This route lives on the stories router, not under ``/api/v1/projects/{project_id}/...``.
-# The obvious nested path is unreachable by construction: ``projects.router`` carries a
-# legacy catch-all (``/{path:path}`` -> 410 Gone, ``routes/projects.py:39``) because
-# non-workspace-scoped project routes were retired on purpose, and it is registered first
-# in ``app.py``. Measured: a request to the nested path answered 410 with the retirement
-# message, with the route present in the OpenAPI schema and the app starting cleanly.
+# This route is workspace-scoped, like every newer feature in this API
+# (``extraction_router``, ``projects_router``, ``export``): the workspace
+# rides in the path and ``project_id`` stays a form field, matching both
+# ``extraction_router`` (child resource id in the body) and ``create_story``
+# (``project_id`` in the payload). The flat legacy router was the wrong home
+# for an import that must resolve workspace membership before anything else.
 #
-# Registering the import before the catch-all would work and would also make correctness
-# depend on registration order — the exact invisible mechanism that produced the 410. And
-# the retired prefix means "gone", so a live route there disagrees with the decision that
-# put it there. ``POST /api/v1/stories/import`` needs no ordering trick and matches the
-# sibling it belongs to: ``create_story`` also takes ``project_id`` from the request body.
 
 
-@router.post(
+@import_router.post(
     "/import",
     status_code=status.HTTP_201_CREATED,
     # The blocked-report path dumps its items with ``exclude_none=True``, so the success
@@ -317,29 +319,33 @@ async def delete_story(
 async def import_stories(
     project_id: Annotated[UUID, Form()],
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
     repo: StoryRepoDep = None,  # type: ignore[assignment]
     project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
-    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
 ) -> StoryImportResponse:
     """Import user stories into a project from an uploaded CSV file.
 
-    The upload is validated as a whole before anything is written: one
-    blocking error anywhere answers ``422`` with the full error list and no
-    story is created. Rows that duplicate an existing story (or an earlier
-    row of the same upload) are skipped and reported, never fatal.
+    The workspace in the path must exist and the caller must be a member of
+    it (``get_workspace_for_user``). The project must then belong to that
+    same workspace. The upload is validated as a whole before anything is
+    written: one blocking error anywhere answers ``422`` with the full error
+    list and no story is created. Rows that duplicate an existing story (or
+    an earlier row of the same upload) are skipped and reported, never fatal.
     """
-    # Access checks mirror create_story: the project must exist and the
-    # caller must belong to its workspace.
+    workspace, _ = ctx
+
+    # Containment, not just membership: resolving the path workspace proves the caller
+    # belongs to it, but says nothing about the project named in the form. Without this
+    # check a member of workspace A could import into a project of workspace B by naming
+    # A in the URL. Mirrors the 403 containment check in routes/extraction.py
+    # (_validate_story_belongs_to_workspace).
     project = await project_repo.find_by_id(project_id)
     if project is None:
         raise EntityNotFound("Project", str(project_id))
-
-    member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
-    if member is None:
+    if project.workspace_id != workspace.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not a member of this workspace",
+            detail="This project does not belong to the specified workspace",
         )
 
     # The cap bounds this handler's own work — parsing, validation and storage — not the wire
@@ -398,6 +404,8 @@ async def import_stories(
             feature=row.feature,
             benefit=row.benefit,
             raw_text=row.raw_text,
+            field_count=row.field_count,
+            expected_field_count=parsed.expected_field_count,
         )
         for row in parsed.rows
     ]
@@ -421,6 +429,8 @@ async def import_stories(
                         field=error.field,
                         length=error.actual_length,
                         max=error.max_length,
+                        observed=error.observed_count,
+                        expected=error.expected_count,
                     ).model_dump(exclude_none=True)
                     for error in report.errors
                 ],

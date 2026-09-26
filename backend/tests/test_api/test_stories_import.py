@@ -1,15 +1,16 @@
 """Integration tests for the CSV story-import endpoint.
 
-``POST /api/v1/stories/import`` accepts a multipart upload carrying ``project_id``
-as a form field alongside the CSV file. The header selects the mode:
-``actor,feature,benefit`` (parts mode) or ``story``/``input``/``raw_text`` (full
-mode, parsed to parts). The contract under test: blocking row errors reject the
-whole file with nothing written, duplicates are skipped and reported but never
-block, and the byte cap is enforced before any parsing.
+``POST /api/v1/workspaces/{workspace_id}/stories/import`` accepts a multipart
+upload carrying ``project_id`` as a form field alongside the CSV file. The
+header selects the mode: ``actor,feature,benefit`` (parts mode) or
+``story``/``input``/``raw_text`` (full mode, parsed to parts). The contract
+under test: blocking row errors reject the whole file with nothing written,
+duplicates are skipped and reported but never block, and the byte cap is
+enforced before any parsing.
 
-Why the path is flat rather than ``/api/v1/projects/{project_id}/stories/import``:
-that nested path is served 410 Gone by the legacy catch-all on ``projects.router``,
-which is registered before every real router. See ``routes/stories.py``.
+The route is workspace-scoped, like every newer feature in this API. The flat
+legacy router was the wrong home for it: an import must resolve workspace
+membership from the path before anything else, and a flat path cannot.
 """
 
 import csv
@@ -20,7 +21,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from storico.domain.services.story_import import CANONICAL_RAW_TEXT_TEMPLATE
 
-IMPORT_PATH = "/api/v1/stories/import"
+IMPORT_PATH = "/api/v1/workspaces/{workspace_id}/stories/import"
 
 
 def canonical_text(actor: str, feature: str, benefit: str) -> str:
@@ -42,9 +43,9 @@ def csv_bytes(header: list[str], rows: list[list[str]]) -> bytes:
     return buffer.getvalue().encode("utf-8")
 
 
-async def _import_file(client, project_id, payload: bytes):
+async def _import_file(client, workspace_id, project_id, payload: bytes):
     return await client.post(
-        IMPORT_PATH,
+        IMPORT_PATH.format(workspace_id=workspace_id),
         data={"project_id": str(project_id)},
         files={"file": ("stories.csv", payload, "text/csv")},
     )
@@ -80,7 +81,10 @@ class TestImportPartsMode:
             ["user", "reset password", "regain access"],
         ]
         response = await _import_file(
-            authed_client, seeded.project_id, csv_bytes(["actor", "feature", "benefit"], rows)
+            authed_client,
+            seeded.workspace_id,
+            seeded.project_id,
+            csv_bytes(["actor", "feature", "benefit"], rows),
         )
 
         assert response.status_code == 201
@@ -111,7 +115,10 @@ class TestImportFullMode:
             canonical_text("admin", "view profile", "see my details"),
         ]
         response = await _import_file(
-            authed_client, seeded.project_id, csv_bytes(["story"], [[row] for row in rows])
+            authed_client,
+            seeded.workspace_id,
+            seeded.project_id,
+            csv_bytes(["story"], [[row] for row in rows]),
         )
 
         assert response.status_code == 201
@@ -141,7 +148,10 @@ class TestImportValidation:
             ["admin", "", "see my details"],
         ]
         response = await _import_file(
-            authed_client, seeded.project_id, csv_bytes(["actor", "feature", "benefit"], rows)
+            authed_client,
+            seeded.workspace_id,
+            seeded.project_id,
+            csv_bytes(["actor", "feature", "benefit"], rows),
         )
 
         assert response.status_code == 422
@@ -163,7 +173,10 @@ class TestImportValidation:
             ["admin", "view profile", "b" * 301],
         ]
         response = await _import_file(
-            authed_client, seeded.project_id, csv_bytes(["actor", "feature", "benefit"], rows)
+            authed_client,
+            seeded.workspace_id,
+            seeded.project_id,
+            csv_bytes(["actor", "feature", "benefit"], rows),
         )
 
         assert response.status_code == 422
@@ -173,6 +186,53 @@ class TestImportValidation:
         assert error["field"] == "benefit"
         assert error["length"] == 301
         assert error["max"] == 300
+
+
+class TestImportStructuralDefects:
+    """Rows whose column structure disagrees with the header are refused, not mapped."""
+
+    async def test_a_full_story_pasted_into_parts_mode_is_refused_not_written_as_a_story(
+        self, authed_client, seed_workspace
+    ):
+        """A split-story corruption used to be written as a plausible garbage story.
+
+        Under ``actor,feature,benefit`` a pasted canonical story splits on its own
+        commas into exactly three fields, so the field-count guard cannot see it and the
+        row used to be mapped positionally into a story that looked fine and was wrong.
+        Written as raw bytes on purpose: ``csv_bytes`` would quote the field and turn
+        this defect into a different one.
+        """
+        seeded = await seed_workspace(stories=0)
+        payload = b"actor,feature,benefit\nAs a user, I want A, so that B\n"
+
+        response = await _import_file(
+            authed_client, seeded.workspace_id, seeded.project_id, payload
+        )
+
+        assert response.status_code == 422
+        data = _error_envelope(response)
+        assert data["error_code"] == "IMPORT_VALIDATION_FAILED"
+        assert data["errors"][0]["reason"] == "parts_look_like_a_full_story"
+
+        items = await _list_project_stories(authed_client, seeded.project_id)
+        assert items == []
+
+    async def test_a_ragged_row_reports_observed_and_expected_counts(
+        self, authed_client, seed_workspace
+    ):
+        """A four-field row under a three-column header reports both counts."""
+        seeded = await seed_workspace(stories=0)
+        payload = b"actor,feature,benefit\nAs a user, I want A, B, so that C\n"
+
+        response = await _import_file(
+            authed_client, seeded.workspace_id, seeded.project_id, payload
+        )
+
+        assert response.status_code == 422
+        error = _error_envelope(response)["errors"][0]
+        assert error["reason"] == "field_count_mismatch"
+        assert error["observed"] == 4
+        assert error["expected"] == 3
 
 
 class TestImportDuplicates:
@@ -186,7 +246,10 @@ class TestImportDuplicates:
             ["user", "a brand new feature", "a brand new benefit"],
         ]
         response = await _import_file(
-            authed_client, seeded.project_id, csv_bytes(["actor", "feature", "benefit"], rows)
+            authed_client,
+            seeded.workspace_id,
+            seeded.project_id,
+            csv_bytes(["actor", "feature", "benefit"], rows),
         )
 
         assert response.status_code == 201
@@ -207,6 +270,7 @@ class TestImportDuplicates:
         row = ["user", "log in", "access my account"]
         response = await _import_file(
             authed_client,
+            seeded.workspace_id,
             seeded.project_id,
             csv_bytes(["actor", "feature", "benefit"], [row, row]),
         )
@@ -231,11 +295,11 @@ class TestImportDuplicates:
         ]
         payload = csv_bytes(["actor", "feature", "benefit"], rows)
 
-        first = await _import_file(authed_client, seeded.project_id, payload)
+        first = await _import_file(authed_client, seeded.workspace_id, seeded.project_id, payload)
         assert first.status_code == 201
         assert first.json()["created"] == 3
 
-        second = await _import_file(authed_client, seeded.project_id, payload)
+        second = await _import_file(authed_client, seeded.workspace_id, seeded.project_id, payload)
         assert second.status_code == 201
         assert second.json()["created"] == 0
         assert second.json()["skipped"] == 3
@@ -251,7 +315,10 @@ class TestImportRejectedFiles:
         """A header matching neither mode is rejected as header_unrecognized."""
         seeded = await seed_workspace(stories=0)
         response = await _import_file(
-            authed_client, seeded.project_id, csv_bytes(["foo", "bar"], [["a", "b"]])
+            authed_client,
+            seeded.workspace_id,
+            seeded.project_id,
+            csv_bytes(["foo", "bar"], [["a", "b"]]),
         )
 
         assert response.status_code == 422
@@ -263,7 +330,7 @@ class TestImportRejectedFiles:
         """Bytes that are not valid UTF-8 are rejected as invalid_encoding."""
         seeded = await seed_workspace(stories=0)
         response = await _import_file(
-            authed_client, seeded.project_id, b"story\n\xff\xfe invalid bytes"
+            authed_client, seeded.workspace_id, seeded.project_id, b"story\n\xff\xfe invalid bytes"
         )
 
         assert response.status_code == 422
@@ -274,7 +341,7 @@ class TestImportRejectedFiles:
     async def test_empty_file_is_rejected(self, authed_client, seed_workspace):
         """An empty upload is rejected as empty_file."""
         seeded = await seed_workspace(stories=0)
-        response = await _import_file(authed_client, seeded.project_id, b"")
+        response = await _import_file(authed_client, seeded.workspace_id, seeded.project_id, b"")
 
         assert response.status_code == 422
         data = _error_envelope(response)
@@ -290,7 +357,9 @@ class TestImportSizeLimit:
         seeded = await seed_workspace(stories=0)
         payload = b"actor,feature,benefit\n" + b"a" * (3 * 1024 * 1024)
 
-        response = await _import_file(authed_client, seeded.project_id, payload)
+        response = await _import_file(
+            authed_client, seeded.workspace_id, seeded.project_id, payload
+        )
 
         assert response.status_code == 413
         data = _error_envelope(response)
@@ -315,30 +384,52 @@ class TestImportSizeLimit:
             raise AssertionError("UploadFile.read must not be called for an oversized upload")
 
         monkeypatch.setattr(StarletteUploadFile, "read", _explode)
-        response = await _import_file(authed_client, seeded.project_id, payload)
+        response = await _import_file(
+            authed_client, seeded.workspace_id, seeded.project_id, payload
+        )
 
         assert response.status_code == 413
         assert _error_envelope(response)["size"] == len(payload)
 
 
 class TestImportAuthorization:
-    """Membership and existence are checked before any row is read."""
+    """Membership, existence and containment are checked before any row is read."""
 
     async def test_non_member_gets_403(self, authed_client, seed_workspace):
-        """A project in a workspace the caller does not belong to returns 403."""
+        """A workspace the caller does not belong to returns 403 on its own path."""
         seeded = await seed_workspace(member=False)
         payload = csv_bytes(["actor", "feature", "benefit"], [["user", "f", "b"]])
 
-        response = await _import_file(authed_client, seeded.project_id, payload)
+        response = await _import_file(
+            authed_client, seeded.workspace_id, seeded.project_id, payload
+        )
 
         assert response.status_code == 403
         assert isinstance(response.json()["detail"], str)
 
-    async def test_unknown_project_gets_404(self, authed_client):
-        """An unknown project id returns 404."""
+    async def test_an_unknown_workspace_gets_404(self, authed_client):
+        """An unknown workspace id returns 404 while resolving membership."""
         payload = csv_bytes(["actor", "feature", "benefit"], [["user", "f", "b"]])
 
-        response = await _import_file(authed_client, uuid4(), payload)
+        response = await _import_file(authed_client, uuid4(), uuid4(), payload)
+
+        assert response.status_code == 404
+        assert isinstance(response.json()["detail"], str)
+
+    async def test_an_unknown_project_in_a_known_workspace_gets_404(
+        self, authed_client, seed_workspace
+    ):
+        """A project that does not exist returns 404 from the containment check.
+
+        Deliberately separate from the unknown-workspace case above: that one answers 404
+        before the project is ever looked at, so on its own it cannot show that this branch
+        works at all. Reaching it needs a workspace the caller belongs to plus a project id
+        that is not in it.
+        """
+        seeded = await seed_workspace(stories=0)
+        payload = csv_bytes(["actor", "feature", "benefit"], [["user", "f", "b"]])
+
+        response = await _import_file(authed_client, seeded.workspace_id, uuid4(), payload)
 
         assert response.status_code == 404
         assert isinstance(response.json()["detail"], str)
@@ -348,6 +439,25 @@ class TestImportAuthorization:
         seeded = await seed_workspace(stories=0)
         payload = csv_bytes(["actor", "feature", "benefit"], [["user", "f", "b"]])
 
-        response = await _import_file(async_client, seeded.project_id, payload)
+        response = await _import_file(async_client, seeded.workspace_id, seeded.project_id, payload)
 
         assert response.status_code == 401
+
+
+class TestImportContainment:
+    """The path workspace does not authorize projects of another workspace."""
+
+    async def test_a_member_of_workspace_a_cannot_import_into_workspace_bs_project(
+        self, authed_client, seed_workspace
+    ):
+        """Naming workspace A in the URL cannot unlock workspace B's project."""
+        seeded = await seed_workspace(stories=0)
+        other = await seed_workspace(stories=0)
+        payload = csv_bytes(["actor", "feature", "benefit"], [["user", "f", "b"]])
+
+        response = await _import_file(authed_client, seeded.workspace_id, other.project_id, payload)
+
+        assert response.status_code == 403
+
+        items = await _list_project_stories(authed_client, other.project_id)
+        assert items == []
