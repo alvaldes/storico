@@ -6,6 +6,8 @@
  * no silent fallbacks, no surprises.
  */
 
+import { DEFAULT_DEMO_BASE } from '@/lib/demo-embed';
+
 function required(name: string): string {
   const value = import.meta.env[name];
   if (!value) {
@@ -38,6 +40,9 @@ export const config = {
     clientId: optional('GOOGLE_CLIENT_ID', ''),
     clientSecret: optional('GOOGLE_CLIENT_SECRET', ''),
   },
+
+  /** Live-demo base URL the landing hero iframes (PUBLIC_ prefix = safe to expose) */
+  demoUrl: optional('PUBLIC_DEMO_URL', DEFAULT_DEMO_BASE),
 } as const;
 
 export type Config = typeof config;

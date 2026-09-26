@@ -5,6 +5,8 @@ import { FaqAccordion } from '@/components/react/FaqAccordion';
 import { FeatureCards } from '@/components/react/FeatureCards';
 
 import { getSession } from 'auth-astro/server';
+import { config } from '@/lib/config';
+import { demoEmbedUrl, demoTargetOrigin } from '@/lib/demo-embed';
 
 const locale = (Astro.params.locale as Locale) || 'en';
 const t = useTranslations(locale);
@@ -12,6 +14,9 @@ const L = (path: string) => localizedPath(path, locale);
 
 const session = await getSession(Astro.request);
 const isLoggedIn = !!session?.user;
+
+const demoSrc = demoEmbedUrl(config.demoUrl, locale);
+const demoOrigin = demoTargetOrigin(config.demoUrl);
 
 const featureCards = [
   { title: t.landing.features.card_1_title, description: t.landing.features.card_1_desc, icon: 'zap', color: 'blue' as const },
@@ -38,7 +43,7 @@ const faqItems = [
   <!-- HERO                                         -->
   <!-- ════════════════════════════════════════════ -->
   <div class="mx-auto max-w-7xl px-4 md:px-8 lg:px-20">
-    <section class="flex flex-col justify-around items-center gap-16 py-16 lg:flex-row lg:py-[100px]">
+    <section class="flex flex-wrap justify-around items-center gap-16 py-16 lg:flex-row lg:py-[100px]">
       <!-- Left -->
       <div class="relative flex w-full max-w-[565px] flex-col gap-6">
         <!-- Background watermark -->
@@ -74,7 +79,7 @@ const faqItems = [
             {isLoggedIn ? t.nav.dashboard : t.landing.hero.cta_primary}
           </a>
           <a
-            href={L('/login')}
+            href="#demo"
             class="inline-flex items-center justify-center rounded-lg border border-(--color-border) bg-(--color-surface) px-7 py-3.5 text-base font-semibold text-(--color-text) no-underline transition-all hover:bg-(--color-surface-secondary)"
           >
             {t.landing.hero.cta_secondary}
@@ -165,6 +170,23 @@ const faqItems = [
           </div>
         </div>
       </div>
+
+      <!-- Live demo: embeds the storico-live-demo project, whose page brings its own
+           fake-Safari browser chrome, so the iframe needs no frame of its own.
+           flex-wrap on the section + w-full here keep this below the existing
+           content at every breakpoint instead of beside the phone mockup. -->
+      <div id="demo" class="w-full">
+        <!-- Cross-origin consequence (accepted, not a bug): while the demo lives on
+             another origin (PUBLIC_DEMO_URL), localStorage['theme'] is NOT shared
+             with the landing, so the demo follows the visitor's system preference. -->
+        <iframe
+          src={demoSrc}
+          title={`${t.app.name}: ${t.landing.hero.subtitle}`}
+          class="h-[420px] w-full rounded-2xl border border-(--color-border) bg-(--color-surface) sm:h-[520px] lg:h-[720px]"
+          loading="lazy"
+          data-target-origin={demoOrigin}
+        ></iframe>
+      </div>
     </section>
   </div>
 
@@ -209,4 +231,28 @@ const faqItems = [
       <FaqAccordion client:idle items={faqItems} />
     </section>
   </div>
+
+  <script>
+    // Forward the demo bridge's "leave" signals (see @/lib/demo-embed). Astro's
+    // ClientRouter re-runs `astro:page-load` on every navigation but does not
+    // re-execute this module script, so the wiring happens here, once per page
+    // load. Each swap inserts a fresh <iframe> (a new element node), and the
+    // WeakSet keys on the element itself, so every iframe is wired exactly once;
+    // the teardown is discarded because a navigation drops the old document
+    // together with its listeners — nothing leaks.
+    import { attachDemoLeaveForwarding } from '@/lib/demo-embed';
+
+    const wired = new WeakSet<HTMLIFrameElement>();
+
+    function wireDemoEmbed() {
+      const iframe = document.querySelector<HTMLIFrameElement>(
+        '#demo iframe[data-target-origin]',
+      );
+      if (!iframe || wired.has(iframe)) return;
+      attachDemoLeaveForwarding(iframe);
+      wired.add(iframe);
+    }
+
+    document.addEventListener('astro:page-load', wireDemoEmbed);
+  </script>
 </PublicLayout>
