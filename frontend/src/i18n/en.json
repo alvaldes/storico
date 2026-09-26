@@ -58,8 +58,8 @@
     "cta_learn": "Learn More",
     "hero": {
       "badge": "\u2728 AI-POWERED BACKLOG GENERATOR",
-      "title": "From user stories to technical tasks in seconds",
-      "subtitle": "Paste a natural language user story and get structured tasks on a Kanban board, ready to export to JSON or Markdown.",
+      "title": "Your backlog, already broken down.",
+      "subtitle": "Paste a user story. Get structured Kanban tasks, ready to edit and export.",
       "cta_primary": "Get Started",
       "cta_secondary": "View Demo"
     },

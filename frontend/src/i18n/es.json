@@ -58,8 +58,8 @@
     "cta_learn": "Más Información",
     "hero": {
       "badge": "\u2728 GENERADOR DE BACKLOG CON IA",
-      "title": "De historias de usuario a tareas técnicas en segundos",
-      "subtitle": "Pega una historia de usuario en lenguaje natural y obtén tareas estructuradas en un tablero Kanban listas para exportar a JSON o Markdown.",
+      "title": "Tu backlog, ya desglosado en tareas.",
+      "subtitle": "Pega una historia de usuario. Obtén tareas Kanban listas para editar y exportar.",
       "cta_primary": "Comienza",
       "cta_secondary": "Ver demo"
     },
