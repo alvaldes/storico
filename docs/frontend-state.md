@@ -188,8 +188,14 @@ class ApiClient {
   async put<T>(path, body?): Promise<T>
   async delete<T>(path): Promise<T>
   async patch<T>(path, body?): Promise<T>
+  async postForm<T>(path, form: FormData): Promise<T>
 }
 ```
+
+`postForm` existe para subidas multipart: un body `FormData` debe mantener el
+`Content-Type` que el navegador genera (`multipart/form-data; boundary=...`, la
+boundary no puede fijarse a mano), así que es el único método que no setea
+ningún header de content type ni pasa el body por `JSON.stringify`.
 
 Módulos de dominio:
 

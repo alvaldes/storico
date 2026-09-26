@@ -136,22 +136,40 @@ class ApiClient {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
 
+    return this.parseResponse<T>(response);
+  }
+
+  /**
+   * POST a FormData body (e.g. a multipart file upload).
+   *
+   * Sets no Content-Type: the browser must supply `multipart/form-data;
+   * boundary=...`, and the boundary is generated together with the body, so it
+   * cannot be set by hand. The FormData instance goes to fetch as-is (no
+   * JSON.stringify). Returns the raw parsed JSON without key conversion;
+   * the calling module applies toCamelCase/toSnakeCase itself.
+   */
+  async postForm<T>(path: string, form: FormData): Promise<T> {
+    const url = `${this.baseUrl}${path}`;
+    const response = await fetch(url, { method: 'POST', body: form });
+    return this.parseResponse<T>(response);
+  }
+
+  /** Shared success/error handling for every response: throws ApiRequestError on !ok, parses JSON otherwise. */
+  private async parseResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
       let detail: unknown;
       let rawBody: unknown;
+      // Read as text first: response.json() consumes the body even when the
+      // parse fails, so the text fallback below would never see it otherwise.
+      const text = await response.text();
       try {
-        const errorBody = await response.json();
+        const errorBody = JSON.parse(text);
         rawBody = errorBody;
         detail = errorBody.detail ?? errorBody.message ?? errorBody;
       } catch {
-        // response body is not JSON - try to get as text
-        try {
-          const text = await response.text();
-          rawBody = text;
-          detail = text;
-        } catch {
-          rawBody = null;
-        }
+        // response body is not JSON - use the raw text
+        rawBody = text;
+        detail = text;
       }
 
       throw new ApiRequestError(response.status, response.statusText, detail, rawBody);
