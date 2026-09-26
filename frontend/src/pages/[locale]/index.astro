@@ -43,9 +43,9 @@ const faqItems = [
   <!-- HERO                                         -->
   <!-- ════════════════════════════════════════════ -->
   <div class="mx-auto max-w-7xl px-4 md:px-8 lg:px-20">
-    <section class="flex flex-wrap justify-around items-center gap-16 py-16 lg:flex-row lg:py-[100px]">
-      <!-- Left -->
-      <div class="relative flex w-full max-w-[565px] flex-col gap-6">
+    <section class="flex flex-col gap-16 py-16 lg:py-[100px]">
+      <!-- Hero copy: full width, no partner column -->
+      <div class="relative flex w-full flex-col gap-6">
         <!-- Background watermark -->
         <img
           src="/favicon.svg"
@@ -87,94 +87,9 @@ const faqItems = [
         </div>
       </div>
 
-      <!-- Right: Phone Mockup -->
-      <div
-        class="hidden lg:flex h-[480px] w-[260px] shrink-0 flex-col overflow-hidden rounded-[28px] border-[3px] border-(--color-mockup-border) bg-(--color-mockup-bg) shadow-phone sm:h-[540px] sm:w-[290px] sm:rounded-[32px] sm:border-[4px] lg:h-[590px] lg:w-[310px] lg:rounded-[36px]"
-      >
-        <!-- Status bar -->
-        <div class="flex h-10 items-center justify-between px-5 sm:h-11 sm:px-6">
-          <span class="text-[12px] font-semibold text-(--color-mockup-text) sm:text-[13px]">9:41</span>
-        </div>
-
-        <!-- App header -->
-        <div class="flex h-11 items-center justify-between bg-(--color-mockup-header) px-4 sm:h-13 sm:px-5">
-          <span class="text-sm font-bold text-(--color-mockup-text) sm:text-base">{t.app.name}</span>
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="text-(--color-mockup-text)"
-          >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </div>
-
-        <!-- App content -->
-        <div class="flex flex-col gap-3 px-4 py-3 sm:gap-4 sm:px-5 sm:py-4">
-          <span class="text-[11px] font-semibold uppercase tracking-wider text-(--color-mockup-label) sm:text-[12px]">
-            User Story
-          </span>
-
-          <div class="flex h-12 items-center rounded-xl bg-(--color-mockup-header) px-3 sm:h-14 sm:px-4">
-            <span class="text-[12px] text-(--color-mockup-muted) sm:text-[13px]">As a user, I want to...</span>
-          </div>
-
-          <button
-            class="flex h-10 w-full items-center justify-center rounded-lg bg-(--color-primary-600) text-xs font-semibold text-(--color-inverse-text) transition-colors hover:bg-(--color-primary-700) sm:h-11 sm:text-sm"
-          >
-            Extraer tareas
-          </button>
-
-          <span class="text-[11px] font-semibold uppercase tracking-wider text-(--color-mockup-label) sm:text-[12px]">
-            Tareas generadas
-          </span>
-
-          <!-- Task 1 -->
-          <div class="flex flex-col gap-2 rounded-lg border border-(--color-mockup-task-border) bg-(--color-mockup-task-bg) p-2.5 sm:p-3">
-            <span class="text-[12px] font-medium text-(--color-mockup-text) sm:text-[13px]">1. Set up auth endpoint</span>
-            <div class="flex gap-1.5">
-              <span
-                class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 sm:px-2.5 sm:py-1 sm:text-[11px]"
-              >
-                backend
-              </span>
-              <span
-                class="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800 sm:px-2.5 sm:py-1 sm:text-[11px]"
-              >
-                api
-              </span>
-            </div>
-          </div>
-
-          <!-- Task 2 -->
-          <div class="flex flex-col gap-2 rounded-lg border border-(--color-mockup-task-border) bg-(--color-mockup-task-bg) p-2.5 sm:p-3">
-            <span class="text-[12px] font-medium text-(--color-mockup-text) sm:text-[13px]">2. Create login form UI</span>
-            <div class="flex gap-1.5">
-              <span
-                class="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800 sm:px-2.5 sm:py-1 sm:text-[11px]"
-              >
-                frontend
-              </span>
-              <span
-                class="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800 sm:px-2.5 sm:py-1 sm:text-[11px]"
-              >
-                ui/ux
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- Live demo: embeds the storico-live-demo project, whose page brings its own
            fake-Safari browser chrome, so the iframe needs no frame of its own.
-           flex-wrap on the section + w-full here keep this below the existing
-           content at every breakpoint instead of beside the phone mockup. -->
+           w-full here is what keeps it on its own row, below the hero copy. -->
       <div id="demo" class="w-full">
         <!-- Cross-origin consequence (accepted, not a bug): while the demo lives on
              another origin (PUBLIC_DEMO_URL), localStorage['theme'] is NOT shared

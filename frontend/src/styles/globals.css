@@ -130,18 +130,7 @@
   --color-inverse-muted: #94a3b8;
   --color-inverse-border: #1e293b;
 
-  /* Phone mockup (dark device in light theme) */
-  --color-mockup-bg: #0f172a;
-  --color-mockup-header: #1e293b;
-  --color-mockup-border: #1e293b;
-  --color-mockup-task-bg: #1e293b;
-  --color-mockup-task-border: #334155;
-  --color-mockup-text: #e2e8f0;
-  --color-mockup-muted: #64748b;
-  --color-mockup-label: #94a3b8;
-
   /* Shadows — using theme colors instead of hardcoded rgba */
-  --shadow-phone: 0 24px 48px -8px color-mix(in oklch, var(--color-inverse) 15%, transparent);
   --shadow-card: 0 8px 30px -4px color-mix(in oklch, var(--color-inverse) 4%, transparent);
   --shadow-primary-sm: 0 4px 12px color-mix(in oklch, var(--color-primary-600) 20%, transparent);
   --shadow-primary-lg: 0 4px 20px color-mix(in oklch, var(--color-primary-600) 25%, transparent);
@@ -207,16 +196,6 @@
   --color-accent-green-icon: oklch(0.55 0.15 145);
   --color-accent-orange-bg: oklch(0.18 0.04 70);
   --color-accent-orange-icon: oklch(0.65 0.18 70);
-
-  /* Invert mockup: light device UI on dark bg */
-  --color-mockup-bg: #e8e8e8;
-  --color-mockup-header: #e0e0e0;
-  --color-mockup-border: #e2e8f0;
-  --color-mockup-task-bg: #f8fafc;
-  --color-mockup-task-border: #e2e8f0;
-  --color-mockup-text: #0f172a;
-  --color-mockup-muted: #94a3b8;
-  --color-mockup-label: #64748b;
 }
 
 /* ── Base Styles ──────────────────────────────────────────────── */
