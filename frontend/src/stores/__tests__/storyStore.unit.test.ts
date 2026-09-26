@@ -6,6 +6,7 @@ vi.mock('@/lib/stories-api', () => ({
   getStory: vi.fn(),
   updateStory: vi.fn(),
   deleteStory: vi.fn(),
+  importStories: vi.fn(),
 }));
 
 vi.mock('@/lib/projects-api', () => ({
@@ -21,8 +22,8 @@ import * as projectsApi from '@/lib/projects-api';
 import { useStoryStore } from '@/stores/storyStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
-import { getScopedWorkspaceId, resetScopedWorkspace } from '@/lib/workspace-scope';
-import type { UserStory } from '@/types/story';
+import { getScopedWorkspaceId, resetScopedWorkspace, setScopedWorkspaceId } from '@/lib/workspace-scope';
+import type { StoryImportReport, UserStory } from '@/types/story';
 import type { Workspace } from '@/types/workspace';
 import type { PaginatedResponse } from '@/lib/projects-api';
 
@@ -65,6 +66,23 @@ function deferred<T>() {
     reject = rej;
   });
   return { promise, resolve, reject };
+}
+
+function makeReport(overrides: Partial<StoryImportReport> = {}): StoryImportReport {
+  return {
+    created: 2,
+    skipped: 1,
+    totalRows: 3,
+    duplicates: [],
+    storyIds: ['imported-1', 'imported-2'],
+    ...overrides,
+  };
+}
+
+function makeCsvFile(): File {
+  return new File(['actor,feature,benefit\nuser,log in,access'], 'stories.csv', {
+    type: 'text/csv',
+  });
 }
 
 const storyA = makeStory('story-ws-a');
@@ -408,6 +426,146 @@ describe('storyStore — created story append guard with a real observed scope',
     expect(useStoryStore.getState().stories).toEqual([]);
     // The caller still gets the story back, so the form can navigate to it.
     expect(created).toBe(storyA);
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+});
+
+describe('storyStore — CSV import', () => {
+  // Mirrors the created-story scope guard setup: a fresh observed scope, a workspace store
+  // with two workspaces, and a clean story slice.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetScopedWorkspace();
+    vi.mocked(projectsApi.listProjects).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 100,
+    });
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace('ws-a'), makeWorkspace('ws-b')],
+      currentWorkspace: makeWorkspace('ws-a'),
+      loading: false,
+      saving: false,
+    });
+    useStoryStore.setState({ stories: [], loading: false, saving: false });
+  });
+
+  it('refreshes with both arguments and returns the report when the import created stories', async () => {
+    // Observe a real scope so the guard compares concrete ids, not the fail-open undefined.
+    setScopedWorkspaceId('ws-a');
+    const report = makeReport();
+    vi.mocked(api.importStories).mockResolvedValueOnce(report);
+    vi.mocked(api.listStories).mockResolvedValueOnce(page([]));
+
+    const result = await useStoryStore.getState().importStories({
+      workspaceId: 'ws-a',
+      projectId: 'p1',
+      file: makeCsvFile(),
+    });
+
+    // The caller gets the report back unchanged, so it can render created/skipped.
+    expect(result).toBe(report);
+    // The refresh re-runs the query the UI is already showing, with both arguments
+    // exactly as StoriesList calls fetchStories(projectId, workspaceId).
+    expect(api.listStories).toHaveBeenCalledWith('p1', 1, 100, 'ws-a');
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+
+  it('does not refresh when every row was a duplicate (created === 0)', async () => {
+    setScopedWorkspaceId('ws-a');
+    vi.mocked(api.importStories).mockResolvedValueOnce(makeReport({ created: 0, storyIds: [] }));
+    vi.mocked(api.listStories).mockResolvedValue(page([]));
+
+    const result = await useStoryStore.getState().importStories({
+      workspaceId: 'ws-a',
+      projectId: 'p1',
+      file: makeCsvFile(),
+    });
+
+    expect(result.created).toBe(0);
+    // Nothing changed in the database, so an unasked refetch would be wasted.
+    expect(api.listStories).not.toHaveBeenCalled();
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+
+  it('does not refresh when the user switched workspace while the import was inflight', async () => {
+    setScopedWorkspaceId('ws-a');
+    const pendingImport = deferred<StoryImportReport>();
+    vi.mocked(api.importStories).mockImplementationOnce(() => pendingImport.promise);
+    vi.mocked(api.listStories).mockResolvedValue(page([]));
+
+    const inflight = useStoryStore.getState().importStories({
+      workspaceId: 'ws-a',
+      projectId: 'p1',
+      file: makeCsvFile(),
+    });
+    expect(useStoryStore.getState().saving).toBe(true);
+
+    // The user switches workspace while the upload is still inflight.
+    setScopedWorkspaceId('ws-b');
+    expect(getScopedWorkspaceId()).toBe('ws-b');
+
+    pendingImport.resolve(makeReport());
+    await inflight;
+
+    // A refresh here would repopulate the new workspace's list with a request scoped
+    // to the old one: the response must not trigger it.
+    expect(api.listStories).not.toHaveBeenCalled();
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+
+  it('keeps saving true while the import is inflight and clears it when it settles', async () => {
+    setScopedWorkspaceId('ws-a');
+    const pendingImport = deferred<StoryImportReport>();
+    vi.mocked(api.importStories).mockImplementationOnce(() => pendingImport.promise);
+    vi.mocked(api.listStories).mockResolvedValue(page([]));
+
+    const inflight = useStoryStore.getState().importStories({
+      workspaceId: 'ws-a',
+      projectId: 'p1',
+      file: makeCsvFile(),
+    });
+    expect(useStoryStore.getState().saving).toBe(true);
+
+    pendingImport.resolve(makeReport());
+    await inflight;
+
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+
+  it('propagates a rejected import and leaves saving false', async () => {
+    setScopedWorkspaceId('ws-a');
+    vi.mocked(api.importStories).mockRejectedValueOnce(new Error('boom'));
+
+    await expect(
+      useStoryStore.getState().importStories({
+        workspaceId: 'ws-a',
+        projectId: 'p1',
+        file: makeCsvFile(),
+      }),
+    ).rejects.toThrow('boom');
+
+    // The rejection is the whole caller-facing contract; nothing to refresh either.
+    expect(api.listStories).not.toHaveBeenCalled();
+    expect(useStoryStore.getState().saving).toBe(false);
+  });
+
+  it('does not reject the import when the post-import refresh fails', async () => {
+    setScopedWorkspaceId('ws-a');
+    const report = makeReport();
+    vi.mocked(api.importStories).mockResolvedValueOnce(report);
+    // The refresh itself fails: the import already succeeded, so the action must still
+    // hand the report back instead of surfacing the refresh failure as a failed import.
+    vi.mocked(api.listStories).mockRejectedValueOnce(new Error('refresh boom'));
+
+    const result = await useStoryStore.getState().importStories({
+      workspaceId: 'ws-a',
+      projectId: 'p1',
+      file: makeCsvFile(),
+    });
+
+    expect(result).toBe(report);
     expect(useStoryStore.getState().saving).toBe(false);
   });
 });

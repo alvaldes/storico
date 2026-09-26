@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { UserStory } from '@/types/story';
+import type { StoryImportReport, UserStory } from '@/types/story';
 import type { CreateStoryParams, UpdateStoryParams } from '@/schemas';
+import type { ImportStoriesParams } from '@/lib/stories-api';
 import * as api from '@/lib/stories-api';
 import { createInflightTracker } from '@/stores/_inflight';
 import { getScopedWorkspaceId, isScopeUnchanged } from '@/lib/workspace-scope';
@@ -38,6 +39,8 @@ interface StoryState {
   fetchStory: (id: string) => Promise<void>;
   /** Create a new user story. */
   createStory: (params: CreateStoryParams) => Promise<UserStory>;
+  /** Import stories from a CSV file. Returns the report so the caller can render it. */
+  importStories: (params: ImportStoriesParams) => Promise<StoryImportReport>;
   /** Update an existing user story. */
   updateStory: (id: string, params: UpdateStoryParams) => Promise<void>;
   /** Delete a user story. */
@@ -112,6 +115,43 @@ export const useStoryStore = create<StoryState>((set, get) => ({
         set({ saving: false });
       }
       return story;
+    } catch (err) {
+      // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
+      // settled — the scope decides where the *result* belongs, not whether it finished.
+      set({ saving: false });
+      throw err;
+    }
+  },
+
+  importStories: async (params) => {
+    // Same sampling as createStory: the scope in effect when the import started is the only
+    // thing that can say whether its result still belongs to the workspace on screen.
+    const scopeAtCall = getScopedWorkspaceId();
+    set({ saving: true });
+    try {
+      const report = await api.importStories(params);
+      // The import response carries only story ids, not the stories themselves, so unlike
+      // createStory this action cannot append to `stories`; it refreshes the query the UI is
+      // already showing instead — with both arguments, exactly as StoriesList calls it.
+      //
+      // The scope guard wraps only the refresh, never `saving`: if the user switched
+      // workspace mid-import, refreshing would repopulate the new workspace's list with a
+      // request scoped to the old one. `saving` says a mutation is in flight and this one
+      // has settled, so it clears in every branch.
+      if (isScopeUnchanged(scopeAtCall) && report.created > 0) {
+        // Refresh only when something was actually created. When every row was a duplicate
+        // (`created === 0`) nothing changed in the database, so refreshing would be an
+        // unasked request — this codebase avoids those on purpose (see the `workspace_ids`
+        // comment on the repository's `list_page` and the `fetchStories` inflight tracker).
+        //
+        // A failed refresh must not reject the action: the import itself already succeeded,
+        // and the report is the caller-facing contract. `fetchStories` contains its own
+        // failures — its catch clears `loading` and never rethrows — so a refresh that
+        // cannot load resolves here as a stale list, never as a failed import.
+        await get().fetchStories(params.projectId, params.workspaceId);
+      }
+      set({ saving: false });
+      return report;
     } catch (err) {
       // Outside the guard on purpose: `saving` says a mutation is in flight, and this one has
       // settled — the scope decides where the *result* belongs, not whether it finished.
