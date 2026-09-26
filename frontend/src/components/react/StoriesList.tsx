@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   FileText,
   Fingerprint,
+  FileUp,
   Info,
   Plus,
   Pencil,
@@ -17,6 +18,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStore';
 import type { UserStory } from '@/types/story';
 import { shortUUID } from '@/lib/utils';
 import { StoryForm } from '@/components/react/StoryForm';
+import { ImportStoriesDialog } from '@/components/react/ImportStoriesDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -60,6 +62,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(initialProjectId);
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingStory, setEditingStory] = useState<UserStory | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
@@ -316,6 +319,14 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
 
         <div className="flex items-center gap-2">
           <Button
+            variant="outline"
+            onClick={() => setImportOpen(true)}
+            disabled={!selectedProjectId && !initialProjectId}
+          >
+            <FileUp className="h-4 w-4" />
+            {t.stories.import_button}
+          </Button>
+          <Button
             onClick={() => setFormOpen(true)}
             disabled={!selectedProjectId && !initialProjectId}
           >
@@ -454,6 +465,15 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
         onSubmit={handleCreate}
         locale={locale}
         title={createDialogTitle}
+      />
+
+      {/* CSV import dialog */}
+      <ImportStoriesDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        locale={locale}
+        projectId={selectedProjectId ?? initialProjectId ?? ''}
+        workspaceId={workspaceId ?? ''}
       />
 
       {/* Edit dialog */}
