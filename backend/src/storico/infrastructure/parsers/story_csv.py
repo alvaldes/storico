@@ -59,9 +59,14 @@ class StoryCsvRow:
     In ``parts`` mode ``actor``/``feature``/``benefit`` are populated and ``raw_text``
     holds the optional raw-text column verbatim. In ``full`` mode ``raw_text`` holds the
     story text read from the single ``story``/``input``/``raw_text`` column.
+
+    ``field_count`` is the number of fields ``csv.reader`` produced for this record. It is
+    a structural fact only — a count differing from the header's column count means the
+    column mapping on this row is unreliable, and judging that is the caller's job.
     """
 
     line_number: int
+    field_count: int
     actor: str | None = None
     feature: str | None = None
     benefit: str | None = None
@@ -70,10 +75,16 @@ class StoryCsvRow:
 
 @dataclass(frozen=True)
 class ParsedStoryCsv:
-    """A parsed file: the detected ``mode`` and its rows in source order."""
+    """A parsed file: the detected ``mode`` and its rows in source order.
+
+    ``expected_field_count`` is the header's column count, so the caller can compare it
+    against each row's ``field_count`` and refuse any record whose field count does not
+    match — such a row cannot be mapped to columns reliably.
+    """
 
     mode: str
     rows: tuple[StoryCsvRow, ...]
+    expected_field_count: int
 
 
 def parse_story_csv(data: bytes) -> ParsedStoryCsv:
@@ -116,9 +127,11 @@ def parse_story_csv(data: bytes) -> ParsedStoryCsv:
             continue
         if len(rows) >= MAX_ROWS:
             raise StoryCsvError("too_many_rows")
-        rows.append(_build_row(mode, positions, raw_row, record_start_line))
+        rows.append(
+            _build_row(mode, positions, raw_row, record_start_line, field_count=len(raw_row))
+        )
 
-    return ParsedStoryCsv(mode=mode, rows=tuple(rows))
+    return ParsedStoryCsv(mode=mode, rows=tuple(rows), expected_field_count=len(header))
 
 
 def _detect_delimiter(header_line: str) -> str:
@@ -186,10 +199,12 @@ def _build_row(
     positions: dict[str, int],
     row: list[str],
     line_number: int,
+    field_count: int,
 ) -> StoryCsvRow:
     if mode == "parts":
         return StoryCsvRow(
             line_number=line_number,
+            field_count=field_count,
             actor=_cell(row, positions.get("actor")),
             feature=_cell(row, positions.get("feature")),
             benefit=_cell(row, positions.get("benefit")),
@@ -199,5 +214,6 @@ def _build_row(
     column = next((name for name in _FULL_COLUMNS if name in positions), None)
     return StoryCsvRow(
         line_number=line_number,
+        field_count=field_count,
         raw_text=_cell(row, positions.get(column)) if column is not None else None,
     )

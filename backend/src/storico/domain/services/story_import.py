@@ -48,13 +48,21 @@ _STORY_PATTERN = re.compile(
 
 @dataclass(frozen=True)
 class ImportRow:
-    """The caller-mapped input for one row: optional cells plus its located line."""
+    """The caller-mapped input for one row: optional cells plus its located line.
+
+    ``field_count`` and ``expected_field_count`` are optional structural facts supplied
+    by the caller (row field count vs header column count). When both are present and
+    differ, the column mapping is unreliable and the row is refused with
+    ``field_count_mismatch`` before any field-level check runs.
+    """
 
     line_number: int
     actor: str | None = None
     feature: str | None = None
     benefit: str | None = None
     raw_text: str | None = None
+    field_count: int | None = None
+    expected_field_count: int | None = None
 
 
 @dataclass(frozen=True)
@@ -68,13 +76,24 @@ class StoryParts:
 
 @dataclass(frozen=True)
 class RowError:
-    """One blocking problem on one row. At most one error is reported per row."""
+    """One blocking problem on one row. At most one error is reported per row.
+
+    ``observed_count`` and ``expected_count`` are populated only for the
+    ``field_count_mismatch`` reason.
+
+    ``parts_look_like_a_full_story`` is the only reason that carries neither a field
+    nor counts: the problem spans the columns (the row is a whole story the header
+    cut apart), so naming a single field would mislead — the reason plus the line
+    number is the whole diagnosis.
+    """
 
     line_number: int
     reason: str
     field: str | None = None
     actual_length: int | None = None
     max_length: int | None = None
+    observed_count: int | None = None
+    expected_count: int | None = None
 
 
 @dataclass(frozen=True)
@@ -203,14 +222,58 @@ def validate_import(
 
 
 def _first_error(row: ImportRow, mode: str) -> RowError | None:
-    """Return the first problem on the row, in the documented per-field order."""
+    """Return the first problem on the row, in the documented per-field order.
+
+    The field-count check runs before every other per-row check: when the row's field
+    count does not match the header's, the column mapping is unreliable and every
+    field-level complaint on the row is noise. Only a mismatch is reported.
+    """
+    if (
+        row.field_count is not None
+        and row.expected_field_count is not None
+        and row.field_count != row.expected_field_count
+    ):
+        return RowError(
+            line_number=row.line_number,
+            reason="field_count_mismatch",
+            observed_count=row.field_count,
+            expected_count=row.expected_field_count,
+        )
     if mode == "parts":
+        error = _whole_story_in_parts_error(row)
+        if error is not None:
+            return error
         for field in _PART_FIELDS:
             error = _required_field_error(row, field)
             if error is not None:
                 return error
         return _optional_raw_text_error(row)
     return _full_text_error(row)
+
+
+def _whole_story_in_parts_error(row: ImportRow) -> RowError | None:
+    """Refuse a parts row whose three joined cells read as one complete canonical story.
+
+    Under an ``actor,feature,benefit`` header, a pasted unquoted canonical story is
+    split by the story's own commas into exactly three fields — the field counts agree
+    with the header by coincidence — so the ``field_count_mismatch`` guard cannot see
+    it, and the row used to be mapped positionally into a plausible-looking garbage
+    story with nothing reported. Three values that together read as one complete story
+    are not three parts: the row contradicts its own header. The module's existing
+    ``parse_user_story`` decides, so there is no second regex.
+
+    This is deliberately not a per-field reason: the problem spans the columns, so
+    naming one field would mislead. It is reported with ``field=None`` and no counts.
+    A row with a missing or blank cell skips the check and keeps falling through to
+    ``missing_field`` / ``empty_field``.
+    """
+    values = [getattr(row, field) for field in _PART_FIELDS]
+    if any(value is None or not value.strip() for value in values):
+        return None
+    joined = ", ".join(value.strip() for value in values)  # type: ignore[union-attr]
+    if parse_user_story(joined) is None:
+        return None
+    return RowError(line_number=row.line_number, reason="parts_look_like_a_full_story")
 
 
 def _required_field_error(row: ImportRow, field: str) -> RowError | None:

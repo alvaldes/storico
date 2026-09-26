@@ -302,6 +302,221 @@ def test_the_report_exposes_totals_mode_and_blocked() -> None:
 
 
 @pytest.mark.unit
+def test_a_field_count_mismatch_reports_exactly_one_error_and_blocks_the_row() -> None:
+    report = validate_import(
+        [ImportRow(1, "user", "log in", "access", field_count=4, expected_field_count=3)],
+        "parts",
+        {},
+    )
+
+    assert report.blocked
+    assert report.new_stories == ()
+    assert len(report.errors) == 1
+    error = report.errors[0]
+    assert error.reason == "field_count_mismatch"
+    assert error.line_number == 1
+    assert error.observed_count == 4
+    assert error.expected_count == 3
+
+
+@pytest.mark.unit
+def test_the_mismatch_wins_over_a_field_problem_on_the_same_row() -> None:
+    """When the column mapping is unreliable, field-level complaints are noise.
+
+    A row both ragged and carrying an over-long benefit reports exactly one error: the
+    mismatch, not the length.
+    """
+    report = validate_import(
+        [
+            ImportRow(
+                3,
+                "user",
+                "log in",
+                "x" * (FIELD_LIMITS["benefit"] + 1),
+                field_count=4,
+                expected_field_count=3,
+            )
+        ],
+        "parts",
+        {},
+    )
+
+    assert len(report.errors) == 1
+    error = report.errors[0]
+    assert error.reason == "field_count_mismatch"
+    assert error.observed_count == 4
+    assert error.expected_count == 3
+
+
+@pytest.mark.unit
+def test_a_row_with_matching_counts_reports_no_mismatch() -> None:
+    report = validate_import(
+        [ImportRow(1, "user", "log in", "access", field_count=3, expected_field_count=3)],
+        "parts",
+        {},
+    )
+
+    assert not report.blocked
+    assert report.errors == ()
+    assert len(report.new_stories) == 1
+
+
+@pytest.mark.unit
+def test_rows_without_counts_are_not_checked_for_a_mismatch() -> None:
+    """Existing callers that do not supply the counts keep working unchanged."""
+    report = validate_import(
+        [
+            ImportRow(1, "user", "log in", "access"),
+            ImportRow(2, feature="log in", benefit="access"),
+        ],
+        "parts",
+        {},
+    )
+
+    assert [(error.reason, error.field) for error in report.errors] == [
+        ("missing_field", "actor"),
+    ]
+
+
+@pytest.mark.unit
+def test_the_unquoted_canonical_story_that_used_to_be_written_is_now_refused() -> None:
+    """The exact silent-corruption case is now a blocking row error.
+
+    A CSV whose header declares ``actor,feature,benefit`` and whose data row carries an
+    unquoted canonical story splits at the story's own commas: the first fields map
+    positionally to garbage values and whatever overflows the header is dropped, with
+    nothing reported. The counts here reproduce that measured shape — 4 fields read by
+    ``csv.reader`` against a 3-column header — and the row is now refused with nothing
+    created.
+    """
+    report = validate_import(
+        [
+            ImportRow(
+                2,
+                actor="As a user",
+                feature="I want A",
+                benefit="so that B",
+                field_count=4,
+                expected_field_count=3,
+            )
+        ],
+        "parts",
+        {},
+    )
+
+    assert report.blocked
+    assert report.new_stories == ()
+    assert [(error.reason, error.line_number) for error in report.errors] == [
+        ("field_count_mismatch", 2)
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("actor", "feature", "benefit"),
+    [
+        ("user", "log in", "access"),
+        ("admin, senior", "export, save", "share, collaborate"),
+        # A pasted prefix: the joined text still lacks "I want", so it does not parse.
+        ("As a user", "log in", "access"),
+        ("user", "log in", "so that users retry"),
+        ("power user", "I want reports", "see data"),
+    ],
+)
+def test_legitimate_part_rows_are_not_flagged_as_a_whole_story(
+    actor: str, feature: str, benefit: str
+) -> None:
+    """False-positive guards: only a row that joins into a parseable story is refused."""
+    report = validate_import([ImportRow(1, actor, feature, benefit)], "parts", {})
+
+    assert not any(error.reason == "parts_look_like_a_full_story" for error in report.errors)
+    story = report.new_stories[0]
+    assert (story.actor, story.feature, story.benefit) == (actor, feature, benefit)
+
+
+@pytest.mark.unit
+def test_a_pasted_canonical_story_split_by_its_own_commas_is_refused_not_silently_corrupted() -> (
+    None
+):
+    """The silent-corruption case that used to become a story is now a blocking error.
+
+    Under an ``actor,feature,benefit`` header, an unquoted canonical story is split by
+    the story's own commas into exactly three fields, so the counts agree with the
+    header by coincidence and the ``field_count_mismatch`` guard cannot catch it: the
+    row used to be mapped positionally into a plausible garbage story (actor='As a
+    user', feature=' I want A', benefit=' so that B') with nothing reported. The row
+    contradicts its own header and is refused with nothing created.
+    """
+    report = validate_import(
+        [
+            ImportRow(
+                2,
+                actor="As a user",
+                feature=" I want A",
+                benefit=" so that B",
+                field_count=3,
+                expected_field_count=3,
+            )
+        ],
+        "parts",
+        {},
+    )
+
+    assert report.blocked
+    assert report.new_stories == ()
+    assert len(report.errors) == 1
+    error = report.errors[0]
+    assert error.reason == "parts_look_like_a_full_story"
+    assert error.field is None
+    assert error.observed_count is None
+    assert error.expected_count is None
+    assert error.line_number == 2
+
+
+@pytest.mark.unit
+def test_parts_look_like_a_full_story_wins_over_a_length_problem_on_the_same_row() -> None:
+    """The whole-story check runs before the per-field checks, so it reports alone."""
+    over_limit_actor = "As a " + "x" * FIELD_LIMITS["actor"]
+    assert len(over_limit_actor) > FIELD_LIMITS["actor"]
+
+    report = validate_import(
+        [ImportRow(4, over_limit_actor, " I want A", " so that B")], "parts", {}
+    )
+
+    assert len(report.errors) == 1
+    assert report.errors[0].reason == "parts_look_like_a_full_story"
+
+
+@pytest.mark.unit
+def test_full_mode_does_not_run_the_whole_story_check() -> None:
+    report = validate_import(
+        [
+            ImportRow(
+                1,
+                actor="As a user",
+                feature=" I want A",
+                benefit=" so that B",
+                raw_text="As a user, I want to log in, so that I can access",
+            )
+        ],
+        "full",
+        {},
+    )
+
+    assert report.errors == ()
+    assert len(report.new_stories) == 1
+    assert report.new_stories[0].raw_text == "As a user, I want to log in, so that I can access"
+
+
+@pytest.mark.unit
+def test_a_row_with_a_blank_cell_still_falls_through_to_empty_field() -> None:
+    """An empty row cannot join into a story, so the emptiness check keeps ruling."""
+    report = validate_import([ImportRow(1, actor="  ", feature="", benefit=None)], "parts", {})
+
+    assert [(error.reason, error.field) for error in report.errors] == [("empty_field", "actor")]
+
+
+@pytest.mark.unit
 def test_the_module_does_not_import_from_infrastructure() -> None:
     source = Path(story_import.__file__).read_text(encoding="utf-8")
 

@@ -185,6 +185,56 @@ def test_a_tab_inside_a_single_column_story_stays_text() -> None:
 
 
 @pytest.mark.unit
+def test_a_row_with_more_fields_than_the_header_reports_both_counts() -> None:
+    """An unquoted canonical story under a parts header splits into extra fields.
+
+    A canonical story carries commas by construction, so pasted under a comma header
+    without quoting each comma adds a field: 'As a user, I want A, B, so that C' reads
+    as 4 fields, maps positionally to a garbage story and silently drops the rest. The
+    parser reports the structural fact (4 fields against a 3-column header); judging it
+    is the domain's job.
+    """
+    parsed = parse_story_csv(_csv("actor,feature,benefit", "As a user, I want A, B, so that C"))
+
+    assert parsed.expected_field_count == 3
+    row = parsed.rows[0]
+    assert row.field_count == 4
+
+
+@pytest.mark.unit
+def test_a_single_column_file_reports_one_field_for_every_row() -> None:
+    stories = [f"As a user, I want A{i}, so that B{i}" for i in range(5)]
+
+    parsed = parse_story_csv(_csv("story", *stories))
+
+    assert parsed.expected_field_count == 1
+    assert [row.field_count for row in parsed.rows] == [1] * len(stories)
+
+
+@pytest.mark.unit
+def test_a_quoted_field_with_the_delimiter_counts_as_one_field() -> None:
+    """A properly quoted canonical story row must not trip the count.
+
+    The canonical format contains commas by construction, so a quoted upload is the
+    correct way to write a parts-header row and the counts must agree.
+    """
+    parsed = parse_story_csv(
+        _csv("actor,feature,benefit", '"user, the admin","log in, hard","access, at last"')
+    )
+
+    assert parsed.expected_field_count == 3
+    assert parsed.rows[0].field_count == 3
+
+
+@pytest.mark.unit
+def test_a_row_with_fewer_fields_than_the_header_reports_its_smaller_count() -> None:
+    parsed = parse_story_csv(_csv("actor,feature,benefit", "user,log in"))
+
+    assert parsed.expected_field_count == 3
+    assert parsed.rows[0].field_count == 2
+
+
+@pytest.mark.unit
 def test_a_partial_parts_header_fails_the_file() -> None:
     """One parts column without the others is a missing column, not a full-mode file.
 
