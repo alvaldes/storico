@@ -225,6 +225,7 @@
     "import_result_title": "Importación terminada",
     "import_result_summary": "{created} creadas, {skipped} omitidas",
     "import_result_none": "Todas las líneas ya existen en este proyecto, así que no se agregó nada.",
+    "import_result_empty": "El archivo no tiene filas para importar.",
     "import_errors_title": "El archivo tiene líneas que hay que corregir",
     "import_errors_hint": "No se importó nada. Corrige estas líneas y vuelve a subir el archivo.",
     "import_error_line": "Línea {line}",
@@ -242,6 +243,7 @@
     "import_reason_invalid_encoding": "el archivo no es UTF-8 válido",
     "import_reason_header_unrecognized": "la primera línea debe ser un encabezado: actor,feature,benefit o story",
     "import_reason_too_many_rows": "más de {max} líneas",
+    "import_reason_too_many_rows_no_max": "el archivo tiene más líneas de las que permite una importación",
     "import_reason_malformed_csv": "el archivo no es un CSV válido",
     "import_reason_empty_file": "el archivo está vacío",
     "import_reason_unknown": "problema inesperado"

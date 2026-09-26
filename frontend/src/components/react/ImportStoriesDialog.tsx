@@ -69,7 +69,13 @@ export function describeImportReason(
     case 'header_unrecognized':
       return s.import_reason_header_unrecognized;
     case 'too_many_rows':
-      return s.import_reason_too_many_rows.replace('{max}', String(item.max ?? 0));
+      // The file-rejection payload for this reason carries no `max` field, and
+      // substituting a missing number reads as nonsense ("more than 0 lines").
+      // Use the numberless sentence while `max` is absent; the numbered one
+      // stays for when the backend does send it.
+      return typeof item.max === 'number'
+        ? s.import_reason_too_many_rows.replace('{max}', String(item.max))
+        : s.import_reason_too_many_rows_no_max;
     case 'malformed_csv':
       return s.import_reason_malformed_csv;
     case 'empty_file':
@@ -83,6 +89,10 @@ export function describeImportReason(
  * Format a byte count as a human-readable size (binary units, matching what
  * the backend limit counts). `2097152` must read as "2 MB", not as a raw
  * number a person has to divide by hand.
+ *
+ * The unit suffixes (`B`, `KB`, `MB`, `GB`) are SI symbols and intentionally
+ * language-independent: they are NOT untranslated copy, so do not flag them
+ * for i18n.
  */
 export function formatFileSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
@@ -128,9 +138,27 @@ export function ImportStoriesDialog({
 
   const inputRef = useRef<HTMLInputElement>(null);
 
+  /*
+   * Monotonic run token, following the pattern of storyStore.ts: only the run
+   * whose token is still current may write dialog state. The token advances on
+   * every reset-on-open and every submit, so a completion from a superseded
+   * run — the dialog was closed while the import was still in flight, or a
+   * newer submit already started — writes nothing at all: not the report, not
+   * the failure, not `running`. The same ref also refuses a second submit
+   * dispatched in the same batch, where React has not flushed `running` yet
+   * and two handlers would both observe `false` and both fire the import.
+   */
+  const runTokenRef = useRef<{ token: number; inFlight: boolean }>({
+    token: 0,
+    inFlight: false,
+  });
+
   /* ── a fresh open must never show a previous run's report ── */
   useEffect(() => {
     if (open) {
+      // An import still in flight belongs to a dialog that was closed: supersede
+      // it, so its completion can no longer touch the state below.
+      runTokenRef.current = { token: runTokenRef.current.token + 1, inFlight: false };
       setFile(null);
       setRunning(false);
       setReport(null);
@@ -142,15 +170,21 @@ export function ImportStoriesDialog({
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!file || running || !projectId || !workspaceId) return;
+    if (!file || !projectId || !workspaceId) return;
+    // A run that already claimed the dialog refuses any further submit.
+    if (runTokenRef.current.inFlight) return;
+    const token = runTokenRef.current.token + 1;
+    runTokenRef.current = { token, inFlight: true };
     setRunning(true);
     setReport(null);
     setFailure(null);
     setSubmitError(null);
     try {
       const result = await importStories({ workspaceId, projectId, file });
+      if (runTokenRef.current.token !== token) return;
       setReport(result);
     } catch (err) {
+      if (runTokenRef.current.token !== token) return;
       const typed = readImportFailure(err);
       if (typed) {
         setFailure(typed);
@@ -163,13 +197,18 @@ export function ImportStoriesDialog({
           new ApiRequestError(
             0,
             'Unknown Error',
-            err instanceof Error ? err.message : 'Unknown error',
+            err instanceof Error ? err.message : t.common.error,
             err,
           ),
         );
       }
     } finally {
-      setRunning(false);
+      // Only the run whose token is still current may release the in-flight
+      // claim and the spinner; a superseded run writes nothing at all.
+      if (runTokenRef.current.token === token) {
+        runTokenRef.current = { token, inFlight: false };
+        setRunning(false);
+      }
     }
   };
 
@@ -250,8 +289,14 @@ export function ImportStoriesDialog({
             <div className="space-y-3">
               <p className="text-sm font-medium text-foreground">{t.stories.import_result_title}</p>
               {report.created === 0 ? (
-                // Nothing was created: say so plainly instead of a proud "0 created".
-                <p className="text-sm text-muted-foreground">{t.stories.import_result_none}</p>
+                // Nothing was created. An empty file (header only, 201 with
+                // total_rows 0) is not the all-duplicates case: say what
+                // actually happened instead of a claim about existing lines.
+                report.totalRows === 0 ? (
+                  <p className="text-sm text-muted-foreground">{t.stories.import_result_empty}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">{t.stories.import_result_none}</p>
+                )
               ) : (
                 <p className="text-sm text-foreground">
                   {t.stories.import_result_summary
@@ -264,7 +309,12 @@ export function ImportStoriesDialog({
                   <p className="text-sm font-medium text-foreground">
                     {t.stories.import_duplicates_title}
                   </p>
-                  <ul className="space-y-1">{report.duplicates.map(renderDuplicate)}</ul>
+                  {/* Same scroll treatment as the row-failure report below: a
+                      1000-row all-duplicates file must scroll here too, never
+                      push the footer off screen. */}
+                  <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-muted/30 p-3">
+                    <ul className="space-y-1">{report.duplicates.map(renderDuplicate)}</ul>
+                  </div>
                 </div>
               )}
             </div>
@@ -336,7 +386,12 @@ export function ImportStoriesDialog({
             >
               {t.common.cancel}
             </Button>
-            <Button type="submit" disabled={!file || running}>
+            <Button
+              type="submit"
+              // Defence in depth: the dialog is only ever opened with both ids
+              // set, but a missing one must disable submit, not silently no-op.
+              disabled={!file || running || !projectId || !workspaceId}
+            >
               {running ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

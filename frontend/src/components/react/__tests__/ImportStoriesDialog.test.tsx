@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ImportStoriesDialog, describeImportReason } from '@/components/react/ImportStoriesDialog';
 import { useStoryStore } from '@/stores/storyStore';
@@ -83,6 +83,161 @@ describe('ImportStoriesDialog', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/0 created/)).not.toBeInTheDocument();
     expect(screen.queryByText(/created,/)).not.toBeInTheDocument();
+    // All-duplicates, not empty: the empty-file message must not appear.
+    expect(screen.queryByText('The file has no rows to import.')).not.toBeInTheDocument();
+  });
+
+  it('tells the truth about an empty file instead of claiming every line already exists', async () => {
+    const user = userEvent.setup();
+    // A header-only file is a 201 with total_rows 0 — not a duplicate report.
+    importStories.mockResolvedValue({
+      created: 0,
+      skipped: 0,
+      totalRows: 0,
+      duplicates: [],
+      storyIds: [],
+    });
+
+    renderDialog();
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, makeFile());
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+
+    expect(await screen.findByText('The file has no rows to import.')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Every line already exists in this project, so nothing was added.'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Import finished')).toBeInTheDocument();
+  });
+
+  it('scrolls the success report duplicates like the failure report does', async () => {
+    const user = userEvent.setup();
+    importStories.mockResolvedValue({
+      created: 0,
+      skipped: 2,
+      totalRows: 2,
+      duplicates: [
+        { line: 2, reason: 'duplicate' },
+        { line: 3, reason: 'duplicate' },
+      ],
+      storyIds: [],
+    });
+
+    renderDialog();
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, makeFile());
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+
+    expect(await screen.findByText('Import finished')).toBeInTheDocument();
+    // jsdom has no layout, so assert on the scroll container's classes: the
+    // duplicates list must sit inside the same max-h-64 overflow-y-auto
+    // wrapper the row-failure report uses.
+    const item = screen.getByText('Line 2').closest('li');
+    expect(item).not.toBeNull();
+    const scroller = item!.closest('ul')!.parentElement;
+    expect(scroller).toHaveClass('max-h-64');
+    expect(scroller).toHaveClass('overflow-y-auto');
+  });
+
+  it('disables submit without a project or workspace (defence: the UI never opens the dialog without both)', async () => {
+    const user = userEvent.setup();
+    renderDialog({ projectId: '', workspaceId: '' });
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, makeFile());
+
+    const submit = screen.getByRole('button', { name: 'Import' });
+    expect(submit).toBeDisabled();
+    // Even a programmatic submit must not reach the store.
+    fireEvent.submit(submit.closest('form')!);
+    expect(importStories).not.toHaveBeenCalled();
+  });
+
+  it('refuses a second submit dispatched in the same batch', async () => {
+    const user = userEvent.setup();
+    importStories.mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () => resolve({ created: 1, skipped: 0, totalRows: 1, duplicates: [], storyIds: ['s1'] }),
+            0,
+          ),
+        ),
+    );
+
+    renderDialog();
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, makeFile());
+    // Two submit events inside one batch: React has not flushed `running` yet,
+    // so both handlers would observe `running === false` and both would fire —
+    // only the run-token ref can refuse the second one.
+    act(() => {
+      const form = screen.getByRole('button', { name: 'Import' }).closest('form')!;
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+    });
+
+    await waitFor(() => expect(screen.getByText('Import finished')).toBeInTheDocument());
+    expect(importStories).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing when the dialog closes while the import is still in flight', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    let resolveImport!: (value: {
+      created: number;
+      skipped: number;
+      totalRows: number;
+      duplicates: never[];
+      storyIds: string[];
+    }) => void;
+    importStories.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveImport = resolve;
+        }),
+    );
+
+    const { rerender } = renderDialog({ onOpenChange });
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, makeFile());
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+
+    // In flight: the spinner is up and no report exists yet.
+    expect(screen.getByText('Importing...')).toBeInTheDocument();
+    expect(screen.queryByText('Import finished')).not.toBeInTheDocument();
+    expect(importStories).toHaveBeenCalledTimes(1);
+
+    // Close BEFORE the request settles, then reopen.
+    rerender(
+      <ImportStoriesDialog
+        open={false}
+        onOpenChange={onOpenChange}
+        locale="en"
+        projectId="project-a"
+        workspaceId="ws-a"
+      />,
+    );
+    rerender(
+      <ImportStoriesDialog
+        open
+        onOpenChange={onOpenChange}
+        locale="en"
+        projectId="project-a"
+        workspaceId="ws-a"
+      />,
+    );
+
+    // The stale completion must write NOTHING: no report, no failure, no stuck
+    // spinner — the dialog looks fresh, not like a report pasted over a run
+    // that no longer belongs to it.
+    await act(async () => {
+      resolveImport({
+        created: 3,
+        skipped: 0,
+        totalRows: 3,
+        duplicates: [],
+        storyIds: ['s1', 's2', 's3'],
+      });
+    });
+    expect(screen.queryByText('Import finished')).not.toBeInTheDocument();
+    expect(screen.queryByText('3 created, 0 skipped')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('Importing...')).not.toBeInTheDocument();
   });
 
   it('renders a rows failure with line numbers, reasons, duplicates, and the nothing-saved hint', async () => {
@@ -223,6 +378,12 @@ describe('describeImportReason', () => {
     expect(describeImportReason(en, { reason: 'too_many_rows', max: 1000 })).toBe(
       'more than 1000 lines',
     );
+    // The file-rejection payload for this reason carries no `max`; without it
+    // the dialog must not print a substituted 0 ("more than 0 lines").
+    expect(describeImportReason(en, { reason: 'too_many_rows' })).toBe(
+      'the file has more lines than one import allows',
+    );
+    expect(describeImportReason(en, { reason: 'too_many_rows' })).not.toMatch(/\b0\b/);
   });
 
   it('falls back to import_reason_unknown for an unrecognised code', () => {
