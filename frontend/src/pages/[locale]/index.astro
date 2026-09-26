@@ -179,13 +179,15 @@ const faqItems = [
         <!-- Cross-origin consequence (accepted, not a bug): while the demo lives on
              another origin (PUBLIC_DEMO_URL), localStorage['theme'] is NOT shared
              with the landing, so the demo follows the visitor's system preference. -->
-        <iframe
-          src={demoSrc}
-          title={`${t.app.name}: ${t.landing.hero.subtitle}`}
-          class="h-[420px] w-full rounded-2xl border border-(--color-border) bg-(--color-surface) sm:h-[520px] lg:h-[720px]"
-          loading="lazy"
-          data-target-origin={demoOrigin}
-        ></iframe>
+        <div class="demo-frame-box overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-surface)">
+          <iframe
+            src={demoSrc}
+            title={`${t.app.name}: ${t.landing.hero.subtitle}`}
+            class="demo-frame block h-[420px] w-full lg:h-[720px]"
+            loading="lazy"
+            data-target-origin={demoOrigin}
+          ></iframe>
+        </div>
       </div>
     </section>
   </div>
@@ -231,6 +233,37 @@ const faqItems = [
       <FaqAccordion client:idle items={faqItems} />
     </section>
   </div>
+
+  <style>
+    /* Below `lg` the demo needs more viewport than a phone gives it: at the box
+       height its story card — the thing that types itself, and the whole point of
+       the embed — falls under the frame's bottom edge.
+
+       The fix is a zoom on the iframe, not a crop and not a change to the demo.
+       The frame is laid out at 1/zoom of the box and scaled back into it, so the
+       nested browsing context gets a larger layout viewport (and lays out for a
+       wider page) while the box the visitor sees keeps its size. `transform` is
+       what makes that possible without touching the child: it does not affect
+       layout, so the demo's own `100dvh` embedded frame still fills whatever box
+       it is handed, and hit-testing follows the transform, so the demo stays
+       interactive.
+
+       The cost is legibility: text renders at --demo-zoom of its size. That is
+       the whole trade, and it is why this only applies below `lg`. */
+    @media (max-width: 1023.98px) {
+      .demo-frame-box {
+        height: 420px;
+      }
+
+      .demo-frame {
+        --demo-zoom: 0.72;
+        width: calc(100% / var(--demo-zoom));
+        height: calc(420px / var(--demo-zoom));
+        transform: scale(var(--demo-zoom));
+        transform-origin: top left;
+      }
+    }
+  </style>
 
   <script>
     // Forward the demo bridge's "leave" signals (see @/lib/demo-embed). Astro's

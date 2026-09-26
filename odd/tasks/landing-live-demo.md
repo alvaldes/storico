@@ -61,6 +61,10 @@ whose default URL label is `storico.vercel.app/demo` and a `LOOP_ANIMATION_BEHAV
 
 Checked only when the outcome was observed, not when the edit was made.
 
+- [x] **T10 — Zoom the embedded demo on small screens.** Follow-up the operator asked for after
+  the first close: fix the mobile clipping with a zoom on the iframe, changing no crop and **not
+  touching `storico-live-demo` again**. *Surface:* `frontend/src/pages/[locale]/index.astro`
+
 - [x] **T1 — Demo: the bridge receiver.** `message` listener in `src/scripts/demo.ts` that treats a
   validated `storico:demo-leave` signal as the `blur` it replaces. Document the protocol in
   `LOOP_ANIMATION_BEHAVIOR.md` and tick the checklist items it owns.
@@ -121,13 +125,42 @@ landing until the variable is unset or pointed back at `:4322`.
 
 ## Recorded debt (decided, not discovered late)
 
-1. **The typing story is clipped on mobile.** At the 420px mobile height the embedded demo shows its
-   header, its own `h1` and the metadata row, and the `FULL USER STORY` card — the thing that types —
-   falls below the frame's bottom edge. The operator chose to ship it and record it rather than fix
-   it in this branch, and reconfirmed on 2026-09-26 that it is a later conversation ("el tema del
-   mobile lo vemos despues"). The fix that was measured and rejected is: hide the demo's own page
-   framing when `data-embedded` (inside the hero it repeats what the landing already said) and raise
-   the mobile height. The demo's `main` scrolls, so the content is reachable, just not first-paint.
+1. **RESOLVED (T10) — the typing story was clipped below `lg`.** At the 420px box the embedded demo
+   showed its header, its own `h1` and the metadata row, and the `FULL USER STORY` card — the thing
+   that types — fell entirely below the frame's bottom edge. Measured baseline at 390px: the card
+   was not visible at all.
+
+   The fix is a zoom on the iframe, which is what the operator asked for, and it needs nothing from
+   the demo. The frame is laid out at `1/zoom` of the box (`--demo-zoom: 0.72`) and scaled back into
+   it with `transform: scale()`, so the nested browsing context receives a **larger** layout
+   viewport while the box the visitor sees keeps its size. `transform` is the point: it does not
+   affect layout, so the demo's own `100dvh` embedded frame still fills whatever box it is handed —
+   which is why `storico-live-demo` did not have to be touched again.
+
+   Measured after the change, all with the story card and its validation chips visible and
+   `scrollWidth === innerWidth` (no horizontal overflow):
+
+   | Ancho | Viewport del hijo | Caja visible | Resultado |
+   | --- | --- | --- | --- |
+   | 390 | 494 × 583 | 356 × 420 | tarjeta + 2 chips visibles, layout móvil del demo |
+   | 640 | 842 × 583 | 608 × 420 | tarjeta visible |
+   | 900 | 1158 × 583 | 836 × 420 | **layout desktop completo** del demo: sidebar, tarjeta, chips y el inicio de PARTS |
+   | 1100 (`lg`) | sin transform | 1078 × 722 | intacto, la regla termina donde empieza `lg` |
+
+   **The cost, stated plainly:** text renders at 72% of its size, so the demo reads as a preview on
+   a phone rather than as a comfortable touch target. Interaction still works — hit-testing follows
+   the transform — but tapping a card at 390px means tapping at 72%. That is the trade the zoom
+   makes instead of cropping, and it is why the rule stops at `lg`.
+
+   **One consequence to notice:** the box is now a uniform 420px below `lg`. The previous
+   `sm:h-[520px]` step is gone, because with the zoom the child height is 583px at every sub-`lg`
+   width and a taller box would only enlarge the visible area, not reveal more of the demo's
+   layout. If the tablet range ever wants a taller frame, that is a second decision, not a revert.
+
+1b. **The demo's own `h1` and description still occupy the top of the frame on phones.** The
+   rejected alternative remains the better long-term fix — hiding the demo's page framing when
+   `data-embedded` gives the story card the top of the box at full size — but it needs a change in
+   `storico-live-demo`, which the operator explicitly excluded from this round.
 2. **The landing's theme and the demo's theme do not agree — and this no longer fixes itself.**
    Photographed: dark landing, light demo. `localStorage['theme']` is per-origin, so the contract
    recorded on 2026-09-26 holds only when the two share an origin. The deferral assumed the "dónde"
@@ -138,13 +171,11 @@ landing until the variable is unset or pointed back at `:4322`.
    as `?theme=` on the iframe src and the demo's inline bootstrap honours it, or the demo moves
    under the product's origin. The first is a small change on both sides; the second is the deploy
    decision, re-opened.
-3. **The fake browser chrome now states a URL that is not where the demo lives.**
-   `DemoLayout.astro:59` passes `url="storico.vercel.app/demo"` and the component's default is
-   `storico.vercel.app` — both written when the intended home was a `/demo` route on the product.
-   The deployed page's address bar therefore reads `storico.vercel.app/demo` while the page is
-   served from GitHub Pages. Cosmetic, but it is a false statement on a marketing surface, and it is
-   now contradicted by the operator's own deploy. (The modal's `storico.vercel.app/dashboard` link
-   is *not* affected: that one points at the real product on purpose.)
+3. **CERRADO POR DECISIÓN — the fake browser chrome reads `storico.vercel.app/demo` while the demo
+   is served from GitHub Pages.** The operator decided it stays: it is decoration, not an address
+   (`"se queda así, es puro decorativo"`). Recorded so nobody "fixes" it later on the assumption it
+   was an oversight. (The modal's `storico.vercel.app/dashboard` link was always correct: it points
+   at the real product.)
 4. **The Astro dev toolbar renders inside the iframe** in development, because the demo's own dev
    server injects it. Confirmed absent in the deployed artifact, so it is not part of this change.
 5. **Pre-existing demo defect, out of scope:** at 390px the story metadata row wraps
@@ -171,6 +202,22 @@ readings that looked like a delivery failure and were not. Two causes, both mine
 The two halves were then each proven with direct instrumentation in the realm that owns them, which
 is the claim this record makes. What is *not* claimed is a single unbroken observation of
 parent-click → child-restart.
+
+Two more traps the zoom round added to that list:
+
+- **Removing an inline override does not remove a media-query rule.** The first "baseline"
+  screenshot of this round was labelled `zoom-none` and was actually at 0.72: clearing the inline
+  `--demo-zoom` left the stylesheet's own declaration in force, so the comparison compared 0.72 to
+  0.72 and appeared to prove the clipping was already fixed by the demo's embedded mode. The real
+  baseline needed `transform: none` and explicit width/height inline. `getComputedStyle` on the
+  element is what caught it.
+- **`getBoundingClientRect()` returns the transformed box**, so it reads 356×420 at every zoom
+  factor and proves nothing about the zoom. The values that matter are the element's *layout*
+  width/height (`getComputedStyle`) — that is the child's viewport.
+- **With the Vercel adapter, `dist/` holds only `client`.** A page's scoped `<style>` is inlined
+  into the server chunk, so grepping `dist/` for a rule that renders fine in dev returns zero and
+  looks like a dropped stylesheet. The place to look is `.vercel/output/…/pages/[locale]/index.astro`
+  — where `demo-zoom` was, all along.
 
 ## Out of scope (declared, not forgotten)
 
