@@ -141,7 +141,8 @@ Two further defects were found while reviewing the parser's output and fixed in 
       report — `domain/services/story_import.py`. The frontend mirror test that pins parity with
       `StoryForm` lands with the frontend (task 7), since it is a Vitest file; PR 1 pins the
       constant's exact value on the backend side instead.
-- [ ] 3. Repository: one query for the project's existing tuples, plus `save_many` in a single commit
+- [x] 3. Repository: one query for the project's existing tuples, plus `save_many` in a single
+      commit — `list_parts_by_project` and `save_many` on the port and its only implementation
 - [ ] 4. The `import` route: membership, caps, `201`/`422` report, API tests
 - [ ] 5. `ImportStoriesDialog.tsx`: file input, upload, report with lines and reasons
 - [ ] 6. `importStories` in the API layer plus the store action, with the `isScopeUnchanged` guard
@@ -187,6 +188,9 @@ padding a prompt with text the user did not write is exactly the silent change t
 | Parser unit tests | `conda run -n storico python -m pytest -q -m unit tests/test_unit/test_story_csv.py` | **21 passed** (17 from the writer, 4 added for the three defects above) |
 | Validation unit tests | `conda run -n storico python -m pytest -q -m unit tests/test_unit/test_story_import.py` | **27 passed** (25 from the writer, 2 replaced/extended for the two defects above) |
 | Whole unit suite | `conda run -n storico python -m pytest -q -m unit` | **187 passed**, 745 deselected |
+| Repository tests | `conda run -n storico python -m pytest -q tests/test_repositories/test_user_story_repo.py` | **19 passed** (13 pre-existing, 6 new) |
+| Everything but integration | `conda run -n storico python -m pytest -q -m "not integration"` | **830 passed**, 109 deselected, 1 warning |
+| The warning is not ours | `conda run -n storico python -m pytest -q -m "not integration" 2>&1 \| grep -B4 warnings summary` | raised by `test_custom_provider_repo.py::test_list_is_empty_for_a_fresh_workspace`, a file this feature never touches. Pre-existing, and `docs/testing.md` records that nothing gates on warnings |
 | Lint | `conda run -n storico python -m ruff check src/storico/infrastructure/parsers tests/test_unit/test_story_csv.py` | All checks passed |
 | Formatting | `conda run -n storico python -m ruff format --check ...` | 3 files already formatted |
 
@@ -195,4 +199,5 @@ padding a prompt with text the user did not write is exactly the silent change t
 | Task | Commit | Evidence |
 |------|--------|----------|
 | 1 | `901bb89` | 21 unit tests, ruff clean |
-| 2 | this commit | 27 unit tests, 187 unit tests whole suite, ruff clean |
+| 2 | `26bfab5` | 27 unit tests, 187 unit tests whole suite, ruff clean |
+| 3 | this commit | 19 repository tests, 830 tests with integration excluded, ruff clean |
