@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from uuid import UUID
 
 from storico.domain.entities.user_story import UserStory
@@ -69,5 +70,39 @@ class UserStoryRepository(ABC):
         Returns the existing story if found, None otherwise.
         This is used for duplicate detection based on the semantic content
         rather than the raw text format.
+        """
+        ...
+
+    @abstractmethod
+    async def list_parts_by_project(self, project_id: UUID) -> list[tuple[str, str, str, UUID]]:
+        """Return ``(actor, feature, benefit, story_id)`` for every story in a project.
+
+        One statement covers the whole project: a CSV import checks duplicates
+        for many rows at once, and calling ``find_by_parts`` per row would cost
+        one round-trip per row before anything was written.
+
+        The strings come back exactly as stored — no normalisation. The
+        caller's duplicate rule is an exact match, so folding case here would
+        hide differences the rule treats as distinct (``User`` vs ``user``).
+        An empty project returns an empty list.
+        """
+        ...
+
+    @abstractmethod
+    async def save_many(self, user_stories: Sequence[UserStory]) -> list[UserStory]:
+        """Insert every story in one transaction and return the saved entities.
+
+        A bulk import must not pay one commit per row: ``save`` commits per
+        call, so a thousand rows would be a thousand transactions with no
+        atomicity at all. Here the whole batch commits once — either every row
+        lands or none does.
+
+        An empty input returns an empty list without issuing any statement.
+        No rows means no work, not a round-trip — the same rule
+        ``list_page`` follows for an empty ``workspace_ids``, and against a
+        pooler where one statement costs seconds, an unasked statement is pure
+        latency.
+
+        Returns the saved entities with their ids and timestamps populated.
         """
         ...

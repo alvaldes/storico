@@ -8,7 +8,7 @@ import pytest_asyncio
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from storico.domain.entities import Project, UserStory
+from storico.domain.entities import Project, RepositoryError, UserStory
 from storico.infrastructure.database.repositories import (
     SQLAlchemyProjectRepository,
     SQLAlchemyUserStoryRepository,
@@ -281,3 +281,200 @@ async def test_list_all(db_session: AsyncSession, workspace_id: UUID) -> None:
 
     stories = await repo.list()
     assert len(stories) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_parts_by_project_returns_only_that_projects_parts(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """list_parts_by_project returns every row of the project and none of another's.
+
+    The strings come back exactly as stored: the caller's duplicate rule is an
+    exact match, so a story whose actor differs only by case (``User`` vs
+    ``user``) must survive as two distinct rows — normalising in the repository
+    would hide a difference the rule treats as meaningful.
+    """
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    mine = await _seed_project(db_session, workspace_id, "Parts mine")
+    other = await _seed_project(db_session, workspace_id, "Parts other")
+
+    await repo.save(
+        UserStory(
+            project_id=mine.id,
+            actor="User",
+            feature="log in",
+            benefit="value",
+            raw_text="As a User, I want log in so that value",
+        )
+    )
+    await repo.save(
+        UserStory(
+            project_id=mine.id,
+            actor="user",
+            feature="log in",
+            benefit="value",
+            raw_text="As a user, I want log in so that value",
+        )
+    )
+    await repo.save(_story(other.id, "other-feature"))
+
+    parts = await repo.list_parts_by_project(mine.id)
+
+    assert len(parts) == 2
+    assert {actor for actor, _, _, _ in parts} == {"User", "user"}
+    assert all(feature == "log in" and benefit == "value" for _, feature, benefit, _ in parts)
+    assert all(story_id is not None for *_, story_id in parts)
+    assert all(feature != "other-feature" for _, feature, _, _ in parts)
+
+
+@pytest.mark.asyncio
+async def test_list_parts_by_project_empty_project(db_session: AsyncSession) -> None:
+    """A project with no stories returns an empty list."""
+    repo = SQLAlchemyUserStoryRepository(db_session)
+
+    parts = await repo.list_parts_by_project(uuid4())
+
+    assert parts == []
+
+
+@pytest.mark.asyncio
+async def test_list_parts_by_project_issues_one_statement(
+    db_session: AsyncSession, test_engine: AsyncEngine, workspace_id: UUID
+) -> None:
+    """The whole project's duplicate candidates arrive in one statement.
+
+    A CSV import compares many rows at once; one query per row would cost one
+    round-trip per row before anything was written — the cost this method
+    exists to remove. Statement capture follows ``ReadsOf`` in
+    ``tests/test_api/test_unfiltered_list_queries.py``.
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    project = await _seed_project(db_session, workspace_id, "Counted parts")
+    await repo.save(_story(project.id, "f1"))
+    await repo.save(_story(project.id, "f2"))
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        await repo.list_parts_by_project(project.id)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    assert len(statements) == 1, statements
+
+
+@pytest.mark.asyncio
+async def test_save_many_persists_all_rows(db_session: AsyncSession, workspace_id: UUID) -> None:
+    """save_many returns the saved entities and every row is readable afterwards."""
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    project = await _seed_project(db_session, workspace_id, "Bulk saved")
+    stories = [
+        _story(project.id, "import-1"),
+        _story(project.id, "import-2"),
+        _story(project.id, "import-3"),
+    ]
+
+    saved = await repo.save_many(stories)
+
+    assert len(saved) == 3
+    assert len({s.id for s in saved}) == 3
+    assert all(s.id is not None for s in saved)
+    assert all(s.created_at is not None for s in saved)
+    for story in saved:
+        found = await repo.find_by_id(story.id)
+        assert found is not None
+        assert found.feature == story.feature
+
+
+@pytest.mark.asyncio
+async def test_save_many_empty_returns_empty_without_statements(
+    db_session: AsyncSession, test_engine: AsyncEngine
+) -> None:
+    """An empty batch returns [] without issuing any statement.
+
+    No rows means no work, not a round-trip — the same rule ``list_page``
+    follows for an empty ``workspace_ids``.
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyUserStoryRepository(db_session)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        saved = await repo.save_many([])
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    assert saved == []
+    assert statements == [], statements
+
+
+@pytest.mark.asyncio
+async def test_save_many_is_atomic_on_duplicate_primary_key(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """A failure mid-batch leaves the table empty — the batch commits as one.
+
+    Two stories share an explicit id, so the commit violates the primary key.
+    With per-row commits the first story would already be persisted; with one
+    transaction the rollback undoes the batch and the table stays empty. The
+    primary key is the lever because sqlite does not enforce foreign keys by
+    default here, so it is the only constraint the failure can trip.
+    """
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    project = await _seed_project(db_session, workspace_id, "Atomic batch")
+    first = _story(project.id, "import-first")
+    second = _story(project.id, "import-second", id=first.id)
+
+    with pytest.raises(RepositoryError):  # wraps sqlite's IntegrityError
+        await repo.save_many([first, second])
+
+    assert await repo.list() == []
+
+
+@pytest.mark.asyncio
+async def test_save_many_commits_once_for_three_rows(
+    db_session: AsyncSession, test_engine: AsyncEngine, workspace_id: UUID
+) -> None:
+    """Three rows cost one statement, the same as one row.
+
+    The count does not scale with the number of rows: the batch flush issues a
+    single INSERT (SQLAlchemy batches the three rows into one statement via
+    insertmanyvalues) and the single commit issues no counted statement. Three
+    separate ``save`` calls would show three INSERTs plus their commits.
+    Statement capture follows ``ReadsOf`` in
+    ``tests/test_api/test_unfiltered_list_queries.py``.
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    project = await _seed_project(db_session, workspace_id, "Counted batch")
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        await repo.save_many([_story(project.id, "only-one")])
+        one_row_count = len(statements)
+        statements.clear()
+        await repo.save_many(
+            [
+                _story(project.id, "bulk-1"),
+                _story(project.id, "bulk-2"),
+                _story(project.id, "bulk-3"),
+            ]
+        )
+        three_row_count = len(statements)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    assert one_row_count == 1, one_row_count
+    assert three_row_count == one_row_count, (three_row_count, one_row_count)

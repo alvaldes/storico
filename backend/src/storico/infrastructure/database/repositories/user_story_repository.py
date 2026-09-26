@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import delete, func, select
@@ -133,6 +134,38 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
         result = await self._session.execute(stmt)
         model = result.scalars().first()
         return self._to_domain(model) if model else None
+
+    async def list_parts_by_project(self, project_id: UUID) -> list[tuple[str, str, str, UUID]]:
+        # Only the four columns are selected, not full ORM entities: the caller
+        # compares parts in Python to find duplicates, so loading whole rows
+        # would pay hydration cost for fields it never reads.
+        stmt = select(
+            UserStoryModel.actor,
+            UserStoryModel.feature,
+            UserStoryModel.benefit,
+            UserStoryModel.id,
+        ).where(UserStoryModel.project_id == project_id)
+        result = await self._session.execute(stmt)
+        return list(result.all())
+
+    async def save_many(self, user_stories: Sequence[UserStory]) -> list[UserStory]:
+        # Empty input is answered before any statement: no rows means no work,
+        # not a round-trip (same rule as ``list_page`` with an empty
+        # ``workspace_ids``).
+        if not user_stories:
+            return []
+        try:
+            # One flush and one commit for the whole batch: per-row ``save``
+            # calls would commit per row and lose atomicity — the exact reason
+            # this method exists.
+            self._session.add_all(
+                UserStoryModel(**self._to_orm_kwargs(story)) for story in user_stories
+            )
+            await self._session.commit()
+            return list(user_stories)
+        except SQLAlchemyError as e:
+            await self._session.rollback()
+            raise RepositoryError("Database error saving user stories") from e
 
     def _to_domain(self, model: UserStoryModel) -> UserStory:
         return UserStory(
