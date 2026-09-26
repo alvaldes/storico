@@ -4,20 +4,25 @@ from dataclasses import replace
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from storico.api.dependencies import (
     get_current_user,
     get_repository,
+    get_workspace_for_user,
     require_story_workspace_access,
 )
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.story import (
     CreateUserStoryRequest,
+    StoryImportDuplicateItem,
+    StoryImportErrorItem,
+    StoryImportResponse,
     UpdateUserStoryRequest,
     UserStoryResponse,
 )
-from storico.domain.entities import EntityNotFound, User, UserStory
+from storico.domain.entities import EntityNotFound, User, UserStory, Workspace, WorkspaceRole
+from storico.domain.services.story_import import ImportRow, validate_import
 from storico.infrastructure.database.repositories import (
     SQLAlchemyProjectRepository,
     SQLAlchemyUserStoryRepository,
@@ -25,8 +30,20 @@ from storico.infrastructure.database.repositories import (
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
 )
+from storico.infrastructure.parsers.story_csv import (
+    MAX_FILE_BYTES,
+    MAX_ROWS,
+    StoryCsvError,
+    parse_story_csv,
+)
 
 router = APIRouter(prefix="/api/v1/stories", tags=["stories"])
+
+import_router = APIRouter(
+    prefix="/api/v1/workspaces/{workspace_id}/stories",
+    tags=["stories"],
+    redirect_slashes=False,
+)
 
 StoryRepoDep = Annotated[
     SQLAlchemyUserStoryRepository,
@@ -280,3 +297,192 @@ async def delete_story(
         member_repo=member_repo,
     )
     await repo.delete(story_id)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# CSV import
+# ═══════════════════════════════════════════════════════════════════
+#
+# This route is workspace-scoped, like every newer feature in this API
+# (``extraction_router``, ``projects_router``, ``export``): the workspace
+# rides in the path and ``project_id`` stays a form field, matching both
+# ``extraction_router`` (child resource id in the body) and ``create_story``
+# (``project_id`` in the payload). The flat legacy router was the wrong home
+# for an import that must resolve workspace membership before anything else.
+#
+
+
+@import_router.post(
+    "/import",
+    status_code=status.HTTP_201_CREATED,
+    # The blocked-report path dumps its items with ``exclude_none=True``, so the success
+    # path has to agree: without this the same duplicate item carries
+    # ``existing_story_id: null`` on a 201 and omits the key entirely on a 422, and the
+    # client would need two shapes for one contract.
+    response_model_exclude_none=True,
+)
+async def import_stories(
+    project_id: Annotated[UUID, Form()],
+    file: UploadFile = File(...),
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
+    repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+) -> StoryImportResponse:
+    """Import user stories into a project from an uploaded CSV file.
+
+    The workspace in the path must exist and the caller must be a member of
+    it (``get_workspace_for_user``). The project must then belong to that
+    same workspace. The upload is validated as a whole before anything is
+    written: one blocking error anywhere answers ``422`` with the full error
+    list and no story is created. Rows that duplicate an existing story (or
+    an earlier row of the same upload) are skipped and reported, never fatal.
+    """
+    workspace, _ = ctx
+
+    # Containment, not just membership: resolving the path workspace proves the caller
+    # belongs to it, but says nothing about the project named in the form. Without this
+    # check a member of workspace A could import into a project of workspace B by naming
+    # A in the URL. Mirrors the 403 containment check in routes/extraction.py
+    # (_validate_story_belongs_to_workspace).
+    project = await project_repo.find_by_id(project_id)
+    if project is None:
+        raise EntityNotFound("Project", str(project_id))
+    if project.workspace_id != workspace.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This project does not belong to the specified workspace",
+        )
+
+    # The cap bounds this handler's own work — parsing, validation and storage — not the wire
+    # size. Starlette's multipart parser has already consumed the request body by the time this
+    # runs, so the earlier claim that the file is sized "before reading the body" was wrong, and
+    # the 413 body's own ``size`` field is the proof: 3145750 was only knowable after a read.
+    #
+    # ``file.size`` is checked first because Starlette populates it while spooling, so an
+    # oversized upload is refused without a second full copy into this process. The check after
+    # the read stays as the authoritative one: ``size`` can be absent, and only the bytes we
+    # actually hold can be parsed.
+    if file.size is not None and file.size > MAX_FILE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail={
+                "detail": "The file is too large.",
+                "error_code": "IMPORT_FILE_TOO_LARGE",
+                "size": file.size,
+                "max": MAX_FILE_BYTES,
+            },
+        )
+
+    data = await file.read()
+    if len(data) > MAX_FILE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail={
+                "detail": "The file is too large.",
+                "error_code": "IMPORT_FILE_TOO_LARGE",
+                "size": len(data),
+                "max": MAX_FILE_BYTES,
+            },
+        )
+
+    try:
+        parsed = parse_story_csv(data)
+    except StoryCsvError as exc:
+        detail = {
+            "detail": "The file could not be read.",
+            "error_code": "IMPORT_FILE_REJECTED",
+            "reason": exc.reason,
+        }
+        # Only a limit reason carries a number: the client substitutes it into
+        # "more than N lines", and absent-vs-present distinguishes the branch
+        # (``typeof max === 'number'``), so it must not be a null placeholder.
+        if exc.reason == "too_many_rows":
+            detail["max"] = MAX_ROWS
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=detail,
+        ) from exc
+
+    # One statement for the whole project, not one find_by_parts per row: the
+    # duplicate check becomes an in-memory lookup against this single query.
+    rows = await repo.list_parts_by_project(project_id)
+    existing = {(a, f, b): str(sid) for a, f, b, sid in rows}
+
+    import_rows = [
+        ImportRow(
+            line_number=row.line_number,
+            actor=row.actor,
+            feature=row.feature,
+            benefit=row.benefit,
+            raw_text=row.raw_text,
+            field_count=row.field_count,
+            expected_field_count=parsed.expected_field_count,
+        )
+        for row in parsed.rows
+    ]
+    report = validate_import(import_rows, parsed.mode, existing)
+
+    # Nothing is written while any row has a blocking error: the caller gets
+    # the whole error list back and can fix the file and retry from scratch.
+    # Duplicates are not blocking — they are reported and skipped below.
+    if report.blocked:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "detail": "The file has rows that must be fixed.",
+                "error_code": "IMPORT_VALIDATION_FAILED",
+                "created": 0,
+                "total_rows": report.total_rows,
+                "errors": [
+                    StoryImportErrorItem(
+                        line=error.line_number,
+                        reason=error.reason,
+                        field=error.field,
+                        length=error.actual_length,
+                        max=error.max_length,
+                        observed=error.observed_count,
+                        expected=error.expected_count,
+                    ).model_dump(exclude_none=True)
+                    for error in report.errors
+                ],
+                "duplicates": [
+                    StoryImportDuplicateItem(
+                        line=dup.line_number,
+                        reason=dup.reason,
+                        existing_story_id=dup.existing_story_id,
+                        first_line=dup.first_line,
+                    ).model_dump(exclude_none=True)
+                    for dup in report.duplicates
+                ],
+            },
+        )
+
+    stories = [
+        UserStory(
+            project_id=project_id,
+            actor=s.actor,
+            feature=s.feature,
+            benefit=s.benefit,
+            raw_text=s.raw_text,
+        )
+        for s in report.new_stories
+    ]
+    # One commit for the whole upload; with nothing new to create there is
+    # nothing to save.
+    saved = await repo.save_many(stories) if stories else []
+
+    return StoryImportResponse(
+        created=len(saved),
+        skipped=len(report.duplicates),
+        total_rows=report.total_rows,
+        duplicates=[
+            StoryImportDuplicateItem(
+                line=dup.line_number,
+                reason=dup.reason,
+                existing_story_id=dup.existing_story_id,
+                first_line=dup.first_line,
+            )
+            for dup in report.duplicates
+        ],
+        story_ids=[story.id for story in saved],
+    )

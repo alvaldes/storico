@@ -44,3 +44,37 @@ class UserStoryResponse(BaseModel):
     raw_text: str
     created_at: datetime
     status: UserStoryStatus = UserStoryStatus.PENDING_EXTRACTION
+
+
+class StoryImportErrorItem(BaseModel):
+    """One blocking problem on one row of an imported CSV."""
+
+    line: int
+    reason: str
+    field: str | None = None
+    length: int | None = None
+    # Serialises as "max" in JSON; that is the published contract.
+    max: int | None = None
+    # Populated only for ``field_count_mismatch``: the row's field count vs
+    # the header's column count.
+    observed: int | None = None
+    expected: int | None = None
+
+
+class StoryImportDuplicateItem(BaseModel):
+    """One row of an imported CSV skipped because it duplicates a story."""
+
+    line: int
+    reason: str
+    existing_story_id: str | None = None
+    first_line: int | None = None
+
+
+class StoryImportResponse(BaseModel):
+    """Response body for a CSV story import."""
+
+    created: int
+    skipped: int
+    total_rows: int
+    duplicates: list[StoryImportDuplicateItem] = []
+    story_ids: list[UUID] = []
