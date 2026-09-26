@@ -71,6 +71,56 @@ como degradado.
 | PUT | `/api/v1/stories/{id}` | Actualizar story |
 | DELETE | `/api/v1/stories/{id}` | Eliminar story |
 
+### Import de user stories (scoped a workspace)
+
+| Método | Path | Descripción |
+|--------|------|-------------|
+| POST | `/api/v1/workspaces/{wsId}/stories/import` | Importar historias desde un CSV (`multipart/form-data`: `project_id` y `file`) |
+
+El archivo se valida **completo antes de escribir nada**. Con al menos una fila con error responde
+`422` con `error_code: "IMPORT_VALIDATION_FAILED"`, `created: 0` y el detalle por línea, y **no se
+crea ninguna historia**: no existe el estado a medias. Las filas que duplican una historia ya
+existente —o una fila anterior del mismo archivo— se **omiten y se reportan**, nunca bloquean, así
+que volver a subir el mismo archivo es idempotente (`201` con `created: 0`). Como el `project_id`
+viaja en el cuerpo, el proyecto se verifica contra el workspace del path: un proyecto de otro
+workspace responde `403`.
+
+Topes: **2 MB** y **1000 filas**. Formato: encabezado autodetectado, `actor,feature,benefit` (con
+`raw_text` opcional) o una sola columna `story` / `input` / `raw_text`; delimitador leído del
+encabezado; UTF-8 con BOM tolerado.
+
+```json
+{
+  "detail": {
+    "detail": "The file has rows that must be fixed.",
+    "error_code": "IMPORT_VALIDATION_FAILED",
+    "created": 0,
+    "total_rows": 44,
+    "errors": [
+      { "line": 7,  "reason": "missing_field", "field": "feature" },
+      { "line": 19, "reason": "too_long", "field": "benefit", "length": 340, "max": 300 },
+      { "line": 31, "reason": "field_count_mismatch", "observed": 4, "expected": 3 },
+      { "line": 40, "reason": "parts_look_like_a_full_story" }
+    ],
+    "duplicates": [
+      { "line": 88, "reason": "duplicate", "existing_story_id": "..." },
+      { "line": 91, "reason": "duplicate_in_file", "first_line": 12 }
+    ]
+  }
+}
+```
+
+| `error_code` | HTTP | Campos |
+|--------------|------|--------|
+| `IMPORT_VALIDATION_FAILED` | 422 | `created`, `total_rows`, `errors[]`, `duplicates[]` |
+| `IMPORT_FILE_REJECTED` | 422 | `reason`: `invalid_encoding`, `header_unrecognized`, `too_many_rows`, `malformed_csv`, `empty_file` |
+| `IMPORT_FILE_TOO_LARGE` | 413 | `size`, `max` |
+
+Razones bloqueantes de una fila: `missing_field`, `empty_field`, `too_long`, `unparsable_story`,
+`field_count_mismatch`, `parts_look_like_a_full_story`. Los duplicados no son errores: viajan en
+`duplicates` con `reason` `duplicate` (más `existing_story_id`) o `duplicate_in_file` (más
+`first_line`).
+
 ### Tasks
 
 | Método | Path | Descripción |

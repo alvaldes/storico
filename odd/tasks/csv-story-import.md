@@ -1,7 +1,11 @@
 # ODD Feature: csv-story-import
 
-> **Status**: in progress — branch `feat/csv-story-import`, stacked off `main` @ `4dcd4fc`.
-> Backend first (tasks 1-4), then the UI (tasks 5-8), reviewable as a chained set. Nothing pushed.
+> **Status**: both halves done on `feat/csv-story-import`, off `main` @ `4dcd4fc`. Backend
+> (tasks 1-4) and frontend (tasks 5-11) are committed; nothing pushed and no PR opened. **Three**
+> independent read-only verifications ran — two over the backend, one over the frontend — and they
+> produced **sixteen findings: fourteen defects in code or tests and two imprecise claims in this
+> record**. All sixteen are fixed, and the significant ones are mutation-checked rather than assumed
+> fixed. Native review did not run — the user-owned switch is off in this clone.
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 > **Receipt-driven development**: off in this clone.
@@ -227,12 +231,84 @@ Two further defects were found while reviewing the parser's output and fixed in 
       constant's exact value on the backend side instead.
 - [x] 3. Repository: one query for the project's existing tuples, plus `save_many` in a single
       commit — `list_parts_by_project` and `save_many` on the port and its only implementation
-- [x] 4. The `import` route: membership, caps, `201`/`422` report, API tests
-- [ ] 5. `ImportStoriesDialog.tsx`: file input, upload, report with lines and reasons
-- [ ] 6. `importStories` in the API layer plus the store action, with the `isScopeUnchanged` guard
+- [x] 4. The `import` route: workspace-scoped, membership plus containment, caps, the
+      `201`/`422` report, API tests
+- [x] 5. `ImportStoriesDialog.tsx`: file input, upload, report with lines and reasons. Built from
+      what `ui/` already had — there was no file-input component in the repository at all
+- [x] 6. `importStories` in the API layer plus the store action, with the `isScopeUnchanged` guard
       and a list refresh
-- [ ] 7. i18n keys in `en.json`/`es.json`, neutral Spanish, key-parity test
-- [ ] 8. Docs: `docs/api.md`, the public `api.astro` page, and this record
+- [x] 7. i18n keys in `en.json`/`es.json`, neutral Spanish, key-parity test
+- [x] 8. Docs: `docs/api.md`, `security.md`, and this record
+- [x] 9. **Not in the original plan, discovered before writing any UI**: the proxy and the API
+      client each destroyed a multipart body, so no file upload could reach the backend at all
+- [x] 10. `postForm` on the API client, without forcing a content type
+- [x] 11. The prompt-text parity pin against `StoryForm`, which was open risk #1
+
+## PR 2: the upload could not reach the backend
+
+The plan said the frontend was next. A read-only mapping of the frontend surfaces, run before any
+UI code was written, came back with a blocker instead: **two independent layers each destroyed a
+multipart body**, so the feature could not have worked in a browser at all.
+
+**`src/pages/api/v1/[...path].ts`**, the proxy every frontend API call goes through, did:
+
+```ts
+const text = await request.text();          // decodes the whole body, file included, as UTF-8
+if (text) { rawBody = text; headers.set('Content-Type', 'application/json'); }
+```
+
+The boundary was discarded and the type overridden, so the backend received a JSON-typed,
+boundary-less string — not a malformed multipart request but *no* multipart request. And
+**`src/lib/api.ts`** forced `Content-Type: application/json` and `JSON.stringify`-ed every body, so
+`JSON.stringify(new FormData())` sent `"{}"`. Measured, not assumed: the proxy change's own test
+would go on to pin the boundary value and the byte count.
+
+### The part that made it a decision instead of a fix
+
+`docs/security.md:93` documented the forced `Content-Type` as a **frontend security practice**:
+`- **Content-Type** forzado a \`application/json\``. One line, no rationale, and — searched for and
+confirmed — **not a single test for the proxy route**. So the thing blocking the feature was a
+documented containment property held up only by the code.
+
+Editing a documented security property on the way to a feature is not a decision this session gets
+to make alone, so it went to the maintainer with four options: narrow the proxy to multipart only;
+a dedicated upload route beside it; carry the CSV as base64 inside JSON with no proxy change at all;
+or generalise the proxy to forward any client content type. **The maintainer chose narrowing**, and
+the reasons hold up: the new branch is unreachable for every existing caller (nothing in the app
+sent multipart before this), it fixes the class instead of one endpoint, and the alternative that
+keeps the old property intact — a second proxy route — would grow the system and duplicate the
+JWT/timeout plumbing while leaving the documentation claiming something that had become half true.
+
+### What the change actually cost
+
+- The proxy now takes the client's `content-type` **only** on the multipart branch, still copying no
+  other client header; the JSON branch is byte-identical, which its tests assert.
+- `docs/security.md` was rewritten, because leaving it would have left a false claim in a security
+  document. It now states the exception and names what it does not protect: on a multipart request
+  the content type the backend sees is the client's choice.
+- The proxy got its **first test ever** — six cases against a stub backend on a real socket,
+  pinning the boundary and the exact byte length (including a ~1 MB upload, so truncation cannot
+  pass) plus the unchanged JSON path, a bodyless GET, the 401 and the 504.
+- `api.ts` gained `postForm`, and the shared response handling was extracted so the two paths cannot
+  drift. That extraction surfaced **a real pre-existing bug**: the non-JSON error fallback was dead
+  code, because `response.json()` consumes the body even when the parse fails, so the fallback's own
+  `response.text()` threw `Body is unusable` and a non-JSON error arrived with `detail: undefined`.
+  Proven with a plain probe before anything was changed. It matters here directly: a gateway's
+  plain-text or HTML error — which is what an oversized upload hits at the platform's own limit —
+  showed nothing at all.
+- One more fix outside the plan, in the same spirit: the control that discards the selected file had
+  taken `common.cancel` as its accessible name, so a screen reader heard two identically named
+  buttons in one dialog. `common.clear` was added (`Clear` / `Quitar`, neutral Spanish).
+
+### `api.astro` deliberately not updated
+
+The public API page documents **two** endpoints — the extraction pair — and its own comment records
+that the list once advertised a batch endpoint that never existed. It is an illustration, not a
+reference, and the browser → proxy → real backend composition for this endpoint has no end-to-end
+verification yet (see the follow-ups). Advertising it there before that exists is exactly the
+mistake the page has already been burned by. `docs/api.md`, which is the reference, was updated in
+full: the route, the `multipart` fields, the three error codes, the per-row reason codes, the caps
+and the idempotence.
 
 ## Two corrections in the validation core
 
@@ -502,7 +578,8 @@ on warnings, so a new one would have sat there quietly.
 | Parser and validation units, final | `--collect-only -q` filtered by `::` | **82 collected** |
 | Import API tests, final | `--collect-only -q` filtered by `::` | **21 collected** |
 | Mutations, second round | delete `newline=""` and the `field_size_limit` call, re-run the API tests | **both new `TestImportHostileInput` tests fail**; restored and green at 21 |
-| Everything but integration, final | `conda run -n storico python -m pytest -q -m "not integration"` | **870 passed**, 109 deselected, 2 warnings |
+| Everything but integration, after the third verification | `conda run -n storico python -m pytest -q -m "not integration"` | **887 passed**, 109 deselected |
+| Frontend suite, after the third verification | `pnpm vitest run` | **553 passed** across 49 files, `tsc --noEmit` exit 0 |
 | The route really moved | `POST /api/v1/workspaces/{id}/stories/import` unauthenticated | **401** — the scoped path is served. `POST /api/v1/stories/import` now answers **405**: the flat registration is gone |
 | The corruption is dead on the wire | multipart POST of `story\nAs a user, I want A, so that B\n` | **201, `created: 1`** — the natural shape imports intact |
 | | multipart POST of `actor,feature,benefit\nAs a user, I want A, so that B\n` | **422** — `{"line": 2, "reason": "parts_look_like_a_full_story"}`, `created: 0` |
@@ -537,6 +614,26 @@ different tests across runs. `docs/testing.md` records that nothing gates on war
    three, the error names both numbers, and the remedy is one character. Tolerating it would mean
    inventing a rule that trailing missing columns are empty, which is the kind of silent
    interpretation the rest of this feature refuses.
+5. **The browser → proxy → real backend composition has no end-to-end verification.** The proxy's
+   passthrough is pinned against a stub backend on a real socket, and the endpoint is pinned through
+   the real ASGI app, but nothing has driven a real file through a real Astro server into a real
+   backend with a real session. Doing that needs OAuth credentials and a running Postgres, and this
+   repository already records that its E2E cannot run (no Playwright). This is the one gap the two
+   halves' evidence does not close, and it is why the public API page was left alone.
+6. **No client-side size pre-check.** The dialog lets a 3 MB file upload and reads the `413` back
+   instead of refusing it locally. The cap lives in the backend (`MAX_FILE_BYTES`), and duplicating
+   the number in the frontend without a mirror test is exactly the drift this repository keeps
+   paying for — so either the mirror test comes with it or the round trip stays. A deliberate trade,
+   not an oversight.
+7. **`api.astro` was not updated on purpose** (see the PR 2 section). The public page documents two
+   endpoints as an illustration, and its own comment records that it once advertised a batch
+   endpoint that never existed. Adding the import there is a two-line change once follow-up 5 is
+   closed.
+8. **One composition is still unverified end to end**, which is follow-up 5 restated as the only
+   thing the three passes did not close: a real file through a real Astro server into a real backend
+   with a real session. Everything on either side of that seam has been verified — the proxy against
+   a socket, the endpoint through the ASGI app, the client and the dialog against their own mocks —
+   and the seam itself has not.
 
 ## First independent verification (read-only) over `901bb89..2e2a8d4`
 
@@ -590,6 +687,49 @@ One number was refuted and corrected: this record said `60` unit tests where pyt
 
 The verifier also reported a tooling trap worth keeping: `conda run … python - <<'PY'` **silently discards stdin**, so a heredoc probe is a no-op that looks like a pass. Its first mutation attempt was lost that way and redone with script files. The probes in this record's evidence tables are all file-based (`/tmp/probe_*.py`) and therefore reproducible, but a heredoc probe must be written to a file first or it will report nothing and look fine — this session hit the same wall earlier and worked around it the same way without realising what it was.
 
+## Third independent verification (read-only) over `7128040..HEAD` (the frontend half)
+
+Run because the frontend had been reviewed only by the session that wrote it. It found **nine
+things and no data-corrupting defect**, which is the good news and also the limit of the good news:
+one of them was caught by the suite that shipped with the commit. Two of the nine were claims in
+this record and in the code that were simply false.
+
+### What it confirmed, with evidence stronger than the committed tests
+
+The transport path is byte-faithful. Its independent probe compared **whole buffers** — not lengths
+plus substrings — across nine payloads: bytes that are not valid UTF-8, a non-ASCII filename, a lone
+`\r`, an empty file, a header-only file, and bodies just under and just over the 2 MB cap. All exact.
+It also reproduced both mutations of the canonical-text pin in both directions, and confirmed the pin
+is not a decoy by tracing `generatedRaw` to the submitted `rawText` and the backend template to the
+imported prompt string. Every number in the Evidence table reproduced, as did the two earlier
+mutation claims.
+
+It also read the JSON branch against `git show 7128040:` and found the diff to be **only** the
+body-reading block — the non-multipart path is character-identical, which is what that commit claimed.
+
+### The defects, and what each one taught
+
+| # | Sev | Finding | Disposition |
+|---|-----|---------|-------------|
+| X1 | medium | **A failed post-import refresh emptied the visible list** while the dialog reported success: `fetchStories` clears `stories` before its request and its catch only cleared `loading`. And `importStories`' own comment claimed a failed refresh "resolves here as a stale list", which was **false** — the state was an empty list. | **Fixed** — the catch restores the list it had. The eager clear stays (it is what stops a filter change showing the previous query's rows) and the sequence guard stays, so a superseded call still writes nothing. Safe for the workspace-switch case because `reset()` already emptied the list, now pinned by a test. **The fix makes the comment true**, which is the right way to settle a false claim when the claim describes what should happen. |
+| X2 | medium | **A stale report survived closing the dialog mid-import** and reappeared on reopen, while the dialog looked idle and a second import could be started. | **Fixed** with a monotonic run token bumped on every reset and submit, so a superseded completion writes nothing at all. The committed test resolved the import *before* closing, so it never exercised the path. |
+| X3 | medium-low | **`too_many_rows` rendered "more than 0 lines."** The backend sent no number and the mapper substituted zero. The frontend test pinned `max: 1000`, a field the backend never sent on that path — **a decoy test**. | **Fixed on both sides**: the backend now sends `max` for that reason and no other, so the frontend's numbered sentence becomes truthful. This reason had **no API test at all**, which is how it kept answering without a number; it has one now, plus the inclusive boundary and an assertion that other reasons carry no `max` key. |
+| X4 | low-medium | The **success** report's duplicates list had no scroll cap, so a 1000-row all-duplicate re-upload pushed the footer off screen. Only the blocking-error list had been capped. | **Fixed** — both reports scroll the same way. |
+| X5 | low | A **header-only file** (a 201 with `total_rows: 0`) rendered "every line already exists in this project", which is false for a file with no lines. | **Fixed** with a distinct sentence for zero rows. |
+| X6 | low | Submit was **enabled without a project or workspace** and silently did nothing. | **Fixed** — both conditions added to the disabled state. |
+| X7 | low | A same-tick **double submit** fired two imports, because the in-flight guard read React state. | **Fixed** by the same ref as X2, with a discrimination check: disabling the guard fails the new test. |
+| X8 | test gap | The proxy test could pass a **length-preserving corruption**: it compared lengths plus two substrings. | **Fixed** — full-buffer comparison, plus a non-UTF-8 case. **Measuring proved the first half alone was not enough**: `text()` followed by `TextEncoder().encode()` is a byte-identical round trip for every payload the file had, so the strengthened assertion still passed under a mutation that reintroduces the very defect the proxy was fixed for. The non-UTF-8 case gives it teeth, and that mutation now fails it. |
+| X9 | low | The fallback for a non-`ApiRequestError` was the hardcoded English `'Unknown error'`. | **Fixed** — uses the existing `common.error`. The `formatFileSize` unit suffixes are SI symbols and stay, with a comment so a later reader does not flag them. |
+
+### The pattern, three times over
+
+Three verification passes, three sets of real defects, and not one of them found by the tests written
+alongside the code they check. The specific ways the tests fell short are worth naming, because they
+repeat: a test that resolved its subject before the interesting moment (X2); a test that pinned a
+payload shape the producer never emitted (X3); a test whose assertion was weaker than its name
+suggested, and whose strengthening was then measured to be insufficient (X8); and a comment asserting
+behaviour that the code did not have (X1). Only the last one required judgement to settle, and the
+answer was to make the code match the comment rather than to soften the comment.
 ## Task log
 
 | Task | Commit | Evidence |
@@ -602,3 +742,13 @@ The verifier also reported a tooling trap worth keeping: `conda run … python -
 | comma guards | `f67896c` | 866 tests with integration excluded, 60 unit tests across the parser and the domain |
 | workspace scoping | `446cf2e` | 870 tests with integration excluded, 19 API tests, mutation-verified |
 | second verification fixes | `f928568` | 885 tests with integration excluded, 82 unit + 21 API tests, mutation-verified |
+| proxy multipart branch | `2b2ec8c` | 6 new proxy tests against a real socket; `security.md` corrected |
+| API client `postForm` | `d2e5227` | 517 frontend tests, tsc clean; dead error fallback fixed |
+| import API call | `017d1d6` | 526 frontend tests, tsc clean |
+| store action | `5f10e51` | 532 frontend tests, tsc clean |
+| i18n copy | `3aca358` | 30 keys per language, identical order, voseo guard green |
+| canonical-text pin | `a4d9a02` | 3 tests, **mutation-checked in both directions** |
+| import dialog | `21cf828` | 543 frontend tests, tsc clean |
+| docs | `b77ba0d` | `docs/api.md` route and contract; `api.astro` deliberately unchanged |
+| third verification fixes | `fefbd24`, `f6b1d60`, `4bb2c56`, `482deed` | 887 backend + 553 frontend tests, mutation-checked |
+
