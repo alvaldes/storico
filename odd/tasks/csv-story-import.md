@@ -137,8 +137,10 @@ Two further defects were found while reviewing the parser's output and fixed in 
 
 - [x] 1. CSV parser, header-mode detection, unit tests —
       `infrastructure/parsers/story_csv.py`
-- [ ] 2. Port `parseUserStory` to Python, canonical `raw_text` builder, mirror test pinning parity
-      with `StoryForm` — `domain/services/story_import.py`
+- [x] 2. Port `parseUserStory` to Python, canonical `raw_text` builder and the validation
+      report — `domain/services/story_import.py`. The frontend mirror test that pins parity with
+      `StoryForm` lands with the frontend (task 7), since it is a Vitest file; PR 1 pins the
+      constant's exact value on the backend side instead.
 - [ ] 3. Repository: one query for the project's existing tuples, plus `save_many` in a single commit
 - [ ] 4. The `import` route: membership, caps, `201`/`422` report, API tests
 - [ ] 5. `ImportStoriesDialog.tsx`: file input, upload, report with lines and reasons
@@ -147,6 +149,32 @@ Two further defects were found while reviewing the parser's output and fixed in 
 - [ ] 7. i18n keys in `en.json`/`es.json`, neutral Spanish, key-parity test
 - [ ] 8. Docs: `docs/api.md`, the public `api.astro` page, and this record
 
+## Two corrections in the validation core
+
+Both were found by reviewing the module's output rather than by any failing test, and both were
+reproduced before being changed:
+
+- **A project duplicate was labelled `duplicate_in_file` with no `first_line`.**
+  `RowDuplicate.reason` had a default of `duplicate_in_file`, and the project-duplicate call site
+did not pass one, so the report said a row repeated *inside the upload* while carrying an
+`existing_story_id` and a null `first_line` — a self-contradictory entry the UI would have had to
+guess at. `reason` now has no default and both call sites state it (`duplicate` / `duplicate_in_file`).
+- **Full-mode text was stored untrimmed**, while `StoryForm` stores `fullText.trim()`. That made the
+stored value diverge from the form for the same story, and it made the length check measure padding:
+a padded 57-character story measured 2100 and was rejected as `too_long` on `raw_text`. The text is
+now trimmed once and that same string serves the emptiness check, the length check, the parse and the
+stored value. The provided `raw_text` cell in parts mode is trimmed at its ends for the same reason —
+internal newlines survive.
+
+### Consequence worth knowing: a 2000-character story cannot pass in full mode
+
+The `raw_text` limit is 2000, but the parsed parts answer to 100/300/300. A full-mode story long
+enough to approach 2000 therefore always exceeds one of the part limits and is rejected. This is
+correct under D8 — reject, never truncate — and it is the deliberate difference from `StoryForm`,
+which silently slices the parts to their maxima on its own path. The practical cap for a full-mode row
+is roughly 730 characters, and the `raw_text` limit is unreachable there. Left as is, on purpose:
+padding a prompt with text the user did not write is exactly the silent change this feature refuses.
+
 ## Evidence
 
 | Check | Command | Result |
@@ -154,7 +182,11 @@ Two further defects were found while reviewing the parser's output and fixed in 
 | Delimiter defect (before the fix) | `conda run -n storico python /tmp/probe_a2.py` | sniffer chose `;`; **30/30 stories truncated** at the first semicolon |
 | Partial parts header (before the fix) | same probe | `actor,raw_text` -> mode `full`, `actor: None` |
 | Quoted multi-line record (before the fix) | same probe | record starting at line 2 reported as line 3 |
+| Project duplicate reason (before the fix) | `conda run -n storico python /tmp/probe_import.py` | `reason='duplicate_in_file'`, `first_line=None` |
+| Full-mode padding (before the fix) | same probe | stored untrimmed; a padded 57-character story measured 2100 and failed `too_long` |
 | Parser unit tests | `conda run -n storico python -m pytest -q -m unit tests/test_unit/test_story_csv.py` | **21 passed** (17 from the writer, 4 added for the three defects above) |
+| Validation unit tests | `conda run -n storico python -m pytest -q -m unit tests/test_unit/test_story_import.py` | **27 passed** (25 from the writer, 2 replaced/extended for the two defects above) |
+| Whole unit suite | `conda run -n storico python -m pytest -q -m unit` | **187 passed**, 745 deselected |
 | Lint | `conda run -n storico python -m ruff check src/storico/infrastructure/parsers tests/test_unit/test_story_csv.py` | All checks passed |
 | Formatting | `conda run -n storico python -m ruff format --check ...` | 3 files already formatted |
 
@@ -162,4 +194,5 @@ Two further defects were found while reviewing the parser's output and fixed in 
 
 | Task | Commit | Evidence |
 |------|--------|----------|
-| 1 | this commit | 21 unit tests, ruff clean |
+| 1 | `901bb89` | 21 unit tests, ruff clean |
+| 2 | this commit | 27 unit tests, 187 unit tests whole suite, ruff clean |
