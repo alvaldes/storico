@@ -113,10 +113,10 @@ describe('proxy /api/v1 [...path] multipart forwarding', () => {
     expect(received.contentType).toBe(expectedContentType);
     expect(received.contentType).not.toBe('application/json');
     expect(boundaryOf(received.contentType!)).toBe(boundaryOf(expectedContentType));
-    // Byte-exact forwarding: no UTF-8 decode/encode round trip may change length.
-    expect(received.body.length).toBe(expectedBytes.byteLength);
-    expect(received.body.toString('utf8')).toContain('"Vald\u00e9s, Angel"');
-    expect(received.body.toString('utf8')).toContain('line1\nline2');
+    // Byte-exact forwarding: compare the whole buffer, not its length plus a couple of
+    // substrings. A same-length corruption outside those spans would have passed, which is
+    // the difference between pinning a byte count and pinning the bytes.
+    expect(Buffer.compare(received.body, Buffer.from(expectedBytes))).toBe(0);
     expect(await response.json()).toEqual({ ok: true });
   });
 
@@ -143,7 +143,37 @@ describe('proxy /api/v1 [...path] multipart forwarding', () => {
     expect(requests).toHaveLength(1);
     // Pin the exact size: a truncated or re-encoded body cannot pass this.
     expect(requests[0].body.length).toBe(expectedBytes.byteLength);
+    // Full-buffer equality as well: the length alone cannot catch a corruption that
+    // preserves it.
+    expect(Buffer.compare(requests[0].body, Buffer.from(expectedBytes))).toBe(0);
     expect(requests[0].body.toString('utf8')).toContain('"text with, comma and \\"quote\\""');
+  });
+
+  it('forwards a file whose bytes are not valid UTF-8', async () => {
+    await startStub();
+    authAsUser();
+
+    // The payload that gives the byte-exactness assertion teeth. Every other case here is
+    // valid UTF-8, so decoding to text and re-encoding round-trips it unchanged and a
+    // `request.text()` regression would sail through. These bytes do not survive that trip:
+    // the invalid sequences become U+FFFD, the length changes, and the file is corrupt in a
+    // way the user would only discover as a rejected import.
+    const binary = new Uint8Array([0xff, 0xfe, 0x00, 0x80, 0xc3, 0x28, 0xed, 0xa0, 0x80]);
+    const form = new FormData();
+    form.append('file', new File([binary], 'datos-\u00f1-\u65e5\u672c.csv', { type: 'text/csv' }));
+
+    const request = new Request('http://frontend.local/api/v1/stories/import', {
+      method: 'POST',
+      body: form,
+    });
+    const expectedBytes = await request.clone().arrayBuffer();
+
+    const response = await callRoute(request);
+
+    expect(response.status).toBe(200);
+    expect(Buffer.compare(requests[0].body, Buffer.from(expectedBytes))).toBe(0);
+    // The non-ASCII filename travels inside the body too, so it is covered by the compare
+    // above rather than asserted separately.
   });
 
   it('keeps the JSON branch unchanged', async () => {
