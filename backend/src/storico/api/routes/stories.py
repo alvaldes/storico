@@ -4,7 +4,7 @@ from dataclasses import replace
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from storico.api.dependencies import (
     get_current_user,
@@ -14,10 +14,14 @@ from storico.api.dependencies import (
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.story import (
     CreateUserStoryRequest,
+    StoryImportDuplicateItem,
+    StoryImportErrorItem,
+    StoryImportResponse,
     UpdateUserStoryRequest,
     UserStoryResponse,
 )
 from storico.domain.entities import EntityNotFound, User, UserStory
+from storico.domain.services.story_import import ImportRow, validate_import
 from storico.infrastructure.database.repositories import (
     SQLAlchemyProjectRepository,
     SQLAlchemyUserStoryRepository,
@@ -25,6 +29,7 @@ from storico.infrastructure.database.repositories import (
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
 )
+from storico.infrastructure.parsers.story_csv import MAX_FILE_BYTES, StoryCsvError, parse_story_csv
 
 router = APIRouter(prefix="/api/v1/stories", tags=["stories"])
 
@@ -280,3 +285,166 @@ async def delete_story(
         member_repo=member_repo,
     )
     await repo.delete(story_id)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# CSV import
+# ═══════════════════════════════════════════════════════════════════
+#
+# This route lives on the stories router, not under ``/api/v1/projects/{project_id}/...``.
+# The obvious nested path is unreachable by construction: ``projects.router`` carries a
+# legacy catch-all (``/{path:path}`` -> 410 Gone, ``routes/projects.py:39``) because
+# non-workspace-scoped project routes were retired on purpose, and it is registered first
+# in ``app.py``. Measured: a request to the nested path answered 410 with the retirement
+# message, with the route present in the OpenAPI schema and the app starting cleanly.
+#
+# Registering the import before the catch-all would work and would also make correctness
+# depend on registration order — the exact invisible mechanism that produced the 410. And
+# the retired prefix means "gone", so a live route there disagrees with the decision that
+# put it there. ``POST /api/v1/stories/import`` needs no ordering trick and matches the
+# sibling it belongs to: ``create_story`` also takes ``project_id`` from the request body.
+
+
+@router.post(
+    "/import",
+    status_code=status.HTTP_201_CREATED,
+    # The blocked-report path dumps its items with ``exclude_none=True``, so the success
+    # path has to agree: without this the same duplicate item carries
+    # ``existing_story_id: null`` on a 201 and omits the key entirely on a 422, and the
+    # client would need two shapes for one contract.
+    response_model_exclude_none=True,
+)
+async def import_stories(
+    project_id: Annotated[UUID, Form()],
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+) -> StoryImportResponse:
+    """Import user stories into a project from an uploaded CSV file.
+
+    The upload is validated as a whole before anything is written: one
+    blocking error anywhere answers ``422`` with the full error list and no
+    story is created. Rows that duplicate an existing story (or an earlier
+    row of the same upload) are skipped and reported, never fatal.
+    """
+    # Access checks mirror create_story: the project must exist and the
+    # caller must belong to its workspace.
+    project = await project_repo.find_by_id(project_id)
+    if project is None:
+        raise EntityNotFound("Project", str(project_id))
+
+    member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of this workspace",
+        )
+
+    data = await file.read()
+    # Byte cap before parsing: an oversized upload is rejected outright
+    # instead of spending parse work (and error noise) on a file that can
+    # never be accepted.
+    if len(data) > MAX_FILE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail={
+                "detail": "The file is too large.",
+                "error_code": "IMPORT_FILE_TOO_LARGE",
+                "size": len(data),
+                "max": MAX_FILE_BYTES,
+            },
+        )
+
+    try:
+        parsed = parse_story_csv(data)
+    except StoryCsvError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "detail": "The file could not be read.",
+                "error_code": "IMPORT_FILE_REJECTED",
+                "reason": exc.reason,
+            },
+        ) from exc
+
+    # One statement for the whole project, not one find_by_parts per row: the
+    # duplicate check becomes an in-memory lookup against this single query.
+    rows = await repo.list_parts_by_project(project_id)
+    existing = {(a, f, b): str(sid) for a, f, b, sid in rows}
+
+    import_rows = [
+        ImportRow(
+            line_number=row.line_number,
+            actor=row.actor,
+            feature=row.feature,
+            benefit=row.benefit,
+            raw_text=row.raw_text,
+        )
+        for row in parsed.rows
+    ]
+    report = validate_import(import_rows, parsed.mode, existing)
+
+    # Nothing is written while any row has a blocking error: the caller gets
+    # the whole error list back and can fix the file and retry from scratch.
+    # Duplicates are not blocking — they are reported and skipped below.
+    if report.blocked:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "detail": "The file has rows that must be fixed.",
+                "error_code": "IMPORT_VALIDATION_FAILED",
+                "created": 0,
+                "total_rows": report.total_rows,
+                "errors": [
+                    StoryImportErrorItem(
+                        line=error.line_number,
+                        reason=error.reason,
+                        field=error.field,
+                        length=error.actual_length,
+                        max=error.max_length,
+                    ).model_dump(exclude_none=True)
+                    for error in report.errors
+                ],
+                "duplicates": [
+                    StoryImportDuplicateItem(
+                        line=dup.line_number,
+                        reason=dup.reason,
+                        existing_story_id=dup.existing_story_id,
+                        first_line=dup.first_line,
+                    ).model_dump(exclude_none=True)
+                    for dup in report.duplicates
+                ],
+            },
+        )
+
+    stories = [
+        UserStory(
+            project_id=project_id,
+            actor=s.actor,
+            feature=s.feature,
+            benefit=s.benefit,
+            raw_text=s.raw_text,
+        )
+        for s in report.new_stories
+    ]
+    # One commit for the whole upload; with nothing new to create there is
+    # nothing to save.
+    saved = await repo.save_many(stories) if stories else []
+
+    return StoryImportResponse(
+        created=len(saved),
+        skipped=len(report.duplicates),
+        total_rows=report.total_rows,
+        duplicates=[
+            StoryImportDuplicateItem(
+                line=dup.line_number,
+                reason=dup.reason,
+                existing_story_id=dup.existing_story_id,
+                first_line=dup.first_line,
+            )
+            for dup in report.duplicates
+        ],
+        story_ids=[story.id for story in saved],
+    )
