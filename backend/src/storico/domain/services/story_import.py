@@ -252,15 +252,35 @@ def _first_error(row: ImportRow, mode: str) -> RowError | None:
 
 
 def _whole_story_in_parts_error(row: ImportRow) -> RowError | None:
-    """Refuse a parts row whose three joined cells read as one complete canonical story.
+    """Refuse a parts row whose joined cells read as one complete canonical story.
 
     Under an ``actor,feature,benefit`` header, a pasted unquoted canonical story is
     split by the story's own commas into exactly three fields — the field counts agree
     with the header by coincidence — so the ``field_count_mismatch`` guard cannot see
     it, and the row used to be mapped positionally into a plausible-looking garbage
-    story with nothing reported. Three values that together read as one complete story
-    are not three parts: the row contradicts its own header. The module's existing
-    ``parse_user_story`` decides, so there is no second regex.
+    story with nothing reported. Cells that together read as one complete story are
+    not parts: the row contradicts its own header. The module's own ``_STORY_PATTERN``
+    decides, so there is no second regex.
+
+    Every cell present on the row is joined — ``actor``, ``feature``, ``benefit`` and
+    ``raw_text`` when it is present and not blank — because the corruption is not
+    limited to the three-column shape: under an ``actor,feature,benefit,raw_text``
+    (or five-column) header, a story carrying one extra comma overflows into the next
+    column and the counts still agree with the header. Joining only the three parts
+    left that variant silent, so a garbage story was written with no error.
+
+    The anchor matters as much as the join: ``parse_user_story`` asks *is there* a
+    story in this text and searches anywhere in it, while this guard asks *is this
+    whole row* a story, so it uses ``_STORY_PATTERN.match`` which anchors at the
+    start. Searching instead refused a legitimate part that merely quotes a story
+    (a feature cell of ``build the page that parses As a user, I want X, so that Y``
+    was rejected); the anchored read is what lets a part quoting a story pass.
+
+    One refusal stays on purpose: an actor cell of ``As a service owner`` is refused
+    even though the app could trim the opening. The app renders an actor as
+    ``As a(n) {actor}``, so an actor already carrying the story opening is malformed
+    for this model, and the user's fix is to write ``service owner``. It is not an
+    accident of the pattern; it is the documented contract.
 
     This is deliberately not a per-field reason: the problem spans the columns, so
     naming one field would mislead. It is reported with ``field=None`` and no counts.
@@ -270,8 +290,14 @@ def _whole_story_in_parts_error(row: ImportRow) -> RowError | None:
     values = [getattr(row, field) for field in _PART_FIELDS]
     if any(value is None or not value.strip() for value in values):
         return None
-    joined = ", ".join(value.strip() for value in values)  # type: ignore[union-attr]
-    if parse_user_story(joined) is None:
+    cells = [value.strip() for value in values]  # type: ignore[union-attr]
+    raw_text = row.raw_text
+    if raw_text is not None and raw_text.strip():
+        cells.append(raw_text.strip())
+    joined = ", ".join(cells)
+    # `.match` anchors at the start; `parse_user_story` keeps `.search` because it is
+    # the port of the frontend parser and asks a different question (see docstring).
+    if _STORY_PATTERN.match(joined) is None:
         return None
     return RowError(line_number=row.line_number, reason="parts_look_like_a_full_story")
 

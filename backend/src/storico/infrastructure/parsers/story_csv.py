@@ -23,6 +23,15 @@ __all__ = [
 MAX_ROWS = 1000
 MAX_FILE_BYTES = 2 * 1024 * 1024
 
+# A field longer than csv's default limit (131072 chars) raises ``csv.Error`` mid-read,
+# which used to escape the parser as an unhandled 500. The only input path is a request
+# whose body is already capped at ``MAX_FILE_BYTES``, and this module is the only ``csv``
+# consumer under ``src/``, so raising the process-global limit to that same bound once at
+# import is bounded. A too-long field is then read whole and reported by the row
+# validation as ``too_long`` with its exact ``length`` and ``max`` — far more actionable
+# than "this file cannot be read". Set once here, never per request.
+csv.field_size_limit(MAX_FILE_BYTES)
+
 _PARTS_COLUMNS = ("actor", "feature", "benefit")
 _FULL_COLUMNS = ("story", "input", "raw_text")
 # Ordered so the choice is deterministic if a header ever carried two candidates. Every
@@ -34,7 +43,7 @@ _DELIMITER_PREFERENCE = (",", ";", "\t")
 # field is still unwrapped, including one that spans several lines.
 _SINGLE_COLUMN = "\x00"
 _FAILURE_REASONS = frozenset(
-    {"invalid_encoding", "header_unrecognized", "too_many_rows", "empty_file"}
+    {"invalid_encoding", "header_unrecognized", "too_many_rows", "empty_file", "malformed_csv"}
 )
 
 
@@ -103,33 +112,44 @@ def parse_story_csv(data: bytes) -> ParsedStoryCsv:
         raise StoryCsvError("empty_file")
 
     header_line = text.splitlines()[0]
-    reader = csv.reader(io.StringIO(text), delimiter=_detect_delimiter(header_line))
+    # ``newline=""`` is csv's documented requirement for the file-like it reads: with
+    # StringIO's default newline handling, CR-only line endings reach the reader as
+    # literal ``\r`` inside a field and raise ``csv.Error`` (a 500). With it, the reader
+    # itself terminates records on ``\r``, ``\n`` and ``\r\n``. The string is already
+    # decoded, so nothing else about decoding changes.
+    reader = csv.reader(io.StringIO(text, newline=""), delimiter=_detect_delimiter(header_line))
 
-    header = next(reader, None)
-    if header is None:
-        raise StoryCsvError("empty_file")
+    try:
+        header = next(reader, None)
+        if header is None:
+            raise StoryCsvError("empty_file")
 
-    normalized_header = [cell.strip().lower() for cell in header]
-    mode = _classify_header(normalized_header)
-    positions = {name: index for index, name in enumerate(normalized_header)}
+        normalized_header = [cell.strip().lower() for cell in header]
+        mode = _classify_header(normalized_header)
+        positions = {name: index for index, name in enumerate(normalized_header)}
 
-    rows: list[StoryCsvRow] = []
-    # ``reader.line_num`` is the last physical line of the record just consumed, so the
-    # record about to be read starts on the line after it. Tracking it this way — instead
-    # of reading ``line_num`` after the fact — is what keeps the reported line number on
-    # the record's *first* line when a quoted field carries an embedded newline, and what
-    # keeps blank line skips from shifting every number below them.
-    previous_line = reader.line_num
-    for raw_row in reader:
-        record_start_line = previous_line + 1
+        rows: list[StoryCsvRow] = []
+        # ``reader.line_num`` is the last physical line of the record just consumed, so the
+        # record about to be read starts on the line after it. Tracking it this way — instead
+        # of reading ``line_num`` after the fact — is what keeps the reported line number on
+        # the record's *first* line when a quoted field carries an embedded newline, and what
+        # keeps blank line skips from shifting every number below them.
         previous_line = reader.line_num
-        if not _has_content(raw_row):
-            continue
-        if len(rows) >= MAX_ROWS:
-            raise StoryCsvError("too_many_rows")
-        rows.append(
-            _build_row(mode, positions, raw_row, record_start_line, field_count=len(raw_row))
-        )
+        for raw_row in reader:
+            record_start_line = previous_line + 1
+            previous_line = reader.line_num
+            if not _has_content(raw_row):
+                continue
+            if len(rows) >= MAX_ROWS:
+                raise StoryCsvError("too_many_rows")
+            rows.append(
+                _build_row(mode, positions, raw_row, record_start_line, field_count=len(raw_row))
+            )
+    except csv.Error as exc:
+        # Backstop: after the ``newline=""`` fix and the raised field limit, real input can
+        # no longer reach this — but it stays so that no ``csv`` failure can ever surface
+        # as an unhandled 500 again.
+        raise StoryCsvError("malformed_csv") from exc
 
     return ParsedStoryCsv(mode=mode, rows=tuple(rows), expected_field_count=len(header))
 

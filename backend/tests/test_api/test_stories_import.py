@@ -349,6 +349,53 @@ class TestImportRejectedFiles:
         assert data["reason"] == "empty_file"
 
 
+class TestImportHostileInput:
+    """Inputs that used to escape the parser as an unhandled 500.
+
+    Both were real: the route returned ``500 Internal server error`` rather than any contract
+    status, so a malformed upload looked like a server fault. They are pinned here, at the
+    HTTP layer, because that is where the failure was observed — a parser-level assertion
+    alone would not have caught it.
+    """
+
+    async def test_cr_only_line_endings_are_accepted(self, authed_client, seed_workspace):
+        """A classic-Mac file parses instead of raising: the reader needs ``newline=""``."""
+        seeded = await seed_workspace(stories=0)
+
+        response = await _import_file(
+            authed_client,
+            seeded.workspace_id,
+            seeded.project_id,
+            b"actor,feature,benefit\ruser,log in,access\r",
+        )
+
+        assert response.status_code == 201
+        assert response.json()["created"] == 1
+
+    async def test_a_very_long_field_is_reported_not_a_server_error(
+        self, authed_client, seed_workspace
+    ):
+        """A field past csv's own 131072 limit is read and reported as ``too_long``.
+
+        The field-size limit is raised to the byte cap at import, so the row is read and the
+        normal length rule answers with the exact numbers instead of the file failing to
+        parse at all.
+        """
+        seeded = await seed_workspace(stories=0)
+        payload = b"story\n" + b"x" * 200_000 + b"\n"
+
+        response = await _import_file(
+            authed_client, seeded.workspace_id, seeded.project_id, payload
+        )
+
+        assert response.status_code == 422
+        error = _error_envelope(response)["errors"][0]
+        assert error["reason"] == "too_long"
+        assert error["field"] == "raw_text"
+        assert error["length"] == 200_000
+        assert error["max"] == 2000
+
+
 class TestImportSizeLimit:
     """The 2 MiB byte cap is enforced before parsing."""
 

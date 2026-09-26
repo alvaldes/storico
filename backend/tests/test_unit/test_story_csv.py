@@ -8,6 +8,8 @@ downstream error report is only useful if it points at the line the user actuall
 
 from __future__ import annotations
 
+import csv
+
 import pytest
 
 from storico.infrastructure.parsers.story_csv import (
@@ -314,6 +316,61 @@ def test_invalid_utf8_fails_the_file() -> None:
 @pytest.mark.unit
 def test_an_empty_file_fails_the_file() -> None:
     assert _reason(b"") == "empty_file"
+
+
+@pytest.mark.unit
+def test_classic_mac_cr_only_line_endings_parse() -> None:
+    """A file with lone CR line endings parses instead of raising csv.Error.
+
+    With StringIO's default newline handling the CR reached the reader inside a field
+    and the upload died as a 500. With ``newline=""`` the reader terminates records on
+    ``\\r`` itself: the file holds two records — the header and one data row — and both
+    must parse.
+    """
+    parsed = parse_story_csv(b"actor,feature,benefit\ruser,log in,access\r")
+
+    assert parsed.mode == "parts"
+    assert parsed.expected_field_count == 3
+    assert [(row.line_number, row.actor, row.feature, row.benefit) for row in parsed.rows] == [
+        (2, "user", "log in", "access")
+    ]
+
+
+@pytest.mark.unit
+def test_a_field_of_200_000_characters_is_read_whole_not_raised() -> None:
+    """A single field over csv's old 131072-char limit is read, not raised.
+
+    The module raises csv's field-size limit to ``MAX_FILE_BYTES`` at import, so the
+    oversized field comes back whole and the domain layer can report ``too_long`` with
+    its exact length instead of the parser failing the file (or the 500 it used to be).
+    """
+    story = "x" * 200_000
+
+    parsed = parse_story_csv(b"story\n" + story.encode("utf-8") + b"\n")
+
+    assert parsed.mode == "full"
+    assert parsed.rows[0].raw_text == story
+    assert len(parsed.rows[0].raw_text) == 200_000
+
+
+@pytest.mark.unit
+def test_a_csv_error_beyond_every_guard_reports_malformed_csv() -> None:
+    """The backstop turns any residual csv.Error into a file-level 422 reason.
+
+    Real input can no longer reach the backstop (``newline=""`` and the raised field
+    limit cover the measured failures), so the test forces a ``csv.Error`` by lowering
+    the field-size limit. That limit is process-global state shared with every other
+    csv consumer in the test process, so the test mutates it only inside try/finally
+    and always restores the original value it read first.
+    """
+    original_limit = csv.field_size_limit()
+    try:
+        csv.field_size_limit(10)
+        with pytest.raises(StoryCsvError) as caught:
+            parse_story_csv(b"story\n" + b"x" * 50 + b"\n")
+        assert caught.value.reason == "malformed_csv"
+    finally:
+        csv.field_size_limit(original_limit)
 
 
 @pytest.mark.unit

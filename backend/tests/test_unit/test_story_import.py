@@ -435,6 +435,127 @@ def test_legitimate_part_rows_are_not_flagged_as_a_whole_story(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ("actor", "feature", "benefit", "raw_text", "field_count"),
+    [
+        # 3-column header: the original corruption shape.
+        ("As a user", " I want A", " so that B", None, 3),
+        # 4-column header (optional raw_text): one extra comma overflows into the fourth
+        # column, so the counts agree with the header and the field-count guard is silent.
+        # The guard used to join only the first three cells, which has no `so that`, and a
+        # garbage story was written with no error.
+        ("As a user", " I want A", " B", " so that C", 4),
+        # 5-column header: same overflow, one column further.
+        ("As a user", " I want A", " B", " so that C", 5),
+    ],
+    ids=["three-columns", "four-columns", "five-columns"],
+)
+def test_a_pasted_story_overflowing_its_header_is_refused_on_every_column_count(
+    actor: str, feature: str, benefit: str, raw_text: str | None, field_count: int
+) -> None:
+    """The whole-story guard sees a pasted story on 3-, 4- and 5-column rows alike."""
+    report = validate_import(
+        [
+            ImportRow(
+                2,
+                actor=actor,
+                feature=feature,
+                benefit=benefit,
+                raw_text=raw_text,
+                field_count=field_count,
+                expected_field_count=field_count,
+            )
+        ],
+        "parts",
+        {},
+    )
+
+    assert report.blocked
+    assert report.new_stories == ()
+    assert [(error.reason, error.line_number) for error in report.errors] == [
+        ("parts_look_like_a_full_story", 2)
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("actor", "feature", "benefit", "raw_text"),
+    [
+        # A legitimate 4-column row whose raw_text cell holds the canonical text of the
+        # same story: joining every cell keeps the row from reading as one story.
+        ("user", "log in", "access", "As a user, I want log in, so that access"),
+        ("user", "log in", "access", None),
+        # A part that merely quotes a story: the row does not start with the story
+        # opening, so the anchored guard passes it (searching used to refuse it).
+        (
+            "user",
+            "build the page that parses As a user, I want X, so that Y",
+            "access",
+            None,
+        ),
+        ("admin, senior", "export, save", "share, collaborate", None),
+        ("user", "log in", "so that users retry", None),
+        ("power user", "I want reports", "see data", None),
+    ],
+    ids=[
+        "canonical-raw-text-cell",
+        "plain-parts",
+        "feature-quotes-a-story",
+        "commas-in-parts",
+        "benefit-opens-like-a-benefit",
+        "feature-opens-like-a-feature",
+    ],
+)
+def test_legitimate_rows_reach_new_stories_under_the_joined_anchored_guard(
+    actor: str, feature: str, benefit: str, raw_text: str | None
+) -> None:
+    """Every accepted row reaches `new_stories` with the parts supplied."""
+    field_count = 4 if raw_text is not None else 3
+    report = validate_import(
+        [
+            ImportRow(
+                1,
+                actor=actor,
+                feature=feature,
+                benefit=benefit,
+                raw_text=raw_text,
+                field_count=field_count,
+                expected_field_count=field_count,
+            )
+        ],
+        "parts",
+        {},
+    )
+
+    assert not any(error.reason == "parts_look_like_a_full_story" for error in report.errors)
+    assert report.errors == ()
+    story = report.new_stories[0]
+    assert (story.actor, story.feature, story.benefit) == (actor, feature, benefit)
+
+
+@pytest.mark.unit
+def test_an_actor_carrying_the_story_opening_is_refused_on_purpose() -> None:
+    """`As a service owner` is refused intentionally, not as a pattern accident.
+
+    The app renders an actor as `As a(n) {actor}`, so an actor cell that already carries
+    the story opening is malformed for this model — the rendered story would read
+    `As a(n) As a service owner`. The user's fix is to write `service owner`, and the
+    guard's refusal is the documented contract, not an edge case to be relaxed.
+    """
+    report = validate_import(
+        [ImportRow(1, "As a service owner", "I want metrics", "so that I monitor")],
+        "parts",
+        {},
+    )
+
+    assert report.blocked
+    assert report.new_stories == ()
+    assert [(error.reason, error.line_number) for error in report.errors] == [
+        ("parts_look_like_a_full_story", 1)
+    ]
+
+
+@pytest.mark.unit
 def test_a_pasted_canonical_story_split_by_its_own_commas_is_refused_not_silently_corrupted() -> (
     None
 ):
