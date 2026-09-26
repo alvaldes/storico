@@ -226,3 +226,9 @@ Two more traps the zoom round added to that list:
 - **Same-origin theme sharing.** Restored only if the demo ends up under the same origin, which is
   the open "dónde" from the vault note.
 - **The phone mockup** stays exactly as it is; the brief was to add below the hero, not to replace it.
+
+> **Later, deliberate reversal (2026-09-26).** The owner then asked for the mockup gone and for the
+> hero copy to take the full width, so the mockup *and* the tokens that only fed it were removed on
+> this same branch. That work has its own record: `odd/tasks/landing-hero-redesign.md`, which also
+> carries the typographic restructure of the title and subtitle. The line above was true of *this*
+> change's brief and is left as written; the mockup is nonetheless no longer in the tree.
