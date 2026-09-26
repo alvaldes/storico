@@ -72,14 +72,31 @@ export const ALL: APIRoute = async ({ request }) => {
 
   try {
     // --- Leer body del request ---
-    // Leer ANTES de hacer fetch para evitar problemas con ReadableStream
-    // en Node.js fetch (evita duplex:'half').
-    let rawBody: string | undefined;
+    // El body se lee (y bufferiza) ANTES del fetch, por dos razones:
+    // 1) los bytes deben llegar intactos al backend: en un upload de archivo
+    //    (multipart) `text()` decodificaría el binario como UTF-8 y lo corrompería;
+    // 2) bufferizar evita pasarle un ReadableStream al fetch de Node.js,
+    //    que exigiría `duplex: 'half'`.
+    let rawBody: string | ArrayBuffer | undefined;
+    const contentType = request.headers.get('content-type') ?? '';
+    const isMultipart = contentType.toLowerCase().startsWith('multipart/form-data');
+
     if (request.method !== 'GET' && request.method !== 'HEAD') {
-      const text = await request.text();
-      if (text) {
-        rawBody = text;
-        headers.set('Content-Type', 'application/json');
+      if (isMultipart) {
+        // Bytes exactos + el content-type del cliente (lleva el boundary,
+        // que no se puede reconstruir desde el proxy).
+        const bytes = await request.arrayBuffer();
+        if (bytes.byteLength > 0) {
+          rawBody = bytes;
+          headers.set('Content-Type', contentType);
+        }
+      } else {
+        // Rama texto/JSON: comportamiento previo, sin cambios.
+        const text = await request.text();
+        if (text) {
+          rawBody = text;
+          headers.set('Content-Type', 'application/json');
+        }
       }
     }
 

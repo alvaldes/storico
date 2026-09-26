@@ -90,7 +90,9 @@ protectedPaths = ['/dashboard', '/stories', '/kanban', '/export', '/account']
 ### Frontend
 
 - **API keys nunca en localStorage** — `settingsStore` persiste solo `settings.export`
-- **Content-Type** forzado a `application/json`
+- **`Content-Type` normalizado a `application/json`** en el proxy de Astro (`src/pages/api/v1/[...path].ts`), con **una sola excepción**: un request `multipart/form-data` reenvía los bytes exactos y su propio `content-type`, porque el `boundary` vive ahí y el proxy no puede reconstruirlo. El proxy sigue armando los headers desde cero y no copia ninguno del cliente salvo ese, y solo en esa rama; el `Authorization` lo firma él. **Qué NO protege**: en un request multipart el `content-type` que ve el backend lo elige el cliente, así que esa parte de la normalización no aplica — queda acotada a esa familia de contenido y al endpoint de importación de historias. La rama no-multipart es idéntica a la anterior y es la que usa todo el resto del frontend. El proxy tiene un único archivo de test (`src/pages/api/__tests__/proxy-multipart.test.ts`, seis casos contra un backend de verdad en un socket), que cubre la subida intacta, la subida de ~1 MB sin truncar, la rama JSON sin cambios, un GET sin cuerpo, el 401 sin sesión y el 504 por timeout; el resto de su comportamiento sigue sin prueba.
+
+> Actualizado el 2026-09-26: antes decía `Content-Type` forzado a `application/json` sin excepciones, y eso dejó de ser cierto al habilitar la subida de archivos. La excepción se acotó a multipart en vez de generalizar el reenvío del `content-type`, para que ningún otro tráfico pueda elegir el tipo que llega al backend.
 - **No secrets en código** — Variables de entorno via `import.meta.env`
 
 ### Producción (pendiente)
