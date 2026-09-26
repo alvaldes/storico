@@ -30,7 +30,12 @@ from storico.infrastructure.database.repositories import (
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
 )
-from storico.infrastructure.parsers.story_csv import MAX_FILE_BYTES, StoryCsvError, parse_story_csv
+from storico.infrastructure.parsers.story_csv import (
+    MAX_FILE_BYTES,
+    MAX_ROWS,
+    StoryCsvError,
+    parse_story_csv,
+)
 
 router = APIRouter(prefix="/api/v1/stories", tags=["stories"])
 
@@ -383,13 +388,19 @@ async def import_stories(
     try:
         parsed = parse_story_csv(data)
     except StoryCsvError as exc:
+        detail = {
+            "detail": "The file could not be read.",
+            "error_code": "IMPORT_FILE_REJECTED",
+            "reason": exc.reason,
+        }
+        # Only a limit reason carries a number: the client substitutes it into
+        # "more than N lines", and absent-vs-present distinguishes the branch
+        # (``typeof max === 'number'``), so it must not be a null placeholder.
+        if exc.reason == "too_many_rows":
+            detail["max"] = MAX_ROWS
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={
-                "detail": "The file could not be read.",
-                "error_code": "IMPORT_FILE_REJECTED",
-                "reason": exc.reason,
-            },
+            detail=detail,
         ) from exc
 
     # One statement for the whole project, not one find_by_parts per row: the

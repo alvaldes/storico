@@ -20,6 +20,7 @@ from uuid import uuid4
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from storico.domain.services.story_import import CANONICAL_RAW_TEXT_TEMPLATE
+from storico.infrastructure.parsers.story_csv import MAX_ROWS
 
 IMPORT_PATH = "/api/v1/workspaces/{workspace_id}/stories/import"
 
@@ -325,6 +326,9 @@ class TestImportRejectedFiles:
         data = _error_envelope(response)
         assert data["error_code"] == "IMPORT_FILE_REJECTED"
         assert data["reason"] == "header_unrecognized"
+        # Only the limit reason carries a number. `max` must be absent, not null: the client
+        # branches on `typeof max === 'number'`, so a null placeholder would change its path.
+        assert "max" not in data
 
     async def test_invalid_utf8_is_rejected(self, authed_client, seed_workspace):
         """Bytes that are not valid UTF-8 are rejected as invalid_encoding."""
@@ -347,6 +351,43 @@ class TestImportRejectedFiles:
         data = _error_envelope(response)
         assert data["error_code"] == "IMPORT_FILE_REJECTED"
         assert data["reason"] == "empty_file"
+
+    async def test_too_many_rows_reports_the_limit(self, authed_client, seed_workspace):
+        """A file past the row cap names the cap, so the client can say how many are allowed.
+
+        This reason had no API test at all until now, which is how it came to answer without a
+        number while the dialog rendered "more than 0 lines".
+        """
+        seeded = await seed_workspace(stories=0)
+        rows = [[f"user{i}", f"feature {i}", f"benefit {i}"] for i in range(MAX_ROWS + 1)]
+
+        response = await _import_file(
+            authed_client,
+            seeded.workspace_id,
+            seeded.project_id,
+            csv_bytes(["actor", "feature", "benefit"], rows),
+        )
+
+        assert response.status_code == 422
+        data = _error_envelope(response)
+        assert data["error_code"] == "IMPORT_FILE_REJECTED"
+        assert data["reason"] == "too_many_rows"
+        assert data["max"] == MAX_ROWS
+
+    async def test_exactly_the_row_cap_is_accepted(self, authed_client, seed_workspace):
+        """The boundary is inclusive, so the cap is pinned from both sides."""
+        seeded = await seed_workspace(stories=0)
+        rows = [[f"user{i}", f"feature {i}", f"benefit {i}"] for i in range(MAX_ROWS)]
+
+        response = await _import_file(
+            authed_client,
+            seeded.workspace_id,
+            seeded.project_id,
+            csv_bytes(["actor", "feature", "benefit"], rows),
+        )
+
+        assert response.status_code == 201
+        assert response.json()["created"] == MAX_ROWS
 
 
 class TestImportHostileInput:
