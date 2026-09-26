@@ -44,8 +44,10 @@ const faqItems = [
   <!-- ════════════════════════════════════════════ -->
   <div class="mx-auto max-w-7xl px-4 md:px-8 lg:px-20">
     <section class="flex flex-col gap-16 py-16 lg:py-[100px]">
-      <!-- Hero copy: full width, no partner column -->
-      <div class="relative flex w-full flex-col gap-6">
+      <!-- Hero copy: one centered column. The container stays full width; the text
+           inside it is what carries the measure (text-balance on the title, 60ch on the
+           subtitle) so no line runs past a readable length. -->
+      <div class="relative flex w-full flex-col items-center gap-6 text-center">
         <!-- Background watermark -->
         <img
           src="/favicon.svg"
@@ -61,17 +63,19 @@ const faqItems = [
         </span>
 
         <h1
-          class="text-[2rem] font-[800] leading-[1.15] tracking-[-1px] text-(--color-text) md:text-[3rem] lg:text-[52px] lg:tracking-[-1.5px]"
+          class="text-balance text-4xl font-[800] leading-[1.15] tracking-[-1px] text-(--color-text) md:text-5xl lg:text-6xl lg:tracking-[-1.5px]"
           style="font-family: 'Space Grotesk', sans-serif;"
         >
           {t.landing.hero.title}
         </h1>
 
-        <p class="text-base leading-[1.6] text-(--color-text-secondary) md:text-lg">
+        <p
+          class="max-w-[60ch] text-pretty text-lg leading-[1.5] text-(--color-text-secondary) md:text-2xl lg:text-3xl"
+        >
           {t.landing.hero.subtitle}
         </p>
 
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
           <a
             href={L(isLoggedIn ? '/dashboard' : '/login')}
             class="inline-flex items-center justify-center rounded-lg bg-(--color-primary-600) px-7 py-3.5 text-base font-semibold text-(--color-inverse-text) no-underline shadow-primary-sm transition-all hover:bg-(--color-primary-700)"
