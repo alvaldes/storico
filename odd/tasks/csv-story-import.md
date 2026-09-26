@@ -62,7 +62,7 @@ Consequences, which are requirements rather than niceties:
 | # | Decision | Choice |
 |---|----------|--------|
 | D1 | Where parsing happens | Backend, with the stdlib `csv` module. One source of truth for validation, membership and duplicates; no new frontend dependency and no hand-rolled parser |
-| D2 | Endpoint | `POST /api/v1/projects/{project_id}/stories/import`, multipart, field `file`. Named `import` and not `batch` (see scope boundary) |
+| D2 | Endpoint | `POST /api/v1/workspaces/{workspace_id}/stories/import`, multipart, `project_id` and `file` as form fields. Named `import` and not `batch` (see scope boundary). **Revised twice** — see the two path corrections below |
 | D3 | CSV format | Auto-detected by header, case-insensitive and trimmed: `actor` + `feature` + `benefit` → parts mode (optional `raw_text` column, used verbatim when present); `story` / `input` / `raw_text` → full-story mode, parsed to parts. Any other header is a file-level error |
 | D4 | Partial failure | **Errors block everything; duplicates are skipped and reported.** Every row is parsed and validated first, and a full report with line numbers comes back. With at least one error nothing is written (`created: 0`, HTTP `422`) |
 | D5 | Duplicates | Skip and report, against both the project and the file itself. Importing the same file twice is idempotent: `created: 0`, every row reported as a duplicate |
@@ -75,7 +75,7 @@ Consequences, which are requirements rather than niceties:
 ## The contract
 
 ```
-POST /api/v1/stories/import
+POST /api/v1/workspaces/{workspace_id}/stories/import
 Content-Type: multipart/form-data     fields: project_id (form), file (.csv)
 
 201 — nothing to block on. Re-uploading the same file is idempotent.
@@ -90,7 +90,9 @@ Content-Type: multipart/form-data     fields: project_id (form), file (.csv)
     "errors": [
       { "line": 7,  "reason": "missing_field", "field": "feature" },
       { "line": 19, "reason": "too_long", "field": "benefit", "length": 340, "max": 300 },
-      { "line": 23, "reason": "unparsable_story" } ],
+      { "line": 23, "reason": "unparsable_story" },
+      { "line": 31, "reason": "field_count_mismatch", "observed": 4, "expected": 3 },
+      { "line": 40, "reason": "parts_look_like_a_full_story" } ],
     "duplicates": [ ... ] } }
 
 413 — over the byte cap
@@ -107,6 +109,24 @@ the inner `detail` string is the human sentence — the same shape the extractio
 for `LLM_CONFIG_INCOMPLETE`. The first version of this block showed only the outer level, which is
 finding V3 of the verification below; the API tests read it through one `_error_envelope` helper so
 the envelope is asserted in a single place.
+
+### The reason codes, complete
+
+Blocking, per row, and each carries only the fields it needs:
+
+| reason | extra fields | meaning |
+|---|---|---|
+| `missing_field` | `field` | the cell is absent |
+| `empty_field` | `field` | the cell is present but whitespace-only |
+| `too_long` | `field`, `length`, `max` | over the schema limit; never truncated |
+| `unparsable_story` | `field` | a full-mode row that is not a user story |
+| `field_count_mismatch` | `observed`, `expected` | the row's field count disagrees with the header |
+| `parts_look_like_a_full_story` | none | the parts together read as one complete story |
+
+Non-blocking, reported in `duplicates` with `reason` `duplicate` (plus `existing_story_id`) or
+`duplicate_in_file` (plus `first_line`). File-level rejections use `IMPORT_FILE_REJECTED` with a
+`reason` of `invalid_encoding`, `header_unrecognized`, `too_many_rows` or `empty_file`, and the byte
+cap uses `IMPORT_FILE_TOO_LARGE` with `size` and `max`.
 
 ### Spec inconsistency found and resolved: where `duplicate_in_file` lives
 
@@ -238,7 +258,81 @@ which silently slices the parts to their maxima on its own path. The practical c
 is roughly 730 characters, and the `raw_text` limit is unreachable there. Left as is, on purpose:
 padding a prompt with text the user did not write is exactly the silent change this feature refuses.
 
+## Spec correction (third round): the import belongs under its workspace
+
+The second correction moved the route to `POST /api/v1/stories/import`. That fixed reachability
+and was still the wrong home, because it put a new feature on the **legacy** flat stories router.
+
+Every newer scoped feature in this API is workspace-scoped — `projects_router` is
+`/api/v1/workspaces/{workspace_id}/projects`, `extraction_router` is `.../extract`, and `export`
+and `settings` follow — and `docs/api.md` states for extraction that "la única ruta vigente es la
+workspace-scoped". The top-level `/api/v1/stories` and `/api/v1/tasks` tables in that document are
+the legacy set. Reachability was the symptom; the missing workspace scope was the disease, and only
+fixing the first left the second in place.
+
+The route is now **`POST /api/v1/workspaces/{workspace_id}/stories/import`**, with `project_id` still
+a multipart form field:
+
+- `extraction_router` keeps the workspace in the path and its child resource id (`user_story_id`) in
+the body, and `create_story` takes `project_id` in the payload rather than the path. Both precedents
+agree on the form field.
+- Membership resolves through the established `get_workspace_for_user` dependency, which defines its
+own 401/403/404, instead of a hand-rolled project→workspace→member lookup.
+
+**Containment is a separate check and is required.** Naming a workspace in the path proves the caller
+belongs to it, and says nothing about the project named in the form: without the extra check a member
+of workspace A could import into a project of workspace B. It mirrors the 403 containment check in
+`routes/extraction.py`, and a test seeds two workspaces the caller belongs to and imports across
+them.
+
+## The comma, resolved in four layers
+
+The user's question was how the comma problem gets solved. It turned out there were three separate
+ways for a comma to corrupt an import, not one, and the count check that closed the second one
+deliberately cannot see the third.
+
+| # | Shape | Behaviour |
+|---|-------|-----------|
+| 1 | `story` header, one canonical story per line, unquoted | **Works.** The header carries no delimiter, so the file has one column and the whole line is the field. Commas, semicolons and tabs all survive. |
+| 2 | Any header, properly quoted values | **Works.** CSV quoting is honoured by `csv.reader`, including a field spanning several physical lines. |
+| 3 | Row field count ≠ header column count | **Refused** — `field_count_mismatch` with `observed` and `expected`. A row that cannot be mapped to columns is never partially mapped. |
+| 4 | A whole story inside the parts columns | **Refused** — `parts_look_like_a_full_story`. See below. |
+
+### Why layer 3 is not enough, which is the whole point
+
+The canonical story contains **commas by construction**: `As a user, I want A, so that B` has exactly
+two. Under a three-column header it therefore yields exactly **three** fields — the counts **agree**
+and the count check is silent. The row was mapped into a plausible-looking garbage story:
+
+```
+header 'actor,feature,benefit' + row 'As a user, I want A, so that B'   (unquoted)
+   before -> creates actor='As a user', feature=' I want A', benefit=' so that B'   no error
+```
+
+Nothing was reported and a story was written. Layer 4 closes it without guessing about content: in
+`parts` mode the row's own fields are joined with `", "` and the result is asked to parse as a
+canonical story using the module's existing `parse_user_story`. Three values that together read as one
+complete story are not three parts — the row contradicts its own header. Measured against six cases,
+**only the corruption is flagged**:
+
+```
+FLAG  ('As a user', ' I want A', ' so that B')        the corruption
+ok    ('user', 'log in', 'access')
+ok    ('admin, senior', 'export, save', 'share, collaborate')     commas inside parts
+ok    ('As a user', 'log in', 'access')               needs "I want"; not flagged
+ok    ('user', 'log in', 'so that users retry')       not flagged
+ok    ('power user', 'I want reports', 'see data')    "As a" away from the start
+```
+
+No per-field prefix heuristics were added, and nothing constrains what a part may contain. The
+residual case is narrow and recorded as a follow-up below.
+
 ## Spec correction: the published path was unreachable, and the prefix behind it is poisoned
+
+> **Superseded in part.** The finding below is still accurate and still matters — the prefix *is*
+> poisoned, and the nested path *is* permanently 410. What is superseded is its conclusion: it moved
+> the route to the flat legacy `/api/v1/stories/import`, which fixed reachability and missed that a
+> new endpoint should not live on the legacy router at all. See the third correction above.
 
 The approved contract put the route at `POST /api/v1/projects/{project_id}/stories/import`.
 That path **can never be served**, and the implementation proved it rather than the review
@@ -323,6 +417,14 @@ on warnings, so a new one would have sat there quietly.
 | Everything but integration, after the verification fixes | `conda run -n storico python -m pytest -q -m "not integration"` | **848 passed** (+4), 109 deselected, 1 warning |
 | Parser tests after the single-column fix | `conda run -n storico python -m pytest -q -m unit tests/test_unit/test_story_csv.py` | **24 passed** (21 from before, 3 added for the comma, quoted and multi-line cases) |
 | Mutation check, V2 | delete the `file.size` guard, re-run | `test_an_oversized_upload_is_refused_without_being_read` **fails**; restored and green |
+| Parser and validation units, after the structural guards | `conda run -n storico python -m pytest -q -m unit tests/test_unit/test_story_csv.py tests/test_unit/test_story_import.py` | **60 passed** |
+| Import API tests, after the workspace scoping | `conda run -n storico python -m pytest -q tests/test_api/test_stories_import.py` | **19 passed** |
+| Everything but integration, final | `conda run -n storico python -m pytest -q -m "not integration"` | **870 passed**, 109 deselected, 2 warnings |
+| The route really moved | `POST /api/v1/workspaces/{id}/stories/import` unauthenticated | **401** — the scoped path is served. `POST /api/v1/stories/import` now answers **405**: the flat registration is gone |
+| The corruption is dead on the wire | multipart POST of `story\nAs a user, I want A, so that B\n` | **201, `created: 1`** — the natural shape imports intact |
+| | multipart POST of `actor,feature,benefit\nAs a user, I want A, so that B\n` | **422** — `{"line": 2, "reason": "parts_look_like_a_full_story"}`, `created: 0` |
+| | multipart POST of `actor,feature,benefit\nAs a user, I want A, B, so that C\n` | **422** — `{"line": 2, "reason": "field_count_mismatch", "observed": 4, "expected": 3}`, `created: 0` |
+| Mutation check, the project 404 | delete the `project is None` branch, re-run the API tests | `test_an_unknown_project_in_a_known_workspace_gets_404` **fails**; restored and green at 19 |
 | Lint and format, whole tree | `conda run -n storico python -m ruff check src tests` and `ruff format --check src tests` | All checks passed; 244 files already formatted |
 | The warning is not ours | `conda run -n storico python -m pytest -q -m "not integration" 2>&1 \| grep -B4 warnings summary` | raised by `test_custom_provider_repo.py::test_list_is_empty_for_a_fresh_workspace`, a file this feature never touches. Pre-existing, and `docs/testing.md` records that nothing gates on warnings |
 | Lint | `conda run -n storico python -m ruff check src/storico/infrastructure/parsers tests/test_unit/test_story_csv.py` | All checks passed |
@@ -340,6 +442,19 @@ on warnings, so a new one would have sat there quietly.
    pre-existing**, both raised by `tests/test_repositories/test_custom_provider_repo.py`, a file
    this feature never touches. They are the same aiosqlite teardown artefact attributed to
 different tests across runs. `docs/testing.md` records that nothing gates on warnings.
+3. **The one comma case the fourth layer does not catch.** `actor='As a user'`, `feature='log in'`,
+   `benefit='access'` — the pasted prefix sits in the actor column but the rest is sane, so the joined
+   row is not a complete story (`As a user, log in, access` has no `I want`) and nothing fires. The
+   outcome is a strange actor — the app renders it as `As a(n) As a user` — not a corrupted story, and
+   it is visible in the story list. A per-field prefix check would close it, at the cost of rejecting
+   an actor that legitimately starts with "As a" ("As a service owner"). That trade was declined
+   without evidence of a real user hitting it; if one appears, the check is a few lines in
+   `_first_error` and the reason code already has the right shape.
+4. **The verification of the structural guards and the workspace scoping has not been independent.**
+   The first verification covered `901bb89..2e2a8d4`. The two corrections that followed — the comma
+   guards and the route move — were written by this session and reviewed only by this session, with
+   the mutation checks recorded above as the strongest evidence for them. A second independent pass
+   over `a38f18f..HEAD` is worth running before the frontend is built on this contract.
 
 ## Independent verification (read-only) over `901bb89..2e2a8d4`
 
@@ -383,4 +498,6 @@ returns the input entities, which is only correct while `UserStory.id` is pre-ge
 | 2 | `26bfab5` | 27 unit tests, 187 unit tests whole suite, ruff clean |
 | 3 | `3f55d07` | 19 repository tests, 830 tests with integration excluded, ruff clean |
 | 4 | `288f855` | 14 import API tests, 844 tests with integration excluded, ruff clean |
-| verification fixes | this commit | 848 tests with integration excluded, 24 parser tests, 15 API tests, ruff clean, mutation-verified |
+| verification fixes | `a38f18f` | 848 tests with integration excluded, 24 parser tests, 15 API tests, ruff clean, mutation-verified |
+| comma guards | `f67896c` | 866 tests with integration excluded, 60 unit tests across the parser and the domain |
+| workspace scoping | `446cf2e` | 870 tests with integration excluded, 19 API tests, mutation-verified |
