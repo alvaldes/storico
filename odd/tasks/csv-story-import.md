@@ -1,11 +1,14 @@
 # ODD Feature: csv-story-import
 
-> **Status**: both halves done on `feat/csv-story-import`, off `main` @ `4dcd4fc`. Backend
-> (tasks 1-4) and frontend (tasks 5-11) are committed; nothing pushed and no PR opened. **Three**
-> independent read-only verifications ran — two over the backend, one over the frontend — and they
-> produced **sixteen findings: fourteen defects in code or tests and two imprecise claims in this
-> record**. All sixteen are fixed, and the significant ones are mutation-checked rather than assumed
-> fixed. Native review did not run — the user-owned switch is off in this clone.
+> **Status**: **merged to `main`** as two stacked PRs — [#20](https://github.com/alvaldes/storico/pull/20)
+> (backend, merge `86e1f67`) then [#21](https://github.com/alvaldes/storico/pull/21) (frontend, merge
+> `576b8b6`), both green in CI, remote branches deleted. `git diff` between this record's branch and
+> `main` is empty, so what landed is byte-identical to what was verified. Delivered as Stacked PRs to
+> main rather than a Feature Branch Chain because the backend half can land on its own. Both PRs
+> exceed the 400-line review budget with a `size:exception` documented in each body — no cohesive
+> split fits it, since the tests alone are 1771 and 1328 lines and the budget forbids splitting tests
+> from the code they verify. **Awaiting the maintainer's manual test**; `make bump` is theirs and has
+> not been run.
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 > **Receipt-driven development**: off in this clone.
