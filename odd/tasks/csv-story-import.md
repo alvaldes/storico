@@ -67,7 +67,7 @@ Consequences, which are requirements rather than niceties:
 | D4 | Partial failure | **Errors block everything; duplicates are skipped and reported.** Every row is parsed and validated first, and a full report with line numbers comes back. With at least one error nothing is written (`created: 0`, HTTP `422`) |
 | D5 | Duplicates | Skip and report, against both the project and the file itself. Importing the same file twice is idempotent: `created: 0`, every row reported as a duplicate |
 | D6 | Destination project | The project selected in the UI, carried by the URL path. Reuses the existing gating in `StoriesList` (the create button is already disabled without a project) |
-| D7 | Caps | 2 MB validated **before** reading the body; 1000 rows counted during parsing. Each cap has its own reason code, never a timeout |
+| D7 | Caps | 2 MB rejected at the handler, 1000 rows counted during parsing. Each cap has its own reason code, never a timeout. **Corrected**: the first version of this row said "before reading the body", which is false — see the verification finding V2 |
 | D8 | Over-long text | Reject the row with `reason: "too_long"`, carrying `field`, `length` and `max`. No silent truncation, for the reason in the correction above |
 | D9 | In-file duplicates | Non-blocking, consistent with D5: the second identical row is skipped and reported with `duplicate_in_file` plus the first line. **Judgment call taken by consistency — overridable by the maintainer** |
 | D10 | Auto-extraction after import | **Out of scope for v1.** The endpoint contract is designed so adding it later does not change the response shape. It needs its own concurrency-limit decision and its own conversation, not a paragraph hidden here |
@@ -85,7 +85,8 @@ Content-Type: multipart/form-data     fields: project_id (form), file (.csv)
   "story_ids": [ ... ] }
 
 422 — at least one blocking error. Nothing written.
-{ "detail": { "error_code": "IMPORT_VALIDATION_FAILED", "created": 0, "total_rows": 44,
+{ "detail": { "detail": "The file has rows that must be fixed.",
+              "error_code": "IMPORT_VALIDATION_FAILED", "created": 0, "total_rows": 44,
     "errors": [
       { "line": 7,  "reason": "missing_field", "field": "feature" },
       { "line": 19, "reason": "too_long", "field": "benefit", "length": 340, "max": 300 },
@@ -93,11 +94,19 @@ Content-Type: multipart/form-data     fields: project_id (form), file (.csv)
     "duplicates": [ ... ] } }
 
 413 — over the byte cap
-{ "detail": { "error_code": "IMPORT_FILE_TOO_LARGE", "size": 3145728, "max": 2097152 } }
+{ "detail": { "detail": "The file is too large.",
+              "error_code": "IMPORT_FILE_TOO_LARGE", "size": 3145728, "max": 2097152 } }
 
 422 — the file itself cannot be read at all
-{ "detail": { "error_code": "IMPORT_FILE_REJECTED", "reason": "header_unrecognized" } }
+{ "detail": { "detail": "The file could not be read.",
+              "error_code": "IMPORT_FILE_REJECTED", "reason": "header_unrecognized" } }
 ```
+
+Two nesting levels, both deliberate: `HTTPException(detail={...})` produces the outer `detail`, and
+the inner `detail` string is the human sentence — the same shape the extraction route already uses
+for `LLM_CONFIG_INCOMPLETE`. The first version of this block showed only the outer level, which is
+finding V3 of the verification below; the API tests read it through one `_error_envelope` helper so
+the envelope is asserted in a single place.
 
 ### Spec inconsistency found and resolved: where `duplicate_in_file` lives
 
@@ -116,8 +125,39 @@ fixing a rejected file has the file in front of them — the line number is the 
 model for display sugar. Recorded as a deliberate narrowing, not an oversight.
 
 Delimiter and encoding: decoded as UTF-8 with the BOM stripped; an invalid encoding is a
-file-level error. The delimiter is read off the **header line**, not guessed from the data — see
-the spec correction below.
+file-level error. The delimiter is read off the **header line**, and a header carrying no delimiter
+means the file has one column, returned whole — see the two spec corrections below.
+
+## Spec correction (second round): a one-column file must be read as one column
+
+The first fix above replaced the data sniff with a header read, but kept **comma as the fallback**
+when the header carried no delimiter. That fallback is wrong, and it broke the most natural shape of
+this feature: the canonical story text contains commas by construction.
+
+```
+FALSIFY comma, header='story', delimiter chosen: ','
+  row0 in : 'As a user, I want A0, so that B0'
+  row0 out: 'As a user'                # _build_row keeps only column 0
+  commas intact: False -> corrupted: 30/30
+```
+
+End to end that file is rejected with `422 IMPORT_VALIDATION_FAILED` and `unparsable_story` on every
+row — the exact symptom the first fix claimed to have eliminated.
+
+**Why the test suite missed it, which is the part worth keeping.** The suite pinned
+`test_a_story_text_containing_a_semicolon_is_not_split` and nothing else. A semicolon is not the
+delimiter, so that test could not fail for this reason; the canonical text carries **commas**, not
+semicolons. A fix aimed at one delimiter says nothing about the others, and the test named the one
+character that was already safe. The suite was green while the primary upload shape was broken.
+
+**The fix**: when the header carries no candidate delimiter, the file has one column, and that
+column is returned whole. The reader is given a delimiter that cannot occur (`\x00`), so the entire
+line is a single field while CSV quoting is still honoured — a quoted row is unwrapped, including
+one spanning several physical lines.
+
+The rationale stated in the first correction ("the header is authoritative because the recognized
+vocabulary is delimiter-free") was right. What was wrong was what to do with that fact: it implies
+*one column*, not *comma*.
 
 ## Spec correction: the delimiter is read off the header, not sniffed from the data
 
@@ -280,6 +320,9 @@ on warnings, so a new one would have sat there quietly.
 | Everything but integration | `conda run -n storico python -m pytest -q -m "not integration"` | **830 passed**, 109 deselected, 1 warning |
 | Import API tests | `conda run -n storico python -m pytest -q tests/test_api/test_stories_import.py` | **14 passed**, no warnings after the status-constant rename |
 | Everything but integration, after | `conda run -n storico python -m pytest -q -m "not integration"` | **844 passed** (+14), 109 deselected, 2 warnings |
+| Everything but integration, after the verification fixes | `conda run -n storico python -m pytest -q -m "not integration"` | **848 passed** (+4), 109 deselected, 1 warning |
+| Parser tests after the single-column fix | `conda run -n storico python -m pytest -q -m unit tests/test_unit/test_story_csv.py` | **24 passed** (21 from before, 3 added for the comma, quoted and multi-line cases) |
+| Mutation check, V2 | delete the `file.size` guard, re-run | `test_an_oversized_upload_is_refused_without_being_read` **fails**; restored and green |
 | Lint and format, whole tree | `conda run -n storico python -m ruff check src tests` and `ruff format --check src tests` | All checks passed; 244 files already formatted |
 | The warning is not ours | `conda run -n storico python -m pytest -q -m "not integration" 2>&1 \| grep -B4 warnings summary` | raised by `test_custom_provider_repo.py::test_list_is_empty_for_a_fresh_workspace`, a file this feature never touches. Pre-existing, and `docs/testing.md` records that nothing gates on warnings |
 | Lint | `conda run -n storico python -m ruff check src/storico/infrastructure/parsers tests/test_unit/test_story_csv.py` | All checks passed |
@@ -298,9 +341,39 @@ on warnings, so a new one would have sat there quietly.
    this feature never touches. They are the same aiosqlite teardown artefact attributed to
 different tests across runs. `docs/testing.md` records that nothing gates on warnings.
 
-## Independent verification
+## Independent verification (read-only) over `901bb89..2e2a8d4`
 
-Pending — the backend half is complete and this is the candidate for PR 1.
+The native review did not run: the user-owned switch is effectively **off** — the CLI reports
+`global: on`, `clone-local: off`, and the effective mode is `off (decided by clone_local)`. Following
+this repository's own precedent in `rich-store-errors.md`, an independent read-only verification ran
+instead, because this record was written by the same session that wrote the code and is therefore the
+least trustworthy source about it. Whether that is an adequate substitute for the native review is
+the maintainer's call, not this record's.
+
+It was worth it. Six claims were confirmed, four findings landed, and **two of them were real defects
+plus a false claim in this record**.
+
+| # | Sev | Finding | Disposition |
+|---|-----|---------|-------------|
+| V1 | **high** | A one-column `story` file with unquoted commas was split at the first comma on **30/30 rows**, and the whole file was then rejected as `unparsable_story`. The canonical story format contains commas, so the primary upload shape was broken. The suite missed it because the only delimiter test used semicolons. | **Fixed** — the header-with-no-delimiter case is now a genuine single-column read via a `\x00` sentinel; three tests added, including the comma case that was missing. Reproduced fixed at 30/30 intact. |
+| V2 | medium | **D7's claim was false.** The handler read the full 3,145,750-byte upload *before* rejecting it, and the 413 body's own `size` field proves the read happened. Starlette's multipart parser has already consumed the body before the handler runs, so "validated before reading the body" could not be true. | **Fixed both ways** — `file.size` is now checked first, so an oversized upload is refused without a second copy into this process, and the claim is corrected in D7, the route comment and the contract. A test patches `UploadFile.read` to explode and asserts the 413 still happens; **mutation-verified**: deleting the `file.size` check fails that test. |
+| V3 | low | The 422/413 envelopes carry an extra inner `"detail"` string that this record's contract examples do not show: `{"detail": {"detail": "...", "error_code": ...}}`. | **Corrected in the contract below.** The nesting is intentional and matches the extraction route's existing `LLM_CONFIG_INCOMPLETE` shape, and the API tests read it through one `_error_envelope` helper. |
+| V4 | low | The Evidence table attributed both `Connection._cancel` warnings to `test_custom_provider_repo.py::test_list_is_empty_for_a_fresh_workspace`. The verifier's runs attributed them to two *different* tests in that file, and running that file alone produced **zero** warnings. `docs/testing.md` even claims the attributed test is stable. | **Corrected**: the attribution is not reproducible per test; what holds is that both warnings come from that untouched file and that nothing gates on warnings. |
+
+Confirmed without correction: prompt-text parity between the backend template and `StoryForm.tsx`
+(verified by executing the real TypeScript expression through Node, not by eye); errors blocking with
+the database checked directly; `duplicate` never reaching `errors`; one statement for
+`list_parts_by_project`, one statement and one commit for `save_many`, and no input found that
+partially writes; the flat path reachable and the nested one permanently 410; line numbers correct
+across quoted multi-line fields, embedded blank lines, CRLF and a missing trailing newline; the field
+limits equal to the Pydantic schema's; and no `infrastructure` import in the domain module (confirmed
+by AST, which is stronger than the module's own substring test).
+
+Two residual risks it surfaced, acknowledged rather than fixed: the duplicate rule is
+application-level, so two concurrent imports can still race into duplicates (a race, not a partial
+write — and pre-existing, since there is no `UNIQUE` constraint on those columns); and `save_many`
+returns the input entities, which is only correct while `UserStory.id` is pre-generated by
+`default_factory=uuid7`.
 
 ## Task log
 
@@ -309,4 +382,5 @@ Pending — the backend half is complete and this is the candidate for PR 1.
 | 1 | `901bb89` | 21 unit tests, ruff clean |
 | 2 | `26bfab5` | 27 unit tests, 187 unit tests whole suite, ruff clean |
 | 3 | `3f55d07` | 19 repository tests, 830 tests with integration excluded, ruff clean |
-| 4 | this commit | 14 import API tests, 844 tests with integration excluded, ruff clean |
+| 4 | `288f855` | 14 import API tests, 844 tests with integration excluded, ruff clean |
+| verification fixes | this commit | 848 tests with integration excluded, 24 parser tests, 15 API tests, ruff clean, mutation-verified |
