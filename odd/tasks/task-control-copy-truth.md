@@ -1,13 +1,10 @@
 # ODD Feature: task-control-copy-truth
 
-> **Status**: complete and opened as **PR #23** against `main` on 2026-09-27. Five commits:
-> `f286718` (the two corrected surfaces), `0605514` (narrows `landing.faq.a4` again — D8 — and
-> fixes its Spanish register — D10), `c8c6153` (this document + the `prod.todo.md` row),
-> `b26532d` (the untranslated-`TaskEditor` finding the audit surfaced), `4cb1feb` (this status
-> line — its own message says "four-commit", which the fifth commit made wrong, and rewriting
-> published history is not how a record fixes itself). Merging is the owner's call. Gate green on the final tree — `vitest` **50 files / 572 tests**, `tsc --noEmit`
-> **exit 0**, `astro build` **complete** (2 pre-existing `zod` rollup annotation warnings,
-> `node_modules` only); CI `backend` and `frontend` jobs pass on the branch.
+> **Status**: complete and opened as **PR #23** against `main` on 2026-09-27. Two copy commits
+> (`f286718`, `0605514`) carry the change; the rest of the branch is this record. `git log
+> main..HEAD` is the list, and the count is deliberately **not** written anywhere in this
+> document: a commit that records how many commits exist is falsified by its own existence, and
+> this branch paid for that lesson more than once. Merging is the owner's call.
 > **Created**: 2026-09-27
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/task-control-copy-truth`, from a clean `main` @ `ded4031`
