@@ -375,7 +375,6 @@ export function ImportStoriesDialog({
               rawDetail={submitError.rawError.rawBody}
               status={submitError.status}
               errorCode={submitError.errorCode}
-              retryLabel={t.stories.import_submit}
               onRetry={handleSubmit}
               onDismiss={() => setSubmitError(null)}
               locale={locale}

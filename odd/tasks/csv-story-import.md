@@ -9,13 +9,20 @@
 > split fits it, since the tests alone are 1771 and 1328 lines and the budget forbids splitting tests
 > from the code they verify. **Released as `v0.8.0`** (bump `a9550aa`, tag on `main`, cut 2026-09-26
 > with 19 `feat` commits since `v0.7.0`, so `cz bump` resolved MINOR). **The maintainer's manual test
-> is still outstanding**, and the release was cut before it ran: the browser → proxy → backend path has
-> never carried a real file. See "The manual test found the dialog had no success state" below — that
-> is the one defect the manual pass has produced so far, and it came from preparing the test, not from
-> running it.
+> has since been run** — 2026-09-26, in dev local, the six tests of the protocol, each one matching
+> the report computed beforehand from the real bytes (see follow-ups 5 and 8). The release was still
+> cut before it ran: `v0.8.0` shipped with the browser → proxy → backend path uncarried by a real
+> file, and that ordering stands as a fact about the release even though the seam is closed now. See
+> "The manual test found the dialog had no success state" below — the one defect the pass produced
+> came from preparing the test, not from running it. The composition that actually serves production
+> is a separate, still-open item: follow-up 11.
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 > **Receipt-driven development**: off in this clone.
+> **Post-release follow-ups (2026-09-26)**: follow-up 9 fixed and 5 and 8 closed on two commits on
+> branch `fix/import-dialog-retry-accessible-name` (`8552cf3`, `01b4841`), branched off `main` at
+> `38ea6db` and **not pushed** — `main` still equals `origin/main`. Follow-ups 10 and 11 were opened
+> by that work and are still open.
 
 ## Problem
 
@@ -621,12 +628,24 @@ different tests across runs. `docs/testing.md` records that nothing gates on war
    three, the error names both numbers, and the remedy is one character. Tolerating it would mean
    inventing a rule that trailing missing columns are empty, which is the kind of silent
    interpretation the rest of this feature refuses.
-5. **The browser → proxy → real backend composition has no end-to-end verification.** The proxy's
+5. **The browser → proxy → real backend composition had no end-to-end verification.** The proxy's
    passthrough is pinned against a stub backend on a real socket, and the endpoint is pinned through
    the real ASGI app, but nothing has driven a real file through a real Astro server into a real
    backend with a real session. Doing that needs OAuth credentials and a running Postgres, and this
    repository already records that its E2E cannot run (no Playwright). This is the one gap the two
-   halves' evidence does not close, and it is why the public API page was left alone.
+   halves' evidence does not close, and it is why the public API page was left alone. **Closed
+   2026-09-26.** The maintainer drove the six tests by hand in dev local — `astro dev` forwarding
+   `/api/v1/*` into a running uvicorn with the Compose Postgres, under a real session — and reported
+   each one landing on its expected report. The provenance is part of the record: the pass is
+   **maintainer-reported**, no agent drove a browser, captured a trace, or read the server logs, so
+   this says a human watched it work, not that the composition was instrumented. The gap this item
+   describes is still structurally real — Playwright is still not installed — which is why there is
+   nothing stronger available to write here. Not covered by the pass, and preserved because it lived
+   only in the now-deleted `tmp-csv-import-tests/README.md`: no manual case yet for a file over the
+   2 MB cap (`413`), for a file over `MAX_ROWS` (`too_many_rows`), for a truncated header
+   (`header_unrecognized`), or for an `unparsable_story` refusal in single-column mode; and
+   `invalid_encoding` and `malformed_csv` are no longer reachable with real input, so if either ever
+   appears on screen it is a disguised `500` and should be reported as one.
 6. **No client-side size pre-check.** The dialog lets a 3 MB file upload and reads the `413` back
    instead of refusing it locally. The cap lives in the backend (`MAX_FILE_BYTES`), and duplicating
    the number in the frontend without a mirror test is exactly the drift this repository keeps
@@ -636,17 +655,68 @@ different tests across runs. `docs/testing.md` records that nothing gates on war
    endpoints as an illustration, and its own comment records that it once advertised a batch
    endpoint that never existed. Adding the import there is a two-line change once follow-up 5 is
    closed.
-8. **One composition is still unverified end to end**, which is follow-up 5 restated as the only
+8. **One composition was still unverified end to end**, which is follow-up 5 restated as the only
    thing the three passes did not close: a real file through a real Astro server into a real backend
    with a real session. Everything on either side of that seam has been verified — the proxy against
    a socket, the endpoint through the ASGI app, the client and the dialog against their own mocks —
-   and the seam itself has not.
-9. **The `submitError` state offers two buttons named "Import".** `ErrorDisplay`'s retry takes
-   `retryLabel={t.stories.import_submit}` and the footer's submit button is `t.stories.import_submit`
-   too, so a screen reader hears one name for two different actions in the same dialog. Pre-existing
-   and untouched by the footer work below — the footer carried that submit before it as well — but it
-   is the same class of defect that `common.clear` was added to fix. The remedy is its own label
-   (`Try again` / `Reintentar`) rather than a second use of the submit copy.
+   and the seam itself has not. **Closed** by the same event, with the same caveat: the seam was
+   driven by hand in dev on 2026-09-26 and every test matched. This is what unblocks follow-up 7, and
+   it is *not* evidence about the production composition — that is follow-up 11.
+9. **The `submitError` state offered two buttons named "Import".** `ErrorDisplay`'s retry took
+   `retryLabel={t.stories.import_submit}` and the footer's submit button was `t.stories.import_submit`
+   too, so one dialog rendered the same action twice under one accessible name: both buttons reach
+   `handleSubmit` (the retry through `onRetry`, the footer through `type="submit"` on the form whose
+   `onSubmit={handleSubmit}`). As first written this item said a screen reader "hears one name for
+   two different actions", and that was wrong — the correction matters because it is why the fix is a
+   label and not a behaviour change. **Resolved** by deleting the `retryLabel` prop, which lets
+   `ErrorDisplay` name the retry with the key it already falls back to, `common.retry` ("Retry" /
+   "Reintentar") — no new i18n key, same class of defect as the one `common.clear` was added for.
+   Regression tests pin that the footer submit is the only "Import"/"Importar" button in each locale,
+   and that the retry re-submits (the English case clicks it; the Spanish case pins the name only).
+   Checked and deliberately left alone: the footer submit is `disabled` while `running` and the retry
+   button is not, which reads as an asymmetry but is unreachable — the only non-null assignment to
+   `submitError` is in the `catch` (the other four call sites pass `null`), and the `finally`
+   (`ImportStoriesDialog.tsx:205-212`) clears `running` in the same batched render, so the error card
+   is never on screen during a run.
+10. **The defect in item 9 is a pattern, and it is still live in four other components.** Every
+    `ErrorDisplay` call site was enumerated; these four collide, verified by reading the render
+    conditions and handlers, not exercised by a test. Two sub-classes, and the second is worse.
+
+    *Same action, one name* — the retry and the form's own submit both reach one handler:
+    - `StoryForm.tsx:526` vs `:543`: `retryLabel={initialData ? t.common.save : t.common.create}` is
+      the identical expression the footer submit renders, and both reach `handleSubmit`. The exact
+      shape item 9 had.
+    - `TaskEditor.tsx:348` vs `:365`: `retryLabel={t.taskEditor.save}` ("Save Changes") against a
+      footer that renders `t.taskEditor.save` whenever `saving` is false; both call `handleSave`.
+    - `StoryDetail.tsx:514` vs `:239`/`:408`: the extraction error card and the header extract button
+      both take `t.stories.extraction_retry` in the failed state, both call `handleExtract`.
+
+    *Two different actions, one name* — `ExportPanel.tsx:169` and `:181` each render an
+    `ErrorDisplay` with `retryLabel={t.common.retry}`, but the first refetches the workspace's tasks
+    and the second re-runs the download. They coexist once `initialLoad` is false (`:30-32`) while a
+    store error is still showing and a download then fails, because `handleDownload` clears only its
+    own `downloadError` (`:43`). This is the reading item 9 originally gave the import dialog, and it
+    was wrong there — here it is the actual defect, and a screen reader really does hear one name for
+    two different actions.
+
+    The remedy is not four more label edits. It is a rule at the seam: a retry that sits beside the
+    form's own submit takes `common.retry` and never the submit's copy, and one guard test that no
+    dialog renders two buttons with the same accessible name would have caught all five sites at once.
+11. **The composition that serves production has never carried a real upload, and closing 5 and 8 is
+    not evidence about it.** `frontend/src/lib/api.ts:5` pins `BASE_URL = ''` with the comment
+    "Proxy through Astro (same-origin)", so every request — including
+    `POST /api/v1/workspaces/{id}/stories/import` — is forwarded by
+    `frontend/src/pages/api/v1/[...path].ts`, which reads and buffers the body before the fetch
+    (its own comment at `:74` records that `text()` would corrupt a multipart upload). Locally that
+    file is executed by `astro dev`; in production the same file is a serverless function, because
+    `frontend/astro.config.mjs:8` uses `@astrojs/vercel` — and that runtime brings its own
+    request-body ceiling, which is a limit of its own and not the backend's 2 MB `MAX_FILE_BYTES`
+    (the exact Vercel figure is unverified here — this repo could not reach the docs during this
+    session, so the claim is only that the ceiling exists and is separate). Nothing
+    in the dev pass exercises the Vercel-side hop, so the multipart path that `v0.8.0` actually serves
+    remains unverified. The two caps are not obviously in conflict, but "not obviously in conflict" is
+    not a test: closing this needs one real upload against the deployed frontend, not another local
+    run.
 
 ## First independent verification (read-only) over `901bb89..2e2a8d4`
 
@@ -815,7 +885,9 @@ quoting the old one as if it were current, which is how a delta stops being evid
 | import dialog | `21cf828` | 543 frontend tests, tsc clean |
 | docs | `b77ba0d` | `docs/api.md` route and contract; `api.astro` deliberately unchanged |
 | third verification fixes | `fefbd24`, `f6b1d60`, `4bb2c56`, `482deed` | 887 backend + 553 frontend tests, mutation-checked |
-| manual-test fixtures | not committed (`tmp-csv-import-tests/`, excluded locally) | all five expected reports reproduced by the real parser + validator before the browser run |
+| manual-test fixtures | folder deleted (`tmp-csv-import-tests/`, never committed; its `.git/info/exclude` line removed with it) | all expected reports reproduced by the real parser + validator before any browser run, then driven by the maintainer through the real dev path on 2026-09-26 with every one matching; durable reference is the vault note "Storico — Qué se puede importar en CSV y qué no", and the protocol's "what this does not prove" list is now inside follow-up 5 |
 | dialog success state | `3e938c9` | 571 frontend tests across 50 files, tsc clean, `pnpm build` confirms `.text-success-text` is emitted; RED 2 failed observed first |
 | `v0.8.0` release | `a9550aa` | `make bump` on a clean tree: three manifests rewritten to `0.8.0`, `CHANGELOG.md` updated, tag `v0.8.0` created. Cutting it consumed the number `prod.todo.md` had reserved for extraction versioning, which moved to `0.9.0`, and observability with it to `1.0.0` |
+| follow-up 9 fix | `8552cf3` | 1 line of behaviour: `retryLabel` deleted so the retry falls back to `common.retry`. 18 tests in the dialog file, 41 i18n guards, **572 frontend tests across 50 files**; no new i18n key, so parity and the voseo guard hold by construction. RED (2 failed on two buttons named "Import") is **reasoned, not executed**: the pre-fix harness was blocked by the Vite fs allow-list and reconstructing it in-tree would have mutated the candidate. What was measured instead: `getAllByRole(name:)` matches the full accessible name, so `toHaveLength(1)` is a real guard. Native review did not run (switch off in this clone); an independent read-only verification did. |
+| follow-ups 5 and 8 closed | `01b4841` | docs only, no check run. The maintainer's dev-local manual pass (2026-09-26, six tests, each on its expected report) recorded with its provenance — maintainer-reported, no agent drove a browser or read logs, and Playwright is still absent. `tmp-csv-import-tests/` deleted per its own Cierre, its `.git/info/exclude` line removed, and the README's "what this does not prove" list copied into follow-up 5 so it did not die with the folder. Closing 5 and 8 is **not** evidence about production: that became follow-up 11. |
 
