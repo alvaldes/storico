@@ -91,3 +91,77 @@ contains exactly **1** anchor labelled `Get Started` (the navbar's own), and `/e
 `Comienza` **2** times — its desktop and mobile nav buttons — with zero occurrences of `Ver demo`,
 matching the owner's removal of the hero's secondary button. The hero's own label appears once in each
 locale and never in the other language's build.
+
+---
+
+## Follow-up: the attention hop (D7) and the disconnection question
+
+The owner's next report was two requests in one sentence: *the CTA looks a bit disconnected there,
+give me options — but for now add a bounce animation that highlights it and moves the user's focus to
+this button.* Those are two different problems and the record keeps them apart, because the animation
+does not fix the disconnection.
+
+### D7 — The hop
+
+| Aspect | Decision |
+|---|---|
+| Trigger | `IntersectionObserver` at `threshold: 0.6`, wired on `astro:page-load`. The button sits **1146px** down a 760px viewport, so it is off-screen on load and a page-load animation would never be seen. |
+| Repetition | Once. The observer disconnects on the first hit; the class is never removed. |
+| Motion | Damped bounce: 16px, then 7px, then 2px, then rest, over 1050ms, with a per-segment `cubic-bezier` so each arc leaves fast (`0.16, 1, 0.3, 1`) and falls under gravity (`0.5, 0, 1, 0.5`) instead of riding a sine wave. |
+| Extra | A 2px ring in `--color-primary-400` expands to 1.3x and fades over 700ms on the first launch. |
+| Focus | **Deliberately not `.focus()`ed.** Taking focus on scroll reorders the tab sequence and scrolls the document out from under the visitor. Visual attention only. |
+| Reduced motion | Already covered by the global clamp at the bottom of `globals.css`; verified below rather than assumed. |
+
+### Evidence
+
+`requestAnimationFrame` is not a measuring instrument in headless: it returned **5 frames in 1400ms**.
+The curve was instead read by pausing the CSS animation through the Web Animations API and seeking
+`currentTime`, which is deterministic.
+
+| `currentTime` (ms) | 0 | 115 | 230 | 340 | 460 | 570 | 650 | 720 | 820 | 900 | 955 | 1050 | 1200 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `translateY` (px) | 0 | -15.54 | **-16** | -13.72 | -1.84 | -6.89 | **-7** | -6.25 | -0.09 | -1.97 | **-2** | 0 | 0 |
+
+Timing: `duration 1050ms`, `fill none`, `iterations 1`; the ring is `700ms`, `fill none`.
+
+Rest state, after `finish()` on both animations: `0` running animations, the button reads
+`transform: none` and the ring reads `opacity: 0`. Nothing is left pinned, so the hover lift still
+belongs to the button afterwards.
+
+Emulated `prefers-reduced-motion: reduce` → computed `animation-duration: 1e-05s`. The global clamp
+reaches this animation without a local guard.
+
+**A comment written here was wrong and was corrected before it shipped.** It claimed a `forwards` fill
+mode would strand `hover:-translate-y-px`. Tailwind v4's translate utilities emit the standalone
+`translate` property, not `transform`, so the two compose instead of competing — confirmed by reading
+both mid-flight: `translate: 0px -1px` alongside `transform: matrix(1, 0, 0, 1, 0, -1.04708)`. The
+comment now states the property split instead of a cascade rule that does not apply.
+
+### The disconnection, measured
+
+Not an opinion — the geometry that produced the report:
+
+| | value |
+|---|---|
+| gap, demo → CTA | **64px** (the section's `gap-16`) |
+| gap, CTA → next visible surface (the features card) | **150px** (100px section padding + 50px features padding) |
+| CTA box | 310x60 |
+| its row | 1120px wide, `siblingsInCtaRow: 1` |
+
+A 310px object alone in a 1120px row, with 2.3x more air below it than above. It is closer to the demo
+than to the features band, so it reads as the demo's orphan.
+
+### Five rendered options (open — awaiting the owner's pick)
+
+Preview page: `/tmp/cta-options.html`, built from the real theme tokens; panels in
+`/tmp/storico-shots/cta-conn-{HOY,A,B,C,D}.png`.
+
+| Option | Move | Cost | Risk |
+|---|---|---|---|
+| **A · Demo caption** | gap above 64 → 20px | one spacing value | none; pure proximity |
+| **B · Microcopy** | keep the position, add a reassurance line under the button | 2 i18n keys, must pass the neutral-Spanish test | needs copy that does not over-promise |
+| **C · Up into the headline** | title → subtitle → CTA → demo, the reference site's own order | reorders the hero | **reverses D12 of `landing-hero-redesign.md`**, where the owner sealed copy → demo → CTAs. Also relocates the hop or makes it moot, since there is no scroll left to trigger it |
+| **D · On a band** | the CTA gets a tinted full-width surface with hairline borders | a new section-like band | heaviest option; reads as a section closing |
+
+Nothing was implemented from this table. The hop shipped because it was explicitly asked for; the
+disconnection is the owner's call.
