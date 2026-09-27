@@ -1,10 +1,11 @@
 # ODD Feature: task-control-copy-truth
 
-> **Status**: complete and opened as **PR #23** against `main` on 2026-09-27. Four commits:
+> **Status**: complete and opened as **PR #23** against `main` on 2026-09-27. Five commits:
 > `f286718` (the two corrected surfaces), `0605514` (narrows `landing.faq.a4` again — D8 — and
-> fixes its Spanish register — D10), `c8c6153` (this document + the `prod.todo.md` row), and
-> `b26532d` (the untranslated-`TaskEditor` finding the audit surfaced). Merging is the owner's
-> call. Gate green on the final tree — `vitest` **50 files / 572 tests**, `tsc --noEmit`
+> fixes its Spanish register — D10), `c8c6153` (this document + the `prod.todo.md` row),
+> `b26532d` (the untranslated-`TaskEditor` finding the audit surfaced), `4cb1feb` (this status
+> line — its own message says "four-commit", which the fifth commit made wrong, and rewriting
+> published history is not how a record fixes itself). Merging is the owner's call. Gate green on the final tree — `vitest` **50 files / 572 tests**, `tsc --noEmit`
 > **exit 0**, `astro build` **complete** (2 pre-existing `zod` rollup annotation warnings,
 > `node_modules` only); CI `backend` and `frontend` jobs pass on the branch.
 > **Created**: 2026-09-27
