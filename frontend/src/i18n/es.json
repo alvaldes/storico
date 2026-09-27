@@ -225,6 +225,7 @@
     "import_file_hint": "Una historia por línea, o las columnas actor, feature, benefit.",
     "import_submit": "Importar",
     "import_running": "Importando...",
+    "import_done": "Listo",
     "import_result_title": "Importación terminada",
     "import_result_summary": "{created} creadas, {skipped} omitidas",
     "import_result_none": "Todas las líneas ya existen en este proyecto, así que no se agregó nada.",

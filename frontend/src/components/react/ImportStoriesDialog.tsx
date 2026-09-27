@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel, FieldDescription } from '@/components/ui/field';
-import { FileUp, Loader2, X } from 'lucide-react';
+import { CircleCheck, FileUp, Loader2, X } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import { ApiRequestError } from '@/lib/api';
@@ -287,7 +287,12 @@ export function ImportStoriesDialog({
           {/* ── SUCCESS ── */}
           {report && (
             <div className="space-y-3">
-              <p className="text-sm font-medium text-foreground">{t.stories.import_result_title}</p>
+              <div className="flex items-center gap-2">
+                <CircleCheck aria-hidden="true" className="h-4 w-4 text-success-text" />
+                <p className="text-sm font-medium text-foreground">
+                  {t.stories.import_result_title}
+                </p>
+              </div>
               {report.created === 0 ? (
                 // Nothing was created. An empty file (header only, 201 with
                 // total_rows 0) is not the all-duplicates case: say what
@@ -378,29 +383,45 @@ export function ImportStoriesDialog({
           )}
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={running}
-            >
-              {t.common.cancel}
-            </Button>
-            <Button
-              type="submit"
-              // Defence in depth: the dialog is only ever opened with both ids
-              // set, but a missing one must disable submit, not silently no-op.
-              disabled={!file || running || !projectId || !workspaceId}
-            >
-              {running ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {t.stories.import_running}
-                </>
-              ) : (
-                t.stories.import_submit
-              )}
-            </Button>
+            {report ? (
+              /*
+               * Success: one obvious exit. Cancel and Import disappear so the
+               * same file cannot be re-submitted into an all-duplicates run.
+               */
+              <Button type="button" onClick={() => onOpenChange(false)} disabled={running}>
+                {t.stories.import_done}
+              </Button>
+            ) : (
+              /*
+               * Idle and failure states (row-level or file-level, or an
+               * unexpected submit error): retry stays one click away.
+               */
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                  disabled={running}
+                >
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  type="submit"
+                  // Defence in depth: the dialog is only ever opened with both ids
+                  // set, but a missing one must disable submit, not silently no-op.
+                  disabled={!file || running || !projectId || !workspaceId}
+                >
+                  {running ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {t.stories.import_running}
+                    </>
+                  ) : (
+                    t.stories.import_submit
+                  )}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

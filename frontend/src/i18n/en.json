@@ -225,6 +225,7 @@
     "import_file_hint": "One story per line, or the columns actor, feature, benefit.",
     "import_submit": "Import",
     "import_running": "Importing...",
+    "import_done": "Done",
     "import_result_title": "Import finished",
     "import_result_summary": "{created} created, {skipped} skipped",
     "import_result_none": "Every line already exists in this project, so nothing was added.",

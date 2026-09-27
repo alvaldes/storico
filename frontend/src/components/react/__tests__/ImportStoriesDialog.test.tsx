@@ -240,6 +240,106 @@ describe('ImportStoriesDialog', () => {
     expect(screen.queryByText('Importing...')).not.toBeInTheDocument();
   });
 
+  /* ── Footer states: success shows Done only; failures and idle keep Cancel + Import ── */
+
+  it('shows a Done-only footer after a successful import and Done closes the dialog', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    importStories.mockResolvedValue({
+      created: 3,
+      skipped: 2,
+      totalRows: 5,
+      duplicates: [],
+      storyIds: ['s1', 's2', 's3'],
+    });
+
+    renderDialog({ onOpenChange });
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, makeFile());
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+
+    expect(await screen.findByText('Import finished')).toBeInTheDocument();
+    // Success has exactly one exit: Done. No Cancel, and no Import that would
+    // invite a second submit of the same file.
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Import' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('shows the Done-only footer for an all-duplicates success too', async () => {
+    const user = userEvent.setup();
+    importStories.mockResolvedValue({
+      created: 0,
+      skipped: 3,
+      totalRows: 3,
+      duplicates: [
+        { line: 2, reason: 'duplicate' },
+        { line: 3, reason: 'duplicate' },
+        { line: 4, reason: 'duplicate' },
+      ],
+      storyIds: [],
+    });
+
+    renderDialog();
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, makeFile());
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+
+    expect(await screen.findByText('Import finished')).toBeInTheDocument();
+    // A 201 with 0 created is still a finished run (D11): Done-only footer.
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Import' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+  });
+
+  it('keeps Cancel + Import and no Done after a row-level 422', async () => {
+    const user = userEvent.setup();
+    importStories.mockRejectedValue(
+      new ApiRequestError(
+        422,
+        'Unprocessable Entity',
+        {
+          error_code: 'IMPORT_VALIDATION_FAILED',
+          total_rows: 3,
+          errors: [{ line: 2, reason: 'missing_field', field: 'actor' }],
+          duplicates: [],
+        },
+        { error_code: 'IMPORT_VALIDATION_FAILED' },
+      ),
+    );
+
+    renderDialog();
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, makeFile());
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+
+    expect(await screen.findByText('The file has lines that must be fixed')).toBeInTheDocument();
+    // Retry must stay one click away: same footer as idle.
+    expect(screen.getByRole('button', { name: 'Import' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument();
+  });
+
+  it('keeps Cancel + Import and no Done after a file-level rejection', async () => {
+    const user = userEvent.setup();
+    importStories.mockRejectedValue(
+      new ApiRequestError(
+        413,
+        'Payload Too Large',
+        { error_code: 'IMPORT_FILE_TOO_LARGE', size: 3145728, max: 2097152 },
+        { error_code: 'IMPORT_FILE_TOO_LARGE' },
+      ),
+    );
+
+    renderDialog();
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, makeFile());
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+
+    expect(await screen.findByText('The file is larger than 2 MB.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Import' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument();
+  });
+
   it('renders a rows failure with line numbers, reasons, duplicates, and the nothing-saved hint', async () => {
     const user = userEvent.setup();
     importStories.mockRejectedValue(
