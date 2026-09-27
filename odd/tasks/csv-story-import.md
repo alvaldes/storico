@@ -582,7 +582,7 @@ on warnings, so a new one would have sat there quietly.
 | Import API tests, final | `--collect-only -q` filtered by `::` | **21 collected** |
 | Mutations, second round | delete `newline=""` and the `field_size_limit` call, re-run the API tests | **both new `TestImportHostileInput` tests fail**; restored and green at 21 |
 | Everything but integration, after the third verification | `conda run -n storico python -m pytest -q -m "not integration"` | **887 passed**, 109 deselected |
-| Frontend suite, after the third verification | `pnpm vitest run` | **553 passed** across 49 files, `tsc --noEmit` exit 0 |
+| Frontend suite, after the third verification | `pnpm vitest run` | **553 passed** across 49 files, `tsc --noEmit` exit 0 — true when measured, stale as of the commit below (see "The frontend test baseline in this record was stale") |
 | The route really moved | `POST /api/v1/workspaces/{id}/stories/import` unauthenticated | **401** — the scoped path is served. `POST /api/v1/stories/import` now answers **405**: the flat registration is gone |
 | The corruption is dead on the wire | multipart POST of `story\nAs a user, I want A, so that B\n` | **201, `created: 1`** — the natural shape imports intact |
 | | multipart POST of `actor,feature,benefit\nAs a user, I want A, so that B\n` | **422** — `{"line": 2, "reason": "parts_look_like_a_full_story"}`, `created: 0` |
@@ -637,6 +637,12 @@ different tests across runs. `docs/testing.md` records that nothing gates on war
    with a real session. Everything on either side of that seam has been verified — the proxy against
    a socket, the endpoint through the ASGI app, the client and the dialog against their own mocks —
    and the seam itself has not.
+9. **The `submitError` state offers two buttons named "Import".** `ErrorDisplay`'s retry takes
+   `retryLabel={t.stories.import_submit}` and the footer's submit button is `t.stories.import_submit`
+   too, so a screen reader hears one name for two different actions in the same dialog. Pre-existing
+   and untouched by the footer work below — the footer carried that submit before it as well — but it
+   is the same class of defect that `common.clear` was added to fix. The remedy is its own label
+   (`Try again` / `Reintentar`) rather than a second use of the submit copy.
 
 ## First independent verification (read-only) over `901bb89..2e2a8d4`
 
@@ -733,6 +739,57 @@ payload shape the producer never emitted (X3); a test whose assertion was weaker
 suggested, and whose strengthening was then measured to be insufficient (X8); and a comment asserting
 behaviour that the code did not have (X1). Only the last one required judgement to settle, and the
 answer was to make the code match the comment rather than to soften the comment.
+
+## The manual test found the dialog had no success state
+
+The five behaviours the maintainer set out to check by hand were written up as fixtures under
+`tmp-csv-import-tests/` (temporary, excluded through `.git/info/exclude`, not committed), each with
+its expected report computed by running `parse_story_csv` + `validate_import` over the real bytes.
+All five matched their predictions. The defect came from the thing nobody had listed: what the dialog
+does *after* one of them succeeds.
+
+That folder is meant to be deleted with the run, so the durable copy of what a file must look like to
+import — the accepted shapes, every rejection with the sentence the dialog shows and its fix, the
+caps — lives in the vault note "Storico — Qué se puede importar en CSV y qué no", written to become
+a `docs` section later.
+
+The report itself rendered fine. The `DialogFooter` did not: it was unconditional — `Cancel` +
+`Import`, the same pair in every state. So a clean import left the dialog open with Cancel as its
+only exit and a primary button that re-submitted the same file, which then came back as
+`0 created, N skipped` — the idempotence D11 promises, displayed as if it were a failure. The
+success path also had no visual weight: the same plain paragraph as everything else in a dialog where
+the two failure blocks are red.
+
+| Choice | What was picked, and why the alternative lost |
+|---|---|
+| Footer on success | one `Done` button that closes. Keeping `Cancel` beside it meant two exits with different names for the same action; keeping `Import` meant the defect stayed one click away |
+| Footer on rejection | unchanged (`Cancel` + `Import`): retry after fixing the file has to stay one click, and `Done` there would claim a finished import |
+| Re-importing another file in one session | stays possible through the file input, whose `onChange` already clears the report — so the footer returns to `Cancel` + `Import` on its own |
+| The copy | a new `stories.import_done` key (`Done` / `Listo`), not a reuse of `common.close` (there is none) and not `common.cancel`, which says the opposite |
+
+**Evidence.** `pnpm vitest run` → **50 files / 571 tests** (4 new, pinning the footer in the four
+states: success, all-duplicates success, row-level 422, file-level rejection). RED observed before
+implementing: 2 failed / 15 passed on the focused file. `pnpm exec tsc --noEmit` → exit 0.
+`pnpm build` → succeeds, and `dist/client/_astro/globals.*.css` contains
+`.text-success-text{color:var(--color-success-text)}` — worth recording because `text-success-text`
+is the first bare-utility use of the `--color-success-*` family in this codebase (every other page
+consumes it as `text-(--color-success-text)`), and a Tailwind class that failed to generate is
+invisible to both vitest and `tsc`.
+
+**Two things the verification pass said about the tests themselves, kept here rather than fixed
+quietly.** The 422 and file-rejection cases would still pass against the old unconditional footer —
+they only fail if a `Done` leaks into a failure state, so they pin one direction and not the other.
+The two success cases do discriminate both ways. And the success → new-file → footer-resets round trip
+is confirmed by reading the component, not by any test; no committed test drives a second file through
+one dialog session.
+
+**The frontend test baseline in this record was stale, and the arithmetic that hid it.** The Evidence
+table above says 553 passed across 49 files. At the commit before this fix the same command reported
+**567 across 50**: `src/lib/__tests__/demo-embed.test.ts` (14 tests) landed with `c9c85ee`
+after that number was measured. So `567 + 4 = 571`, and the 553-to-571 jump that looks like this
+change added 18 tests added 4. Both earlier numbers were true when written; the record just kept
+quoting the old one as if it were current, which is how a delta stops being evidence.
+
 ## Task log
 
 | Task | Commit | Evidence |
@@ -754,4 +811,6 @@ answer was to make the code match the comment rather than to soften the comment.
 | import dialog | `21cf828` | 543 frontend tests, tsc clean |
 | docs | `b77ba0d` | `docs/api.md` route and contract; `api.astro` deliberately unchanged |
 | third verification fixes | `fefbd24`, `f6b1d60`, `4bb2c56`, `482deed` | 887 backend + 553 frontend tests, mutation-checked |
+| manual-test fixtures | not committed (`tmp-csv-import-tests/`, excluded locally) | all five expected reports reproduced by the real parser + validator before the browser run |
+| dialog success state | `3e938c9` | 571 frontend tests across 50 files, tsc clean, `pnpm build` confirms `.text-success-text` is emitted; RED 2 failed observed first |
 
