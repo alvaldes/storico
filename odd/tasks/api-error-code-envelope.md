@@ -99,7 +99,7 @@ the frontend reads exactly one of them.
   together (`stories-api.ts` `readImportFailure`, `taskStore.ts:113`, `KanbanBoard.tsx:168`,
   `api.ts:61-63`), with the frontend tolerating both shapes during the deploy window (backend
   deploys on the Oracle VM, frontend on Vercel — they are not atomic).
-- [ ] **WU5 — Frontend translation: `error_code` → i18n key.** One map, both locales, specific
+- [x] **WU5 — Frontend translation: `error_code` → i18n key.** One map, both locales, specific
   copy per code family. `ErrorDisplay.tsx` keeps the code in the header as diagnostics and stops
   using server prose as the headline. This is the slice the user sees.
 
@@ -224,6 +224,31 @@ Notes for whoever reviews the list:
   the `-m unit` gate and would have looked like +0 tests. Caught only because the baseline was
   measured rather than assumed. A test that no gate selects is a test that does not exist.
 
+### WU5 — run and verified on this tree (2026-09-28)
+
+Shipped **before** WU3/WU4, against the owner's original "backend first" order, because WU2 changed
+the arithmetic: the backend already codes 57 domain raises + the 422, so the missing piece was the
+map, not more codes. Surfaced and re-approved rather than silently reordered.
+
+- **The chokepoint is real, and measured before writing:** `grep -rn "friendlyMessage="` → 7
+  consumers, 4 of them passing server prose (`*.message`) and 3 passing translated copy.
+  No consumer was edited; the headline priority lives in `ErrorDisplay.tsx:155`.
+- **Copy corrected in review, twice, for the same reason this thread exists.** The grouping produced
+  `LLM_MODEL_NOT_FOUND` → "refresh the page" (the missing thing is the model; the fix is in the
+  settings) and `PARSE_ERROR` → "the model failed to respond" (it responded; the reply was
+  unreadable). Both rewritten in both locales, reusing the file's established "Configuración" and
+  lowercase "settings" instead of coining synonyms.
+- **21 keys, not the 22 the parent asked for**: the 6 nested sites carry 5 distinct codes
+  (`IMPORT_FILE_TOO_LARGE` covers `stories.py:370` and `:382`). Corrected by the worker and verified.
+- `npm test -- --run` → **52 files / 591 tests** (baseline 50/575), key-parity and neutral-Spanish
+  guards included. `tsc --noEmit` → clean. `npm run build` → Complete.
+- **Three independent mutation checks, all run by the parent, not reported by the worker:**
+  dropping the headline priority fails 2 `ErrorDisplay` tests; dropping the top-level `error_code`
+  read fails 4 transport tests; **adding a code to `error_codes.py` with no translation fails the
+  mirror** with a message naming both numbers to update. The first attempt at mutation 1 was a
+  no-op — the parent's `replace` string did not match the real source — and "23 passed" was the
+  tell that the *test of the test* had failed, not that the code was safe.
+
 ## Follow-ups
 
 - **`AGENTS.md` test-surface drift**: "264 unit / 356 integration" and "bare `pytest -q` … requires
@@ -232,6 +257,14 @@ Notes for whoever reviews the list:
   whole thread started from — a doc asserting more than the repo does.
 - **Every new test must carry `@pytest.mark.unit`**, or bare `pytest -q` runs it while `-m unit`
   does not, and the local gate under-reports. Worth enforcing mechanically, not by memory.
+- **Mirror guard is the WU3 contract.** `error-codes.test.ts` pins `EXPECTED_REGISTRY_COUNT = 16`
+  and a 21-key map: WU3 must update the registry, the map and those two numbers in one change, or
+  CI fails. That is deliberate friction on the silent-degradation path.
+- Worker handoff quality note: it reported `frontend/src/lib/error-codes.test.ts` as changed when
+  the file is at `src/lib/__tests__/error-codes.test.ts`. The path was wrong, the placement was
+  right — a reminder to check `git status` rather than trust a file list. Its `git checkout --`
+  during mutation testing also discarded its own GREEN implementation and re-applied it by hand,
+  which is why the source was read back before being believed.
 - 422 bodies: `RequestValidationError` default detail is a list of `{type, loc, msg, input}` —
   WU2 decides whether to give it an app code (`REQUEST_VALIDATION_FAILED`) or leave it.
 - 404/405 from Starlette have no app code at all.
