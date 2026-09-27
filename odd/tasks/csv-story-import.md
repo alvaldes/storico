@@ -7,8 +7,12 @@
 > main rather than a Feature Branch Chain because the backend half can land on its own. Both PRs
 > exceed the 400-line review budget with a `size:exception` documented in each body — no cohesive
 > split fits it, since the tests alone are 1771 and 1328 lines and the budget forbids splitting tests
-> from the code they verify. **Awaiting the maintainer's manual test**; `make bump` is theirs and has
-> not been run.
+> from the code they verify. **Released as `v0.8.0`** (bump `a9550aa`, tag on `main`, cut 2026-09-26
+> with 19 `feat` commits since `v0.7.0`, so `cz bump` resolved MINOR). **The maintainer's manual test
+> is still outstanding**, and the release was cut before it ran: the browser → proxy → backend path has
+> never carried a real file. See "The manual test found the dialog had no success state" below — that
+> is the one defect the manual pass has produced so far, and it came from preparing the test, not from
+> running it.
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 > **Receipt-driven development**: off in this clone.
@@ -813,4 +817,5 @@ quoting the old one as if it were current, which is how a delta stops being evid
 | third verification fixes | `fefbd24`, `f6b1d60`, `4bb2c56`, `482deed` | 887 backend + 553 frontend tests, mutation-checked |
 | manual-test fixtures | not committed (`tmp-csv-import-tests/`, excluded locally) | all five expected reports reproduced by the real parser + validator before the browser run |
 | dialog success state | `3e938c9` | 571 frontend tests across 50 files, tsc clean, `pnpm build` confirms `.text-success-text` is emitted; RED 2 failed observed first |
+| `v0.8.0` release | `a9550aa` | `make bump` on a clean tree: three manifests rewritten to `0.8.0`, `CHANGELOG.md` updated, tag `v0.8.0` created. Cutting it consumed the number `prod.todo.md` had reserved for extraction versioning, which moved to `0.9.0`, and observability with it to `1.0.0` |
 
