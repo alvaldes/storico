@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskEditor } from '@/components/react/TaskEditor';
 import * as api from '@/lib/tasks-api';
+import { ApiRequestError } from '@/lib/api';
 import { useTaskStore } from '@/stores/taskStore';
 import type { Task } from '@/types/task';
 
@@ -224,6 +225,38 @@ describe('TaskEditor', () => {
   });
 
   /* ── Save / rollback ── */
+
+  it('shows the localized save-failure banner and keeps the English backend detail reachable', async () => {
+    const user = userEvent.setup();
+
+    // Built exactly the way `lib/api.ts` `parseResponse` builds it: the English
+    // backend `detail` becomes the error `message`, and the parsed response body
+    // rides along as `rawBody` for the raw-detail channel. A plain `Error` would
+    // exercise the wrap-unknown path instead of the backend-detail path.
+    const backendBody = { detail: 'Not a member of this workspace' };
+    vi.mocked(api.updateTask).mockRejectedValue(
+      new ApiRequestError(403, 'Forbidden', 'Not a member of this workspace', backendBody),
+    );
+
+    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="es" />);
+
+    await screen.findByText('Editar Tarea');
+
+    await user.click(screen.getByText('Guardar Cambios'));
+
+    // 1. The headline is the translated friendly message...
+    expect(
+      await screen.findByText('Error al guardar la tarea — intenta de nuevo'),
+    ).toBeInTheDocument();
+    // 2. ...not the server's English sentence, which must not be the visible
+    // headline of a Spanish failure.
+    expect(screen.queryByText('Not a member of this workspace')).not.toBeInTheDocument();
+
+    // 3. Nothing is lost: the English backend sentence is still reachable
+    // through the raw-detail disclosure, via its Spanish chrome label.
+    await user.click(screen.getByText('Mostrar detalles del error del backend'));
+    expect(screen.getByRole('region')).toHaveTextContent('Not a member of this workspace');
+  });
 
   it('optimistically updates, applies server response, and closes on success', async () => {
     const user = userEvent.setup();

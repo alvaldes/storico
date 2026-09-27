@@ -343,7 +343,7 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
 
         {saveError && (
           <ErrorDisplay
-            friendlyMessage={saveError.message}
+            friendlyMessage={t.taskEditor.error_save}
             rawDetail={saveError.rawError.rawBody}
             status={saveError.status}
             errorCode={saveError.errorCode}
