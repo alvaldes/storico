@@ -19,6 +19,10 @@
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 > **Receipt-driven development**: off in this clone.
+> **Post-release follow-ups (2026-09-26)**: follow-up 9 fixed and 5 and 8 closed on two commits on
+> branch `fix/import-dialog-retry-accessible-name` (`8552cf3`, `01b4841`), branched off `main` at
+> `38ea6db` and **not pushed** — `main` still equals `origin/main`. Follow-ups 10 and 11 were opened
+> by that work and are still open.
 
 ## Problem
 
@@ -884,4 +888,6 @@ quoting the old one as if it were current, which is how a delta stops being evid
 | manual-test fixtures | folder deleted (`tmp-csv-import-tests/`, never committed; its `.git/info/exclude` line removed with it) | all expected reports reproduced by the real parser + validator before any browser run, then driven by the maintainer through the real dev path on 2026-09-26 with every one matching; durable reference is the vault note "Storico — Qué se puede importar en CSV y qué no", and the protocol's "what this does not prove" list is now inside follow-up 5 |
 | dialog success state | `3e938c9` | 571 frontend tests across 50 files, tsc clean, `pnpm build` confirms `.text-success-text` is emitted; RED 2 failed observed first |
 | `v0.8.0` release | `a9550aa` | `make bump` on a clean tree: three manifests rewritten to `0.8.0`, `CHANGELOG.md` updated, tag `v0.8.0` created. Cutting it consumed the number `prod.todo.md` had reserved for extraction versioning, which moved to `0.9.0`, and observability with it to `1.0.0` |
+| follow-up 9 fix | `8552cf3` | 1 line of behaviour: `retryLabel` deleted so the retry falls back to `common.retry`. 18 tests in the dialog file, 41 i18n guards, **572 frontend tests across 50 files**; no new i18n key, so parity and the voseo guard hold by construction. RED (2 failed on two buttons named "Import") is **reasoned, not executed**: the pre-fix harness was blocked by the Vite fs allow-list and reconstructing it in-tree would have mutated the candidate. What was measured instead: `getAllByRole(name:)` matches the full accessible name, so `toHaveLength(1)` is a real guard. Native review did not run (switch off in this clone); an independent read-only verification did. |
+| follow-ups 5 and 8 closed | `01b4841` | docs only, no check run. The maintainer's dev-local manual pass (2026-09-26, six tests, each on its expected report) recorded with its provenance — maintainer-reported, no agent drove a browser or read logs, and Playwright is still absent. `tmp-csv-import-tests/` deleted per its own Cierre, its `.git/info/exclude` line removed, and the README's "what this does not prove" list copied into follow-up 5 so it did not die with the folder. Closing 5 and 8 is **not** evidence about production: that became follow-up 11. |
 
