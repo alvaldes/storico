@@ -4,7 +4,8 @@
 > (`f286718`, `0605514`) carry the change; the rest of the branch is this record. `git log
 > main..HEAD` is the list, and the count is deliberately **not** written anywhere in this
 > document: a commit that records how many commits exist is falsified by its own existence, and
-> this branch paid for that lesson more than once. Merging is the owner's call.
+> this branch paid for that lesson more than once. CI `backend` and `frontend` both pass on the
+> final branch head, and the Vercel preview deployed. Merging is the owner's call.
 > **Created**: 2026-09-27
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/task-control-copy-truth`, from a clean `main` @ `ded4031`
