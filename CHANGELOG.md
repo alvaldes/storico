@@ -1,3 +1,43 @@
+## v0.8.0 (2026-09-26)
+
+### Feat
+
+- **landing**: seat the call to action on the demo and give it a supporting line
+- **landing**: hop the hero call to action into view once
+- **landing**: give the hero call to action its own copy and weight
+- **landing**: move the badge into the features section as its eyebrow
+- **landing**: rebuild the features section as joined segments
+- **landing**: settle the hero scale, order and badge alignment
+- **landing**: rewrite the hero title and subtitle as a sentence pair
+- **landing**: arrange the hero title and subtitle as a centered pair
+- **landing**: retire the phone mockup so the hero copy fills the width
+- **landing**: embed the live demo in the hero
+- **stories**: add the CSV import dialog to the stories list
+- **i18n**: add the import dialog copy in both languages
+- **stories**: add the import action to the story store
+- **stories**: call the CSV import endpoint and read its failures
+- **api**: add postForm so a FormData body can reach the backend
+- **stories**: import a story CSV through POST /api/v1/stories/import
+- **stories**: read project parts in one query and insert batches atomically
+- **stories**: validate imported story rows into an import report
+- **stories**: parse uploaded story CSVs into located rows
+
+### Fix
+
+- **stories**: give the import dialog a success state in its footer
+- **landing**: zoom the embedded demo so its story fits small screens
+- **stories**: correct six defects in the import dialog
+- **stories**: keep the list when a refetch fails
+- **proxy**: let a multipart upload reach the backend
+- **stories**: name the row limit when a file exceeds it
+- **stories**: close the 4-column split-story bypass and two routes to a 500
+- **stories**: refuse ragged rows and full stories pasted into the parts columns
+- **stories**: read a one-column CSV as one column, and size the upload without reading it
+
+### Refactor
+
+- **stories**: move the CSV import under its workspace
+
 ## v0.7.0 (2026-09-25)
 
 ### Feat
