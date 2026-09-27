@@ -161,9 +161,11 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
 
   const handleSave = async () => {
     const localErrors: Record<string, string> = {};
-    if (!title.trim()) localErrors.title = 'Required';
+    if (!title.trim()) localErrors.title = t.taskEditor.title_required;
     if (!isValidStatus(status)) {
-      localErrors.status = `Invalid transition from ${task.status} to ${status}`;
+      // Composed from translated pieces with language-neutral separators, so no
+      // English word order is baked in and no raw enum slug reaches the user.
+      localErrors.status = `${t.taskEditor.invalid_transition}: ${t.kanban.columns[task.status]} → ${t.kanban.columns[status]}`;
     }
     if (Object.keys(localErrors).length > 0) {
       setErrors(localErrors);

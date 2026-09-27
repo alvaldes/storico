@@ -285,6 +285,7 @@
     "description": "Actualiza los detalles de la tarea",
     "title_label": "Título",
     "title_placeholder": "Título de la tarea",
+    "title_required": "El título es obligatorio",
     "description_label": "Descripción",
     "description_placeholder": "Descripción de la tarea",
     "status_label": "Estado",

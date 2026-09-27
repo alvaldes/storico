@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskEditor } from '@/components/react/TaskEditor';
 import * as api from '@/lib/tasks-api';
@@ -182,6 +182,45 @@ describe('TaskEditor', () => {
       .filter(Boolean);
 
     expect(values).toEqual([]);
+  });
+
+  /* ── i18n — validation messages must follow the dialog's locale ── */
+
+  it('shows the localized required-title error in Spanish, never the hardcoded English', async () => {
+    const user = userEvent.setup();
+    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="es" />);
+
+    await screen.findByText('Editar Tarea');
+
+    const titleInput = screen.getByPlaceholderText('Título de la tarea');
+    await user.clear(titleInput);
+    await user.click(screen.getByText('Guardar Cambios'));
+
+    expect(screen.getByText('El título es obligatorio')).toBeInTheDocument();
+    expect(screen.queryByText('Required')).not.toBeInTheDocument();
+    // Local validation failed: the store must never be called.
+    expect(api.updateTask).not.toHaveBeenCalled();
+  });
+
+  it('shows the localized invalid-transition error in Spanish with translated status names', async () => {
+    const user = userEvent.setup();
+    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="es" />);
+
+    await screen.findByText('Editar Tarea');
+
+    // The select disables invalid options, so the pointer cannot reach 'done'
+    // from 'todo'; fireEvent bypasses that guard the way a stale client state
+    // would, which is exactly the path this validation message exists for.
+    fireEvent.change(screen.getByLabelText('Estado'), { target: { value: 'done' } });
+    await user.click(screen.getByText('Guardar Cambios'));
+
+    // The composed message uses the translated status names — no raw enum slugs.
+    expect(screen.getByText('Transición inválida: Por Hacer → Terminado')).toBeInTheDocument();
+    expect(
+      screen.getByText('Transición inválida: Por Hacer → Terminado').textContent,
+    ).not.toMatch(/\btodo\b|\bdone\b/);
+    // Local validation failed: the store must never be called.
+    expect(api.updateTask).not.toHaveBeenCalled();
   });
 
   /* ── Save / rollback ── */
