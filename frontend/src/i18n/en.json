@@ -5,6 +5,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "cta_label": "Get Started",
     "stories": "User Stories",
     "kanban": "Kanban Board",
     "export": "Export",
@@ -59,7 +60,8 @@
     "hero": {
       "title": "Your backlog, already broken down.",
       "subtitle": "Paste a user story. Get structured Kanban tasks, ready to edit and export.",
-      "cta_primary": "Get Started",
+      "cta_primary": "Break down your first story",
+      "cta_authed": "Open your board",
       "cta_secondary": "View Demo"
     },
     "features": {

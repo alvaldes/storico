@@ -5,6 +5,7 @@
   },
   "nav": {
     "dashboard": "Panel",
+    "cta_label": "Comienza",
     "stories": "Historias de Usuario",
     "kanban": "Tablero Kanban",
     "export": "Exportar",
@@ -59,7 +60,8 @@
     "hero": {
       "title": "Tu backlog, ya desglosado en tareas.",
       "subtitle": "Pega una historia de usuario. Obtén tareas Kanban listas para editar y exportar.",
-      "cta_primary": "Comienza",
+      "cta_primary": "Desglosa tu primera historia",
+      "cta_authed": "Abre tu tablero",
       "cta_secondary": "Ver demo"
     },
     "features": {

@@ -127,6 +127,14 @@
   --shadow-primary-sm: 0 4px 12px color-mix(in oklch, var(--color-primary-600) 20%, transparent);
   --shadow-primary-lg: 0 4px 20px color-mix(in oklch, var(--color-primary-600) 25%, transparent);
 
+  /* Call to action. Two layers: a 4px ring in the brand colour plus a coloured drop
+     shadow, which is what makes the primary button read as the page's main action
+     without changing its fill. */
+  --shadow-cta: 0 0 0 4px color-mix(in oklch, var(--color-primary-600) 18%, transparent),
+    0 8px 24px -8px color-mix(in oklch, var(--color-primary-600) 60%, transparent);
+  --shadow-cta-hover: 0 0 0 4px color-mix(in oklch, var(--color-primary-600) 26%, transparent),
+    0 12px 28px -8px color-mix(in oklch, var(--color-primary-600) 70%, transparent);
+
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;

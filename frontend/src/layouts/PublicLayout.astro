@@ -67,7 +67,10 @@ const mobileNavLinks = [
   { href: L('/terms'), label: t.footer.terms, category: t.footer.company },
 ];
 
-const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLoggedIn ? t.nav.dashboard : t.landing.hero.cta_primary };
+/* The navbar's own call to action. It keeps its "Get Started" wording and does not follow
+   the hero's, which is longer and specific to the landing. The signed-in side stays
+   `nav.dashboard`, since that is a navigation label first. */
+const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLoggedIn ? t.nav.dashboard : t.nav.cta_label };
 ---
 
 <!DOCTYPE html>
@@ -172,12 +175,6 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
               <p class="max-w-xl text-center text-sm leading-[1.6] text-(--color-inverse-muted) md:text-base lg:text-lg">
                 {t.landing.cta.subtitle}
               </p>
-              <a
-                href={L(isLoggedIn ? '/dashboard' : '/login')}
-                class="inline-flex items-center rounded-lg bg-(--color-primary-600) px-8 py-3.5 text-sm font-semibold text-(--color-inverse-text) no-underline shadow-primary-lg transition-all hover:bg-(--color-primary-700) md:text-base"
-              >
-                {isLoggedIn ? t.nav.dashboard : t.landing.cta.button}
-              </a>
             </div>
           </section>
         )
