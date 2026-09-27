@@ -33,9 +33,9 @@ Prerrequisitos que, si faltan, rompen algo en silencio o fallan recién en produ
 
 | Ítem | Estado | Detalle |
 |------|--------|---------|
-| Monitoreo de errores (Sentry) | 🔲 | **Diferido a `0.8.0`**, la versión dedicada a observabilidad, decidido por el operador el 2026-09-24. El alcance reunido — lo que falta, las variables previstas y las decisiones por tomar — está en la nota "Sentry y correlation IDs en Storico — alcance de 0.8.0" del vault. |
+| Monitoreo de errores (Sentry) | 🔲 | **Diferido a `0.9.0`**, la versión dedicada a observabilidad. El operador la había fijado en `0.8.0` el 2026-09-24 y la corrió a `0.9.0` el 2026-09-25, cuando `0.8.0` se asignó al versionado de extracción. El alcance reunido — lo que falta, las variables previstas y las decisiones por tomar — está en la nota "Sentry y correlation IDs en Storico" del vault. |
 | Campos estructurados en los logs | ✅ | 28 llamadas a `logger.*` pasan `extra=`, así que un fallo llega con sus datos y no solo con un texto. |
-| Correlation IDs para trazabilidad | 🔲 | **No existen.** `AGENTS.md` los anunciaba en su tabla de features y se corrigió ahí; un request no lleva identificador que lo siga de punta a punta. **Diferido a `0.8.0`** junto con Sentry. |
+| Correlation IDs para trazabilidad | 🔲 | **No existen.** `AGENTS.md` los anunciaba en su tabla de features y se corrigió ahí; un request no lleva identificador que lo siga de punta a punta. **Diferido a `0.9.0`** junto con Sentry. |
 
 ## Infraestructura y costos
 
