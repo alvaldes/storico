@@ -1,0 +1,176 @@
+# Canonical error envelope: every user-facing API error carries one machine-readable code
+
+Feature: `api-error-code-envelope`. Started 2026-09-28. Owner decision: **option C** —
+translate backend errors by code, on the frontend, into *specific* copy (not just a generic
+headline). The user chose **backend first** and **unify the contract to a single field**.
+
+## Problem
+
+The API returns English prose in `detail`, and the frontend renders that prose verbatim, so a
+Spanish user gets an untranslated error no matter how complete `es.json` is (PR #25 hid this in
+one surface instead of fixing it). The backend already emits machine-readable codes in most
+real failures, but under **two different field names** at **two different nesting levels**, and
+the frontend reads exactly one of them.
+
+## Established facts (measured on `main` @ `556a25e`, 2026-09-28)
+
+- **38 `raise HTTPException` sites** in `backend/src/storico/`. Only **6** carry a code; **32**
+  are bare English prose (string or f-string). `users.py`, `auth.py`, `settings.py`, `health.py`
+  have zero raise sites.
+- **`api/errors.py` exists** and wires **13 domain-exception handlers** (`api/app.py:143-160`).
+  It emits the code as **`type`, not `error_code`**, with 12 lowercase-slug values
+  (`entity_not_found`, `duplicate_entity`, `repository_error`, `internal_error`,
+  `llm_connection_error`, `llm_model_not_found`, `llm_response_error`, `parse_error`,
+  `insufficient_role`, `owner_transfer_error`, `last_admin_error`, `cannot_remove_owner`).
+  The **cipher handler is the exception**: it emits **top-level `error_code`** with
+  **SCREAMING_SNAKE** values (`ENCRYPTION_KEY_MISSING`, `CREDENTIAL_UNDECRYPTABLE`) *and* `type`.
+- **57 raises of those domain exceptions** in the tree (19 `EntityNotFound`, 16 `RepositoryError`,
+  9 `LLMError`, 8 `LLMResponseError`, 4 `LLMConnectionError`, 3 `DuplicateEntity`,
+  3 `OwnerTransferError`, 3 `LLMModelNotFoundError`, 2 `CredentialUndecryptable`). These already
+  reach a client with a code; nothing reads it.
+- **The frontend reads exactly one location**: `detail.error_code`, and only when `detail` is an
+  object (`api.ts:60-66`). It never touches `type` or top-level `error_code`. `ApiRequestError`
+  already has an `errorCode` field and `toErrorInfo()` already forwards it — the plumbing exists,
+  the wiring is missing.
+- **No backend localization at all**: zero matches for `Accept-Language|locale|lang|i18n|gettext|babel`
+  in `backend/src/`. Locale lives only in the Astro route param and reaches React islands as a
+  prop. No persisted language preference (`user_preferences.py` is `{user_id, preferences}`).
+- **No code→message table exists anywhere.** The two keys that mirror backend prose
+  (`stories.create_duplicate_error`, `settings.llmModelsFetchError`) are hand-maintained copies
+  on specific paths — exactly the pattern this feature replaces.
+- **Unconsumed envelope**: `docs/api.md` documents **two shapes** — top-level `type`
+  (`api.md:262-273`, with a table of 4 codes) and nested `detail.error_code` for import errors
+  (`api.md:92-99,113-117`) and `LLM_CONFIG_INCOMPLETE` (`api.md:187,321`).
+- **Blast radius of unifying the field**: **9** backend assertions pin `["type"]`
+  (`test_stories.py:333,396`; `test_extractions.py:338`; `test_projects.py:275,330,378`;
+  `test_tasks.py:141,441,584`), all against the single value `entity_not_found`.
+  ~9 more pin nested `detail["error_code"]` (`test_stories_import.py:160,215,327,342,352,373,454`;
+  `test_extraction.py:663,697`). **No test compares the full key set of an error body**, and
+  `tests/contract/test_api_schemas.py` pins success schemas only — nothing pins the error envelope.
+- ~14 backend assertions pin English `detail` **prose** (`test_stories.py:68-72,101-103,440,451`,
+  `test_story_access.py:39,238`, `test_tasks.py:96,124`, `test_projects.py:447-493`,
+  `test_extraction.py:537-538`). Adding a field leaves these valid; **changing prose breaks them.**
+- `ErrorDisplay.tsx:161-166` renders the raw code as visible chrome: `HTTP 403 • INVALID_STATE_TRANSITION`.
+
+## Decisions
+
+- **D1 — The fix is a code, not a translation layer in the backend.** The backend stays
+  English-speaking (its prose is the operator-facing language of record, and it has no locale
+  concept). It guarantees a stable code; the frontend owns the user's words. Confirmed by the
+  user as option C.
+- **D2 — Canonical field: top-level `error_code`.** Chosen by measurement, not taste: `type`
+  collides with FastAPI's own 422 `detail[].type`; `errorCode`/`error_code` is already the
+  frontend property name, already top-level in the cipher handler, and already SCREAMING there.
+  The user explicitly accepted unifying to one field (`docs/api.md` currently documents two).
+- **D3 — Canonical values: `SCREAMING_SNAKE`.** The 12 lowercase `type` values are read by
+  **nobody** (verified by grep over `frontend/src/`), while the frontend branches on
+  `INVALID_STATE_TRANSITION`, `IMPORT_*` and `LLM_CONFIG_INCOMPLETE`. Lowercasing instead would
+  break ~10 live frontend comparisons. So this costs 9 test assertions and zero frontend logic.
+- **D4 — `detail` keeps its current English text.** Breaking ~14 prose assertions buys nothing;
+  the code is the contract, the prose is the human-readable fallback and the raw-panel content.
+- **D5 — `HTTPException` cannot carry a top-level code, so a dedicated exception is required.**
+  `HTTPException` exposes only `status_code` and `detail` — nesting a code inside `detail` *is*
+  the inconsistency being removed. `ApiError(status_code, error_code, detail)` + one handler is
+  the only way to reach the 32 bare-prose sites without a per-route body shape.
+- **D6 — Sequence: backend envelope first, frontend map after.** The user chose this knowing it
+  defers user-visible benefit by one slice. Consequence accepted: between the two slices the app
+  shows a translated headline with the server's English sentence beneath it (PR #25 behaviour).
+- **D7 — Release-slot warning.** `.cz.toml` sets `major_version_zero = true`; commitizen's
+  `BUMP_MAP_MAJOR_VERSION_ZERO` (`defaults.py:139-147`) maps both `BREAKING CHANGE` and `!` to
+  **MINOR**, and `feat` also maps to MINOR. At `0.8.0` that means a `feat`/breaking commit here
+  **consumes the `0.9.0` reserved for extraction versioning**. To keep the reservation this work
+  must land as `fix`/`refactor` (→ `0.8.x`). Surfaced for the owner, not silently decided.
+
+## Tasks
+
+- [x] **WU1 — Canonical envelope on the 13 handlers.** `api/errors.py`: emit top-level
+  `error_code` with SCREAMING values, drop `type`. Update the 9 `["type"]` assertions. Add a
+  **permanent guard test** pinning the envelope shape (every handler body has `error_code`, no
+  `type`) — the repo already sets this precedent with the i18n duplicate-key guard. Update
+  `docs/api.md` to one shape. ~40 source lines + tests + docs.
+- [ ] **WU2 — `ApiError` exception + handler.** Mechanism that lets a raise site produce a
+  top-level code. Covers FastAPI's own 422 `RequestValidationError` and the 404/405 defaults,
+  which today emit no app code at all.
+- [ ] **WU3 — Migrate the 32 bare-prose raises.** `dependencies.py` first (9, all access control
+  — the most frequently seen English in the app), then `workspace_settings.py` (8), `stories.py`
+  (5), `workspaces.py`/`projects.py` (4), `export.py`/`extractions.py`/`tasks.py`/`extraction.py` (4).
+  Split by file across PRs if the diff exceeds the review budget.
+- [ ] **WU4 — The 6 nested `detail.error_code` sites → top-level.** Backend and frontend move
+  together (`stories-api.ts` `readImportFailure`, `taskStore.ts:113`, `KanbanBoard.tsx:168`,
+  `api.ts:61-63`), with the frontend tolerating both shapes during the deploy window (backend
+  deploys on the Oracle VM, frontend on Vercel — they are not atomic).
+- [ ] **WU5 — Frontend translation: `error_code` → i18n key.** One map, both locales, specific
+  copy per code family. `ErrorDisplay.tsx` keeps the code in the header as diagnostics and stops
+  using server prose as the headline. This is the slice the user sees.
+
+## Non-goals
+
+- No backend localization, no `Accept-Language` negotiation, no persisted language preference.
+- No change to `detail` prose wording.
+- No HTTP status-code changes.
+- Not in this feature: the two hand-maintained mirrors (`create_duplicate_error`,
+  `llmModelsFetchError`) get folded into the map only if WU5 makes that mechanical.
+
+## Risks
+
+- **Two deploys, one contract.** Backend and frontend ship independently, so WU4 must be
+  frontend-tolerant of both shapes or there is a broken window. WU1-WU3 are additive for the
+  frontend (it ignores `type` today), so they are safe to ship alone.
+- **Code-name sprawl.** 32 new codes invented by whoever edits each file drifts. Mitigation: a
+  single `api/error_codes.py` registry, grep-able, reviewed as one list.
+- **A breaking contract on a thesis-facing public API.** `docs/api.md` is public. WU1 should say
+  plainly in the PR body that `type` is gone.
+- **Envelope guard drift.** Without a permanent test, a future handler re-adds `type`. WU1's guard
+  test is what makes D2 self-enforcing.
+
+## Evidence log
+
+- `556a25e` `fix(error-display): show a translated headline for save failures (#25)` — the
+  predecessor slice; its follow-up section is where this feature was announced.
+- Measurement in "Established facts" is from a read-only audit (`gentle-ai-explore`, 2026-09-28)
+  plus direct re-verification in this session of: the 9 `["type"]` assertions, the 57 domain
+  exception raises, the absence of full-key-set assertions, the zero frontend consumers of
+  lowercase codes, and commitizen's bump maps.
+
+## Verification
+
+**WU1 — run and verified on this tree (2026-09-28).**
+
+- `pytest -q -m unit` → **236 passed** (baseline at `HEAD` measured in a throwaway worktree: 221;
+  the +15 is the new guard).
+- `pytest -q` — the command CI actually runs (`.github/workflows/ci.yml:44`) → **990 passed, 21 skipped**.
+- `ruff check src tests` → passed. `ruff format --check src tests` → 245 files already formatted.
+- **Mutation check of the guard**: re-adding `"type"` to one handler by hand → 1 failed, 14 passed.
+- **Mutation check of the 9 integration-surface assertions**: reverting `ENTITY_NOT_FOUND` to
+  `"type": "entity_not_found"` → **exactly 9 failed, 63 passed** across the four files, one per
+  assertion site predicted by the audit. This is what proves the updated assertions execute and bite.
+
+### Two claims in this doc that were wrong, and what replaced them
+
+- I wrote that the 9 assertions "cannot be run — Docker is off". **False.** The `integration`
+  marker lives only in `tests/test_integration/`; nothing in `tests/test_api/` carries it, so
+  those tests run in the default suite against the in-process app, no daemon required. They ran.
+  The mutation check above replaced the assumption with evidence.
+- The handoff baseline of "264 unit tests" does not reproduce. Measured at `HEAD`: **221 marked
+  `unit`**, **990 collected and run by bare `pytest -q`**. `AGENTS.md` still advertises "264 unit
+  tests and 356 integration tests" and says bare `pytest -q` "requires Docker" — both stale.
+  Logged as a follow-up, not fixed here: it is documentation drift, not this feature.
+- Process note: the guard shipped **without `@pytest.mark.unit`**, so it was silently deselected by
+  the `-m unit` gate and would have looked like +0 tests. Caught only because the baseline was
+  measured rather than assumed. A test that no gate selects is a test that does not exist.
+
+## Follow-ups
+
+- **`AGENTS.md` test-surface drift**: "264 unit / 356 integration" and "bare `pytest -q` … requires
+  Docker" are both contradicted by measurement (236/221 marked `unit`; 990 run without Docker;
+  `integration` only in `tests/test_integration/`). Same defect class as the copy overclaims this
+  whole thread started from — a doc asserting more than the repo does.
+- **Every new test must carry `@pytest.mark.unit`**, or bare `pytest -q` runs it while `-m unit`
+  does not, and the local gate under-reports. Worth enforcing mechanically, not by memory.
+- 422 bodies: `RequestValidationError` default detail is a list of `{type, loc, msg, input}` —
+  WU2 decides whether to give it an app code (`REQUEST_VALIDATION_FAILED`) or leave it.
+- 404/405 from Starlette have no app code at all.
+- `InsufficientRole` has a handler but is **never raised** anywhere in `backend/src/` — dead code,
+  and its `type` value is in the list WU1 renames. Decide: delete or wire it up.
+- Sentry (reserved for `1.0.0`) will want these codes; keeping them in one registry is the
+  precondition.
