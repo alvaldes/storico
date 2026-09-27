@@ -76,6 +76,23 @@ the island's serialized `props` attribute — not as text in the document.
       the island count going from 4 to 3.
 - [x] T6 — Commit the work units and record the identities and the numbers here.
 
+## Later change (D9)
+
+The owner then asked for the hero's badge to move down *into* this section, above the heading and in
+smaller type — which is the eyebrow this record had already flagged as O2, so O2 is resolved by that
+move rather than by new copy. The badge now renders inside the raised container's headline band as a
+`flex w-fit` box above the `h2`, at 10px instead of 11px, with the padding pulled in to 10px/4px to
+keep the pill proportional to the smaller label.
+
+The i18n key moved with it — `landing.hero.badge` → `landing.features.badge` — because a key that says
+"hero" while rendering under the features heading is exactly the drift this record exists to catch.
+
+It was placed *inside* the band rather than left as a loose child of the section, which is where the
+owner's own edit had it: the section is `py-12 md:py-12.5` with no `flex` and no `gap`, so a pill and
+the container as siblings sit flush against each other with no separation at all.
+
+Commit: `5c17bc2 feat(landing): move the badge into the features section as its eyebrow`.
+
 ## Verification
 
 - `cd frontend && npx vitest run`
@@ -130,4 +147,4 @@ One deviation found by measuring rather than by taste, and corrected: the refere
 | # | Question | State |
 |---|----------|-------|
 | O1 | Illustrate the headline band the way the reference does? | Open. Needs an asset we do not have. |
-| O2 | Add an eyebrow pill above the section `h2`, as the reference has? | Open. Needs new copy in `en.json` and `es.json`. |
+| O2 | Add an eyebrow pill above the section `h2`, as the reference has? | **Resolved by D9**: the eyebrow is the hero's badge moved down, at 10px. Rendered at 10px in a 25px pill with a 16px gap to the 36px heading, in both locales. |
