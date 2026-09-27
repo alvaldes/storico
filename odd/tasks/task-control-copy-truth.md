@@ -1,10 +1,12 @@
 # ODD Feature: task-control-copy-truth
 
-> **Status**: complete on `fix/task-control-copy-truth` — `f286718` carries the two corrected
-> surfaces, and `0605514` narrows `landing.faq.a4` again (D8) and fixes its Spanish
-> register (D10). Nothing pushed, no PR opened: that is the owner's decision. Gate green on the
-> final tree — `vitest` **50 files / 572 tests**, `tsc --noEmit` **exit 0**, `astro build`
-> **complete** (2 pre-existing `zod` rollup annotation warnings, `node_modules` only).
+> **Status**: complete and opened as **PR #23** against `main` on 2026-09-27. Four commits:
+> `f286718` (the two corrected surfaces), `0605514` (narrows `landing.faq.a4` again — D8 — and
+> fixes its Spanish register — D10), `c8c6153` (this document + the `prod.todo.md` row), and
+> `b26532d` (the untranslated-`TaskEditor` finding the audit surfaced). Merging is the owner's
+> call. Gate green on the final tree — `vitest` **50 files / 572 tests**, `tsc --noEmit`
+> **exit 0**, `astro build` **complete** (2 pre-existing `zod` rollup annotation warnings,
+> `node_modules` only); CI `backend` and `frontend` jobs pass on the branch.
 > **Created**: 2026-09-27
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `fix/task-control-copy-truth`, from a clean `main` @ `ded4031`
