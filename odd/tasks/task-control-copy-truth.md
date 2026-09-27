@@ -237,11 +237,21 @@ Its remaining MINOR — `done: []` means a Done task cannot move, so "you can al
   blocklist, certifies what it can see and nothing more.
   Two findings surfaced while closing it, both registered in `prod.todo.md` rather than folded
   in, because neither is an i18n fix:
-  - The save-failure banner renders `saveError.message`, which `buildErrorMessage`
-    (`lib/api.ts:100`) builds from the backend `detail` or the HTTP status — English by
-    construction — while `taskEditor.error_save` exists in **both** catalogs and is consumed by
-    nobody. Choosing between a generic friendly message and the backend's detail is a product
-    decision touching `ErrorDisplay`'s six call sites.
+  - The save-failure banner — **resolved in `130b0dd`**. It rendered `saveError.message`, built
+    by `buildErrorMessage` (`lib/api.ts:100`) from the backend `detail` or the HTTP status:
+    English by construction, while `taskEditor.error_save` sat translated in both catalogs with
+    no consumer. Fixed for this surface by wiring the existing key; the backend sentence stays
+    reachable through the `rawDetail` panel the call site already passed.
+  - **Still open, and deliberately not swept**: the same defect at `ExportPanel.tsx:178`,
+    `ImportStoriesDialog.tsx:374`, `StoryForm.tsx:522` and `KanbanBoard.tsx:222`. The Kanban one
+    is not a stray call site — it comes from `extractErrorInfo` (`lib/error-info.ts:41-45`), which
+    for an `ApiRequestError` returns `err.toErrorInfo()` whose `friendlyMessage` is `this.message`,
+    discarding the caller's own `fallbackMessage`. Six store-side names (`'Failed to fetch
+    projects'`, `'Extraction failed'`, …) are therefore never shown when the failure came from the
+    API. That is **documented and tested intent**, not an accident — `error-info.test.ts:53` is
+    named "uses the caller's fallback when there is nothing readable". So the app currently
+    *prefers the server's specific English over its own translated name*, and changing that is a
+    product decision about error philosophy, not an i18n fix. Registered in `prod.todo.md`.
   - The status dropdown marks legality with a bare `✓`/`✗` glyph inside a `<select>`
     (`TaskEditor.tsx:261`), left deliberately untouched. Its labels ARE translated, so this is
     an accessibility gap, not an i18n one.
