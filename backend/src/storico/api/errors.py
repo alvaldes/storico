@@ -34,7 +34,7 @@ async def entity_not_found_handler(
     """Maps ``EntityNotFound`` to a 404 JSON response."""
     return JSONResponse(
         status_code=404,
-        content={"detail": str(exc), "type": "entity_not_found"},
+        content={"detail": str(exc), "error_code": "ENTITY_NOT_FOUND"},
     )
 
 
@@ -45,7 +45,7 @@ async def duplicate_entity_handler(
     """Maps ``DuplicateEntity`` to a 409 JSON response."""
     return JSONResponse(
         status_code=409,
-        content={"detail": str(exc), "type": "duplicate_entity"},
+        content={"detail": str(exc), "error_code": "DUPLICATE_ENTITY"},
     )
 
 
@@ -63,7 +63,7 @@ async def repository_error_handler(
     )
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "type": "repository_error"},
+        content={"detail": "Internal server error", "error_code": "REPOSITORY_ERROR"},
     )
 
 
@@ -80,7 +80,7 @@ async def generic_error_handler(
     )
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "type": "internal_error"},
+        content={"detail": "Internal server error", "error_code": "INTERNAL_ERROR"},
     )
 
 
@@ -93,7 +93,7 @@ async def llm_connection_error_handler(
         status_code=503,
         content={
             "detail": "LLM service unavailable",
-            "type": "llm_connection_error",
+            "error_code": "LLM_CONNECTION_ERROR",
             "message": str(exc),
         },
     )
@@ -108,7 +108,7 @@ async def llm_model_not_found_handler(
         status_code=404,
         content={
             "detail": str(exc),
-            "type": "llm_model_not_found",
+            "error_code": "LLM_MODEL_NOT_FOUND",
             "model": exc.model,
         },
     )
@@ -123,7 +123,7 @@ async def llm_response_error_handler(
         status_code=502,
         content={
             "detail": "Bad response from LLM service",
-            "type": "llm_response_error",
+            "error_code": "LLM_RESPONSE_ERROR",
             "message": str(exc),
         },
     )
@@ -138,7 +138,7 @@ async def parse_error_handler(
         status_code=422,
         content={
             "detail": str(exc),
-            "type": "parse_error",
+            "error_code": "PARSE_ERROR",
         },
     )
 
@@ -153,7 +153,7 @@ async def insufficient_role_handler(
     """Maps ``InsufficientRole`` to a 403 JSON response."""
     return JSONResponse(
         status_code=403,
-        content={"detail": str(exc), "type": "insufficient_role"},
+        content={"detail": str(exc), "error_code": "INSUFFICIENT_ROLE"},
     )
 
 
@@ -164,7 +164,7 @@ async def owner_transfer_error_handler(
     """Maps ``OwnerTransferError`` to a 400 JSON response."""
     return JSONResponse(
         status_code=400,
-        content={"detail": str(exc), "type": "owner_transfer_error"},
+        content={"detail": str(exc), "error_code": "OWNER_TRANSFER_ERROR"},
     )
 
 
@@ -175,7 +175,7 @@ async def last_admin_error_handler(
     """Maps ``LastAdminError`` to a 400 JSON response."""
     return JSONResponse(
         status_code=400,
-        content={"detail": str(exc), "type": "last_admin_error"},
+        content={"detail": str(exc), "error_code": "LAST_ADMIN_ERROR"},
     )
 
 
@@ -186,7 +186,7 @@ async def cannot_remove_owner_handler(
     """Maps ``CannotRemoveOwnerError`` to a 400 JSON response."""
     return JSONResponse(
         status_code=400,
-        content={"detail": str(exc), "type": "cannot_remove_owner"},
+        content={"detail": str(exc), "error_code": "CANNOT_REMOVE_OWNER"},
     )
 
 
@@ -227,7 +227,6 @@ async def cipher_error_handler(
         status_code=500,
         content={
             "detail": str(exc),
-            "type": "cipher_error",
             "error_code": error_code,
         },
     )

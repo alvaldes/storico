@@ -272,7 +272,7 @@ class TestGetProject:
 
         data = response.json()
         assert "detail" in data
-        assert data["type"] == "entity_not_found"
+        assert data["error_code"] == "ENTITY_NOT_FOUND"
 
 
 class TestUpdateProject:
@@ -327,7 +327,7 @@ class TestUpdateProject:
         assert response.status_code == 404
 
         data = response.json()
-        assert data["type"] == "entity_not_found"
+        assert data["error_code"] == "ENTITY_NOT_FOUND"
 
 
 class TestDeleteProject:
@@ -375,7 +375,7 @@ class TestDeleteProject:
         assert response.status_code == 404
 
         data = response.json()
-        assert data["type"] == "entity_not_found"
+        assert data["error_code"] == "ENTITY_NOT_FOUND"
 
 
 async def _seed_project_in_a_sibling_workspace(

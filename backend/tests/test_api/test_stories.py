@@ -330,7 +330,7 @@ class TestGetStory:
         fake_id = str(uuid4())
         response = await authed_client.get(f"/api/v1/stories/{fake_id}")
         assert response.status_code == 404
-        assert response.json()["type"] == "entity_not_found"
+        assert response.json()["error_code"] == "ENTITY_NOT_FOUND"
 
 
 class TestUpdateStory:
@@ -393,7 +393,7 @@ class TestDeleteStory:
         fake_id = str(uuid4())
         response = await authed_client.delete(f"/api/v1/stories/{fake_id}")
         assert response.status_code == 404
-        assert response.json()["type"] == "entity_not_found"
+        assert response.json()["error_code"] == "ENTITY_NOT_FOUND"
 
 
 async def _seed_foreign_project(db_session: AsyncSession, seed_workspace) -> UUID:

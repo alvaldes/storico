@@ -138,7 +138,7 @@ class TestCreateTask:
             json={"user_story_id": str(uuid4()), "title": "Orphan task"},
         )
         assert response.status_code == 404
-        assert response.json()["type"] == "entity_not_found"
+        assert response.json()["error_code"] == "ENTITY_NOT_FOUND"
 
     async def test_create_task_still_succeeds_for_a_member(self, authed_client, seed_workspace):
         """POST into one's own workspace still returns 201 and reads back.
@@ -438,7 +438,7 @@ class TestGetTask:
         fake_id = str(uuid4())
         response = await authed_client.get(f"/api/v1/tasks/{fake_id}")
         assert response.status_code == 404
-        assert response.json()["type"] == "entity_not_found"
+        assert response.json()["error_code"] == "ENTITY_NOT_FOUND"
 
 
 class TestUpdateTask:
@@ -581,4 +581,4 @@ class TestDeleteTask:
         fake_id = str(uuid4())
         response = await authed_client.delete(f"/api/v1/tasks/{fake_id}")
         assert response.status_code == 404
-        assert response.json()["type"] == "entity_not_found"
+        assert response.json()["error_code"] == "ENTITY_NOT_FOUND"

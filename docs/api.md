@@ -262,16 +262,16 @@ chocar contra la regla que ahora lo reserva.
 ```json
 {
   "detail": "Project with id '...' not found",
-  "type": "entity_not_found"
+  "error_code": "ENTITY_NOT_FOUND"
 }
 ```
 
-| Tipo | HTTP Status |
+| `error_code` | HTTP Status |
 |------|-------------|
-| `entity_not_found` | 404 |
-| `duplicate_entity` | 409 |
-| `repository_error` | 500 |
-| `internal_error` | 500 |
+| `ENTITY_NOT_FOUND` | 404 |
+| `DUPLICATE_ENTITY` | 409 |
+| `REPOSITORY_ERROR` | 500 |
+| `INTERNAL_ERROR` | 500 |
 
 **Contrato de existencia (404 vs 403).** En los recursos con alcance de workspace la regla es
 explícita y uniforme: **404** cuando la fila no existe, **403** cuando existe pero no es alcanzable
