@@ -57,14 +57,21 @@ export class ApiRequestError extends Error {
       detail,
     };
 
+    // The canonical code is top-level (`error_code` beside `detail`, the shape
+    // `api/errors.py` and the `ApiError` handler emit). The nested
+    // `detail.error_code` is the fallback: the import routes, `extraction.py`
+    // and the INVALID_STATE_TRANSITION site still nest it until WU4 moves them,
+    // and during the deploy window either shape can arrive. Read the canonical
+    // one first so a body carrying both cannot be answered by the stale shape.
+    this.errorCode = readErrorCode(rawBody) ?? readErrorCode(detail);
+    this.rawError.errorCode = this.errorCode;
+
     // Extract structured error fields for INVALID_STATE_TRANSITION
     if (typeof detail === 'object' && detail !== null) {
       const d = detail as Record<string, unknown>;
-      this.errorCode = d.error_code as string | undefined;
       this.currentState = d.current_state as string | undefined;
       this.attemptedState = d.attempted_state as string | undefined;
       this.allowedTransitions = d.allowed_transitions as string[] | undefined;
-      this.rawError.errorCode = this.errorCode;
       this.rawError.currentState = this.currentState;
       this.rawError.attemptedState = this.attemptedState;
       this.rawError.allowedTransitions = this.allowedTransitions;
@@ -95,6 +102,18 @@ export class ApiRequestError extends Error {
       errorCode: this.errorCode,
     };
   }
+}
+
+/**
+ * Read `error_code` off an envelope level, tolerating anything that is not an
+ * object carrying a non-empty string there.
+ */
+function readErrorCode(payload: unknown): string | undefined {
+  if (typeof payload === 'object' && payload !== null && 'error_code' in payload) {
+    const code = (payload as Record<string, unknown>).error_code;
+    if (typeof code === 'string' && code.length > 0) return code;
+  }
+  return undefined;
 }
 
 function buildErrorMessage(status: number, statusText: string, detail: unknown): string {

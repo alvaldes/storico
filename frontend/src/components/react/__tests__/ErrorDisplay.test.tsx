@@ -6,6 +6,7 @@ import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import { useTranslations } from '@/i18n/utils';
 
 const t = useTranslations('en');
+const esT = useTranslations('es');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -43,6 +44,67 @@ describe('ErrorDisplay — the failure it reports', () => {
     render(<ErrorDisplay friendlyMessage="Boom" />);
 
     expect(screen.queryByText(/HTTP/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ErrorDisplay — translated headlines for backend codes', () => {
+  it('shows the specific Spanish headline for a mapped code, and keeps the English prose only in the disclosure', async () => {
+    const user = userEvent.setup();
+    // What the server actually sends: its own English sentence as the detail.
+    const englishProse = "Workspace with id 'abc' not found";
+    render(
+      <ErrorDisplay
+        locale="es"
+        friendlyMessage={englishProse}
+        rawDetail={englishProse}
+        status={404}
+        errorCode="ENTITY_NOT_FOUND"
+      />,
+    );
+
+    // The code's Spanish copy is the headline...
+    expect(screen.getByText(esT.errorCodes.ENTITY_NOT_FOUND)).toBeInTheDocument();
+    // ...the server's English sentence is not the headline...
+    expect(screen.queryByText(englishProse)).not.toBeInTheDocument();
+    // ...and it stays reachable inside the raw-response disclosure (whose own
+    // copy follows the locale too, hence the Spanish button name).
+    await user.click(screen.getByRole('button', { name: esT.errorDisplay.raw_response }));
+    expect(screen.getByRole('region')).toHaveTextContent(englishProse);
+  });
+
+  it('shows the English headline for a mapped code in the default locale', () => {
+    render(
+      <ErrorDisplay
+        friendlyMessage="Bad Request"
+        status={400}
+        errorCode="REQUEST_VALIDATION_FAILED"
+      />,
+    );
+
+    expect(screen.getByText(t.errorCodes.REQUEST_VALIDATION_FAILED)).toBeInTheDocument();
+    expect(screen.queryByText('Bad Request')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the caller’s message for a code the map does not know', () => {
+    // NOT_A_WORKSPACE_MEMBER is what WU3 will add; until the map learns it, the
+    // caller's translated message must remain the headline (this is what keeps
+    // the TaskEditor save-failure copy of PR #25 working).
+    render(
+      <ErrorDisplay
+        locale="es"
+        friendlyMessage="No se pudo guardar la tarea"
+        errorCode="NOT_A_WORKSPACE_MEMBER"
+      />,
+    );
+
+    expect(screen.getByText('No se pudo guardar la tarea')).toBeInTheDocument();
+    expect(screen.queryByText(esT.errorCodes.ENTITY_NOT_FOUND)).not.toBeInTheDocument();
+  });
+
+  it('keeps the caller’s message as the headline when there is no code at all', () => {
+    render(<ErrorDisplay locale="es" friendlyMessage="No se pudo cargar el tablero" />);
+
+    expect(screen.getByText('No se pudo cargar el tablero')).toBeInTheDocument();
   });
 });
 

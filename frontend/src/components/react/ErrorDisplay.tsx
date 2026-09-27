@@ -9,6 +9,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { useTranslations, type Locale } from '@/i18n/utils';
+import { errorCodeHeadline } from '@/lib/error-codes';
 
 export interface BackendError {
   /** Friendly/user-facing message (can be translated) */
@@ -121,7 +122,19 @@ function RawDetail({ detail, locale }: { detail: string; locale: Locale }) {
  * The render below is that prior implementation (`dad9039`) plus the retry action the
  * interface already promised and the call sites already pass: it did not render one.
  *
- * The message itself belongs to the caller: this component only renders its own chrome.
+ * The message itself used to belong entirely to the caller: this component
+ * only rendered its own chrome. That is no longer true, on purpose. When the
+ * caller passes a backend `error_code`, the code's translated copy (the
+ * `errorCodes` table in `i18n/en.json`/`es.json`, resolved by
+ * `lib/error-codes.ts`) wins over the caller's `friendlyMessage`: a code the
+ * backend guarantees is a better source of a specific, translatable sentence
+ * than prose the backend may reword at any release, and it is what turns the
+ * server's English into the user's language. Unmapped codes, network failures
+ * and surfaces with their own copy keep the caller's message unchanged.
+ *
+ * The `HTTP 403 • ENTITY_NOT_FOUND` mono line stays as diagnostics, and the
+ * server's prose stays reachable inside the raw-response disclosure below:
+ * this adds specificity, it does not delete information.
  */
 export function ErrorDisplay({
   friendlyMessage,
@@ -136,6 +149,10 @@ export function ErrorDisplay({
   const t = useTranslations(locale);
 
   const formattedDetail = formatRawDetail(rawDetail);
+  // Headline priority: a translated backend code beats the caller's message,
+  // which for backend failures is the server's English prose. An unmapped code
+  // falls back to the caller's message (see `errorCodeHeadline`).
+  const headline = (errorCode ? errorCodeHeadline(errorCode, locale) : undefined) ?? friendlyMessage;
   // Worth disclosing when there is a detail at all and it has something to say. Testing the
   // formatted text for the placeholder string would drop a caller whose detail *is* that
   // literal text, and testing only for `null` would open an empty panel for `""`.
@@ -157,7 +174,7 @@ export function ErrorDisplay({
           role="alert"
           className="min-w-0 flex-1"
         >
-          <p className="text-sm font-medium text-destructive">{friendlyMessage}</p>
+          <p className="text-sm font-medium text-destructive">{headline}</p>
           {(status || errorCode) && (
             <p className="mt-1 font-mono text-xs text-destructive/70">
               {status ? `HTTP ${status}` : null}
