@@ -416,6 +416,30 @@ describe('ImportStoriesDialog', () => {
     );
     expect(screen.getByText('boom')).toBeInTheDocument();
     expect(screen.queryByText('Import finished')).not.toBeInTheDocument();
+    // Both the footer submit and the error card's retry invoke `handleSubmit`,
+    // so they must not share one accessible name: two buttons named "Import"
+    // would read as one action rendered twice. The footer submit is the only
+    // button named "Import"; the retry is named by `common.retry`.
+    expect(screen.getAllByRole('button', { name: 'Import' })).toHaveLength(1);
+    // The retry affordance is its own, distinctly named button, and clicking it
+    // re-submits the same file.
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(importStories).toHaveBeenCalledTimes(2));
+  });
+
+  it('names the retry "Reintentar" in Spanish while the footer submit stays the only "Importar"', async () => {
+    const user = userEvent.setup();
+    importStories.mockRejectedValue(new Error('boom'));
+
+    const { baseElement } = renderDialog({ locale: 'es' });
+    await user.upload(screen.getByLabelText('Archivo CSV') as HTMLInputElement, makeFile());
+    await user.click(screen.getByRole('button', { name: 'Importar' }));
+
+    await waitFor(() =>
+      expect(baseElement.querySelector('[data-slot="error-display"]')).toBeInTheDocument(),
+    );
+    expect(screen.getAllByRole('button', { name: 'Importar' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
   });
 
   it('does not show the previous run report after closing and reopening', async () => {

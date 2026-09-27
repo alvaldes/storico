@@ -641,12 +641,46 @@ different tests across runs. `docs/testing.md` records that nothing gates on war
    with a real session. Everything on either side of that seam has been verified — the proxy against
    a socket, the endpoint through the ASGI app, the client and the dialog against their own mocks —
    and the seam itself has not.
-9. **The `submitError` state offers two buttons named "Import".** `ErrorDisplay`'s retry takes
-   `retryLabel={t.stories.import_submit}` and the footer's submit button is `t.stories.import_submit`
-   too, so a screen reader hears one name for two different actions in the same dialog. Pre-existing
-   and untouched by the footer work below — the footer carried that submit before it as well — but it
-   is the same class of defect that `common.clear` was added to fix. The remedy is its own label
-   (`Try again` / `Reintentar`) rather than a second use of the submit copy.
+9. **The `submitError` state offered two buttons named "Import".** `ErrorDisplay`'s retry took
+   `retryLabel={t.stories.import_submit}` and the footer's submit button was `t.stories.import_submit`
+   too, so one dialog rendered the same action twice under one accessible name: both buttons reach
+   `handleSubmit` (the retry through `onRetry`, the footer through `type="submit"` on the form whose
+   `onSubmit={handleSubmit}`). As first written this item said a screen reader "hears one name for
+   two different actions", and that was wrong — the correction matters because it is why the fix is a
+   label and not a behaviour change. **Resolved** by deleting the `retryLabel` prop, which lets
+   `ErrorDisplay` name the retry with the key it already falls back to, `common.retry` ("Retry" /
+   "Reintentar") — no new i18n key, same class of defect as the one `common.clear` was added for.
+   Regression tests pin that the footer submit is the only "Import"/"Importar" button in each locale,
+   and that the retry re-submits (the English case clicks it; the Spanish case pins the name only).
+   Checked and deliberately left alone: the footer submit is `disabled` while `running` and the retry
+   button is not, which reads as an asymmetry but is unreachable — the only non-null assignment to
+   `submitError` is in the `catch` (the other four call sites pass `null`), and the `finally`
+   (`ImportStoriesDialog.tsx:205-212`) clears `running` in the same batched render, so the error card
+   is never on screen during a run.
+10. **The defect in item 9 is a pattern, and it is still live in four other components.** Every
+    `ErrorDisplay` call site was enumerated; these four collide, verified by reading the render
+    conditions and handlers, not exercised by a test. Two sub-classes, and the second is worse.
+
+    *Same action, one name* — the retry and the form's own submit both reach one handler:
+    - `StoryForm.tsx:526` vs `:543`: `retryLabel={initialData ? t.common.save : t.common.create}` is
+      the identical expression the footer submit renders, and both reach `handleSubmit`. The exact
+      shape item 9 had.
+    - `TaskEditor.tsx:348` vs `:365`: `retryLabel={t.taskEditor.save}` ("Save Changes") against a
+      footer that renders `t.taskEditor.save` whenever `saving` is false; both call `handleSave`.
+    - `StoryDetail.tsx:514` vs `:239`/`:408`: the extraction error card and the header extract button
+      both take `t.stories.extraction_retry` in the failed state, both call `handleExtract`.
+
+    *Two different actions, one name* — `ExportPanel.tsx:169` and `:181` each render an
+    `ErrorDisplay` with `retryLabel={t.common.retry}`, but the first refetches the workspace's tasks
+    and the second re-runs the download. They coexist once `initialLoad` is false (`:30-32`) while a
+    store error is still showing and a download then fails, because `handleDownload` clears only its
+    own `downloadError` (`:43`). This is the reading item 9 originally gave the import dialog, and it
+    was wrong there — here it is the actual defect, and a screen reader really does hear one name for
+    two different actions.
+
+    The remedy is not four more label edits. It is a rule at the seam: a retry that sits beside the
+    form's own submit takes `common.retry` and never the submit's copy, and one guard test that no
+    dialog renders two buttons with the same accessible name would have caught all five sites at once.
 
 ## First independent verification (read-only) over `901bb89..2e2a8d4`
 
