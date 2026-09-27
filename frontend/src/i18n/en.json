@@ -57,13 +57,13 @@
     "cta_start": "Get Started",
     "cta_learn": "Learn More",
     "hero": {
-      "badge": "\u2728 AI-POWERED BACKLOG GENERATOR",
       "title": "Your backlog, already broken down.",
       "subtitle": "Paste a user story. Get structured Kanban tasks, ready to edit and export.",
       "cta_primary": "Get Started",
       "cta_secondary": "View Demo"
     },
     "features": {
+      "badge": "\u2728 AI-POWERED BACKLOG GENERATOR",
       "title": "Everything you need to manage your backlog",
       "subtitle": "From automatic extraction to exporting to your favorite tool.",
       "card_1_title": "Automatic Extraction",

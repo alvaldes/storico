@@ -57,13 +57,13 @@
     "cta_start": "Comenzar",
     "cta_learn": "Más Información",
     "hero": {
-      "badge": "\u2728 GENERADOR DE BACKLOG CON IA",
       "title": "Tu backlog, ya desglosado en tareas.",
       "subtitle": "Pega una historia de usuario. Obtén tareas Kanban listas para editar y exportar.",
       "cta_primary": "Comienza",
       "cta_secondary": "Ver demo"
     },
     "features": {
+      "badge": "\u2728 GENERADOR DE BACKLOG CON IA",
       "title": "Todo lo que necesitas para gestionar tu backlog",
       "subtitle": "Desde la extracción automática hasta la exportación a tu herramienta favorita.",
       "card_1_title": "Extracción Automática",

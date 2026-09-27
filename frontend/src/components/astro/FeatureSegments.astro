@@ -19,18 +19,27 @@ interface FeatureItem {
 }
 
 interface Props {
+  /** Small pill above the heading. It labels this section, not the hero. */
+  eyebrow: string;
   title: string;
   lead: string;
   items: FeatureItem[];
 }
 
-const { title, lead, items } = Astro.props;
+const { eyebrow, title, lead, items } = Astro.props;
 ---
 
 <div class="overflow-hidden rounded-2xl bg-(--color-surface) shadow-card">
   <!-- Headline band. The reference reserves 300px on the right here for its illustration;
        with no asset to put there, the band keeps the 28px it uses on every other side. -->
   <div class="border-b border-(--color-border) px-7 py-7">
+    <!-- `flex w-fit` rather than `inline-flex`: as a block-level flex box its margin-bottom
+         actually separates it from the heading, which it would not do inline. -->
+    <span
+      class="mb-4 flex w-fit items-center rounded-full border border-(--color-primary-200) bg-(--color-primary-50) px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-(--color-primary-600) dark:border-(--color-primary-400) dark:bg-(--color-primary-950) dark:text-(--color-primary-400)"
+    >
+      {eyebrow}
+    </span>
     <h2
       class="text-2xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl md:tracking-[-1px]"
       style="font-family: 'Space Grotesk', sans-serif;"

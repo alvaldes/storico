@@ -93,19 +93,7 @@ const faqItems = [
         >
           {isLoggedIn ? t.nav.dashboard : t.landing.hero.cta_primary}
         </a>
-        <a
-          href="#demo"
-          class="inline-flex items-center justify-center rounded-lg border border-(--color-border) bg-(--color-surface) px-7 py-3.5 text-base font-semibold text-(--color-text) no-underline transition-all hover:bg-(--color-surface-secondary)"
-        >
-          {t.landing.hero.cta_secondary}
-        </a>
       </div>
-      <!-- Badge -->
-      <span
-        class="inline-flex w-fit self-center items-center rounded-full border border-(--color-primary-200) dark:border-(--color-primary-400) bg-(--color-primary-50) dark:bg-(--color-primary-950) px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-(--color-primary-600) dark:text-(--color-primary-400)"
-      >
-        {t.landing.hero.badge}
-      </span>
     </section>
   </div>
 
@@ -113,8 +101,9 @@ const faqItems = [
   <!-- FEATURES                                     -->
   <!-- ════════════════════════════════════════════ -->
   <div class="mx-auto max-w-7xl px-4 md:px-10 lg:px-20">
-    <section class="py-12 md:py-[50px]">
+    <section class="py-12 md:py-12.5">
       <FeatureSegments
+        eyebrow={t.landing.features.badge}
         title={t.landing.features.title}
         lead={t.landing.features.subtitle}
         items={featureCards}
