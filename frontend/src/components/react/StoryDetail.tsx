@@ -474,7 +474,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
                       onClick={() => setEditingTaskId(task.id)}
                       className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
                       disabled={extraction?.status === 'pending'}
-                      title="Edit task"
+                      title={t.taskEditor.title}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
