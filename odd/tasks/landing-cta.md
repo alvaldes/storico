@@ -165,3 +165,63 @@ Preview page: `/tmp/cta-options.html`, built from the real theme tokens; panels 
 
 Nothing was implemented from this table. The hop shipped because it was explicitly asked for; the
 disconnection is the owner's call.
+
+---
+
+## D8 — A + B shipped (the disconnection)
+
+The owner picked **A + B together** from the five options above. Commit:
+`94b7caa feat(landing): seat the call to action on the demo and give it a supporting line`.
+
+| | before | after |
+|---|---|---|
+| copy → demo | 64px (`gap-16`) | 64px (`mt-16`) — unchanged |
+| demo → CTA | 64px | **20px** (`mt-5`) |
+| CTA → note | — | 12px (`gap-3`) |
+| note → features card | 150px | 150px — unchanged |
+
+The section's `gap-16` had to go: it drove **both** gaps from one value, so shrinking the
+demo→CTA gap would have shrunk the copy→demo gap with it. The two gaps are now stated per child,
+which is also the only way the next person reading this understands that they are deliberately
+different sizes.
+
+The two-button row wrapper (`sm:flex-row sm:justify-center`) collapsed into a column. It existed to
+place the secondary button beside the primary; with the secondary gone it was structure for an absent
+element, and the note needs a column anyway.
+
+### The claim that almost shipped
+
+The option table offered `Sin tarjeta de crédito · Tu primer tablero en dos minutos`. The owner chose
+B **on that wording**, and the two-minutes half was mine — invented while writing the table. Checked
+against the repository before shipping:
+
+- `landing.faq.a2` — *"Not at all. Storico is free and open source… no API keys, no subscriptions, and
+  no hidden costs"* — backs both halves of what shipped.
+- The only time claim anywhere is `app.tagline`: *"From user stories to Kanban tasks in seconds"*,
+  which is about **extraction latency**, not about how long until a board exists.
+
+So the note is `No credit card, no subscription` / `Sin tarjeta de crédito, sin suscripción`. A
+made-up metric under the primary button becomes a product promise the moment it renders, and the
+option table is not a source of truth. Flagged to the owner rather than silently swapped.
+
+`free and open source` was **not** used, even though the FAQ says it: `AGENTS.md` still lists the
+project's licence as an open question, so amplifying that claim onto the CTA would put the undecided
+thing in the most-seen sentence on the page.
+
+### A false alarm worth recording
+
+Right after the restructure a verification run reported the hop as broken — `cls: false`, no running
+animations. It was the test, not the code: **250ms is not enough for an `IntersectionObserver`
+callback under headless**, the same frame starvation that made `requestAnimationFrame` return 5 frames
+in 1.4s. With 900ms the same page reports `cls: true`, `running: ["cta-hop"]`, `duration 1050`.
+
+Any future check here must wait ≥900ms after scrolling before asserting an observer fired. Reporting
+"X broke" from a short wait is how a green build gets investigated for nothing.
+
+### Still open
+
+| # | Question | Status |
+|---|---|---|
+| O1 | Options C (CTA up into the headline) and D (tinted band) | Not taken. C would reverse D12 of `landing-hero-redesign.md`. |
+| O2 | The `two minutes` claim | Dropped as ungrounded. If the owner wants a time claim, it has to be measured first. |
+| O3 | Three unconsumed i18n keys (`cta_secondary`, `cta_start`, `cta_learn`) and the orphaned `#demo` anchor | Reported, not deleted. |
