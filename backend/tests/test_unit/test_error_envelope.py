@@ -17,8 +17,15 @@ import re
 from uuid import uuid4
 
 import pytest
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 
-from storico.api import errors
+from storico.api import error_codes, errors
+from storico.api.errors import (
+    ApiError,
+    api_error_handler,
+    request_validation_error_handler,
+)
 from storico.domain.entities import (
     CannotRemoveOwnerError,
     DuplicateEntity,
@@ -154,3 +161,76 @@ def test_handler_emits_canonical_error_envelope(handler, exc, expected_code, exp
     assert "type" not in body
     for key, value in expected_extra.items():
         assert body[key] == value
+
+
+# ── WU2: ApiError — the exception that carries a top-level code ──────────
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "status_code,error_code,detail",
+    [
+        (403, "INSUFFICIENT_ROLE", "You do not have access to this workspace"),
+        (400, "LAST_ADMIN_ERROR", "Cannot remove the last admin"),
+        (409, "DUPLICATE_ENTITY", "Project with name 'alpha' already exists"),
+    ],
+    ids=["403", "400", "409"],
+)
+def test_api_error_handler_emits_top_level_code(status_code, error_code, detail):
+    exc = ApiError(status_code=status_code, error_code=error_code, detail=detail)
+    response = _call(api_error_handler, exc)
+    body = _body(response)
+
+    assert response.status_code == status_code
+    assert body == {"detail": detail, "error_code": error_code}
+    assert "type" not in body
+
+
+@pytest.mark.unit
+def test_api_error_detail_stays_a_plain_string():
+    exc = ApiError(status_code=400, error_code="LAST_ADMIN_ERROR", detail="plain sentence")
+    assert exc.detail == "plain sentence"
+    assert isinstance(exc.detail, str)
+
+
+# ── WU2: RequestValidationError — FastAPI's own 422 gains an app code ────
+
+
+@pytest.mark.unit
+def test_request_validation_handler_keeps_default_detail_and_adds_code():
+    validation_errors = [
+        {
+            "type": "missing",
+            "loc": ["body", "name"],
+            "msg": "Field required",
+            "input": {"description": "no name here"},
+        }
+    ]
+    exc = RequestValidationError(validation_errors)
+    response = _call(request_validation_error_handler, exc)
+    body = _body(response)
+
+    assert response.status_code == 422
+    assert body["error_code"] == "REQUEST_VALIDATION_FAILED"
+    # ``detail`` must stay byte-identical to FastAPI's default list — the
+    # frontend parses exactly this shape (``api.ts`` ``buildErrorMessage``).
+    assert body["detail"] == jsonable_encoder(exc.errors())
+    assert body["detail"][0]["msg"] == "Field required"
+    assert "type" not in body
+
+
+# ── WU2: the registry is the single source of code names ─────────────────
+
+
+@pytest.mark.unit
+def test_error_code_registry_values_are_screaming_snake():
+    for name in error_codes.__all__:
+        value = getattr(error_codes, name)
+        assert ERROR_CODE_RE.match(value), f"{name}={value!r} is not SCREAMING_SNAKE"
+
+
+@pytest.mark.unit
+def test_every_handler_code_comes_from_the_registry():
+    registered = {getattr(error_codes, name) for name in error_codes.__all__}
+    for case in CASES:
+        assert case[2] in registered, f"{case[2]} is not registered in api/error_codes.py"

@@ -88,7 +88,7 @@ the frontend reads exactly one of them.
   **permanent guard test** pinning the envelope shape (every handler body has `error_code`, no
   `type`) — the repo already sets this precedent with the i18n duplicate-key guard. Update
   `docs/api.md` to one shape. ~40 source lines + tests + docs.
-- [ ] **WU2 — `ApiError` exception + handler.** Mechanism that lets a raise site produce a
+- [x] **WU2 — `ApiError` exception + handler.** Mechanism that lets a raise site produce a
   top-level code. Covers FastAPI's own 422 `RequestValidationError` and the 404/405 defaults,
   which today emit no app code at all.
 - [ ] **WU3 — Migrate the 32 bare-prose raises.** `dependencies.py` first (9, all access control
@@ -102,6 +102,49 @@ the frontend reads exactly one of them.
 - [ ] **WU5 — Frontend translation: `error_code` → i18n key.** One map, both locales, specific
   copy per code family. `ErrorDisplay.tsx` keeps the code in the header as diagnostics and stops
   using server prose as the headline. This is the slice the user sees.
+
+## WU3 taxonomy — 20 codes for 32 sites (proposed, reviewed as one list)
+
+Derived by reading every raise site's `status_code` + `detail` on `main` @ `414c829`, not by
+inventing names per file. **Fewer codes than sites is the point**: the same English sentence
+appears in several places, so one code covers them and the frontend needs one translation each.
+
+| Code | HTTP | Covers | Source prose |
+| --- | --- | ---: | --- |
+| `AUTH_TOKEN_INVALID` | 401 | 4 | "Invalid or missing authentication token" (`dependencies.py:88,102,118,126`) |
+| `NOT_A_WORKSPACE_MEMBER` | 403 | 7 | "Not a member of this workspace" (`dependencies.py:221,292`; `tasks.py:165`; `extractions.py:108`; `stories.py:84,152,166`) |
+| `ADMIN_ACCESS_REQUIRED` | 403 | 1 | "Admin access required" (`dependencies.py:239`) |
+| `OWNER_ACCESS_REQUIRED` | 403 | 1 | "Only the workspace owner can perform this action" (`dependencies.py:257`) |
+| `WORKSPACE_NOT_FOUND` | 404 | 1 | `f"Workspace with id '{id}' not found"` (`dependencies.py:214`) |
+| `WORKSPACE_SLUG_TAKEN` | 409 | 1 | `f"Workspace with slug '{slug}' already exists"` (`workspaces.py:175`) |
+| `OWNER_ROLE_IMMUTABLE` | 400 | 1 | "The workspace owner's role cannot be changed. Transfer ownership first." (`workspaces.py:262`) |
+| `PROJECT_NOT_IN_WORKSPACE` | 403 | 2 | "This project does not belong to the specified workspace" (`projects.py:99`; `stories.py:351`) |
+| `PROJECT_ENDPOINT_REMOVED` | 410 | 1 | 410 prose (`projects.py:51`) |
+| `STORY_NOT_IN_WORKSPACE` | 403 | 1 | "This user story does not belong to the specified workspace" (`extraction.py:137`) |
+| `EXTRACTION_NOT_FOUND` | 404 | 1 | `f"Extraction '{id}' not found"` (`extraction.py:278`) |
+| `EXTRACTION_ENDPOINT_REMOVED` | 410 | 1 | 410 prose (`extraction.py:75`) |
+| `DUPLICATE_USER_STORY` | 409 | 1 | `f"User story with the same actor… Existing story ID: {id}"` (`stories.py:94`) |
+| `UNSUPPORTED_EXPORT_FORMAT` | 400 | 1 | `f"Unsupported format '{f}'. Supported formats: json, markdown"` (`export.py:90`) |
+| `CUSTOM_PROVIDER_NOT_FOUND` | 404 | 2 | "Custom provider not found" (`workspace_settings.py:362,392`) |
+| `PROVIDER_NOT_IN_WORKSPACE` | 403 | 1 | "This custom provider does not belong to the specified workspace" (`workspace_settings.py:367`) |
+| `PROVIDER_DUPLICATE_NAME` | 409 | 2 | `f"Custom provider '{name}' already exists in this workspace"` (`workspace_settings.py:330,385`) |
+| `PROVIDER_NAME_BUILTIN` | 409 | 1 | `f"'{name}' is a built-in provider and cannot be registered as a custom one"` (`workspace_settings.py:268`) |
+| `PROVIDER_NAME_RESERVED` | 409 | 1 | `f"'{name}' is reserved by the provider selector"` (`workspace_settings.py:273`) |
+| `PROVIDER_MODELS_UNREACHABLE` | 502 | 1 | `f"Failed to fetch models from {provider}: {reason}"` (`workspace_settings.py:695`) |
+
+Notes for whoever reviews the list:
+
+- **403/401 dominate: 14 of 32 sites are access control.** That is the English a real user hits
+  most, which is why WU3 starts with `dependencies.py`.
+- `PROVIDER_NAME_BUILTIN` vs `PROVIDER_NAME_RESERVED` are separate because the remediation differs
+  (pick another name vs. never register a built-in). Collapsing them would give the frontend one
+  sentence for two different mistakes.
+- The two 410s get distinct codes: one merged `ENDPOINT_REMOVED` would not say *which* endpoint is
+  gone, and the whole purpose of the 410 is to point a stale client at its replacement.
+- Interpolation stays in `detail`, never in a code (`f"Workspace with id '{id}' not found"` keeps
+  its id). Codes are a closed set; prose is open-ended.
+- The 6 already-coded sites are **not** in this table — `INVALID_STATE_TRANSITION`,
+  `LLM_CONFIG_INCOMPLETE` and the three `IMPORT_*` keep their names and move level in WU4.
 
 ## Non-goals
 
@@ -144,6 +187,28 @@ the frontend reads exactly one of them.
 - **Mutation check of the 9 integration-surface assertions**: reverting `ENTITY_NOT_FOUND` to
   `"type": "entity_not_found"` → **exactly 9 failed, 63 passed** across the four files, one per
   assertion site predicted by the audit. This is what proves the updated assertions execute and bite.
+
+### WU2 — run and verified on this tree (2026-09-28)
+
+`error_codes.py` registry (16 constants), `ApiError` + `api_error_handler`, and
+`request_validation_error_handler` registered in `app.py`.
+
+- `pytest -q -m unit` → **244 passed** (236 after WU1 + 8: 7 unit-handler tests + 1 route test).
+- `pytest -q` (CI's command) → **998 passed, 21 skipped** (baseline 990 + 8).
+- `ruff check src tests` and `ruff format --check` → clean (247 files formatted).
+- **422 fidelity verified by experiment, not by trusting the handler's comment.** A minimal FastAPI
+  app (0.139.0) with the same invalid body was hit twice, without and with a handler using
+  `jsonable_encoder(exc.errors())`: the two `detail` lists are **deep-equal**, and this version
+  emits no `url` key — which contradicts what "FastAPI adds `url` since 0.102" would predict, so
+  the observation replaced the recollection. Default body measured:
+  `[{"type": "missing", "loc": ["body", "name"], "msg": "Field required", "input": {...}}, …]`.
+- **Constraint honored, checked by grep, not by report**: `grep -n "StarletteHTTPException\|add_exception_handler(40[45]" app.py`
+  matches only the comment explaining why it is *not* registered. No `HTTPException` call site moved.
+- Teeth: pointing `ApiError`'s handler at the old nested shape fails 3 tests — exactly the 3
+  `ApiError` parametrised cases. `ApiError` has **no production caller yet**, by design: WU3 gives it 32.
+- Cleanup the parent did after the handoff: the RED-phase `print("CURRENT 422 BODY: …")` and its
+  `import json` were removed from the route test; the observed body now lives in a comment next to
+  the assertions that justify them.
 
 ### Two claims in this doc that were wrong, and what replaced them
 
