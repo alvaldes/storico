@@ -86,7 +86,7 @@
       "q3": "¿Con qué tipo de historias de usuario funciona?",
       "a3": "Storico funciona mejor con historias en formato estándar \"As a... I want... so that...\" en inglés. Cuanto más específica sea tu historia, mejor será el desglose de tareas.",
       "q4": "¿Puedo modificar las tareas que genera Storico?",
-      "a4": "Sí. Abre la historia para revisar sus tareas y edita cualquiera de ellas antes de exportar: título, descripción, etiquetas, dependencias o estado. Las tareas no se eliminan de una en una: al eliminar una historia o un proyecto se elimina todo lo que contienen. En el tablero Kanban mueves las tareas entre las etapas del flujo de trabajo, y la exportación te entrega las mismas tareas en JSON o Markdown.",
+      "a4": "Sí. Abre la historia para revisar sus tareas y edita cualquiera de ellas antes de exportar: título, descripción, etiquetas o dependencias. También puedes mover una tarea por las etapas del flujo de trabajo, pero Storico no elimina tareas una por una: al eliminar una historia o un proyecto se elimina todo lo que contienen. La exportación te entrega esas mismas tareas en JSON o Markdown.",
       "q5": "¿A qué formatos puedo exportar?",
       "a5": "Puedes exportar a JSON o Markdown. El soporte para CSV y XML está en el roadmap.",
       "q6": "¿Puedo usar modelos de IA locales en lugar de APIs en la nube?",

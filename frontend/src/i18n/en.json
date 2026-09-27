@@ -86,7 +86,7 @@
       "q3": "What kind of user stories does it work with?",
       "a3": "Storico works best with standard \"As a... I want... so that...\" format user stories in English. The more specific your story, the better the task breakdown.",
       "q4": "Can I change the tasks Storico generates?",
-      "a4": "Yes. Open the story to review its tasks and edit any of them before you export — title, description, labels, dependencies, or status. Tasks are not deleted one at a time: removing a story or project removes everything under it. On the Kanban board you move tasks between workflow stages, and export gives you the same tasks as JSON or Markdown.",
+      "a4": "Yes. Open the story to review its tasks and edit any of them before you export — title, description, labels, or dependencies. You can also move a task through the workflow stages, but Storico does not delete a single task: removing the story or project that holds it removes everything under it. Export gives you those same tasks as JSON or Markdown.",
       "q5": "What formats can I export to?",
       "a5": "You can export to JSON or Markdown. CSV and XML support are on the roadmap.",
       "q6": "Can I use local AI models instead of cloud APIs?",
