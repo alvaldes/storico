@@ -31,6 +31,79 @@
   }
 }
 
+/* ── Hero call to action: attention hop ───────────────────────────── */
+/* One-shot. The landing's script adds .cta-attention the first time the button
+   scrolls into view: the CTA sits below the demo, so it is off-screen on load and a
+   page-load animation would never be seen. The class is never removed, so the hop
+   plays once per page view.
+
+   Two things worth knowing before editing this:
+   - The hop animates `transform`; Tailwind v4's translate utilities (the button's
+     `hover:-translate-y-px`) set the separate `translate` property. They compose
+     rather than compete, so the animation cannot strand the hover state.
+   - The ring hides by its base `opacity: 0` instead of by an animation fill mode, so
+     it is invisible in every state where its animation is not running.
+   The global prefers-reduced-motion clamp at the bottom of this file already
+   flattens both durations. */
+@keyframes cta-hop {
+  0% {
+    transform: translateY(0);
+    /* leaves fast, softens at the top of the arc */
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  22% {
+    transform: translateY(-16px);
+    /* and falls under gravity */
+    animation-timing-function: cubic-bezier(0.5, 0, 1, 0.5);
+  }
+  44% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  62% {
+    transform: translateY(-7px);
+    animation-timing-function: cubic-bezier(0.5, 0, 1, 0.5);
+  }
+  78% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  91% {
+    transform: translateY(-2px);
+    animation-timing-function: cubic-bezier(0.5, 0, 1, 0.5);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes cta-ring {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+
+.cta-attention {
+  position: relative;
+  animation: cta-hop 1050ms linear;
+}
+
+.cta-attention::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--color-primary-400);
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  animation: cta-ring 700ms ease-out;
+}
+
 /* ── shadcn CSS variable aliases ───────────────────────────────── */
 /* Maps shadcn's variable names to our design tokens.
    @theme inline generates Tailwind utilities (bg-background, etc.)

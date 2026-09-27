@@ -92,6 +92,7 @@ const faqItems = [
              action rather than as a label. -->
         <a
           href={L(isLoggedIn ? '/dashboard' : '/login')}
+          data-cta-attention
           class="group inline-flex items-center justify-center gap-2.5 rounded-lg bg-linear-to-b from-(--color-primary-500) to-(--color-primary-700) px-7.5 py-4.25 text-[17px] font-semibold text-(--color-inverse-text) no-underline shadow-cta transition-all hover:-translate-y-px hover:shadow-cta-hover"
         >
           {isLoggedIn ? t.landing.hero.cta_authed : t.landing.hero.cta_primary}
@@ -203,5 +204,32 @@ const faqItems = [
     }
 
     document.addEventListener('astro:page-load', wireDemoEmbed);
+
+    // Hop the hero's call to action once, the first time it scrolls into view. It sits
+    // below the demo, so it is off-screen on load and a page-load animation would never
+    // be seen. The observer disconnects on the first hit, so the hop is one-shot per
+    // page view rather than a thing that jiggles every time the visitor scrolls past.
+    //
+    // This moves visual attention only. The button is deliberately never .focus()ed:
+    // taking focus on scroll reorders the tab sequence and leaves keyboard and
+    // screen-reader users wherever the page decided to look, and it would scroll the
+    // document out from under them. See .cta-attention in @/styles/globals.css.
+    function armCtaAttention() {
+      const cta = document.querySelector<HTMLElement>('[data-cta-attention]');
+      if (!cta || cta.dataset.ctaArmed) return;
+      cta.dataset.ctaArmed = 'true';
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (!entries.some((entry) => entry.isIntersecting)) return;
+          observer.disconnect();
+          cta.classList.add('cta-attention');
+        },
+        { threshold: 0.6 },
+      );
+      observer.observe(cta);
+    }
+
+    document.addEventListener('astro:page-load', armCtaAttention);
   </script>
 </PublicLayout>
