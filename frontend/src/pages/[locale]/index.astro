@@ -43,7 +43,10 @@ const faqItems = [
   <!-- HERO                                         -->
   <!-- ════════════════════════════════════════════ -->
   <div class="mx-auto max-w-7xl px-4 md:px-8 lg:px-20">
-    <section class="flex flex-col gap-16 py-16 lg:py-[100px]">
+    <!-- The two gaps below are stated per child instead of as a section `gap`, because they
+         are no longer the same size: 64px between the copy and the demo, 20px between the
+         demo and the call to action. -->
+    <section class="flex flex-col py-16 lg:py-[100px]">
       <!-- Hero copy: one centered column. The container stays full width; the text
            inside it is what carries the measure (text-balance on the title, 60ch on the
            subtitle) so no line runs past a readable length. -->
@@ -71,7 +74,7 @@ const faqItems = [
       <!-- Live demo: embeds the storico-live-demo project, whose page brings its own
            fake-Safari browser chrome, so the iframe needs no frame of its own.
            w-full here is what keeps it on its own row, below the hero copy. -->
-      <div id="demo" class="w-full">
+      <div id="demo" class="mt-16 w-full">
         <!-- Cross-origin consequence (accepted, not a bug): while the demo lives on
              another origin (PUBLIC_DEMO_URL), localStorage['theme'] is NOT shared
              with the landing, so the demo follows the visitor's system preference. -->
@@ -86,7 +89,12 @@ const faqItems = [
         </div>
       </div>
 
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
+      <!-- The call to action sits 20px under the demo, not 64px. At 64px it was closer to the
+           demo than to the features band but attached to neither, so a 310px button alone in a
+           1120px row read as the demo's orphan; proximity is what turns it into the demo's next
+           step. The old two-button row wrapper is gone with the second button that used to need
+           it — this is a column now: action, then the line that de-risks it. -->
+      <div class="mt-5 flex flex-col items-center gap-3">
         <!-- Primary CTA. The gradient and the two-layer ring come from --shadow-cta and
              --shadow-cta-hover; the arrow carries the direction, so the button reads as an
              action rather than as a label. -->
@@ -112,6 +120,11 @@ const faqItems = [
             <path d="m12 5 7 7-7 7" />
           </svg>
         </a>
+        <!-- De-risking line. Both halves are lifted from the FAQ's own answer to "Do I need a
+             credit card or API key to use it?" — "no subscriptions" is that answer's wording.
+             Nothing here is a new promise: the earlier draft said "your first board in two
+             minutes", a number no file in this repository supports. -->
+        <p class="text-sm leading-5 text-(--color-text-secondary)">{t.landing.hero.cta_note}</p>
       </div>
     </section>
   </div>
