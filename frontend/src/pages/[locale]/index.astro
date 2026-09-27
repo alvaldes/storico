@@ -2,7 +2,7 @@
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
 import { FaqAccordion } from '@/components/react/FaqAccordion';
-import { FeatureCards } from '@/components/react/FeatureCards';
+import FeatureSegments from '@/components/astro/FeatureSegments.astro';
 
 import { getSession } from 'auth-astro/server';
 import { config } from '@/lib/config';
@@ -19,9 +19,9 @@ const demoSrc = demoEmbedUrl(config.demoUrl, locale);
 const demoOrigin = demoTargetOrigin(config.demoUrl);
 
 const featureCards = [
-  { title: t.landing.features.card_1_title, description: t.landing.features.card_1_desc, icon: 'zap', color: 'blue' as const },
-  { title: t.landing.features.card_2_title, description: t.landing.features.card_2_desc, icon: 'table', color: 'green' as const },
-  { title: t.landing.features.card_3_title, description: t.landing.features.card_3_desc, icon: 'share2', color: 'orange' as const },
+  { title: t.landing.features.card_1_title, description: t.landing.features.card_1_desc, icon: 'zap' as const },
+  { title: t.landing.features.card_2_title, description: t.landing.features.card_2_desc, icon: 'table' as const },
+  { title: t.landing.features.card_3_title, description: t.landing.features.card_3_desc, icon: 'share2' as const },
 ];
 
 const faqItems = [
@@ -113,20 +113,12 @@ const faqItems = [
   <!-- FEATURES                                     -->
   <!-- ════════════════════════════════════════════ -->
   <div class="mx-auto max-w-7xl px-4 md:px-10 lg:px-20">
-    <section class="flex flex-col items-center gap-10 py-12 md:gap-14 md:py-[50px]">
-      <div class="flex max-w-2xl flex-col items-center gap-4">
-        <h2
-          class="text-center text-2xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl md:tracking-[-1px]"
-          style="font-family: 'Space Grotesk', sans-serif;"
-        >
-          {t.landing.features.title}
-        </h2>
-        <p class="text-center text-sm text-(--color-text-secondary) md:text-base">
-          {t.landing.features.subtitle}
-        </p>
-      </div>
-
-      <FeatureCards client:idle cards={featureCards} />
+    <section class="py-12 md:py-[50px]">
+      <FeatureSegments
+        title={t.landing.features.title}
+        lead={t.landing.features.subtitle}
+        items={featureCards}
+      />
     </section>
   </div>
 
