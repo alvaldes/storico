@@ -222,6 +222,15 @@ Its remaining MINOR — `done: []` means a Done task cannot move, so "you can al
   3. Export selects a specific extraction version and offers with/without invalid tasks.
   4. **`landing.faq.a4`, `pages.privacy.retention`, and `pages.docs.step_6` are in that
      feature's scope**, because that is when they stop describing the app.
+- **`TaskEditor` validation errors are hardcoded English** (`:164` `'Required'`, `:166`
+  `` `Invalid transition from ${task.status} to ${status}` ``), rendered raw through
+  `<FieldError>` at `:232`/`:269`. Found only because this slice had to certify the editor as a
+  real feature before promising it in marketing copy — and `taskEditor.invalid_transition`
+  ("Transición inválida") already exists and is used only for the dropdown suffix, so the dialog
+  contradicts itself in Spanish. A behaviour change, so it stayed out of a copy-only slice;
+  registered as its own row in `prod.todo.md` → **Producto**. Its status dropdown also marks
+  legal transitions with a bare `✓`/`✗` glyph inside a `<select>` (`:261`), where the symbol
+  carries the distinction alone.
 - The `odd/tasks/honest-llm-copy-and-doc-drift.md` sweep deliberately left stale provider
   enumerations in `pages.docs.llm_runner_desc`, `landing.faq.a6`, and the privacy
   `collection_llm`/`transfers_body` sentences (each omits Gemini). Still open, its own slice.
