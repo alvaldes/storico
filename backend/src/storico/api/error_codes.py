@@ -14,9 +14,13 @@ __all__ = [
     "CANNOT_REMOVE_OWNER",
     "CIPHER_ERROR",
     "CREDENTIAL_UNDECRYPTABLE",
+    "CUSTOM_PROVIDER_NOT_FOUND",
     "DUPLICATE_ENTITY",
+    "DUPLICATE_USER_STORY",
     "ENCRYPTION_KEY_MISSING",
     "ENTITY_NOT_FOUND",
+    "EXTRACTION_ENDPOINT_REMOVED",
+    "EXTRACTION_NOT_FOUND",
     "INSUFFICIENT_ROLE",
     "INTERNAL_ERROR",
     "LAST_ADMIN_ERROR",
@@ -25,11 +29,22 @@ __all__ = [
     "LLM_RESPONSE_ERROR",
     "NOT_A_WORKSPACE_MEMBER",
     "OWNER_ACCESS_REQUIRED",
+    "OWNER_ROLE_IMMUTABLE",
     "OWNER_TRANSFER_ERROR",
     "PARSE_ERROR",
+    "PROJECT_ENDPOINT_REMOVED",
+    "PROJECT_NOT_IN_WORKSPACE",
+    "PROVIDER_DUPLICATE_NAME",
+    "PROVIDER_MODELS_UNREACHABLE",
+    "PROVIDER_NAME_BUILTIN",
+    "PROVIDER_NAME_RESERVED",
+    "PROVIDER_NOT_IN_WORKSPACE",
     "REPOSITORY_ERROR",
     "REQUEST_VALIDATION_FAILED",
+    "STORY_NOT_IN_WORKSPACE",
+    "UNSUPPORTED_EXPORT_FORMAT",
     "WORKSPACE_NOT_FOUND",
+    "WORKSPACE_SLUG_TAKEN",
 ]
 
 # ── Domain exception handlers (api/errors.py) ────────────────────
@@ -69,6 +84,58 @@ ADMIN_ACCESS_REQUIRED = "ADMIN_ACCESS_REQUIRED"
 
 # ``require_owner``: the caller is an admin but not the workspace owner.
 OWNER_ACCESS_REQUIRED = "OWNER_ACCESS_REQUIRED"
+
+# ── Route raise sites (api/routes/) ──────────────────────────────
+
+# ``workspaces.py`` PUT: the new slug collides with an existing workspace.
+WORKSPACE_SLUG_TAKEN = "WORKSPACE_SLUG_TAKEN"
+
+# ``workspaces.py`` PUT member role: the owner's role is not editable.
+OWNER_ROLE_IMMUTABLE = "OWNER_ROLE_IMMUTABLE"
+
+# ``projects.py`` and ``stories.py``: the addressed project lives in a
+# different workspace than the path workspace.
+PROJECT_NOT_IN_WORKSPACE = "PROJECT_NOT_IN_WORKSPACE"
+
+# ``projects.py``: the pre-workspace project endpoints are gone (410).
+PROJECT_ENDPOINT_REMOVED = "PROJECT_ENDPOINT_REMOVED"
+
+# ``extraction.py``: the addressed story lives in a different workspace
+# than the path workspace.
+STORY_NOT_IN_WORKSPACE = "STORY_NOT_IN_WORKSPACE"
+
+# ``extraction.py`` status: no extraction row for the addressed id.
+EXTRACTION_NOT_FOUND = "EXTRACTION_NOT_FOUND"
+
+# ``extraction.py``: the pre-workspace extraction endpoints are gone (410).
+EXTRACTION_ENDPOINT_REMOVED = "EXTRACTION_ENDPOINT_REMOVED"
+
+# ``stories.py`` POST: actor + feature + benefit already exist in the project.
+DUPLICATE_USER_STORY = "DUPLICATE_USER_STORY"
+
+# ``export.py`` GET: the requested export format is not one of json/markdown.
+UNSUPPORTED_EXPORT_FORMAT = "UNSUPPORTED_EXPORT_FORMAT"
+
+# ``workspace_settings.py``: no custom provider row for the addressed id.
+CUSTOM_PROVIDER_NOT_FOUND = "CUSTOM_PROVIDER_NOT_FOUND"
+
+# ``workspace_settings.py``: the provider row belongs to another workspace.
+PROVIDER_NOT_IN_WORKSPACE = "PROVIDER_NOT_IN_WORKSPACE"
+
+# ``workspace_settings.py`` create/rename: the name is taken in this workspace.
+PROVIDER_DUPLICATE_NAME = "PROVIDER_DUPLICATE_NAME"
+
+# ``workspace_settings.py`` create: the name collides with a built-in provider,
+# so it can never be selected from the custom list.
+PROVIDER_NAME_BUILTIN = "PROVIDER_NAME_BUILTIN"
+
+# ``workspace_settings.py`` create: the name is the provider selector's control
+# value, so registering it would break the "Add custom provider" slot.
+PROVIDER_NAME_RESERVED = "PROVIDER_NAME_RESERVED"
+
+# ``workspace_settings.py`` probe: the provider could not be reached to list
+# its models (wrong API key or Base URL, or the provider is down).
+PROVIDER_MODELS_UNREACHABLE = "PROVIDER_MODELS_UNREACHABLE"
 
 # ── Framework-level handlers ─────────────────────────────────────
 

@@ -66,6 +66,7 @@ class TestCreateStory:
         response2 = await authed_client.post("/api/v1/stories/", json=payload)
         assert response2.status_code == 409
         data = response2.json()
+        assert data["error_code"] == "DUPLICATE_USER_STORY"
         assert "already exists" in data["detail"].lower()
         assert "existing story id" in data["detail"].lower()
         # Verify the existing story ID is in the response
@@ -99,6 +100,7 @@ class TestCreateStory:
         response2 = await authed_client.post("/api/v1/stories/", json=payload2)
         assert response2.status_code == 409
         data = response2.json()
+        assert data["error_code"] == "DUPLICATE_USER_STORY"
         assert "already exists" in data["detail"].lower()
         existing_id = response1.json()["id"]
         assert existing_id in data["detail"]
@@ -438,6 +440,7 @@ class TestStoryMembership:
         )
 
         assert response.status_code == 403
+        assert response.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
         assert response.json()["detail"] == FORBIDDEN_NOT_A_MEMBER
 
     async def test_list_stories_by_a_foreign_project_is_forbidden(
@@ -449,6 +452,7 @@ class TestStoryMembership:
         response = await authed_client.get(f"/api/v1/stories/?project_id={project_id}")
 
         assert response.status_code == 403
+        assert response.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
         assert response.json()["detail"] == FORBIDDEN_NOT_A_MEMBER
 
     @pytest.mark.unit

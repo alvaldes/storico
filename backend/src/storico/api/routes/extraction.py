@@ -27,6 +27,12 @@ from storico.api.dependencies import (
     get_repository,
     get_workspace_for_user,
 )
+from storico.api.error_codes import (
+    EXTRACTION_ENDPOINT_REMOVED,
+    EXTRACTION_NOT_FOUND,
+    STORY_NOT_IN_WORKSPACE,
+)
+from storico.api.errors import ApiError
 from storico.api.schemas.extraction import (
     ExtractionResponse,
     ExtractRequest,
@@ -72,8 +78,9 @@ async def deprecated_extract() -> None:
       POST /api/v1/workspaces/{workspace_id}/extract
       GET  /api/v1/workspaces/{workspace_id}/extract/status/{extraction_id}
     """
-    raise HTTPException(
+    raise ApiError(
         status_code=status.HTTP_410_GONE,
+        error_code=EXTRACTION_ENDPOINT_REMOVED,
         detail=(
             "This endpoint has been removed. "
             "Extraction is now scoped to workspaces. "
@@ -134,8 +141,9 @@ async def _validate_story_belongs_to_workspace(
         raise EntityNotFound("UserStory", str(user_story_id))
 
     if project.workspace_id != workspace_id:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            error_code=STORY_NOT_IN_WORKSPACE,
             detail="This user story does not belong to the specified workspace",
         )
 
@@ -275,8 +283,9 @@ async def extraction_status(
     workspace, _ = ctx
     extraction = await repo.find_by_id(extraction_id)
     if extraction is None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_404_NOT_FOUND,
+            error_code=EXTRACTION_NOT_FOUND,
             detail=f"Extraction '{extraction_id}' not found",
         )
 

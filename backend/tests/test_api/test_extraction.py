@@ -534,6 +534,7 @@ class TestExtractionStatusEndpoint:
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 403
+        assert response.json()["error_code"] == "STORY_NOT_IN_WORKSPACE"
         assert response.json()["detail"] == (
             "This user story does not belong to the specified workspace"
         )

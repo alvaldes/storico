@@ -257,6 +257,7 @@ class TestExportTasks:
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 400
+        assert response.json()["error_code"] == "UNSUPPORTED_EXPORT_FORMAT"
         assert "Unsupported format" in response.text
 
     @pytest.mark.asyncio

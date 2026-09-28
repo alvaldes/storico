@@ -12,6 +12,8 @@ from storico.api.dependencies import (
     get_repository,
     require_story_workspace_access,
 )
+from storico.api.error_codes import NOT_A_WORKSPACE_MEMBER
+from storico.api.errors import ApiError
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.task import (
     CreateTaskRequest,
@@ -162,8 +164,9 @@ async def list_tasks(
         # Validate user is a member of the specified workspace
         member = await member_repo.find_by_workspace_and_user(workspace_id, current_user.id)
         if member is None:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_403_FORBIDDEN,
+                error_code=NOT_A_WORKSPACE_MEMBER,
                 detail="Not a member of this workspace",
             )
         page, total = await repo.list_page(

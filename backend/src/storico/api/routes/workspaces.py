@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, Path, status
 
 from storico.api.dependencies import (
     get_current_user,
@@ -14,6 +14,8 @@ from storico.api.dependencies import (
     require_admin,
     require_owner,
 )
+from storico.api.error_codes import OWNER_ROLE_IMMUTABLE, WORKSPACE_SLUG_TAKEN
+from storico.api.errors import ApiError
 from storico.api.schemas.workspace import (
     CreateWorkspaceRequest,
     UpdateWorkspaceRequest,
@@ -172,8 +174,9 @@ async def update_workspace(
         if body.slug != workspace.slug:
             existing = await ws_repo.find_by_slug(body.slug)
             if existing is not None:
-                raise HTTPException(
+                raise ApiError(
                     status_code=status.HTTP_409_CONFLICT,
+                    error_code=WORKSPACE_SLUG_TAKEN,
                     detail=f"Workspace with slug '{body.slug}' already exists",
                 )
         kwargs["slug"] = body.slug
@@ -259,8 +262,9 @@ async def update_member_role(
     workspace, _ = ctx
 
     if user_id == workspace.owner_id:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_400_BAD_REQUEST,
+            error_code=OWNER_ROLE_IMMUTABLE,
             detail="The workspace owner's role cannot be changed. Transfer ownership first.",
         )
 

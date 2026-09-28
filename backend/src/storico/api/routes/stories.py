@@ -12,6 +12,12 @@ from storico.api.dependencies import (
     get_workspace_for_user,
     require_story_workspace_access,
 )
+from storico.api.error_codes import (
+    DUPLICATE_USER_STORY,
+    NOT_A_WORKSPACE_MEMBER,
+    PROJECT_NOT_IN_WORKSPACE,
+)
+from storico.api.errors import ApiError
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.story import (
     CreateUserStoryRequest,
@@ -81,8 +87,9 @@ async def create_story(
 
     member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
     if member is None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            error_code=NOT_A_WORKSPACE_MEMBER,
             detail="Not a member of this workspace",
         )
 
@@ -91,8 +98,9 @@ async def create_story(
         body.project_id, body.actor, body.feature, body.benefit
     )
     if existing_story is not None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
+            error_code=DUPLICATE_USER_STORY,
             detail=(
                 f"User story with the same actor, feature, and benefit already exists in this project. "
                 f"Existing story ID: {existing_story.id}"
@@ -149,8 +157,9 @@ async def list_stories(
         # Validate user is a member of the specified workspace
         member = await member_repo.find_by_workspace_and_user(workspace_id, current_user.id)
         if member is None:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_403_FORBIDDEN,
+                error_code=NOT_A_WORKSPACE_MEMBER,
                 detail="Not a member of this workspace",
             )
         page, total = await repo.list_page(
@@ -163,8 +172,9 @@ async def list_stories(
             raise EntityNotFound("Project", str(project_id))
         member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
         if member is None:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_403_FORBIDDEN,
+                error_code=NOT_A_WORKSPACE_MEMBER,
                 detail="Not a member of this workspace",
             )
         page, total = await repo.list_page(project_id=project_id, limit=params.size, offset=offset)
@@ -348,8 +358,9 @@ async def import_stories(
     if project is None:
         raise EntityNotFound("Project", str(project_id))
     if project.workspace_id != workspace.id:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            error_code=PROJECT_NOT_IN_WORKSPACE,
             detail="This project does not belong to the specified workspace",
         )
 

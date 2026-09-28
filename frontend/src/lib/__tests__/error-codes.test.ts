@@ -49,8 +49,9 @@ function extractRegistryNames(source: string): string[] {
  * list them.
  *
  * Count note: that is 5 distinct codes over 6 sites — `IMPORT_FILE_TOO_LARGE`
- * covers two raise sites — so the map holds 21 + 5 = 26 keys (WU3 added the
- * five access-control codes to the registry and to this map in one commit).
+ * covers two raise sites — so the map holds 36 + 5 = 41 keys (WU3a added the
+ * five access-control codes and WU3b the fifteen route codes to the registry
+ * and to this map, each in one commit).
  */
 const ROUTE_ERROR_CODES = [
   'INVALID_STATE_TRANSITION',
@@ -60,7 +61,7 @@ const ROUTE_ERROR_CODES = [
   'IMPORT_VALIDATION_FAILED',
 ] as const;
 
-const EXPECTED_REGISTRY_COUNT = 21;
+const EXPECTED_REGISTRY_COUNT = 36;
 
 function tableFor(locale: 'en' | 'es'): Record<string, string> {
   return locale === 'en' ? en.errorCodes : es.errorCodes;
@@ -125,10 +126,12 @@ describe('errorCodeHeadline', () => {
   });
 
   it('returns undefined for an unmapped code, so the caller keeps its own message', () => {
-    // WORKSPACE_SLUG_TAKEN arrives with WU3b; until then an unmapped code must
-    // degrade to the caller's headline, never to `undefined` rendered as text.
-    expect(errorCodeHeadline('WORKSPACE_SLUG_TAKEN', 'en')).toBeUndefined();
-    expect(errorCodeHeadline('WORKSPACE_SLUG_TAKEN', 'es')).toBeUndefined();
+    // The example must be a code the registry can never contain: a marker a
+    // caller invents for itself (WU3a moved it here from
+    // WORKSPACE_SLUG_TAKEN, which WU3b has since mapped — the mirror doing its
+    // job one layer up, again).
+    expect(errorCodeHeadline('BOARD_UNAVAILABLE', 'en')).toBeUndefined();
+    expect(errorCodeHeadline('BOARD_UNAVAILABLE', 'es')).toBeUndefined();
   });
 
   it('returns undefined when there is no code at all', () => {

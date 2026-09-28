@@ -444,6 +444,7 @@ class TestProjectContainment:
         )
 
         assert response.status_code == 403
+        assert response.json()["error_code"] == "PROJECT_NOT_IN_WORKSPACE"
         assert response.json()["detail"] == (
             "This project does not belong to the specified workspace"
         )
@@ -465,6 +466,7 @@ class TestProjectContainment:
         )
 
         assert response.status_code == 403
+        assert response.json()["error_code"] == "PROJECT_NOT_IN_WORKSPACE"
         assert response.json()["detail"] == (
             "This project does not belong to the specified workspace"
         )
@@ -489,6 +491,7 @@ class TestProjectContainment:
         )
 
         assert response.status_code == 403
+        assert response.json()["error_code"] == "PROJECT_NOT_IN_WORKSPACE"
         assert response.json()["detail"] == (
             "This project does not belong to the specified workspace"
         )

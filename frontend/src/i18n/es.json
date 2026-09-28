@@ -78,7 +78,22 @@
     "WORKSPACE_NOT_FOUND": "Ese elemento ya no está disponible. Actualiza la página para trabajar con la lista actual.",
     "NOT_A_WORKSPACE_MEMBER": "No tienes acceso a este espacio de trabajo. Pide a un administrador que te añada.",
     "ADMIN_ACCESS_REQUIRED": "Esta acción requiere permisos de administrador del espacio de trabajo. Pídele a uno que la realice.",
-    "OWNER_ACCESS_REQUIRED": "Solo el propietario del espacio de trabajo puede hacerlo. Pídele que lo haga o que te transfiera la propiedad."
+    "OWNER_ACCESS_REQUIRED": "Solo el propietario del espacio de trabajo puede hacerlo. Pídele que lo haga o que te transfiera la propiedad.",
+    "WORKSPACE_SLUG_TAKEN": "Ese identificador de espacio de trabajo ya está en uso. Usa uno distinto.",
+    "OWNER_ROLE_IMMUTABLE": "El rol del propietario no se puede cambiar. Primero transfiere la propiedad y luego ajusta el rol.",
+    "PROJECT_NOT_IN_WORKSPACE": "Ese proyecto no pertenece a este espacio de trabajo. Ábrelo desde su espacio de trabajo.",
+    "PROJECT_ENDPOINT_REMOVED": "El endpoint antiguo de proyectos ya no existe. Usa los endpoints de proyectos del espacio de trabajo.",
+    "STORY_NOT_IN_WORKSPACE": "Esa historia no pertenece a este espacio de trabajo. Ábrela desde su espacio de trabajo.",
+    "EXTRACTION_ENDPOINT_REMOVED": "El endpoint antiguo de extracción ya no existe. Usa el endpoint de extracción del espacio de trabajo.",
+    "EXTRACTION_NOT_FOUND": "Esa extracción ya no está disponible. Actualiza la página para trabajar con la lista actual.",
+    "DUPLICATE_USER_STORY": "Ya existe una historia con el mismo actor, funcionalidad y beneficio. Edita la historia existente.",
+    "UNSUPPORTED_EXPORT_FORMAT": "Ese formato de exportación no está disponible. Elige JSON o Markdown e inténtalo de nuevo.",
+    "CUSTOM_PROVIDER_NOT_FOUND": "Ese proveedor personalizado ya no está disponible. Actualiza la página y revisa la lista.",
+    "PROVIDER_NOT_IN_WORKSPACE": "Ese proveedor personalizado no pertenece a este espacio de trabajo. Gestiónalo desde el suyo.",
+    "PROVIDER_DUPLICATE_NAME": "Ya existe un proveedor personalizado con ese nombre aquí. Elige otro nombre e inténtalo de nuevo.",
+    "PROVIDER_NAME_BUILTIN": "Ese proveedor ya viene integrado. Selecciónalo directamente en lugar de registrarlo como personalizado.",
+    "PROVIDER_NAME_RESERVED": "Ese nombre está reservado para el selector de proveedores. Elige otro nombre para tu proveedor.",
+    "PROVIDER_MODELS_UNREACHABLE": "No se pudo conectar con el proveedor para listar sus modelos. Revisa la API key y la Base URL."
   },
   "landing": {
     "hero_title": "Storico",
