@@ -262,16 +262,34 @@ chocar contra la regla que ahora lo reserva.
 ```json
 {
   "detail": "Project with id '...' not found",
-  "type": "entity_not_found"
+  "error_code": "ENTITY_NOT_FOUND"
 }
 ```
 
-| Tipo | HTTP Status |
+| `error_code` | HTTP Status |
 |------|-------------|
-| `entity_not_found` | 404 |
-| `duplicate_entity` | 409 |
-| `repository_error` | 500 |
-| `internal_error` | 500 |
+| `ENTITY_NOT_FOUND` | 404 |
+| `DUPLICATE_ENTITY` | 409 |
+| `REPOSITORY_ERROR` | 500 |
+| `INTERNAL_ERROR` | 500 |
+
+Los errores de validación de cuerpo de FastAPI (`422` por cuerpo malformado o campos
+inválidos) también llevan código de aplicación: `REQUEST_VALIDATION_FAILED`. El `detail`
+se mantiene en la forma por defecto de FastAPI —una lista de `{type, loc, msg, input}`—
+porque el frontend ya la parsea (`buildErrorMessage` lee `first.msg`); el código se agrega
+a nivel superior, sin tocar la lista:
+
+```json
+{
+  "detail": [
+    { "type": "missing", "loc": ["body", "name"], "msg": "Field required", "input": {} }
+  ],
+  "error_code": "REQUEST_VALIDATION_FAILED"
+}
+```
+
+Los nombres de código viven en un único registro,
+`backend/src/storico/api/error_codes.py`, revisado como una sola lista.
 
 **Contrato de existencia (404 vs 403).** En los recursos con alcance de workspace la regla es
 explícita y uniforme: **404** cuando la fila no existe, **403** cuando existe pero no es alcanzable

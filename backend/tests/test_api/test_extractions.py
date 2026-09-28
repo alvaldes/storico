@@ -335,5 +335,5 @@ class TestGetExtraction:
         response = await authed_client.get(f"/api/v1/extractions/{fake_id}")
         assert response.status_code == 404
         data = response.json()
-        assert data["type"] == "entity_not_found"
+        assert data["error_code"] == "ENTITY_NOT_FOUND"
         assert "detail" in data

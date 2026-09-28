@@ -6,9 +6,12 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from storico.api.errors import (
+    ApiError,
+    api_error_handler,
     cannot_remove_owner_handler,
     cipher_error_handler,
     duplicate_entity_handler,
@@ -22,6 +25,7 @@ from storico.api.errors import (
     owner_transfer_error_handler,
     parse_error_handler,
     repository_error_handler,
+    request_validation_error_handler,
 )
 from storico.api.routes import (
     auth,
@@ -160,6 +164,14 @@ def create_app() -> FastAPI:
     # Credential cipher errors. Registered on the base class so both subclasses are covered;
     # the handler itself distinguishes them for the machine-readable ``error_code``.
     app.add_exception_handler(CipherError, cipher_error_handler)
+
+    # FastAPI's own body-validation 422: keep the default ``detail`` list and add the
+    # app code. Deliberately NOT registered for StarletteHTTPException or 404/405:
+    # fastapi.HTTPException subclasses Starlette's, so either registration would
+    # intercept the still-unmigrated HTTPException raise sites, and a 404 handler
+    # would mislabel a legitimate "not found" as a missing route.
+    app.add_exception_handler(RequestValidationError, request_validation_error_handler)
+    app.add_exception_handler(ApiError, api_error_handler)
 
     app.add_exception_handler(Exception, generic_error_handler)  # type: ignore[arg-type]
 
