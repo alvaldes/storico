@@ -815,7 +815,9 @@
       "unknown": "Desconocido",
       "checking": "Verificando…",
       "unavailable": "No disponible",
-      "last_updated": "Última actualización"
+      "last_updated": "Última actualización",
+      "retry": "Reintentar",
+      "no_js": "Activa JavaScript para ver el estado en vivo de cada servicio."
     },
     "notFound": {
       "title": "Página no encontrada",

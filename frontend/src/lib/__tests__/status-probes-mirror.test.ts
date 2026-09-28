@@ -12,11 +12,12 @@ import es from '@/i18n/es.json';
 import { CORE_PROBES } from '@/lib/health';
 
 /**
- * The status page must render one row per probe the backend publishes in
+ * The status panel (`StatusPanel.tsx`, the island that owns everything under the
+ * `/status` h1) must render one row per probe the backend publishes in
  * `GET /api/v1/health/services`, no fewer and no more.
  *
  * The backend is authoritative — `api/routes/health.py` decides which probes exist —
- * and the frontend cannot import it. A drift is not cosmetic here: the status page
+ * and the frontend cannot import it. A drift is not cosmetic here: the status panel
  * derives its banner from a local mirror of the backend's required set (`CORE_PROBES` in
  * `@/lib/health`), because the two deploy independently (Vercel vs the VM) and the page
  * must classify correctly even on a payload whose probes carry no `scope` yet. A probe
@@ -35,8 +36,8 @@ describe('the status page mirrors the backend probes', () => {
     new URL('../../../../backend/src/storico/api/routes/health.py', import.meta.url),
     'utf8',
   );
-  const statusPageSource = readFileSync(
-    new URL('../../../../frontend/src/pages/[locale]/status.astro', import.meta.url),
+  const statusPanelSource = readFileSync(
+    new URL('../../../../frontend/src/components/react/StatusPanel.tsx', import.meta.url),
     'utf8',
   );
 
@@ -50,11 +51,11 @@ describe('the status page mirrors the backend probes', () => {
     return probes;
   })();
 
-  /** Probes the page reads through `serviceStatus(health, '...')` calls. */
-  const pageProbes = [...statusPageSource.matchAll(/serviceStatus\(health, '([^']+)'\)/g)].map(
+  /** Probes the panel reads through `serviceStatus(health, '...')` calls. */
+  const pageProbes = [...statusPanelSource.matchAll(/serviceStatus\(health, '([^']+)'\)/g)].map(
     ([, probe]) => probe,
   );
-  expect(pageProbes, 'the status page declares at least one serviceStatus call').not.toHaveLength(
+  expect(pageProbes, 'the status panel declares at least one serviceStatus call').not.toHaveLength(
     0,
   );
 
@@ -77,8 +78,8 @@ describe('the status page mirrors the backend probes', () => {
    * same way as the reads above: a rename must fail here, on the missing match.
    */
   const pageDiagnosticProbes = (() => {
-    const literal = statusPageSource.match(/const DIAGNOSTIC_PROBES = \[([^\]]*)\]/)?.[1];
-    expect(literal, 'the status page declares DIAGNOSTIC_PROBES').toBeDefined();
+    const literal = statusPanelSource.match(/const DIAGNOSTIC_PROBES = \[([^\]]*)\]/)?.[1];
+    expect(literal, 'the status panel declares DIAGNOSTIC_PROBES').toBeDefined();
 
     const probes = [...literal!.matchAll(/'([^']+)'/g)].map(([, probe]) => probe);
     expect(probes, 'DIAGNOSTIC_PROBES declares at least one probe').not.toHaveLength(0);
@@ -89,7 +90,7 @@ describe('the status page mirrors the backend probes', () => {
     for (const probe of backendProbes) {
       expect(
         pageProbes,
-        `the status page must read the "${probe}" probe the backend publishes`,
+        `the status panel must read the "${probe}" probe the backend publishes`,
       ).toContain(probe);
     }
   });
@@ -98,7 +99,7 @@ describe('the status page mirrors the backend probes', () => {
     for (const probe of pageProbes) {
       expect(
         backendProbes,
-        `the status page reads "${probe}", which the backend does not publish`,
+        `the status panel reads "${probe}", which the backend does not publish`,
       ).toContain(probe);
     }
   });
@@ -118,10 +119,10 @@ describe('the status page mirrors the backend probes', () => {
   });
 
   it('has copy for every row in both locales', () => {
-    const rows = statusPageSource.match(
+    const rows = statusPanelSource.match(
       /const serviceRows: [\s\S]*?= \[([\s\S]*?)\n\];/,
     )?.[1];
-    expect(rows, 'the status page declares the serviceRows array').toBeDefined();
+    expect(rows, 'the status panel declares the serviceRows array').toBeDefined();
 
     const keys = [...rows!.matchAll(/t\.pages\.status\.([A-Za-z0-9_]+)/g)].map(([, key]) => key);
     expect(keys, 'the serviceRows array references status copy').not.toHaveLength(0);

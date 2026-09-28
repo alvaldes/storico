@@ -815,7 +815,9 @@
       "unknown": "Unknown",
       "checking": "Checking…",
       "unavailable": "Unavailable",
-      "last_updated": "Last updated"
+      "last_updated": "Last updated",
+      "retry": "Retry",
+      "no_js": "Enable JavaScript to see the live status of each service."
     },
     "notFound": {
       "title": "Page not found",
