@@ -104,7 +104,34 @@ the frontend reads exactly one of them.
   cannot ever contain, and the comment now says why the backend path is closed off.
   **Mutations run by the parent:** reverting one raise to `HTTPException` → 1 failed; deleting one
   ES key → 2 failed (parity + mirror). The worker never reported these because it never reached them.
-- [ ] **WU3b — the remaining 23 sites in 8 route files, 15 codes.**
+- [x] **WU3b — the remaining 23 sites in 8 route files, 15 codes.** Registry 21 → 36, map 26 → 41
+  in the same commit. Verified by the parent: `grep -rn "raise HTTPException" api/routes/` leaves
+  **exactly the 6 nested WU4 sites** (`tasks.py:279`, `extraction.py:219`, `stories.py:377,389,412,440`),
+  and no `detail=`/`status_code=` line appears anywhere in the routes diff, so prose is
+  byte-identical. Gates: `-m unit` **247**, bare `pytest -q` **1001 passed / 21 skipped**, ruff clean
+  (248 files), frontend **52 files / 591 tests**, `tsc` clean. Mutation: reverting `export.py`'s site
+  to `HTTPException` failed exactly the new test; deleting one ES key failed parity + count.
+
+  Three findings from this slice, none of them code I wrote:
+
+  1. **`WORKSPACE_SLUG_TAKEN` is unreachable from the UI.** It fires on `PUT /workspaces/{id}` when
+     the body carries a colliding `slug`, and **no client sends one**: `team-switcher.tsx:63` posts
+     `{name, icon}`, and `WorkspaceSettings.tsx:155` has zero slug references. Its audience is a
+     direct API caller, so "Esa dirección del espacio de trabajo…" named a thing no screen shows —
+     rewritten to "identificador"/"identifier" in both locales. Consequence for WU5's premise:
+     **some registry codes exist for API clients, not for users**, and a map keyed on codes will
+     always carry strings no human can trigger.
+  2. **The two 410s' remedy was checked against the route's own docstring** before believing the
+     translation: `extraction.py:77-79` really does point at
+     `POST /api/v1/workspaces/{workspace_id}/extract`, so "usa el endpoint del espacio de trabajo"
+     is accurate rather than merely plausible.
+  3. **A vacuous assertion shipped in the new `test_workspaces.py`** — `assert str(authed_user.id)`
+     is true for any UUID. Removed. The rest of that file is sound: a real collision, both the code
+     and the surviving slug pinned, house helper, `pytestmark = pytest.mark.unit`.
+
+  **Process note:** the assigned worker stopped and asked rather than writing
+  `test_workspace_settings_providers.py`, which was outside its granted surfaces. That is the wanted
+  behaviour; option 1 (extend authority, land the provider assertions) was approved.
 - [ ] **WU3 — Migrate the 32 bare-prose raises.** Original single unit, now split 3a/3b so each
   half is green on its own and reviewable. `dependencies.py` first (9, all access control
   — the most frequently seen English in the app), then `workspace_settings.py` (8), `stories.py`
@@ -249,10 +276,17 @@ Notes for whoever reviews the list:
 
 ### Two claims in this doc that were wrong, and what replaced them
 
-- I wrote that the 9 assertions "cannot be run — Docker is off". **False.** The `integration`
-  marker lives only in `tests/test_integration/`; nothing in `tests/test_api/` carries it, so
-  those tests run in the default suite against the in-process app, no daemon required. They ran.
-  The mutation check above replaced the assumption with evidence.
+- I wrote that the 9 assertions "cannot be run — Docker is off". **False.** Those tests run in the
+  default suite against the in-process app, no daemon required. They ran.
+- My replacement claim was **also wrong**, and it is the more instructive of the two: I wrote that
+  the `integration` marker lives only in `tests/test_integration/`. It came from
+  `grep -rl "pytest.mark.integration" tests/ | head -6` — the `head` truncated the list and I read
+  a truncated list as a complete one. Re-measured without the truncation: the marker appears in
+  **8 `tests/test_api/` files** as well, and **88 of the 326 tests there are integration-marked and
+  pass with no daemon at all** (`pytest -q -m integration tests/test_api` → 88 passed in 8.17s).
+  WU1's 9 assertions were never in that set — they ran either way — but the mistake mattered for
+  WU3b: 9 provider assertions were added inside integration-marked classes, where CI deselects them.
+  A grep piped through `head` is not a census.
 - The handoff baseline of "264 unit tests" does not reproduce. Measured at `HEAD`: **221 marked
   `unit`**, **990 collected and run by bare `pytest -q`**. `AGENTS.md` still advertises "264 unit
   tests and 356 integration tests" and says bare `pytest -q` "requires Docker" — both stale.
@@ -288,9 +322,24 @@ map, not more codes. Surfaced and re-approved rather than silently reordered.
 
 ## Follow-ups
 
-- **`AGENTS.md` test-surface drift**: "264 unit / 356 integration" and "bare `pytest -q` … requires
-  Docker" are both contradicted by measurement (236/221 marked `unit`; 990 run without Docker;
-  `integration` only in `tests/test_integration/`). Same defect class as the copy overclaims this
+- **Three codes have no test that reaches them**, reported by WU3b instead of papered over with
+  invented fixtures: `PROJECT_ENDPOINT_REMOVED`, `EXTRACTION_ENDPOINT_REMOVED` (both
+  `include_in_schema=False` legacy routes) and `EXTRACTION_NOT_FOUND`. A 410 nobody exercises is a
+  410 that may not fire on the path a stale client actually takes. One small test each is enough.
+- **Some registry codes are API-client-facing** (`WORKSPACE_SLUG_TAKEN`, the two 410s). Translating
+  a sentence no user can trigger is harmless; *testing* it through the UI is impossible. Keep that
+  distinction if the map is ever trimmed on the grounds that something is "not visible".
+- **CI never runs 88 service-free API tests.** Correcting the note above: `@pytest.mark.integration`
+  is applied in `tests/test_api/` too (8 files, 88 of its 326 tests), and all 88 pass with no
+  daemon in ~8s. CI's `pytest -q` deselects them, so a PR can break a real workspace-settings API
+  test and go green. Only `tests/test_integration/` genuinely needs services. This is a marker
+  hygiene defect, not a missing-infra defect — much cheaper to fix than the Postgres job, and it
+  was found by re-running a grep without a `head` on it.
+  was found by re-running a grep without a `head` on it.
+- **`AGENTS.md` test-surface drift**: its "264 unit tests and 356 integration tests" and its claim
+  that bare `pytest -q` "requires Docker" are both contradicted by measurement — 221 marked `unit`
+  at baseline (247 after WU3b), 1001 tests running with no daemon, and 88 service-free tests
+  sitting in `tests/test_api/` under the `integration` marker. Same defect class as the copy overclaims this
   whole thread started from — a doc asserting more than the repo does.
 - **Every new test must carry `@pytest.mark.unit`**, or bare `pytest -q` runs it while `-m unit`
   does not, and the local gate under-reports. Worth enforcing mechanically, not by memory.
