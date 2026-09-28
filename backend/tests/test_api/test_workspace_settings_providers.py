@@ -238,6 +238,7 @@ class TestCustomProviderRegistry:
         )
 
         assert second.status_code == 409
+        assert second.json()["error_code"] == "PROVIDER_DUPLICATE_NAME"
 
     @pytest.mark.asyncio
     async def test_the_same_name_is_allowed_in_two_workspaces(
@@ -298,6 +299,7 @@ class TestCustomProviderRegistry:
         )
 
         assert response.status_code == 409
+        assert response.json()["error_code"] == "PROVIDER_NAME_BUILTIN"
 
     @pytest.mark.asyncio
     async def test_the_select_s_control_value_is_rejected(
@@ -320,6 +322,7 @@ class TestCustomProviderRegistry:
         )
 
         assert response.status_code == 409
+        assert response.json()["error_code"] == "PROVIDER_NAME_RESERVED"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("name", ["", "   ", "a" * 51])
@@ -385,6 +388,7 @@ class TestCustomProviderRegistry:
         )
 
         assert into_reserved.status_code == 409
+        assert into_reserved.json()["error_code"] == "PROVIDER_NAME_BUILTIN"
         assert away.status_code == 200
         assert away.json()["name"] == "Ollama remote"
 
@@ -453,6 +457,7 @@ class TestCustomProviderRegistry:
         )
 
         assert renamed.status_code == 409
+        assert renamed.json()["error_code"] == "PROVIDER_DUPLICATE_NAME"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("target", ["gemini", "Gemini"])
@@ -474,6 +479,7 @@ class TestCustomProviderRegistry:
         )
 
         assert renamed.status_code == 409
+        assert renamed.json()["error_code"] == "PROVIDER_NAME_BUILTIN"
 
     @pytest.mark.asyncio
     async def test_rename_of_an_unknown_id_is_not_found(
@@ -492,6 +498,7 @@ class TestCustomProviderRegistry:
         )
 
         assert renamed.status_code == 404
+        assert renamed.json()["error_code"] == "CUSTOM_PROVIDER_NOT_FOUND"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("name", ["Gemini", "ollama", "__add_custom_provider__"])
@@ -519,6 +526,7 @@ class TestCustomProviderRegistry:
         )
 
         assert renamed.status_code == 404
+        assert renamed.json()["error_code"] == "CUSTOM_PROVIDER_NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_rename_reports_a_foreign_provider_as_forbidden(
@@ -548,6 +556,7 @@ class TestCustomProviderRegistry:
         )
 
         assert renamed.status_code == 403
+        assert renamed.json()["error_code"] == "PROVIDER_NOT_IN_WORKSPACE"
         # The foreign row is untouched — the property that matters for a write path.
         listed = await async_client.get(_providers_url(second), headers=headers)
         assert [p["name"] for p in listed.json()] == ["groq"]

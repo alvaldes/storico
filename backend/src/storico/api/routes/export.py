@@ -4,10 +4,12 @@ import json
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import PlainTextResponse
 
 from storico.api.dependencies import get_repository, get_workspace_for_user
+from storico.api.error_codes import UNSUPPORTED_EXPORT_FORMAT
+from storico.api.errors import ApiError
 from storico.api.schemas.task import TaskResponse
 from storico.domain.entities import Workspace, WorkspaceRole
 from storico.infrastructure.database.repositories import (
@@ -87,8 +89,9 @@ async def export_tasks(
     workspace, _ = ctx  # validates workspace membership
 
     if format not in ("json", "markdown"):
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_400_BAD_REQUEST,
+            error_code=UNSUPPORTED_EXPORT_FORMAT,
             detail=f"Unsupported format '{format}'. Supported formats: json, markdown",
         )
 

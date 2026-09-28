@@ -86,14 +86,18 @@ describe('ErrorDisplay — translated headlines for backend codes', () => {
   });
 
   it('falls back to the caller’s message for a code the map does not know', () => {
-    // NOT_A_WORKSPACE_MEMBER is what WU3 will add; until the map learns it, the
-    // caller's translated message must remain the headline (this is what keeps
-    // the TaskEditor save-failure copy of PR #25 working).
+    // The mirror guard (`src/lib/__tests__/error-codes.test.ts`) pins every code in
+    // `backend/src/storico/api/error_codes.py` to a translated key, so a *backend*
+    // code can no longer reach this path without failing CI — WU3a is what turned
+    // this from a live gap into a guaranteed one. What is still unmapped is a
+    // marker a caller invents for itself, like the board-loading one named in
+    // `lib/error-codes.ts`. That is the case this test protects: it is what keeps
+    // PR #25's TaskEditor copy working, where the 403 carries no code at all.
     render(
       <ErrorDisplay
         locale="es"
         friendlyMessage="No se pudo guardar la tarea"
-        errorCode="NOT_A_WORKSPACE_MEMBER"
+        errorCode="BOARD_UNAVAILABLE"
       />,
     );
 

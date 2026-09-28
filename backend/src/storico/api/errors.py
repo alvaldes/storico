@@ -1,6 +1,7 @@
 """FastAPI exception handlers for domain-level errors."""
 
 import logging
+from typing import Any
 
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
@@ -74,11 +75,15 @@ class ApiError(Exception):
     this exception instead — nesting a code inside ``detail`` is exactly the
     inconsistency the error-envelope feature removes.
 
-    ``detail`` is a plain string: the human-readable English fallback that
-    operators see; the code is the contract clients branch on.
+    ``detail`` is the human-readable English fallback that operators see; the code
+    is the contract clients branch on. It is usually a plain string, but a raise
+    site may pass a JSON-serialisable mapping when the error carries structured
+    payload fields (import validation rows, state-transition metadata): the
+    handler serialises whatever it is given as ``detail`` unchanged, and the
+    code still travels at the top level of the response body.
     """
 
-    def __init__(self, status_code: int, error_code: str, detail: str) -> None:
+    def __init__(self, status_code: int, error_code: str, detail: str | dict[str, Any]) -> None:
         super().__init__(detail)
         self.status_code = status_code
         self.error_code = error_code

@@ -4,7 +4,7 @@ from dataclasses import replace
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
 from storico.api.dependencies import (
     get_current_user,
@@ -12,6 +12,12 @@ from storico.api.dependencies import (
     get_workspace_for_user,
     require_story_workspace_access,
 )
+from storico.api.error_codes import (
+    DUPLICATE_USER_STORY,
+    NOT_A_WORKSPACE_MEMBER,
+    PROJECT_NOT_IN_WORKSPACE,
+)
+from storico.api.errors import ApiError
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.story import (
     CreateUserStoryRequest,
@@ -81,8 +87,9 @@ async def create_story(
 
     member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
     if member is None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            error_code=NOT_A_WORKSPACE_MEMBER,
             detail="Not a member of this workspace",
         )
 
@@ -91,8 +98,9 @@ async def create_story(
         body.project_id, body.actor, body.feature, body.benefit
     )
     if existing_story is not None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
+            error_code=DUPLICATE_USER_STORY,
             detail=(
                 f"User story with the same actor, feature, and benefit already exists in this project. "
                 f"Existing story ID: {existing_story.id}"
@@ -149,8 +157,9 @@ async def list_stories(
         # Validate user is a member of the specified workspace
         member = await member_repo.find_by_workspace_and_user(workspace_id, current_user.id)
         if member is None:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_403_FORBIDDEN,
+                error_code=NOT_A_WORKSPACE_MEMBER,
                 detail="Not a member of this workspace",
             )
         page, total = await repo.list_page(
@@ -163,8 +172,9 @@ async def list_stories(
             raise EntityNotFound("Project", str(project_id))
         member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
         if member is None:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_403_FORBIDDEN,
+                error_code=NOT_A_WORKSPACE_MEMBER,
                 detail="Not a member of this workspace",
             )
         page, total = await repo.list_page(project_id=project_id, limit=params.size, offset=offset)
@@ -348,8 +358,9 @@ async def import_stories(
     if project is None:
         raise EntityNotFound("Project", str(project_id))
     if project.workspace_id != workspace.id:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            error_code=PROJECT_NOT_IN_WORKSPACE,
             detail="This project does not belong to the specified workspace",
         )
 
@@ -363,11 +374,11 @@ async def import_stories(
     # the read stays as the authoritative one: ``size`` can be absent, and only the bytes we
     # actually hold can be parsed.
     if file.size is not None and file.size > MAX_FILE_BYTES:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            error_code="IMPORT_FILE_TOO_LARGE",
             detail={
                 "detail": "The file is too large.",
-                "error_code": "IMPORT_FILE_TOO_LARGE",
                 "size": file.size,
                 "max": MAX_FILE_BYTES,
             },
@@ -375,11 +386,11 @@ async def import_stories(
 
     data = await file.read()
     if len(data) > MAX_FILE_BYTES:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            error_code="IMPORT_FILE_TOO_LARGE",
             detail={
                 "detail": "The file is too large.",
-                "error_code": "IMPORT_FILE_TOO_LARGE",
                 "size": len(data),
                 "max": MAX_FILE_BYTES,
             },
@@ -390,7 +401,6 @@ async def import_stories(
     except StoryCsvError as exc:
         detail = {
             "detail": "The file could not be read.",
-            "error_code": "IMPORT_FILE_REJECTED",
             "reason": exc.reason,
         }
         # Only a limit reason carries a number: the client substitutes it into
@@ -398,8 +408,9 @@ async def import_stories(
         # (``typeof max === 'number'``), so it must not be a null placeholder.
         if exc.reason == "too_many_rows":
             detail["max"] = MAX_ROWS
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            error_code="IMPORT_FILE_REJECTED",
             detail=detail,
         ) from exc
 
@@ -426,11 +437,11 @@ async def import_stories(
     # the whole error list back and can fix the file and retry from scratch.
     # Duplicates are not blocking — they are reported and skipped below.
     if report.blocked:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            error_code="IMPORT_VALIDATION_FAILED",
             detail={
                 "detail": "The file has rows that must be fixed.",
-                "error_code": "IMPORT_VALIDATION_FAILED",
                 "created": 0,
                 "total_rows": report.total_rows,
                 "errors": [

@@ -23,9 +23,9 @@ from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import HTTPException
 
 from storico.api.dependencies import require_story_workspace_access
+from storico.api.errors import ApiError
 from storico.domain.entities import EntityNotFound, Project, User, UserStory
 from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
 from storico.infrastructure.database.repositories import (
@@ -218,14 +218,16 @@ class TestRequireStoryWorkspaceAccess:
 
         The walk resolves the story and its project, then finds no membership.
         The payload is asserted here so the string has one owner: every route
-        that delegates to this walk reports the same fact the same way.
+        that delegates to this walk reports the same fact the same way. The
+        code is the contract clients branch on (WU3); the prose is the
+        human-readable fallback that still reaches the raw panel.
         """
         user = _stub_user()
         story = _stub_story(project_id=uuid4())
         workspace_id = uuid4()
         project = Project(name="Stub Project", workspace_id=workspace_id)
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(ApiError) as exc_info:
             await _walk(
                 story.id,
                 user,
@@ -235,4 +237,5 @@ class TestRequireStoryWorkspaceAccess:
             )
 
         assert exc_info.value.status_code == 403
+        assert exc_info.value.error_code == "NOT_A_WORKSPACE_MEMBER"
         assert exc_info.value.detail == FORBIDDEN_DETAIL

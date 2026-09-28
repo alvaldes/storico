@@ -17,7 +17,7 @@ from typing import Annotated
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
 from storico.api.dependencies import (
     get_llm_config_repository,
@@ -25,6 +25,15 @@ from storico.api.dependencies import (
     get_workspace_for_user,
     require_admin,
 )
+from storico.api.error_codes import (
+    CUSTOM_PROVIDER_NOT_FOUND,
+    PROVIDER_DUPLICATE_NAME,
+    PROVIDER_MODELS_UNREACHABLE,
+    PROVIDER_NAME_BUILTIN,
+    PROVIDER_NAME_RESERVED,
+    PROVIDER_NOT_IN_WORKSPACE,
+)
+from storico.api.errors import ApiError
 from storico.api.schemas.custom_provider import (
     KNOWN_PROVIDERS,
     SELECT_CONTROL_VALUE,
@@ -265,13 +274,15 @@ def _reject_reserved_provider_name(name: str) -> None:
     could never be selected.
     """
     if name.lower() in KNOWN_PROVIDERS:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
+            error_code=PROVIDER_NAME_BUILTIN,
             detail=f"'{name}' is a built-in provider and cannot be registered as a custom one",
         )
     if name == SELECT_CONTROL_VALUE:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
+            error_code=PROVIDER_NAME_RESERVED,
             detail=f"'{name}' is reserved by the provider selector",
         )
 
@@ -327,8 +338,9 @@ async def create_custom_provider(
 
     existing = await provider_repo.find_by_workspace_and_name(workspace.id, body.name)
     if existing is not None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
+            error_code=PROVIDER_DUPLICATE_NAME,
             detail=f"Custom provider '{body.name}' already exists in this workspace",
         )
 
@@ -359,13 +371,15 @@ async def rename_custom_provider(
 
     existing = await provider_repo.get(provider_id)
     if existing is None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_404_NOT_FOUND,
+            error_code=CUSTOM_PROVIDER_NOT_FOUND,
             detail="Custom provider not found",
         )
     if existing.workspace_id != workspace.id:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            error_code=PROVIDER_NOT_IN_WORKSPACE,
             detail="This custom provider does not belong to the specified workspace",
         )
 
@@ -382,15 +396,17 @@ async def rename_custom_provider(
 
     duplicate = await provider_repo.find_by_workspace_and_name(workspace.id, body.name)
     if duplicate is not None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
+            error_code=PROVIDER_DUPLICATE_NAME,
             detail=f"Custom provider '{body.name}' already exists in this workspace",
         )
 
     renamed = await provider_repo.rename(provider_id, body.name)
     if renamed is None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_404_NOT_FOUND,
+            error_code=CUSTOM_PROVIDER_NOT_FOUND,
             detail="Custom provider not found",
         )
 
@@ -692,7 +708,8 @@ async def list_available_models(
             if response is not None
             else "the provider could not be reached"
         )
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_502_BAD_GATEWAY,
+            error_code=PROVIDER_MODELS_UNREACHABLE,
             detail=f"Failed to fetch models from {probe.provider}: {reason}",
         ) from e

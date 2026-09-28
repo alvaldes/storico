@@ -91,14 +91,81 @@ the frontend reads exactly one of them.
 - [x] **WU2 — `ApiError` exception + handler.** Mechanism that lets a raise site produce a
   top-level code. Covers FastAPI's own 422 `RequestValidationError` and the 404/405 defaults,
   which today emit no app code at all.
-- [ ] **WU3 — Migrate the 32 bare-prose raises.** `dependencies.py` first (9, all access control
+- [x] **WU3a — `dependencies.py`, 9 sites, 5 codes** (`AUTH_TOKEN_INVALID`,
+  `WORKSPACE_NOT_FOUND`, `NOT_A_WORKSPACE_MEMBER`, `ADMIN_ACCESS_REQUIRED`,
+  `OWNER_ACCESS_REQUIRED`). Registry 16 → 21, map 21 → 26, same commit (the mirror makes them
+  one change). Verified by the parent after the assigned worker died mid-run: prose lines absent
+  from the diff (`status_code=`/`detail=` byte-identical), `raise HTTPException` count in
+  `dependencies.py` is 0, `-m unit` 245, bare `pytest -q` 999/21 skipped, ruff clean, frontend
+  52 files / 591 tests, `tsc` clean.
+  **Coupling proven, not predicted:** WU5's fallback test used `NOT_A_WORKSPACE_MEMBER` as its
+  example of an unmapped code. Mapping it in WU3a broke that test — which is the mirror doing its
+  job one layer up. Re-pointed at `BOARD_UNAVAILABLE`, a caller-synthesised marker the registry
+  cannot ever contain, and the comment now says why the backend path is closed off.
+  **Mutations run by the parent:** reverting one raise to `HTTPException` → 1 failed; deleting one
+  ES key → 2 failed (parity + mirror). The worker never reported these because it never reached them.
+- [x] **WU3b — the remaining 23 sites in 8 route files, 15 codes.** Registry 21 → 36, map 26 → 41
+  in the same commit. Verified by the parent: `grep -rn "raise HTTPException" api/routes/` leaves
+  **exactly the 6 nested WU4 sites** (`tasks.py:279`, `extraction.py:219`, `stories.py:377,389,412,440`),
+  and no `detail=`/`status_code=` line appears anywhere in the routes diff, so prose is
+  byte-identical. Gates: `-m unit` **247**, bare `pytest -q` **1001 passed / 21 skipped**, ruff clean
+  (248 files), frontend **52 files / 591 tests**, `tsc` clean. Mutation: reverting `export.py`'s site
+  to `HTTPException` failed exactly the new test; deleting one ES key failed parity + count.
+
+  Three findings from this slice, none of them code I wrote:
+
+  1. **`WORKSPACE_SLUG_TAKEN` is unreachable from the UI.** It fires on `PUT /workspaces/{id}` when
+     the body carries a colliding `slug`, and **no client sends one**: `team-switcher.tsx:63` posts
+     `{name, icon}`, and `WorkspaceSettings.tsx:155` has zero slug references. Its audience is a
+     direct API caller, so "Esa dirección del espacio de trabajo…" named a thing no screen shows —
+     rewritten to "identificador"/"identifier" in both locales. Consequence for WU5's premise:
+     **some registry codes exist for API clients, not for users**, and a map keyed on codes will
+     always carry strings no human can trigger.
+  2. **The two 410s' remedy was checked against the route's own docstring** before believing the
+     translation: `extraction.py:77-79` really does point at
+     `POST /api/v1/workspaces/{workspace_id}/extract`, so "usa el endpoint del espacio de trabajo"
+     is accurate rather than merely plausible.
+  3. **A vacuous assertion shipped in the new `test_workspaces.py`** — `assert str(authed_user.id)`
+     is true for any UUID. Removed. The rest of that file is sound: a real collision, both the code
+     and the surviving slug pinned, house helper, `pytestmark = pytest.mark.unit`.
+
+  **Process note:** the assigned worker stopped and asked rather than writing
+  `test_workspace_settings_providers.py`, which was outside its granted surfaces. That is the wanted
+  behaviour; option 1 (extend authority, land the provider assertions) was approved.
+- [x] **WU3 — Migrate the 32 bare-prose raises.** Original single unit, now split 3a/3b so each
+  half is green on its own and reviewable. `dependencies.py` first (9, all access control
   — the most frequently seen English in the app), then `workspace_settings.py` (8), `stories.py`
   (5), `workspaces.py`/`projects.py` (4), `export.py`/`extractions.py`/`tasks.py`/`extraction.py` (4).
   Split by file across PRs if the diff exceeds the review budget.
-- [ ] **WU4 — The 6 nested `detail.error_code` sites → top-level.** Backend and frontend move
-  together (`stories-api.ts` `readImportFailure`, `taskStore.ts:113`, `KanbanBoard.tsx:168`,
-  `api.ts:61-63`), with the frontend tolerating both shapes during the deploy window (backend
-  deploys on the Oracle VM, frontend on Vercel — they are not atomic).
+- [x] **WU4 — The 6 nested `detail.error_code` sites → top-level.** Shipped as `9817024`, exactly
+  as the two traps below predicted: a **lift, not a flatten** — only the `error_code` key left each
+  dict, every other key and its order kept (the import dialog renders `errors[]`, `duplicates[]`,
+  `reason`, `size`, `max` out of `detail`, and `readImportFailure` returns `null` if `detail` is not
+  an object). `ApiError.detail` widened from `str` to `str | dict[str, Any]`; the handler body did
+  not change. **Zero frontend edits** — `api.ts:66` already preferred the top level and the five
+  codes were already mapped, which is what sequencing WU5 before WU3 bought. Moved assertions: 7 in
+  `test_stories_import.py`, 2 in `test_extraction.py`, and `test_tasks.py`'s exact-key-set pin.
+  The inner `"detail"` string stayed, deliberately.
+
+  **Two traps measured 2026-09-28, which rewrote the scope of this unit before it was written:**
+
+  1. **`detail` is load-bearing, not a wrapper.** `readImportFailure` (`stories-api.ts:115-118`)
+     returns `null` unless `typeof error.detail === 'object'`: the structured payload it renders —
+     `errors[]`, `duplicates[]`, `total_rows`, `reason`, `size`, `max` — lives *in* `detail`. So the
+     move is **lift `error_code` out and leave every other byte of `detail` alone.** Flattening
+     those bodies would need its own consumer audit; WU5 already made the transport tolerant, so no
+     frontend change is required at all — `api.ts:66` reads the top-level code first and keeps the
+     nested read as fallback.
+  2. **They nested `detail` inside `detail`**: the wire shape before WU4 was
+     `{"detail": {"detail": "Invalid state transition", "error_code": "…", "current_state": …}}`
+     (all 6 sites, verified in `tasks.py`, `extraction.py`, `stories.py`).
+     That inner duplicate key is its own defect and is deliberately **not** fixed here: removing it
+     changes what `error.detail` holds for every consumer, which is a different blast radius than
+     moving one field to the root.
+
+  Enabling change that was required and done: `ApiError.__init__` had typed `detail` as `str`.
+  WU4 also moved the ~9 nested assertions (`test_stories_import.py`, `test_extraction.py`) and the
+  two `docs/api.md` sections WU1 had been told to leave alone — the doc now states one envelope.
 - [x] **WU5 — Frontend translation: `error_code` → i18n key.** One map, both locales, specific
   copy per code family. `ErrorDisplay.tsx` keeps the code in the header as diagnostics and stops
   using server prose as the headline. This is the slice the user sees.
@@ -177,6 +244,12 @@ Notes for whoever reviews the list:
 
 ## Verification
 
+**The envelope is now uniform.** `grep -rn "raise HTTPException" backend/src/storico/api/` returns
+zero matches: every error the app raises deliberately speaks `{"detail": …, "error_code": …}` at the
+root, and the 42 validation-capable paths (13 handlers + `ApiError` + the 422 handler) are behind it.
+Three sources of code names exist and all three are pinned by `error-codes.test.ts` (`8e92574`):
+the registry, inline `error_code="…"` literals, and one domain constant.
+
 **WU1 — run and verified on this tree (2026-09-28).**
 
 - `pytest -q -m unit` → **236 passed** (baseline at `HEAD` measured in a throwaway worktree: 221;
@@ -212,10 +285,17 @@ Notes for whoever reviews the list:
 
 ### Two claims in this doc that were wrong, and what replaced them
 
-- I wrote that the 9 assertions "cannot be run — Docker is off". **False.** The `integration`
-  marker lives only in `tests/test_integration/`; nothing in `tests/test_api/` carries it, so
-  those tests run in the default suite against the in-process app, no daemon required. They ran.
-  The mutation check above replaced the assumption with evidence.
+- I wrote that the 9 assertions "cannot be run — Docker is off". **False.** Those tests run in the
+  default suite against the in-process app, no daemon required. They ran.
+- My replacement claim was **also wrong**, and it is the more instructive of the two: I wrote that
+  the `integration` marker lives only in `tests/test_integration/`. It came from
+  `grep -rl "pytest.mark.integration" tests/ | head -6` — the `head` truncated the list and I read
+  a truncated list as a complete one. Re-measured without the truncation: the marker appears in
+  **8 `tests/test_api/` files** as well, and **88 of the 326 tests there are integration-marked and
+  pass with no daemon at all** (`pytest -q -m integration tests/test_api` → 88 passed in 8.17s).
+  WU1's 9 assertions were never in that set — they ran either way — but the mistake mattered for
+  WU3b: 9 provider assertions were added inside integration-marked classes, where CI deselects them.
+  A grep piped through `head` is not a census.
 - The handoff baseline of "264 unit tests" does not reproduce. Measured at `HEAD`: **221 marked
   `unit`**, **990 collected and run by bare `pytest -q`**. `AGENTS.md` still advertises "264 unit
   tests and 356 integration tests" and says bare `pytest -q` "requires Docker" — both stale.
@@ -251,9 +331,24 @@ map, not more codes. Surfaced and re-approved rather than silently reordered.
 
 ## Follow-ups
 
-- **`AGENTS.md` test-surface drift**: "264 unit / 356 integration" and "bare `pytest -q` … requires
-  Docker" are both contradicted by measurement (236/221 marked `unit`; 990 run without Docker;
-  `integration` only in `tests/test_integration/`). Same defect class as the copy overclaims this
+- **Three codes have no test that reaches them**, reported by WU3b instead of papered over with
+  invented fixtures: `PROJECT_ENDPOINT_REMOVED`, `EXTRACTION_ENDPOINT_REMOVED` (both
+  `include_in_schema=False` legacy routes) and `EXTRACTION_NOT_FOUND`. A 410 nobody exercises is a
+  410 that may not fire on the path a stale client actually takes. One small test each is enough.
+- **Some registry codes are API-client-facing** (`WORKSPACE_SLUG_TAKEN`, the two 410s). Translating
+  a sentence no user can trigger is harmless; *testing* it through the UI is impossible. Keep that
+  distinction if the map is ever trimmed on the grounds that something is "not visible".
+- **CI never runs 88 service-free API tests.** Correcting the note above: `@pytest.mark.integration`
+  is applied in `tests/test_api/` too (8 files, 88 of its 326 tests), and all 88 pass with no
+  daemon in ~8s. CI's `pytest -q` deselects them, so a PR can break a real workspace-settings API
+  test and go green. Only `tests/test_integration/` genuinely needs services. This is a marker
+  hygiene defect, not a missing-infra defect — much cheaper to fix than the Postgres job, and it
+  was found by re-running a grep without a `head` on it.
+  was found by re-running a grep without a `head` on it.
+- **`AGENTS.md` test-surface drift**: its "264 unit tests and 356 integration tests" and its claim
+  that bare `pytest -q` "requires Docker" are both contradicted by measurement — 221 marked `unit`
+  at baseline (247 after WU3b), 1001 tests running with no daemon, and 88 service-free tests
+  sitting in `tests/test_api/` under the `integration` marker. Same defect class as the copy overclaims this
   whole thread started from — a doc asserting more than the repo does.
 - **Every new test must carry `@pytest.mark.unit`**, or bare `pytest -q` runs it while `-m unit`
   does not, and the local gate under-reports. Worth enforcing mechanically, not by memory.

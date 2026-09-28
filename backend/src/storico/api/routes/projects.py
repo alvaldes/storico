@@ -13,13 +13,15 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
 from storico.api.dependencies import (
     get_current_user,
     get_repository,
     get_workspace_for_user,
 )
+from storico.api.error_codes import PROJECT_ENDPOINT_REMOVED, PROJECT_NOT_IN_WORKSPACE
+from storico.api.errors import ApiError
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
 from storico.api.schemas.project import (
     CreateProjectRequest,
@@ -48,8 +50,9 @@ async def deprecated_projects() -> None:
     Projects are now scoped to workspaces. Use:
       POST/GET/PUT/DELETE /api/v1/workspaces/{workspace_id}/projects
     """
-    raise HTTPException(
+    raise ApiError(
         status_code=status.HTTP_410_GONE,
+        error_code=PROJECT_ENDPOINT_REMOVED,
         detail=(
             "This endpoint has been removed. "
             "Projects are now scoped to workspaces. "
@@ -86,7 +89,7 @@ async def _verify_project_belongs_to_workspace(
     to fire after ``find_by_id``.
 
     Raises ``EntityNotFound`` (404) when the project does not exist at all,
-    and ``HTTPException`` (403) when it exists but belongs to another
+    and ``ApiError`` (403) when it exists but belongs to another
     workspace — the path workspace is what the caller claimed, so containment
     is a different fact from existence and is reported the same way as the
     parallel story-containment check in ``routes/extraction.py``. Returns
@@ -96,8 +99,9 @@ async def _verify_project_belongs_to_workspace(
     if pair is None:
         raise EntityNotFound("Project", str(project_id))
     if pair.project.workspace_id != workspace_id:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            error_code=PROJECT_NOT_IN_WORKSPACE,
             detail="This project does not belong to the specified workspace",
         )
     return pair.project, pair.story_count
