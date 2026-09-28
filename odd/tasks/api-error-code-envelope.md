@@ -91,7 +91,22 @@ the frontend reads exactly one of them.
 - [x] **WU2 — `ApiError` exception + handler.** Mechanism that lets a raise site produce a
   top-level code. Covers FastAPI's own 422 `RequestValidationError` and the 404/405 defaults,
   which today emit no app code at all.
-- [ ] **WU3 — Migrate the 32 bare-prose raises.** `dependencies.py` first (9, all access control
+- [x] **WU3a — `dependencies.py`, 9 sites, 5 codes** (`AUTH_TOKEN_INVALID`,
+  `WORKSPACE_NOT_FOUND`, `NOT_A_WORKSPACE_MEMBER`, `ADMIN_ACCESS_REQUIRED`,
+  `OWNER_ACCESS_REQUIRED`). Registry 16 → 21, map 21 → 26, same commit (the mirror makes them
+  one change). Verified by the parent after the assigned worker died mid-run: prose lines absent
+  from the diff (`status_code=`/`detail=` byte-identical), `raise HTTPException` count in
+  `dependencies.py` is 0, `-m unit` 245, bare `pytest -q` 999/21 skipped, ruff clean, frontend
+  52 files / 591 tests, `tsc` clean.
+  **Coupling proven, not predicted:** WU5's fallback test used `NOT_A_WORKSPACE_MEMBER` as its
+  example of an unmapped code. Mapping it in WU3a broke that test — which is the mirror doing its
+  job one layer up. Re-pointed at `BOARD_UNAVAILABLE`, a caller-synthesised marker the registry
+  cannot ever contain, and the comment now says why the backend path is closed off.
+  **Mutations run by the parent:** reverting one raise to `HTTPException` → 1 failed; deleting one
+  ES key → 2 failed (parity + mirror). The worker never reported these because it never reached them.
+- [ ] **WU3b — the remaining 23 sites in 8 route files, 15 codes.**
+- [ ] **WU3 — Migrate the 32 bare-prose raises.** Original single unit, now split 3a/3b so each
+  half is green on its own and reviewable. `dependencies.py` first (9, all access control
   — the most frequently seen English in the app), then `workspace_settings.py` (8), `stories.py`
   (5), `workspaces.py`/`projects.py` (4), `export.py`/`extractions.py`/`tasks.py`/`extraction.py` (4).
   Split by file across PRs if the diff exceeds the review budget.
@@ -99,6 +114,28 @@ the frontend reads exactly one of them.
   together (`stories-api.ts` `readImportFailure`, `taskStore.ts:113`, `KanbanBoard.tsx:168`,
   `api.ts:61-63`), with the frontend tolerating both shapes during the deploy window (backend
   deploys on the Oracle VM, frontend on Vercel — they are not atomic).
+
+  **Two traps measured 2026-09-28, which rewrite the scope of this unit:**
+
+  1. **`detail` is load-bearing, not a wrapper.** `readImportFailure` (`stories-api.ts:115-118`)
+     returns `null` unless `typeof error.detail === 'object'`: the structured payload it renders —
+     `errors[]`, `duplicates[]`, `total_rows`, `reason`, `size`, `max` — lives *in* `detail`. So the
+     move is **lift `error_code` out and leave every other byte of `detail` alone.** Flattening
+     those bodies would need its own consumer audit; WU5 already made the transport tolerant, so no
+     frontend change is required at all — `api.ts:66` reads the top-level code first and keeps the
+     nested read as fallback.
+  2. **They nest `detail` inside `detail`**: the wire shape today is
+     `{"detail": {"detail": "Invalid state transition", "error_code": "…", "current_state": …}}`
+     (all 6 sites, verified in `tasks.py:276-283`, `extraction.py:211-217`, `stories.py:366-372`).
+     That inner duplicate key is its own defect and is deliberately **not** fixed here: removing it
+     changes what `error.detail` holds for every consumer, which is a different blast radius than
+     moving one field to the root.
+
+  Enabling change: `ApiError.__init__` types `detail` as `str`. WU4 must widen it to accept a JSON
+  object, keeping the handler's `detail` untouched. **WU4 is backend-only** — plus the ~9 nested
+  assertions in `test_stories_import.py:160,215,327,342,352,373,454` and
+  `test_extraction.py:663,697` and `docs/api.md` §import/§LLM_CONFIG_INCOMPLETE, which are the two
+  sections WU1 was told to leave alone.
 - [x] **WU5 — Frontend translation: `error_code` → i18n key.** One map, both locales, specific
   copy per code family. `ErrorDisplay.tsx` keeps the code in the header as diagnostics and stops
   using server prose as the headline. This is the slice the user sees.

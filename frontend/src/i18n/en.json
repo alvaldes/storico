@@ -73,7 +73,12 @@
     "LLM_CONFIG_INCOMPLETE": "The model configuration is incomplete. Complete it in the settings before extracting tasks.",
     "IMPORT_FILE_TOO_LARGE": "The file is too large to import. Split it into smaller files and try again.",
     "IMPORT_FILE_REJECTED": "The file could not be read as a valid import. Check that it is a supported CSV and try again.",
-    "IMPORT_VALIDATION_FAILED": "Some rows in the file have problems. Review the listed rows, fix them, and import the file again."
+    "IMPORT_VALIDATION_FAILED": "Some rows in the file have problems. Review the listed rows, fix them, and import the file again.",
+    "AUTH_TOKEN_INVALID": "Your session is not valid or has expired. Sign in again to continue.",
+    "WORKSPACE_NOT_FOUND": "That item is no longer available. Refresh the page to work with the current list.",
+    "NOT_A_WORKSPACE_MEMBER": "You do not have access to this workspace. Ask a workspace admin to add you.",
+    "ADMIN_ACCESS_REQUIRED": "This action needs workspace admin permissions. Ask a workspace admin to do it for you.",
+    "OWNER_ACCESS_REQUIRED": "Only the workspace owner can do this. Ask them to do it or to transfer ownership to you."
   },
   "landing": {
     "hero_title": "Storico",

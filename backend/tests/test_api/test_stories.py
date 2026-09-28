@@ -9,6 +9,7 @@ owner, which is a user rather than part of the chain, is built locally.
 from datetime import datetime
 from uuid import UUID, uuid4
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import User, UserStory
@@ -449,3 +450,20 @@ class TestStoryMembership:
 
         assert response.status_code == 403
         assert response.json()["detail"] == FORBIDDEN_NOT_A_MEMBER
+
+    @pytest.mark.unit
+    async def test_request_without_a_token_is_unauthorized_with_a_coded_envelope(
+        self, async_client
+    ):
+        """A request with no bearer token gets 401 with code and prose together.
+
+        The pair is the point (WU3): ``error_code`` is the contract clients
+        branch on, while the prose ``detail`` stays byte-identical as the
+        human-readable fallback that reaches the raw panel.
+        """
+        response = await async_client.get("/api/v1/stories/")
+        body = response.json()
+
+        assert response.status_code == 401
+        assert body["error_code"] == "AUTH_TOKEN_INVALID"
+        assert body["detail"] == "Invalid or missing authentication token"

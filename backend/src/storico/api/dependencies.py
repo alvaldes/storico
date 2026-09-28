@@ -6,9 +6,17 @@ from typing import Annotated
 from uuid import UUID
 
 import jwt as pyjwt  # PyJWT library
-from fastapi import Depends, HTTPException, Path, Request, status
+from fastapi import Depends, Path, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from storico.api.error_codes import (
+    ADMIN_ACCESS_REQUIRED,
+    AUTH_TOKEN_INVALID,
+    NOT_A_WORKSPACE_MEMBER,
+    OWNER_ACCESS_REQUIRED,
+    WORKSPACE_NOT_FOUND,
+)
+from storico.api.errors import ApiError
 from storico.config.settings import Settings, get_settings
 from storico.domain.entities import EntityNotFound, User, UserStory
 from storico.domain.entities.workspace import Workspace
@@ -85,8 +93,9 @@ async def get_current_user(
     # Extract Bearer token
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code=AUTH_TOKEN_INVALID,
             detail="Invalid or missing authentication token",
         )
 
@@ -99,8 +108,9 @@ async def get_current_user(
         if not user_id:
             raise ValueError("Missing sub claim")
     except Exception:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code=AUTH_TOKEN_INVALID,
             detail="Invalid or missing authentication token",
         )
 
@@ -115,16 +125,18 @@ async def get_current_user(
         try:
             user = await repo.find_by_id(UUID(user_id))
         except ValueError:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
+                error_code=AUTH_TOKEN_INVALID,
                 detail="Invalid or missing authentication token",
             )
         if user is not None:
             set_cached_user(user_id, user)
 
     if user is None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code=AUTH_TOKEN_INVALID,
             detail="Invalid or missing authentication token",
         )
 
@@ -211,15 +223,17 @@ async def get_workspace_for_user(
     """
     workspace = await ws_repo.find_by_id(workspace_id)
     if workspace is None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_404_NOT_FOUND,
+            error_code=WORKSPACE_NOT_FOUND,
             detail=f"Workspace with id '{workspace_id}' not found",
         )
 
     member = await member_repo.find_by_workspace_and_user(workspace_id, current_user.id)
     if member is None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            error_code=NOT_A_WORKSPACE_MEMBER,
             detail="Not a member of this workspace",
         )
 
@@ -236,8 +250,9 @@ async def require_admin(
     """
     workspace, role = ctx
     if role != WorkspaceRole.ADMIN:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            error_code=ADMIN_ACCESS_REQUIRED,
             detail="Admin access required",
         )
     return ctx
@@ -254,8 +269,9 @@ async def require_owner(
     """
     workspace, _ = ctx
     if workspace.owner_id != current_user.id:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            error_code=OWNER_ACCESS_REQUIRED,
             detail="Only the workspace owner can perform this action",
         )
     return workspace
@@ -277,7 +293,7 @@ async def require_story_workspace_access(
     (``reported_as``), so a route never tells the caller whether the story, its project,
     or their own membership was the problem.
 
-    Raises ``EntityNotFound`` (404) for a missing story or project and ``HTTPException``
+    Raises ``EntityNotFound`` (404) for a missing story or project and ``ApiError``
     (403) for a missing membership.
     """
     label, report_id = reported_as or ("UserStory", story_id)
@@ -289,8 +305,9 @@ async def require_story_workspace_access(
         raise EntityNotFound(label, str(report_id))
     member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
     if member is None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            error_code=NOT_A_WORKSPACE_MEMBER,
             detail="Not a member of this workspace",
         )
     return story

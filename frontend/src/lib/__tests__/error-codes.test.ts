@@ -49,7 +49,8 @@ function extractRegistryNames(source: string): string[] {
  * list them.
  *
  * Count note: that is 5 distinct codes over 6 sites — `IMPORT_FILE_TOO_LARGE`
- * covers two raise sites — so the map holds 16 + 5 = 21 keys.
+ * covers two raise sites — so the map holds 21 + 5 = 26 keys (WU3 added the
+ * five access-control codes to the registry and to this map in one commit).
  */
 const ROUTE_ERROR_CODES = [
   'INVALID_STATE_TRANSITION',
@@ -59,7 +60,7 @@ const ROUTE_ERROR_CODES = [
   'IMPORT_VALIDATION_FAILED',
 ] as const;
 
-const EXPECTED_REGISTRY_COUNT = 16;
+const EXPECTED_REGISTRY_COUNT = 21;
 
 function tableFor(locale: 'en' | 'es'): Record<string, string> {
   return locale === 'en' ? en.errorCodes : es.errorCodes;
@@ -124,10 +125,10 @@ describe('errorCodeHeadline', () => {
   });
 
   it('returns undefined for an unmapped code, so the caller keeps its own message', () => {
-    // NOT_A_WORKSPACE_MEMBER arrives with WU3; until then an unmapped code must
+    // WORKSPACE_SLUG_TAKEN arrives with WU3b; until then an unmapped code must
     // degrade to the caller's headline, never to `undefined` rendered as text.
-    expect(errorCodeHeadline('NOT_A_WORKSPACE_MEMBER', 'en')).toBeUndefined();
-    expect(errorCodeHeadline('NOT_A_WORKSPACE_MEMBER', 'es')).toBeUndefined();
+    expect(errorCodeHeadline('WORKSPACE_SLUG_TAKEN', 'en')).toBeUndefined();
+    expect(errorCodeHeadline('WORKSPACE_SLUG_TAKEN', 'es')).toBeUndefined();
   });
 
   it('returns undefined when there is no code at all', () => {

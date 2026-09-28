@@ -73,7 +73,12 @@
     "LLM_CONFIG_INCOMPLETE": "La configuración del modelo está incompleta. Complétala en la configuración antes de extraer tareas.",
     "IMPORT_FILE_TOO_LARGE": "El archivo es demasiado grande para importarlo. Divídelo en archivos más pequeños e inténtalo de nuevo.",
     "IMPORT_FILE_REJECTED": "No se pudo leer el archivo como importación válida. Verifica que sea un CSV compatible e inténtalo de nuevo.",
-    "IMPORT_VALIDATION_FAILED": "Algunas filas del archivo tienen problemas. Revisa las filas indicadas, corrígelas e importa de nuevo."
+    "IMPORT_VALIDATION_FAILED": "Algunas filas del archivo tienen problemas. Revisa las filas indicadas, corrígelas e importa de nuevo.",
+    "AUTH_TOKEN_INVALID": "Tu sesión no es válida o ha caducado. Inicia sesión de nuevo para continuar.",
+    "WORKSPACE_NOT_FOUND": "Ese elemento ya no está disponible. Actualiza la página para trabajar con la lista actual.",
+    "NOT_A_WORKSPACE_MEMBER": "No tienes acceso a este espacio de trabajo. Pide a un administrador que te añada.",
+    "ADMIN_ACCESS_REQUIRED": "Esta acción requiere permisos de administrador del espacio de trabajo. Pídele a uno que la realice.",
+    "OWNER_ACCESS_REQUIRED": "Solo el propietario del espacio de trabajo puede hacerlo. Pídele que lo haga o que te transfiera la propiedad."
   },
   "landing": {
     "hero_title": "Storico",
