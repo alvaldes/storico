@@ -314,7 +314,6 @@ class TestOpenAICompatibleProber:
         assert [m.id for m in models] == ["gpt-4o-mini"]
 
 
-@pytest.mark.integration
 class TestCustomProviderModelDiscovery:
     """Custom providers reach the prober through the settings endpoint."""
 
@@ -457,7 +456,6 @@ class TestProbeResolution:
             LLMModelProbeRequest.model_validate({"provider": "gemini", "apiKey": "x"})
 
 
-@pytest.mark.integration
 class TestPendingSelectionProbe:
     """The endpoint probes the selection posted by the client.
 
@@ -713,6 +711,7 @@ class TestTheProbeDoesNotLeakTheCredential:
         )
 
         assert response.status_code == 502
+        assert response.json()["error_code"] == "PROVIDER_MODELS_UNREACHABLE"
         body = response.text
         # The credential is nowhere in the answer, not even the part the error handler wrote.
         assert credential not in body

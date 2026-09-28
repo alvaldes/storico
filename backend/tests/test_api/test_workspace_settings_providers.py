@@ -67,7 +67,6 @@ async def _seed_legacy_row(
     return row
 
 
-@pytest.mark.integration
 class TestCustomProviderRegistry:
     """Workspace-scoped provider registration with admin-only authorization."""
 
@@ -578,7 +577,6 @@ class TestCustomProviderRegistry:
         assert renamed.status_code == 403
 
 
-@pytest.mark.integration
 class TestRenameFollowsTheProviderSelection:
     """The selection is stored by name, so a rename of it must carry over."""
 
