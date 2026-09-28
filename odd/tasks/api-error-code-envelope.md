@@ -293,9 +293,23 @@ the registry, inline `error_code="…"` literals, and one domain constant.
   a truncated list as a complete one. Re-measured without the truncation: the marker appears in
   **8 `tests/test_api/` files** as well, and **88 of the 326 tests there are integration-marked and
   pass with no daemon at all** (`pytest -q -m integration tests/test_api` → 88 passed in 8.17s).
-  WU1's 9 assertions were never in that set — they ran either way — but the mistake mattered for
-  WU3b: 9 provider assertions were added inside integration-marked classes, where CI deselects them.
   A grep piped through `head` is not a census.
+- **The third claim in this section was also wrong, and this time there was no truncated command to
+  blame: I invented the mechanism.** I wrote that `pytest.ini_options.addopts` carries
+  `-m 'not integration'`, that CI therefore skips 109 tests, and that `test_migration_chain.py` —
+  the chain behind the deployment maintenance window — never runs. **I never opened
+  `backend/pytest.ini`.** It has no `addopts` and never had one (`grep -rn addopts
+  backend/pytest.ini backend/pyproject.toml` → empty), `AGENTS.md` never mentions that expression,
+  and CI's own log for `#28` says **`1004 passed, 18 skipped`**: bare `pytest -q` runs everything,
+  migration chain included, because the Ubuntu runner has Docker. The 21 local skips are
+  self-chosen — 18 env-flag live opt-ins (`STORICO_TEST_LIVE_QDRANT` / `STORICO_TEST_LIVE_OLLAMA`,
+  which *fail* rather than skip once the flag is set) plus 3 testcontainers tests with no daemon.
+  Worse, `prod.todo.md:19` already recorded the Postgres suite as running in CI **with a run id**,
+  and I added a contradicting 🔴 row to the same file without reading the row above mine. Two rules
+  come out of this: read the config file, not the description of it; and grep the ledger for the
+  area before asserting anything about it. What survived is narrower but real — the 88 markers were
+  false and, by opting out of `_forbid_real_qdrant_clients` (`tests/conftest.py:74-117`), those
+  tests ran *without* the guard that exists to stop writes to the live Qdrant collection.
 - The handoff baseline of "264 unit tests" does not reproduce. Measured at `HEAD`: **221 marked
   `unit`**, **990 collected and run by bare `pytest -q`**. `AGENTS.md` still advertises "264 unit
   tests and 356 integration tests" and says bare `pytest -q` "requires Docker" — both stale.
@@ -331,19 +345,21 @@ map, not more codes. Surfaced and re-approved rather than silently reordered.
 
 ## Follow-ups
 
-- **Three codes have no test that reaches them**, reported by WU3b instead of papered over with
-  invented fixtures: `PROJECT_ENDPOINT_REMOVED`, `EXTRACTION_ENDPOINT_REMOVED` (both
-  `include_in_schema=False` legacy routes) and `EXTRACTION_NOT_FOUND`. A 410 nobody exercises is a
-  410 that may not fire on the path a stale client actually takes. One small test each is enough.
+- ~~**Three codes have no test that reaches them**~~ — **closed.** `PROJECT_ENDPOINT_REMOVED` and
+  `EXTRACTION_ENDPOINT_REMOVED` now have 410 + code assertions (`TestLegacyProjectsEndpointGone` in
+  `test_projects.py`, `TestLegacyExtractEndpointGone` in `test_extraction.py`), `EXTRACTION_NOT_FOUND`
+  is asserted on the status 404, and `PROVIDER_MODELS_UNREACHABLE` gained its code assertion next to
+  the existing 502 one. Teeth verified twice: the parent renamed `PROJECT_ENDPOINT_REMOVED` in the
+  route and both new tests failed; the worker broke each of the other three the same way.
 - **Some registry codes are API-client-facing** (`WORKSPACE_SLUG_TAKEN`, the two 410s). Translating
   a sentence no user can trigger is harmless; *testing* it through the UI is impossible. Keep that
   distinction if the map is ever trimmed on the grounds that something is "not visible".
-- **CI never runs 88 service-free API tests.** Correcting the note above: `@pytest.mark.integration`
-  is applied in `tests/test_api/` too (8 files, 88 of its 326 tests), and all 88 pass with no
-  daemon in ~8s. CI's `pytest -q` deselects them, so a PR can break a real workspace-settings API
-  test and go green. Only `tests/test_integration/` genuinely needs services. This is a marker
-  hygiene defect, not a missing-infra defect — much cheaper to fix than the Postgres job, and it
-  was found by re-running a grep without a `head` on it.
+- **The 88 `tests/test_api/` markers were false, and that was the real defect — not CI coverage.**
+  An earlier version of this bullet claimed CI deselected them. Wrong: there is no `addopts`
+  anywhere and CI's log for `#28` reads `1004 passed, 18 skipped`. What the markers did was lie
+  about cost and, through `tests/conftest.py:74-117`, silently exempt those tests from the autouse
+  Qdrant-leak guard. Fixed by removing the 29 decorator lines, one file at a time, running bare
+  `pytest -q` after each to prove the guard never needed to intervene.
   was found by re-running a grep without a `head` on it.
 - **`AGENTS.md` test-surface drift**: its "264 unit tests and 356 integration tests" and its claim
   that bare `pytest -q` "requires Docker" are both contradicted by measurement — 221 marked `unit`
