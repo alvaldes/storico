@@ -32,7 +32,6 @@ async def _create_user(db_session: AsyncSession, email: str = "config@test.com")
     return saved
 
 
-@pytest.mark.integration
 class TestWorkspacePromptConfig:
     """Workspace prompt config read/write with admin-only authorization."""
 

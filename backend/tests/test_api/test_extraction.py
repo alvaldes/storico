@@ -586,6 +586,7 @@ class TestExtractionStatusEndpoint:
             headers=_auth_headers(str(user.id)),
         )
         assert response.status_code == 404
+        assert response.json()["error_code"] == "EXTRACTION_NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_status_unauthorized(self, async_client) -> None:
@@ -882,3 +883,32 @@ class TestExtractionReceivesTheDecryptedCredential:
 
         assert response.status_code == 202
         assert scheduled.call_args.kwargs["api_key"] == "sk-decrypted-for-the-adapter"
+
+
+@pytest.mark.unit
+class TestLegacyExtractEndpointGone:
+    """The pre-workspaces ``/api/v1/extract`` routes answer 410 with their code.
+
+    Like the projects catch-all, this route is registered with
+    ``include_in_schema=False`` and no test ever drove it: its only callers are
+    stale clients, and the whole point of its 410 is to point them at the
+    workspace-scoped replacement rather than leave them reading a 404.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_stale_start_answers_410_gone_with_its_code(self, async_client) -> None:
+        """POST, the action a stale client would attempt, carries the code."""
+        response = await async_client.post("/api/v1/extract/", json={"user_story": "..."})
+
+        assert response.status_code == 410
+        assert response.json()["error_code"] == "EXTRACTION_ENDPOINT_REMOVED"
+
+    @pytest.mark.asyncio
+    async def test_a_stale_poll_answers_410_gone_with_its_code(self, async_client) -> None:
+        """GET on a status path carries the code too."""
+        response = await async_client.get(
+            "/api/v1/extract/status/00000000-0000-0000-0000-000000000000"
+        )
+
+        assert response.status_code == 410
+        assert response.json()["error_code"] == "EXTRACTION_ENDPOINT_REMOVED"

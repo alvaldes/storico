@@ -65,7 +65,6 @@ class _SettingsWithoutAMasterKey:
         return Settings(_env_file=None, encryption_key=None)  # type: ignore[call-arg]
 
 
-@pytest.mark.integration
 class TestResolveLLMConfigBaseUrl:
     """The Ollama host is Ollama's default, not a universal one."""
 
@@ -139,7 +138,6 @@ class TestResolveLLMConfigBaseUrl:
         assert resolved.base_url == "http://ollama.test:11434"
 
 
-@pytest.mark.integration
 class TestBlankValuesAreNotStored:
     """``PUT /settings/llm`` stores ``None`` where it used to store a string of spaces.
 
@@ -258,7 +256,6 @@ class TestBlankValuesAreNotStored:
         assert stored.base_url is None
 
 
-@pytest.mark.integration
 class TestBlankValuesReadAsAbsent:
     """A row already holding spaces resolves exactly like a row holding ``NULL``.
 
@@ -345,7 +342,6 @@ class TestBlankValuesReadAsAbsent:
         assert resolved.base_url == "https://api.deepseek.com/v1"
 
 
-@pytest.mark.integration
 class TestCredentialEncryptionThroughTheRoute:
     """The settings route is where an admin's key becomes a stored secret, and back."""
 

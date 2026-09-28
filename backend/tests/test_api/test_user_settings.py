@@ -36,7 +36,6 @@ class TestGetPreferences:
     """What the endpoint answers."""
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_it_requires_a_session(self, async_client: AsyncClient) -> None:
         """An unauthenticated read is refused."""
         response = await async_client.get(URL)
@@ -44,7 +43,6 @@ class TestGetPreferences:
         assert response.status_code == 401
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_a_user_without_a_row_gets_the_defaults(self, authed_client: AsyncClient) -> None:
         """No row is not an error: the export default comes back."""
         response = await authed_client.get(URL)
@@ -55,7 +53,6 @@ class TestGetPreferences:
         assert "updatedAt" in body
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_the_payload_carries_no_llm_block(
         self, authed_client: AsyncClient, db_session: AsyncSession, authed_user: User
     ) -> None:
@@ -77,7 +74,6 @@ class TestGetPreferences:
         assert response.json()["preferences"] == {"export": {"defaultFormat": "markdown"}}
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_a_stored_document_is_not_rewritten_by_reading_it(
         self, authed_client: AsyncClient, db_session: AsyncSession, authed_user: User
     ) -> None:
@@ -92,7 +88,6 @@ class TestGetPreferences:
         assert "llm" in stored.preferences
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     @pytest.mark.parametrize("spelling", ["default_format", "defaultFormat"])
     async def test_a_retired_export_format_is_served_as_json(
         self,
@@ -124,7 +119,6 @@ class TestPutPreferences:
     """What the endpoint accepts."""
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_it_round_trips_the_export_default(self, authed_client: AsyncClient) -> None:
         """The preference the UI exposes is the one this endpoint carries."""
         response = await authed_client.put(
@@ -138,7 +132,6 @@ class TestPutPreferences:
         assert read_back.json()["preferences"] == {"export": {"defaultFormat": "markdown"}}
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_an_llm_block_in_the_body_is_refused(self, authed_client: AsyncClient) -> None:
         """``422``, not a silent drop: there is no way to put a key back through this endpoint."""
         response = await authed_client.put(
@@ -156,7 +149,6 @@ class TestPutPreferences:
         assert "llm" in body
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_an_unknown_field_is_still_refused(self, authed_client: AsyncClient) -> None:
         """The tolerant read is narrow: only the removed key is dropped, and only on read."""
         response = await authed_client.put(
@@ -167,7 +159,6 @@ class TestPutPreferences:
         assert response.status_code == 422
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_an_invalid_export_format_is_refused(self, authed_client: AsyncClient) -> None:
         """The enum is still enforced."""
         response = await authed_client.put(
@@ -177,7 +168,6 @@ class TestPutPreferences:
         assert response.status_code == 422
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_a_retired_export_format_is_refused(self, authed_client: AsyncClient) -> None:
         """``422``, not a silent rewrite: the read tolerates a stored ``trello``, a write does not.
 

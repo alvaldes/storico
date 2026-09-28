@@ -6,6 +6,7 @@ Tests exercise workspace-scoped routes at ``/api/v1/workspaces/{ws_id}/projects/
 from datetime import datetime
 from uuid import UUID, uuid4
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from storico.domain.entities.project import Project
@@ -498,3 +499,28 @@ class TestProjectContainment:
 
         still_there = await SQLAlchemyProjectRepository(db_session).find_by_id(project_id)
         assert still_there is not None
+
+
+@pytest.mark.unit
+class TestLegacyProjectsEndpointGone:
+    """The pre-workspaces ``/api/v1/projects`` routes answer 410 with their code.
+
+    The route is a catch-all registered with ``include_in_schema=False``, so nothing
+    else exercises it: a stale client is the only caller it will ever have. The 410
+    status is what tells it the removal is permanent, and the code is what names
+    which endpoint to move to.
+    """
+
+    async def test_a_stale_read_answers_410_gone_with_its_code(self, async_client) -> None:
+        """GET, the shape a stale dashboard would send, carries the code."""
+        response = await async_client.get("/api/v1/projects/00000000-0000-0000-0000-000000000000")
+
+        assert response.status_code == 410
+        assert response.json()["error_code"] == "PROJECT_ENDPOINT_REMOVED"
+
+    async def test_a_stale_write_answers_410_gone_with_its_code(self, async_client) -> None:
+        """POST, the shape a stale client would use to create, carries the code too."""
+        response = await async_client.post("/api/v1/projects/", json={"name": "My Project"})
+
+        assert response.status_code == 410
+        assert response.json()["error_code"] == "PROJECT_ENDPOINT_REMOVED"

@@ -68,7 +68,6 @@ class TestReadinessAnswer:
     """What the route reports for each configuration shape."""
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_a_member_may_read_the_status(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ) -> None:
@@ -80,7 +79,6 @@ class TestReadinessAnswer:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_an_unconfigured_workspace_reports_the_missing_model(
         self, authed_client, seed_workspace
     ) -> None:
@@ -92,7 +90,6 @@ class TestReadinessAnswer:
         assert response.json() == {"configured": False, "provider": "ollama", "missing": ["model"]}
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_a_cloud_provider_without_a_key_reports_only_the_key(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ) -> None:
@@ -109,7 +106,6 @@ class TestReadinessAnswer:
         }
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_a_complete_cloud_configuration_is_reported_ready(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ) -> None:
@@ -128,7 +124,6 @@ class TestReadinessAnswer:
         assert response.json() == {"configured": True, "provider": "gemini", "missing": []}
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_a_custom_provider_without_an_endpoint_reports_the_base_url(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ) -> None:
@@ -147,7 +142,6 @@ class TestReadinessAnswer:
         }
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_a_custom_provider_without_a_key_is_reported_ready(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ) -> None:
@@ -166,7 +160,6 @@ class TestReadinessAnswer:
         assert response.json() == {"configured": True, "provider": "deepseek", "missing": []}
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_an_ollama_workspace_with_a_model_is_ready(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ) -> None:
@@ -183,7 +176,6 @@ class TestDisclosure:
     """What the member-readable answer must not carry."""
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_the_answer_names_fields_and_no_values(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ) -> None:
@@ -210,7 +202,6 @@ class TestAccessControl:
     """Who may read the status."""
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_a_non_member_is_refused(self, authed_client, seed_workspace) -> None:
         """Readability for members is not readability for everyone."""
         seeded = await seed_workspace(stories=0, member=False)
@@ -220,7 +211,6 @@ class TestAccessControl:
         assert response.status_code == 403
 
     @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_an_unknown_workspace_is_a_not_found(self, authed_client) -> None:
         """Membership is resolved first, so an unknown workspace never leaks existence."""
         from uuid import uuid4
