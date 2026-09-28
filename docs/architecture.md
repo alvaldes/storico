@@ -1,7 +1,7 @@
 # Architecture
 
 > Decisiones arquitectónicas de Storico, extraídas de `AGENTS.md`.
-> Última actualización: 2026-09-25
+> Última actualización: 2026-09-28
 
 ## Stack
 
@@ -136,13 +136,15 @@
 
 ### ADR-005: Despliegue
 
-**Status**: 🔴 Pendiente (producción)
+**Status**: ✅ Implementado (producción en marcha desde 2026-09)
 
-**Decisión**: Docker Compose para desarrollo. Producción sin definir.
+**Decisión**: Docker Compose para desarrollo. Producción: el frontend Astro se sirve desde Vercel, el backend FastAPI corre en un contenedor Docker sobre una VM de Oracle, la base de datos relacional está en Neon y el vector store en Qdrant Cloud —un solo cluster, con una colección por entorno—.
 
-**Contexto**: Desarrollo con Docker Compose (PostgreSQL, Qdrant, API). Producción pendiente.
+**Contexto**: El backend se despliega con `.github/workflows/deploy-backend.yml`, que entra por SSH a la VM (el host sale del secret `DEPLOY_HOST`), resetea el árbol de trabajo a `origin/main`, reconstruye la imagen y arranca con `docker run --network host --env-file /home/ubuntu/storico/backend/.env`. Las migraciones se aplican en una ventana de mantenimiento, entre el `docker stop` y el `docker run`. El detalle de variables y caminos por entorno está en `docs/deployment.md`, que es la autoridad de despliegue: este ADR sólo registra la decisión.
 
-**Preguntas abiertas**: Proveedor cloud? Serverless o contenedores? Modelos LLM locales vs cloud?
+**Consecuencias**: El archivo de variables vive en la VM y fuera del control de versiones, así que el reset del árbol de trabajo no lo toca: una variable que falte falla en silencio en producción. El despliegue cuesta downtime durante la migración y un fallo deja la API abajo a propósito, que es la lección del incidente del 2026-09-20. Front y API son dos orígenes distintos (`storico.vercel.app` y `storico-api.<vm>.sslip.io`) sin dominio propio, decisión cerrada el 2026-09-23.
+
+**Preguntas abiertas**: Cómo se alojan los modelos LLM locales frente a los cloud. Ollama no corre en producción a propósito: el probe responde `not reachable` y su `scope` es `optional`, así que no degrada el estado del servicio. La habilitación de Qdrant en producción **deja de ser una pregunta abierta**: está operativo y medido el 2026-09-28 desde `/api/v1/health/services` (`qdrant: ok`, `embeddings: ok` con `google` / `gemini-embedding-001` / 768).
 
 ### ADR-006: UI Component Library y Estilos
 

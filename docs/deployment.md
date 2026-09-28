@@ -221,7 +221,7 @@ El checklist completo está en [`prod.todo.md`](../prod.todo.md). Resumen de pri
 | Prioridad | Item | Status |
 |-----------|------|--------|
 | 🔴 Crítico | OpenAI adapter (extracción en prod sin Ollama) | ✅ Implementado |
-| 🟡 Medio | Qdrant Cloud + Embedding adapter | 🔲 Pendiente |
+| 🟡 Medio | Qdrant Cloud + Embedding adapter | ✅ Operativo — medido en producción el 2026-09-28: `/api/v1/health/services` responde `qdrant: ok` y `embeddings: ok` (`google` / `gemini-embedding-001` / 768). Esta fila contradecía a la línea 73 del mismo archivo |
 | 🟡 Medio | Vercel env audit | ✅ Hecho (2026-09-24) |
 | 🟡 Medio | Error monitoring (Sentry) | 🔲 Pendiente |
 | 🟡 Medio | Trello connector | 🔲 Pendiente |
