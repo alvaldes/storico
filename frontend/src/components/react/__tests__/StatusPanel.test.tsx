@@ -4,13 +4,14 @@ import userEvent from '@testing-library/user-event';
 
 import { StatusPanel } from '@/components/react/StatusPanel';
 import { fetchServiceHealth, type HealthOutcome } from '@/lib/status-health-api';
+import type { ServicesHealth, ServiceStatus } from '@/lib/health';
 
 vi.mock('@/lib/status-health-api', () => ({
   fetchServiceHealth: vi.fn(),
 }));
 
 /** All five backend probes reporting ok, as a settled healthy deployment would answer. */
-const ALL_OK_HEALTH = {
+const ALL_OK_HEALTH: ServicesHealth = {
   status: 'ok',
   version: '1.0.0',
   timestamp: '2026-09-25T12:00:00Z',
@@ -26,8 +27,8 @@ const ALL_OK_HEALTH = {
 const OK_OUTCOME: HealthOutcome = { kind: 'ok', health: ALL_OK_HEALTH };
 
 function healthWithOverrides(
-  overrides: Record<string, { status: string }>,
-): typeof ALL_OK_HEALTH {
+  overrides: Record<string, { status: ServiceStatus['status'] }>,
+): ServicesHealth {
   return {
     ...ALL_OK_HEALTH,
     status: 'degraded',
@@ -37,7 +38,7 @@ function healthWithOverrides(
         { ...probe, ...overrides[name] },
       ]),
     ),
-  } as typeof ALL_OK_HEALTH;
+  } as ServicesHealth;
 }
 
 describe('StatusPanel', () => {

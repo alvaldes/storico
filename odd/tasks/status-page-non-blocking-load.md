@@ -116,6 +116,26 @@ order of magnitude for one extra trip. Concurrency hides that behind the slowest
 not remove it. Removing it means a nearer database or a warm connection for the probes, which is
 an infrastructure decision, not a route change.
 
+## What CI caught that my delegation did not specify
+
+The first push to `main` went red on the **frontend** job: `Type check (tsc)` —
+`error TS2322: Type '… status: string …' is not assignable to type 'ServicesHealth'`, three
+calls in `StatusPanel.test.tsx`. Backend job and deploy were green.
+
+The cause is mine, not the writer's: my task brief said *"`npx tsc --noEmit` is not a repo
+script, the type gate is `pnpm run build`"*. `.github/workflows/ci.yml` says otherwise — the
+frontend job runs three gates in order: `pnpm exec tsc --noEmit`, `pnpm vitest run`,
+`pnpm build`. The writer ran the second and the third and never the first, because I told it the
+first did not exist. A fixture written as a plain object literal widens `status: 'ok'` to
+`string`, which `vitest` never notices and `tsc` refuses.
+
+Fixed in this commit by annotating the fixture and the override helper with
+`ServicesHealth` / `ServiceStatus['status']`. All three gates then run locally before pushing:
+`tsc` exit 0, `vitest` 54 files / 606 tests, `astro build` `Complete!`.
+
+Durable rule for the next delegation in this repo: a bounded writer brief for frontend work names
+**all three** CI gates as runners, not the build alone.
+
 ## Follow-ups named, not bundled
 
 - `_check_embeddings()` has no `asyncio.timeout` of its own — one hanging provider can hold the
