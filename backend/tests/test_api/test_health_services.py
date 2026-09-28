@@ -14,6 +14,7 @@ something to catch rather than testing an absence of nothing.
 
 from __future__ import annotations
 
+import asyncio
 import importlib.metadata
 import json
 import logging
@@ -527,6 +528,81 @@ async def test_the_classification_covers_the_published_probes_exactly(
     optional = set(health.OPTIONAL_PROBES)
     assert required | optional == published
     assert not required & optional
+
+
+# ---------------------------------------------------------------------------------------------
+# Concurrency
+#
+# The five probes used to be awaited one after another, so each route cost the SUM of its
+# probe latencies: measured 2.12–2.33 s for /health/services (database ~900 ms + schema
+# ~895 ms + ollama ~6 ms + qdrant ~335 ms) and 1.79 s for /health. The public /status page
+# and the liveness/readiness probes were paying that full sum per request.
+# ---------------------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("path", "expected_probes_in_flight"),
+    [
+        pytest.param("/api/v1/health/services", 5, id="diagnostics"),
+        pytest.param("/api/v1/health", 2, id="liveness"),
+        pytest.param("/api/v1/health/ready", 2, id="readiness"),
+    ],
+)
+async def test_probes_run_concurrently(
+    async_client, monkeypatch: pytest.MonkeyPatch, path: str, expected_probes_in_flight: int
+) -> None:
+    """Each route runs its probes concurrently, not one after another.
+
+    Every probe is replaced by a stub that records how many probes are in flight at
+    once (a shared counter, incremented before an ``asyncio.sleep(0)`` yield and
+    decremented after). Under sequential awaits the peak is always 1 — each stub
+    finishes before the next starts. Under ``asyncio.gather`` the peak equals the
+    number of probes the route runs, deterministically: no wall-clock assertion, no
+    chance of hanging.
+
+    The stubs return the minimal document every real probe returns (``status`` plus
+    ``latency_ms``): the route reads ``status`` for the top-level rule and merges
+    ``scope`` per probe, so the payload assertions below pin that the wire contract
+    survives the concurrency unchanged.
+    """
+    state = {"active": 0, "peak": 0}
+
+    def make_probe(_name: str):
+        async def stub() -> dict:
+            state["active"] += 1
+            state["peak"] = max(state["peak"], state["active"])
+            await asyncio.sleep(0)
+            state["active"] -= 1
+            return {"status": "ok", "latency_ms": 1.0}
+
+        return stub
+
+    for name in ("database", "schema", "ollama", "qdrant", "embeddings"):
+        monkeypatch.setattr(health, f"_check_{name}", make_probe(name))
+
+    response = await async_client.get(path)
+
+    assert response.status_code == 200
+    assert state["peak"] == expected_probes_in_flight, (
+        f"{path} ran at most {state['peak']} probes in flight; "
+        f"expected {expected_probes_in_flight} concurrently"
+    )
+
+    body = response.json()
+    if path == "/api/v1/health/services":
+        assert {name: probe["scope"] for name, probe in body["services"].items()} == {
+            "database": "required",
+            "schema": "required",
+            "ollama": "optional",
+            "qdrant": "optional",
+            "embeddings": "optional",
+        }
+        assert body["status"] == "ok"
+    else:
+        assert set(body) == {"status", "version", "timestamp", "database", "schema"}
+        assert body["database"] == {"status": "ok", "latency_ms": 1.0}
+        assert body["schema"] == {"status": "ok", "latency_ms": 1.0}
 
 
 @pytest.mark.asyncio

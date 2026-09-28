@@ -234,9 +234,11 @@ async def health():
     The schema is reported next to the database but does not change ``status`` or the HTTP code:
     this is a liveness probe, and a schema behind the code is a reason not to send traffic, not a
     reason to kill and restart a container that is running.
+
+    The two probes run concurrently (``asyncio.gather``): the route costs the slowest probe rather
+    than their sum, which liveness clients were paying in full on every poll.
     """
-    db_result = await _check_database()
-    schema_result = await _check_schema()
+    db_result, schema_result = await asyncio.gather(_check_database(), _check_schema())
 
     overall = "ok" if db_result.get("status") == "ok" else "degraded"
 
@@ -273,15 +275,27 @@ async def health_services():
     deployment is not useful without it; optional means an integration a workspace may
     never use, whose failure degrades a feature rather than the service. The top-level
     ``status`` reflects the required probes only, so an optional integration being
-    unreachable does not paint the whole deployment degraded. This is a debugging
-    endpoint: use /api/v1/health for the liveness answer and /api/v1/health/ready for
-    readiness.
+    unreachable does not paint the whole deployment degraded. The five probes run
+    concurrently (``asyncio.gather``) and none of them raises — each catches its own
+    exceptions — so the route costs the slowest probe instead of the sum of all five,
+    which the public /status page and polling clients were paying in full.
+
+    This is a debugging endpoint: use /api/v1/health for the liveness answer and
+    /api/v1/health/ready for readiness.
     """
-    db_result = await _check_database()
-    schema_result = await _check_schema()
-    ollama_result = await _check_ollama()
-    qdrant_result = await _check_qdrant()
-    embeddings_result = await _check_embeddings()
+    (
+        db_result,
+        schema_result,
+        ollama_result,
+        qdrant_result,
+        embeddings_result,
+    ) = await asyncio.gather(
+        _check_database(),
+        _check_schema(),
+        _check_ollama(),
+        _check_qdrant(),
+        _check_embeddings(),
+    )
 
     results = {
         "database": db_result,
@@ -320,9 +334,11 @@ async def health_ready(response: Response):
     branch on the code to read it.
 
     Like its siblings this route takes no authentication, and it publishes no revision.
+
+    The two probes run concurrently (``asyncio.gather``): the route costs the slowest probe rather
+    than their sum, which readiness gates were paying in full on every deploy check.
     """
-    db_result = await _check_database()
-    schema_result = await _check_schema()
+    db_result, schema_result = await asyncio.gather(_check_database(), _check_schema())
 
     ready = db_result.get("status") == "ok" and schema_result.get("status") == "ok"
     response.status_code = 200 if ready else 503
