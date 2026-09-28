@@ -132,17 +132,22 @@ the frontend reads exactly one of them.
   **Process note:** the assigned worker stopped and asked rather than writing
   `test_workspace_settings_providers.py`, which was outside its granted surfaces. That is the wanted
   behaviour; option 1 (extend authority, land the provider assertions) was approved.
-- [ ] **WU3 — Migrate the 32 bare-prose raises.** Original single unit, now split 3a/3b so each
+- [x] **WU3 — Migrate the 32 bare-prose raises.** Original single unit, now split 3a/3b so each
   half is green on its own and reviewable. `dependencies.py` first (9, all access control
   — the most frequently seen English in the app), then `workspace_settings.py` (8), `stories.py`
   (5), `workspaces.py`/`projects.py` (4), `export.py`/`extractions.py`/`tasks.py`/`extraction.py` (4).
   Split by file across PRs if the diff exceeds the review budget.
-- [ ] **WU4 — The 6 nested `detail.error_code` sites → top-level.** Backend and frontend move
-  together (`stories-api.ts` `readImportFailure`, `taskStore.ts:113`, `KanbanBoard.tsx:168`,
-  `api.ts:61-63`), with the frontend tolerating both shapes during the deploy window (backend
-  deploys on the Oracle VM, frontend on Vercel — they are not atomic).
+- [x] **WU4 — The 6 nested `detail.error_code` sites → top-level.** Shipped as `9817024`, exactly
+  as the two traps below predicted: a **lift, not a flatten** — only the `error_code` key left each
+  dict, every other key and its order kept (the import dialog renders `errors[]`, `duplicates[]`,
+  `reason`, `size`, `max` out of `detail`, and `readImportFailure` returns `null` if `detail` is not
+  an object). `ApiError.detail` widened from `str` to `str | dict[str, Any]`; the handler body did
+  not change. **Zero frontend edits** — `api.ts:66` already preferred the top level and the five
+  codes were already mapped, which is what sequencing WU5 before WU3 bought. Moved assertions: 7 in
+  `test_stories_import.py`, 2 in `test_extraction.py`, and `test_tasks.py`'s exact-key-set pin.
+  The inner `"detail"` string stayed, deliberately.
 
-  **Two traps measured 2026-09-28, which rewrite the scope of this unit:**
+  **Two traps measured 2026-09-28, which rewrote the scope of this unit before it was written:**
 
   1. **`detail` is load-bearing, not a wrapper.** `readImportFailure` (`stories-api.ts:115-118`)
      returns `null` unless `typeof error.detail === 'object'`: the structured payload it renders —
@@ -151,18 +156,16 @@ the frontend reads exactly one of them.
      those bodies would need its own consumer audit; WU5 already made the transport tolerant, so no
      frontend change is required at all — `api.ts:66` reads the top-level code first and keeps the
      nested read as fallback.
-  2. **They nest `detail` inside `detail`**: the wire shape today is
+  2. **They nested `detail` inside `detail`**: the wire shape before WU4 was
      `{"detail": {"detail": "Invalid state transition", "error_code": "…", "current_state": …}}`
-     (all 6 sites, verified in `tasks.py:276-283`, `extraction.py:211-217`, `stories.py:366-372`).
+     (all 6 sites, verified in `tasks.py`, `extraction.py`, `stories.py`).
      That inner duplicate key is its own defect and is deliberately **not** fixed here: removing it
      changes what `error.detail` holds for every consumer, which is a different blast radius than
      moving one field to the root.
 
-  Enabling change: `ApiError.__init__` types `detail` as `str`. WU4 must widen it to accept a JSON
-  object, keeping the handler's `detail` untouched. **WU4 is backend-only** — plus the ~9 nested
-  assertions in `test_stories_import.py:160,215,327,342,352,373,454` and
-  `test_extraction.py:663,697` and `docs/api.md` §import/§LLM_CONFIG_INCOMPLETE, which are the two
-  sections WU1 was told to leave alone.
+  Enabling change that was required and done: `ApiError.__init__` had typed `detail` as `str`.
+  WU4 also moved the ~9 nested assertions (`test_stories_import.py`, `test_extraction.py`) and the
+  two `docs/api.md` sections WU1 had been told to leave alone — the doc now states one envelope.
 - [x] **WU5 — Frontend translation: `error_code` → i18n key.** One map, both locales, specific
   copy per code family. `ErrorDisplay.tsx` keeps the code in the header as diagnostics and stops
   using server prose as the headline. This is the slice the user sees.
@@ -240,6 +243,12 @@ Notes for whoever reviews the list:
   lowercase codes, and commitizen's bump maps.
 
 ## Verification
+
+**The envelope is now uniform.** `grep -rn "raise HTTPException" backend/src/storico/api/` returns
+zero matches: every error the app raises deliberately speaks `{"detail": …, "error_code": …}` at the
+root, and the 42 validation-capable paths (13 handlers + `ApiError` + the 422 handler) are behind it.
+Three sources of code names exist and all three are pinned by `error-codes.test.ts` (`8e92574`):
+the registry, inline `error_code="…"` literals, and one domain constant.
 
 **WU1 — run and verified on this tree (2026-09-28).**
 
