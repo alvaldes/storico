@@ -515,16 +515,15 @@ class TestUpdateTask:
         assert response.status_code == 400
 
         detail = response.json()["detail"]
+        assert response.json()["error_code"] == "INVALID_STATE_TRANSITION"
         assert list(detail.keys()) == [
             "detail",
-            "error_code",
             "current_state",
             "attempted_state",
             "allowed_transitions",
         ]
         assert detail == {
             "detail": "Invalid state transition",
-            "error_code": "INVALID_STATE_TRANSITION",
             "current_state": "todo",
             "attempted_state": "done",
             "allowed_transitions": ["backlog", "in_progress"],

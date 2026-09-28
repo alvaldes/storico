@@ -93,7 +93,6 @@ encabezado; UTF-8 con BOM tolerado.
 {
   "detail": {
     "detail": "The file has rows that must be fixed.",
-    "error_code": "IMPORT_VALIDATION_FAILED",
     "created": 0,
     "total_rows": 44,
     "errors": [
@@ -106,11 +105,16 @@ encabezado; UTF-8 con BOM tolerado.
       { "line": 88, "reason": "duplicate", "existing_story_id": "..." },
       { "line": 91, "reason": "duplicate_in_file", "first_line": 12 }
     ]
-  }
+  },
+  "error_code": "IMPORT_VALIDATION_FAILED"
 }
 ```
 
-| `error_code` | HTTP | Campos |
+Estos tres códigos siguen el sobre canónico descrito en §Errores: `error_code` viaja
+siempre al **nivel superior** del cuerpo y la carga estructurada (los campos de la
+tabla siguiente) vive **dentro** de `detail`, junto al texto legible.
+
+| `error_code` | HTTP | Campos (dentro de `detail`) |
 |--------------|------|--------|
 | `IMPORT_VALIDATION_FAILED` | 422 | `created`, `total_rows`, `errors[]`, `duplicates[]` |
 | `IMPORT_FILE_REJECTED` | 422 | `reason`: `invalid_encoding`, `header_unrecognized`, `too_many_rows`, `malformed_csv`, `empty_file` |
@@ -183,8 +187,9 @@ La regla de completitud vive una sola vez, en
 `openai`, `anthropic` y `gemini` necesitan `model` y `api_key`; cualquier otro nombre
 es un proveedor personalizado compatible con OpenAI y necesita `model` y `base_url`
 (la `api_key` queda opcional). `POST /workspaces/{wsId}/extract/` aplica esa misma
-regla **antes** de crear la extracción y responde `400` con
-`error_code: "LLM_CONFIG_INCOMPLETE"` y la lista `missing`.
+regla **antes** de crear la extracción y responde `400` con `error_code:
+"LLM_CONFIG_INCOMPLETE"` a nivel superior del cuerpo y la lista `missing` dentro de
+`detail` (el sobre canónico de §Errores).
 
 | Método | Path | Descripción |
 |--------|------|-------------|
@@ -258,6 +263,11 @@ chocar contra la regla que ahora lo reserva.
 ```
 
 ### Errores
+
+Todo error con código de aplicación usa **un único sobre**: `error_code` a nivel superior
+del cuerpo y `detail` con el texto legible. Cuando el error lleva carga estructurada
+(errores de importación, transición de estado inválida, config LLM incompleta), esa carga
+viaja **dentro** de `detail`, como objeto; el código nunca se anida dentro de `detail`.
 
 ```json
 {
@@ -336,7 +346,8 @@ consulta su estado hasta que pasa a `completed` o `failed`.
 ```
 
 Si la configuración del LLM del workspace está incompleta para el proveedor elegido, la
-ruta responde `400` con `error_code: "LLM_CONFIG_INCOMPLETE"` y la lista `missing`, **sin
+ruta responde `400` con `error_code: "LLM_CONFIG_INCOMPLETE"` a nivel superior del
+cuerpo y la lista `missing` dentro de `detail` (el sobre canónico de §Errores), **sin
 crear ninguna extracción**.
 
 ```http

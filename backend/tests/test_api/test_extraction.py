@@ -661,7 +661,7 @@ class TestExtractionRefusesAnIncompleteConfig:
 
         assert response.status_code == 400
         detail = response.json()["detail"]
-        assert detail["error_code"] == "LLM_CONFIG_INCOMPLETE"
+        assert response.json()["error_code"] == "LLM_CONFIG_INCOMPLETE"
         assert detail["missing"] == ["model"]
         assert detail["provider"] == "ollama"
 
@@ -695,7 +695,7 @@ class TestExtractionRefusesAnIncompleteConfig:
 
         assert response.status_code == 400
         detail = response.json()["detail"]
-        assert detail["error_code"] == "LLM_CONFIG_INCOMPLETE"
+        assert response.json()["error_code"] == "LLM_CONFIG_INCOMPLETE"
         assert detail["missing"] == ["api_key"]
         assert detail["provider"] == "openai"
 

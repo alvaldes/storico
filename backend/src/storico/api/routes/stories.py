@@ -4,7 +4,7 @@ from dataclasses import replace
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
 from storico.api.dependencies import (
     get_current_user,
@@ -374,11 +374,11 @@ async def import_stories(
     # the read stays as the authoritative one: ``size`` can be absent, and only the bytes we
     # actually hold can be parsed.
     if file.size is not None and file.size > MAX_FILE_BYTES:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            error_code="IMPORT_FILE_TOO_LARGE",
             detail={
                 "detail": "The file is too large.",
-                "error_code": "IMPORT_FILE_TOO_LARGE",
                 "size": file.size,
                 "max": MAX_FILE_BYTES,
             },
@@ -386,11 +386,11 @@ async def import_stories(
 
     data = await file.read()
     if len(data) > MAX_FILE_BYTES:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            error_code="IMPORT_FILE_TOO_LARGE",
             detail={
                 "detail": "The file is too large.",
-                "error_code": "IMPORT_FILE_TOO_LARGE",
                 "size": len(data),
                 "max": MAX_FILE_BYTES,
             },
@@ -401,7 +401,6 @@ async def import_stories(
     except StoryCsvError as exc:
         detail = {
             "detail": "The file could not be read.",
-            "error_code": "IMPORT_FILE_REJECTED",
             "reason": exc.reason,
         }
         # Only a limit reason carries a number: the client substitutes it into
@@ -409,8 +408,9 @@ async def import_stories(
         # (``typeof max === 'number'``), so it must not be a null placeholder.
         if exc.reason == "too_many_rows":
             detail["max"] = MAX_ROWS
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            error_code="IMPORT_FILE_REJECTED",
             detail=detail,
         ) from exc
 
@@ -437,11 +437,11 @@ async def import_stories(
     # the whole error list back and can fix the file and retry from scratch.
     # Duplicates are not blocking — they are reported and skipped below.
     if report.blocked:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            error_code="IMPORT_VALIDATION_FAILED",
             detail={
                 "detail": "The file has rows that must be fixed.",
-                "error_code": "IMPORT_VALIDATION_FAILED",
                 "created": 0,
                 "total_rows": report.total_rows,
                 "errors": [

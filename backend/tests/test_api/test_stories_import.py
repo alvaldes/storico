@@ -59,11 +59,13 @@ async def _list_project_stories(client, project_id) -> list[dict]:
 
 
 def _error_envelope(response) -> dict:
-    """Unwrap the typed error payload from its ``detail`` envelope.
+    """Return the structured payload this endpoint carries in ``detail``.
 
-    ``HTTPException(detail={...})`` serialises as ``{"detail": {...}}``, which is the shape
-    published for this endpoint and the one the extraction route already uses for
-    ``LLM_CONFIG_INCOMPLETE``. Unwrapping here keeps that shape asserted in one place.
+    The envelope is canonical (``docs/api.md`` §Errores): ``error_code`` travels at
+    the top level of the body and ``detail`` holds the structured payload —
+    ``errors[]``, ``duplicates[]``, ``total_rows``, ``reason``, ``size``, ``max``.
+    Unwrapping here keeps the payload shape asserted in one place; the code is
+    read off the response body directly.
     """
     body = response.json()
     assert isinstance(body["detail"], dict), body
@@ -157,7 +159,7 @@ class TestImportValidation:
 
         assert response.status_code == 422
         data = _error_envelope(response)
-        assert data["error_code"] == "IMPORT_VALIDATION_FAILED"
+        assert response.json()["error_code"] == "IMPORT_VALIDATION_FAILED"
         assert data["created"] == 0
         assert data["total_rows"] == 2
         assert data["errors"][0]["line"] == 3
@@ -212,7 +214,7 @@ class TestImportStructuralDefects:
 
         assert response.status_code == 422
         data = _error_envelope(response)
-        assert data["error_code"] == "IMPORT_VALIDATION_FAILED"
+        assert response.json()["error_code"] == "IMPORT_VALIDATION_FAILED"
         assert data["errors"][0]["reason"] == "parts_look_like_a_full_story"
 
         items = await _list_project_stories(authed_client, seeded.project_id)
@@ -324,7 +326,7 @@ class TestImportRejectedFiles:
 
         assert response.status_code == 422
         data = _error_envelope(response)
-        assert data["error_code"] == "IMPORT_FILE_REJECTED"
+        assert response.json()["error_code"] == "IMPORT_FILE_REJECTED"
         assert data["reason"] == "header_unrecognized"
         # Only the limit reason carries a number. `max` must be absent, not null: the client
         # branches on `typeof max === 'number'`, so a null placeholder would change its path.
@@ -339,7 +341,7 @@ class TestImportRejectedFiles:
 
         assert response.status_code == 422
         data = _error_envelope(response)
-        assert data["error_code"] == "IMPORT_FILE_REJECTED"
+        assert response.json()["error_code"] == "IMPORT_FILE_REJECTED"
         assert data["reason"] == "invalid_encoding"
 
     async def test_empty_file_is_rejected(self, authed_client, seed_workspace):
@@ -349,7 +351,7 @@ class TestImportRejectedFiles:
 
         assert response.status_code == 422
         data = _error_envelope(response)
-        assert data["error_code"] == "IMPORT_FILE_REJECTED"
+        assert response.json()["error_code"] == "IMPORT_FILE_REJECTED"
         assert data["reason"] == "empty_file"
 
     async def test_too_many_rows_reports_the_limit(self, authed_client, seed_workspace):
@@ -370,7 +372,7 @@ class TestImportRejectedFiles:
 
         assert response.status_code == 422
         data = _error_envelope(response)
-        assert data["error_code"] == "IMPORT_FILE_REJECTED"
+        assert response.json()["error_code"] == "IMPORT_FILE_REJECTED"
         assert data["reason"] == "too_many_rows"
         assert data["max"] == MAX_ROWS
 
@@ -451,7 +453,7 @@ class TestImportSizeLimit:
 
         assert response.status_code == 413
         data = _error_envelope(response)
-        assert data["error_code"] == "IMPORT_FILE_TOO_LARGE"
+        assert response.json()["error_code"] == "IMPORT_FILE_TOO_LARGE"
         assert data["size"] == len(payload)
         assert data["max"] == 2097152
 

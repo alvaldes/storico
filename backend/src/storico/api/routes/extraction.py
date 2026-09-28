@@ -20,7 +20,7 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
 from storico.api.dependencies import (
     get_llm_config_repository,
@@ -128,9 +128,9 @@ async def _validate_story_belongs_to_workspace(
 ) -> None:
     """Validate that a user story belongs to the given workspace.
 
-    Raises ``HTTPException(404)`` if the story or its project is not found.
-    Raises ``HTTPException(403)`` if the story does not belong to the
-    workspace.
+    Raises ``EntityNotFound`` (404) if the story or its project is missing.
+    Raises ``ApiError`` with ``STORY_NOT_IN_WORKSPACE`` (403) if the story does
+    not belong to the workspace.
     """
     story = await story_repo.find_by_id(user_story_id)
     if story is None:
@@ -216,11 +216,11 @@ async def extract_tasks(
     # the two are equivalent — and naming it is what lets the type checker see that
     # the value below is no longer ``str | None``.
     if missing or model is None:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_400_BAD_REQUEST,
+            error_code=LLM_CONFIG_INCOMPLETE_CODE,
             detail={
                 "detail": "This workspace's LLM configuration is incomplete.",
-                "error_code": LLM_CONFIG_INCOMPLETE_CODE,
                 "provider": provider,
                 "missing": list(missing),
             },
