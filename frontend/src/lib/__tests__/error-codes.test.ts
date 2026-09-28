@@ -6,7 +6,8 @@
 // keeps this file out of the jsdom suite instead of making the path depend on
 // the working directory.
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { errorCodeHeadline } from '@/lib/error-codes';
 import en from '@/i18n/en.json';
@@ -63,6 +64,13 @@ const ROUTE_ERROR_CODES = [
 
 const EXPECTED_REGISTRY_COUNT = 36;
 
+/**
+ * The one code emitted through a named constant rather than a literal or a
+ * registry entry. Listed here so the literal scan above can subtract it and
+ * still demand an exact match; the next case pins its actual value.
+ */
+const DOMAIN_CONSTANT_CODES: readonly string[] = ['LLM_CONFIG_INCOMPLETE'];
+
 function tableFor(locale: 'en' | 'es'): Record<string, string> {
   return locale === 'en' ? en.errorCodes : es.errorCodes;
 }
@@ -115,6 +123,80 @@ describe('the errorCodes map mirrors the backend registry', () => {
       expect(Object.keys(tableFor(locale))).toHaveLength(
         EXPECTED_REGISTRY_COUNT + ROUTE_ERROR_CODES.length,
       );
+    }
+  });
+
+  it('finds every code the backend emits as a literal and keeps the allowlist honest', () => {
+    // The registry check above only sees names declared in `error_codes.py`. A
+    // raise site can also write `error_code="SOMETHING"` inline — WU4 left five
+    // of them that way (`INVALID_STATE_TRANSITION`, `LLM_CONFIG_INCOMPLETE`, the
+    // three `IMPORT_*`), because those constants live in route and domain files
+    // the registry does not own. Without this case the mirror would pass while a
+    // newly inlined code degraded to generic copy, and `ROUTE_ERROR_CODES` would
+    // quietly rot into a list of what someone remembered.
+    const apiDir = fileURLToPath(new URL('../../../../backend/src/storico/api', import.meta.url));
+    const literals = new Set<string>();
+    for (const entry of readdirSync(apiDir, { recursive: true })) {
+      const file = String(entry);
+      if (!file.endsWith('.py')) continue;
+      const source = readFileSync(new URL(`../../../../backend/src/storico/api/${file}`, import.meta.url), 'utf8');
+      for (const match of source.matchAll(/error_code\s*=\s*"([A-Z][A-Z0-9_]*)"/g)) {
+        literals.add(match[1]);
+      }
+      for (const match of source.matchAll(/"error_code":\s*"([A-Z][A-Z0-9_]*)"/g)) {
+        literals.add(match[1]);
+      }
+    }
+
+    expect(
+      literals.size > 0,
+      'no inline `error_code="…"` literal was found anywhere under backend/src/storico/api — the scan is broken, not the backend',
+    ).toBe(true);
+
+    for (const code of literals) {
+      expect(
+        code in en.errorCodes && code in es.errorCodes,
+        `the backend emits ${code} inline but the map has no key for it, so that error shows generic copy`,
+      ).toBe(true);
+    }
+
+    // The allowlist must be exactly the literals found — minus the one code the
+    // backend emits through a named constant instead of a literal, which the
+    // next case pins by reading that constant's definition. A code cannot slip
+    // in as a new literal without naming it here, and one that stops being
+    // emitted cannot stay in `ROUTE_ERROR_CODES` pretending the backend sends it.
+    const literalAllowlist = ROUTE_ERROR_CODES.filter(
+      (code) => !DOMAIN_CONSTANT_CODES.includes(code),
+    );
+    expect([...literals].sort()).toEqual([...literalAllowlist].sort());
+  });
+
+  it('pins the code the backend emits through a domain constant, not a literal', () => {
+    // `extraction.py` raises `error_code=LLM_CONFIG_INCOMPLETE_CODE`, and that
+    // constant is defined in `domain/services/llm_config_readiness.py` — outside
+    // both the registry and the literal scan above. This is the case that makes
+    // the exception real rather than a hole: it reads the constant's own
+    // definition, so renaming the value or moving the file fails here.
+    const source = readFileSync(
+      new URL(
+        '../../../../backend/src/storico/domain/services/llm_config_readiness.py',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const found = source.match(/^LLM_CONFIG_INCOMPLETE_CODE = "([A-Z][A-Z0-9_]*)"/m);
+
+    expect(
+      found,
+      'LLM_CONFIG_INCOMPLETE_CODE is no longer a top-level string constant in domain/services/llm_config_readiness.py — the third source of error codes moved',
+    ).not.toBeNull();
+    expect(found?.[1]).toEqual('LLM_CONFIG_INCOMPLETE');
+
+    for (const locale of ['en', 'es'] as const) {
+      expect(
+        found?.[1] && found[1] in tableFor(locale),
+        `the backend emits ${found?.[1]} but ${locale}.json has no key for it`,
+      ).toBe(true);
     }
   });
 });
