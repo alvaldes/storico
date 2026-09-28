@@ -1,6 +1,9 @@
 # ODD Feature: status-page-non-blocking-load
 
-> **Status**: in progress
+> **Status**: landed on `main` @ `d4498c8` (backend unit) + `606d37a` (frontend unit + this doc).
+> No native review was run: the owner directed the two commits to land in place on `main`.
+> **Engram**: plan `#1051` (`odd/status-page-non-blocking-load/tasks`), outcome `#1053`
+> (`odd/status-page-non-blocking-load/outcome`).
 > **Created**: 2026-09-28
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `main` (the owner directed the commits to land here, in place)
@@ -86,8 +89,8 @@ every checkout. Concurrency hides that latency behind the slowest probe; it does
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | Run the health probes concurrently in `/health/services`, `/health`, `/health/ready`, with a test that fails on sequential execution | done | `d4498c8` — measured live after the change: services 2.15s → 1.02–1.29s, health 1.79s → 0.88s, ready → 0.90s; payload keys/order/scopes unchanged |
-| 2 | Paint `/status` from a static shell + `StatusPanel` island with per-row loaders; public `/api/health/services` endpoint; i18n keys in both locales; retarget the mirror guard; update `docs/testing.md` | done (measured) | TTFB `/en/status` **2.19–2.54 s → 0.014–0.025 s**; the raw HTML already carries the 6 pending badges (`animate-pulse` ×6, `Checking` ×8) and `aria-busy`; browser: shell painted at 643 ms with every row reading "Checking…", filled at 1697 ms (4 Operational, 2 Error, green banner + amber optional note); `/api/health/services` answers in 0.96 s; `/es/status` verified too |
-| 3 | Verify end to end: backend pytest + ruff, frontend vitest + `astro build`, then measure TTFB and the loader in the browser | in progress | browser + curl measured by the orchestrator; full-suite verification delegated |
+| 2 | Paint `/status` from a static shell + `StatusPanel` island with per-row loaders; public `/api/health/services` endpoint; i18n keys in both locales; retarget the mirror guard; update `docs/testing.md` | done | `606d37a` — TTFB `/en/status` **2.19–2.54 s → 0.014–0.025 s**; the raw HTML already carries the 6 pending badges (`animate-pulse` ×6, `Checking` ×8) and `aria-busy`; browser: shell painted at 643 ms with every row reading "Checking…", filled at 1697 ms (4 Operational, 2 Error, green banner + amber optional note); `/api/health/services` answers in 0.96 s; `/es/status` verified too |
+| 3 | Verify end to end: backend pytest + ruff, frontend vitest + `astro build`, then measure TTFB and the loader in the browser | done | delegated `gentle-ai-verify`, **green-with-caveats**: `pnpm test` 54 files / 606 tests passed, `astro build` `Complete!`, `pytest -m unit` 251 passed, health route tests 41 passed, `ruff check` + `format --check` clean, i18n parity 753 keys both locales, mirror guard still 15 `expect(` / 5 `it(` with only its target file moved, no build output in git. Caveats: the tree changed under the verifier (those were the two inline fixes below, re-tested after), and its 11:56:31 `pnpm test` ran against the final bytes. The pre-existing `RuntimeWarning: coroutine 'Connection._cancel' was never awaited` reproduces with `tests/test_health.py` alone and is not from this change |
 
 ## Two defects the writer left, caught in review and fixed inline
 
@@ -104,6 +107,14 @@ While pending, the banner renders `pages.status.checking` as its title and the p
 the SEO string reused as UI copy. It reads correctly in both locales and costs no new key, so it
 stayed; it is the one line of this change a reviewer may want to rewrite.
 
+
+## What the residual latency is
+
+~900 ms per database probe is the dev pooler round trip, not the route: `pool_pre_ping=True`
+pays a round trip on every checkout, and `frontend/src/lib/proxy-url.ts` already records the same
+order of magnitude for one extra trip. Concurrency hides that behind the slowest probe; it does
+not remove it. Removing it means a nearer database or a warm connection for the probes, which is
+an infrastructure decision, not a route change.
 
 ## Follow-ups named, not bundled
 
