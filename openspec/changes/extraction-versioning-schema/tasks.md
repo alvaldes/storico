@@ -446,11 +446,13 @@ and the nine re-pointed cases all stay in 3b.
       `backend/tests/test_extraction_flow_few_shot.py` and
       `backend/tests/test_integration/test_few_shot_rag_qdrant.py` (rewrite the stale comment that
       claims `extract` never touches repositories), plus any remaining `extract_and_persist` reference.
-- [ ] 3.7 GREEN — `backend/src/storico/domain/ports/extraction_repository.py` and
+- [x] 3.7 GREEN — `backend/src/storico/domain/ports/extraction_repository.py` and
       `backend/src/storico/infrastructure/database/repositories/extraction_repository.py`: remove
       `save()` now that no caller remains (the route moved in Phase 2, the runner and the dead path in
       this phase), so the port has no whole-row writer. Also pin in
       `backend/tests/test_repositories/test_extraction_repo.py` that the port exposes no `delete`.
+      **3b-ii-b note (2026-09-29):** closed. No whole-row writer remains; the port surface is pinned
+      by exact method set, and the deletion reached one spy helper outside the granted three.
 - [ ] 3.8 TRIANGULATE — `backend/tests/test_api/test_extraction.py`: run one story twice; v1's task
       rows are byte-for-byte untouched, v2's tasks are new rows, `find_current_version` is v2, and the
       story-level read (`user_story_id`) still returns both sets.
