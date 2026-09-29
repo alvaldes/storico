@@ -190,6 +190,12 @@ async def _seed_story(session: AsyncSession) -> UUID:
     owner = UserModel(
         email=f"v-{uuid4().hex[:8]}@example.com", name="Versioning Owner", created_at=now
     )
+    session.add(owner)
+    # The primary key is a column default (`default=uuid7`), so SQLAlchemy materializes
+    # ``owner.id`` at INSERT time, not at construction. Reading it before this flush yields
+    # ``None`` and every dependent row is born with a null FK. SQLite never showed this
+    # because the file is Docker-gated and did not run until CI.
+    await session.flush()
     workspace = WorkspaceModel(
         name="Versioning Workspace",
         slug=f"versioning-{uuid4().hex[:8]}",
@@ -197,6 +203,8 @@ async def _seed_story(session: AsyncSession) -> UUID:
         created_at=now,
         updated_at=now,
     )
+    session.add(workspace)
+    await session.flush()
     project = ProjectModel(
         name="Versioning Project",
         workspace_id=workspace.id,
@@ -204,6 +212,8 @@ async def _seed_story(session: AsyncSession) -> UUID:
         created_at=now,
         updated_at=now,
     )
+    session.add(project)
+    await session.flush()
     story = UserStoryModel(
         project_id=project.id,
         actor="developer",
@@ -214,7 +224,7 @@ async def _seed_story(session: AsyncSession) -> UUID:
         created_at=now,
         updated_at=now,
     )
-    session.add_all([owner, workspace, project, story])
+    session.add(story)
     await session.commit()
     return story.id
 
