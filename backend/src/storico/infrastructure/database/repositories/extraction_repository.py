@@ -56,20 +56,6 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def save(self, extraction: Extraction) -> Extraction:
-        try:
-            existing = await self._session.get(ExtractionModel, extraction.id)
-            if existing:
-                for key, value in self._to_orm_kwargs(extraction).items():
-                    setattr(existing, key, value)
-            else:
-                self._session.add(ExtractionModel(**self._to_orm_kwargs(extraction)))
-            await self._session.commit()
-            return extraction
-        except SQLAlchemyError as e:
-            await self._session.rollback()
-            raise RepositoryError("Database error saving extraction") from e
-
     async def create_next_version(self, extraction: Extraction) -> Extraction:
         """Insert the extraction with its version number minted inside the INSERT.
 

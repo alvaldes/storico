@@ -413,15 +413,35 @@ async def test_reading_a_terminal_row_invents_no_end_time(
     assert second.completed_at is None
 
 
-def test_the_port_exposes_no_delete() -> None:
-    """The port has no ``delete``: a version's rows are never removed inside a version.
+def test_the_port_exposes_no_delete_and_no_whole_row_writer() -> None:
+    """The port has no ``delete`` and no whole-row writer: every write is a targeted one.
 
     Task 1.20 removed the former ``delete`` test together with the method: the story
     cascade is the only deletion path, and nothing in ``backend/src/storico`` calls
-    ``extraction_repo.delete`` — this pin keeps it from coming back through the port.
+    ``extraction_repo.delete``. Task 3.7 removed ``save`` the same way: the port's
+    writes are the birth (``create_next_version``) and the targeted marks, so no
+    method writes a full row and none can silently null a snapshot column it does
+    not own. The exact method list is pinned, so a future re-add fails visibly
+    instead of silently widening the surface.
     """
 
+    abstract_methods = {
+        name
+        for name, member in vars(ExtractionRepository).items()
+        if getattr(member, "__isabstractmethod__", False)
+    }
+    assert abstract_methods == {
+        "create_next_version",
+        "record_rendered_prompt",
+        "mark_completed",
+        "mark_failed",
+        "find_by_id",
+        "find_current_version",
+        "list_page",
+        "list",
+    }
     assert not hasattr(ExtractionRepository, "delete")
+    assert not hasattr(ExtractionRepository, "save")
 
 
 # --- Versioning (task 1.1): allocation, derivation, conflict discrimination ---

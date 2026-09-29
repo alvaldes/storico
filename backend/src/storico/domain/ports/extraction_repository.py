@@ -10,16 +10,11 @@ from storico.domain.entities.extraction import Extraction
 class ExtractionRepository(ABC):
     """Repository port for Extraction entities.
 
-    There is deliberately no whole-row writer beyond ``save`` and no ``delete``:
+    There is deliberately no whole-row writer and no ``delete``:
     a version's rows are never removed inside a version (the story cascade is the
     only deletion path), and the terminal writes are targeted marks that cannot
     name — and so cannot silently null — a snapshot column they do not own.
     """
-
-    @abstractmethod
-    async def save(self, extraction: Extraction) -> Extraction:
-        """Persist an extraction. Creates or updates as needed."""
-        ...
 
     @abstractmethod
     async def create_next_version(self, extraction: Extraction) -> Extraction:

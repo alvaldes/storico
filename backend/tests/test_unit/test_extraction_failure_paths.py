@@ -390,9 +390,11 @@ class TestTerminalWritesGoThroughTheMarks:
         """
         calls: list[str] = []
         repo_cls = SQLAlchemyExtractionRepository
+        # Tranche 3b-ii-b removed ``save`` from the port and the adapter, so "never
+        # saves" is structural now: the attribute the old spy wrapped no longer exists.
+        assert not hasattr(repo_cls, "save")
         real_completed = repo_cls.mark_completed
         real_failed = repo_cls.mark_failed
-        real_save = repo_cls.save
 
         async def spy_completed(
             self: SQLAlchemyExtractionRepository, extraction_id: UUID, **kwargs: object
@@ -406,15 +408,8 @@ class TestTerminalWritesGoThroughTheMarks:
             calls.append("mark_failed")
             await real_failed(self, extraction_id, **kwargs)  # type: ignore[arg-type]
 
-        async def spy_save(
-            self: SQLAlchemyExtractionRepository, extraction: Extraction
-        ) -> Extraction:
-            calls.append("save")
-            return await real_save(self, extraction)
-
         monkeypatch.setattr(repo_cls, "mark_completed", spy_completed)
         monkeypatch.setattr(repo_cls, "mark_failed", spy_failed)
-        monkeypatch.setattr(repo_cls, "save", spy_save)
         return calls
 
     @pytest.mark.asyncio
