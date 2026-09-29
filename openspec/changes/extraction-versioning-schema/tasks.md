@@ -427,7 +427,7 @@ and the nine re-pointed cases all stay in 3b.
       **3a note (2026-09-29):** half landed — `RenderedPrompt` + `render()`/`generate()` with
       `extract()` kept as the temporary wrapper. The repository-parameter removal and the
       `extract_and_persist()` deletion stay in 3b, so 3.4 remains open.
-- [ ] 3.5 GREEN — `backend/src/storico/infrastructure/tasks/extraction_task.py`: in order,
+- [x] 3.5 GREEN — `backend/src/storico/infrastructure/tasks/extraction_task.py`: in order,
       `render()` → `record_rendered_prompt(extraction_id, prompt_rendered=rendered.text,
       prompt_config={"validate": ..., "system_prompt": system_prompt})` → `generate()`; replace the
       terminal writes with `mark_completed(...)` / `mark_failed(...)` and delete `_get_created_at`;
@@ -436,6 +436,9 @@ and the nine re-pointed cases all stay in 3b.
       rebuild threads `rendered.text` instead of reading `prompt_rendered` off a row fetched
       before the render. The `mark_completed`/`mark_failed` swap and the `_get_created_at`
       deletion stay in 3b, so 3.5 remains open.
+      **3b-i note (2026-09-29):** closed. The four terminal paths call `mark_completed`/`mark_failed`
+      (commit `3364c43`), 3a's `rendered.text` threading is dead and removed, and `_get_created_at`
+      needed no deletion because `1a90aff` already removed it.
 - [ ] 3.6 GREEN — construction and comment sites of the removed methods:
       `backend/tests/test_extraction_flow_few_shot.py` and
       `backend/tests/test_integration/test_few_shot_rag_qdrant.py` (rewrite the stale comment that
