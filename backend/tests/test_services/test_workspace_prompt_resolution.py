@@ -132,19 +132,17 @@ class TestPipelineUsesWorkspacePrompt:
             llm_port=llm_port,
             prompt_manager=PromptManager(),
             task_parser=task_parser,
-            extraction_repo=AsyncMock(),
-            task_repo=AsyncMock(),
         )
         story = MagicMock()
         story.id = uuid4()
         story.raw_text = "Story text"
 
-        await service.extract(
+        rendered = await service.render(
             story,
-            LLMConfig(model="test"),
             system_prompt=resolved.system_prompt,
             instruction_template=resolved.instruction_template,
         )
+        await service.generate(rendered, LLMConfig(model="test"))
 
         # DB instruction template was rendered via Jinja2 and the system
         # prompt delivered separately.

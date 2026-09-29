@@ -413,13 +413,13 @@ and the nine re-pointed cases all stay in 3b.
       extraction row and one number; every task row the completed run writes carries its
       `extraction_id`; a v2 run on the same story produces new task rows while v1's remain (disjoint
       sets).
-- [ ] 3.3 RED — `backend/tests/test_services/test_extraction_service.py`: re-point the nine
+- [x] 3.3 RED — `backend/tests/test_services/test_extraction_service.py`: re-point the nine
       `extract_and_persist` cases at the live path (`run_background_extraction` with the engine and
       adapters monkeypatched, the pattern `tests/test_api/test_extraction.py` already uses): "persists
       an extraction" becomes "the row the runner completes carries these outputs"; the judge and
       vector-store cases assert on the row and on the recording fake. These must fail before the
       rewrite.
-- [ ] 3.4 GREEN — `backend/src/storico/domain/services/extraction_service.py`: add the frozen, slotted
+- [x] 3.4 GREEN — `backend/src/storico/domain/services/extraction_service.py`: add the frozen, slotted
       `RenderedPrompt(instruction, system_prompt, template_variables)` with
       `text = system_prompt + "\n\n" + instruction`; replace `extract()` with `render(...) ->
       RenderedPrompt` and `generate(rendered, config) -> tuple[list[ParsedTask], str]`; drop the
@@ -427,6 +427,9 @@ and the nine re-pointed cases all stay in 3b.
       **3a note (2026-09-29):** half landed — `RenderedPrompt` + `render()`/`generate()` with
       `extract()` kept as the temporary wrapper. The repository-parameter removal and the
       `extract_and_persist()` deletion stay in 3b, so 3.4 remains open.
+      **3b-ii-a note (2026-09-29):** closed. `extract_and_persist()`, the orphaned service-level `_store_rag`,
+      the temporary `extract()` wrapper and the two repository constructor parameters are gone; `judge_service`
+      stays because the runner reaches into `_judge_service` directly.
 - [x] 3.5 GREEN — `backend/src/storico/infrastructure/tasks/extraction_task.py`: in order,
       `render()` → `record_rendered_prompt(extraction_id, prompt_rendered=rendered.text,
       prompt_config={"validate": ..., "system_prompt": system_prompt})` → `generate()`; replace the
@@ -439,7 +442,7 @@ and the nine re-pointed cases all stay in 3b.
       **3b-i note (2026-09-29):** closed. The four terminal paths call `mark_completed`/`mark_failed`
       (commit `3364c43`), 3a's `rendered.text` threading is dead and removed, and `_get_created_at`
       needed no deletion because `1a90aff` already removed it.
-- [ ] 3.6 GREEN — construction and comment sites of the removed methods:
+- [x] 3.6 GREEN — construction and comment sites of the removed methods:
       `backend/tests/test_extraction_flow_few_shot.py` and
       `backend/tests/test_integration/test_few_shot_rag_qdrant.py` (rewrite the stale comment that
       claims `extract` never touches repositories), plus any remaining `extract_and_persist` reference.

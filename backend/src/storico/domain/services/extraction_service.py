@@ -4,20 +4,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from uuid import UUID
 
-from storico.domain.entities import Extraction, ParseError, Task
 from storico.domain.entities.exceptions import LLMError
-from storico.domain.entities.extraction import ExtractionStatus
-from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import (
     ExtractionExample,
-    ExtractionRepository,
     LLMConfig,
     LLMPort,
     ParsedTask,
-    TaskRepository,
     VectorStorePort,
 )
 from storico.infrastructure.llm.prompt_manager import PromptManager
@@ -63,7 +57,7 @@ class RenderedPrompt:
 
 
 class ExtractionService:
-    """Orchestrates the full extraction pipeline.
+    """Orchestrates prompt rendering and LLM generation for task extraction.
 
     Flow:
         1. Render the instruction prompt from the workspace-configured
@@ -74,10 +68,11 @@ class ExtractionService:
         3. Call the LLM via ``LLMPort`` with the system prompt delivered
            separately.
         4. Parse the raw response into ``ParsedTask`` objects.
-        5. Persist the ``Extraction`` (completed or failed) + ``Task`` entities.
-        6. Optionally validate results via ``LLMJudgeService``.
-        7. Optionally store extraction in vector store for future retrieval.
-        8. Return the extraction entity.
+
+    Persistence is not this service's job: ``run_background_extraction``
+    (infrastructure/tasks/extraction_task.py) owns the render-time snapshot,
+    the terminal marks, and the task and vector-store writes around these two
+    calls.
     """
 
     def __init__(
@@ -85,8 +80,6 @@ class ExtractionService:
         llm_port: LLMPort,
         prompt_manager: PromptManager,
         task_parser: TaskParser,
-        extraction_repo: ExtractionRepository,
-        task_repo: TaskRepository,
         judge_service: LLMJudgeService | None = None,
         vector_store: VectorStorePort | None = None,
         few_shot_config: FewShotConfig | None = None,
@@ -94,8 +87,6 @@ class ExtractionService:
         self._llm = llm_port
         self._prompt_manager = prompt_manager
         self._task_parser = task_parser
-        self._extraction_repo = extraction_repo
-        self._task_repo = task_repo
         self._judge_service = judge_service
         self._vector_store = vector_store
         self._few_shot_config = few_shot_config or FewShotConfig()
@@ -204,30 +195,6 @@ class ExtractionService:
 
         return parsed_tasks, raw_response
 
-    async def extract(
-        self,
-        user_story: object,
-        config: LLMConfig,
-        system_prompt: str | None = None,
-        instruction_template: str | None = None,
-        workspace_id: UUID | None = None,
-        few_shot_config: FewShotConfig | None = None,
-    ) -> tuple[list[ParsedTask], str]:
-        """Run the extraction pipeline (render → LLM → parse) without persistence.
-
-        Temporary composition wrapper over ``render()`` + ``generate()`` kept so the
-        suite stays green across tranche 3a; task 3b deletes it when the runner owns
-        the render-time write directly and this method's callers are gone.
-        """
-        rendered = await self.render(
-            user_story,
-            system_prompt=system_prompt,
-            instruction_template=instruction_template,
-            workspace_id=workspace_id,
-            few_shot_config=few_shot_config,
-        )
-        return await self.generate(rendered, config)
-
     async def _fetch_rag_examples(
         self,
         text: str,
@@ -280,178 +247,3 @@ class ExtractionService:
                 f"Tasks:\n{ex.tasks_summary}"
             )
         return "\n\n".join(blocks)
-
-    async def extract_and_persist(
-        self,
-        user_story: object,
-        config: LLMConfig,
-        prompt_config: dict | None = None,
-        system_prompt: str | None = None,
-        instruction_template: str | None = None,
-        workspace_id: UUID | None = None,
-        few_shot_config: FewShotConfig | None = None,
-        provider: str = "ollama",
-    ) -> Extraction:
-        """Run the full extraction pipeline and persist results.
-
-        Creates an ``Extraction`` entity (status ``completed`` or ``failed``)
-        and ``Task`` entities for each parsed task.
-
-        The row is born through ``create_next_version`` — revision ``0028`` gives
-        ``version_number`` no default and no other writer may set it, so a row that
-        allocates at birth cannot mint a second number later (the hazard the dead
-        path's two-numbers-for-one-run note recorded is discharged here).
-
-        Args:
-            user_story: Domain entity with ``raw_text``, ``id`` attributes.
-            config: LLM configuration (``temperature`` is recorded on the row).
-            prompt_config: Optional metadata about the prompts used.
-            system_prompt: Workspace system prompt, forwarded to ``extract``
-                and the judge service.
-            instruction_template: Workspace instruction template (Jinja2
-                text), forwarded to ``extract``.
-            workspace_id: Workspace the extraction belongs to (for scoped
-                retrieval and vector storage).
-            few_shot_config: Workspace few-shot retrieval config.
-            provider: The provider recorded on the row. The ``"ollama"`` fallback is
-                the same one ``api/routes/extraction.py`` uses when a workspace has no
-                configured provider — but here it is acceptable only because this
-                path is dead and test-only: the provider is not reachable from
-                ``LLMConfig``, and reading workspace settings from the domain
-                service would be the layering violation slice (c) has to solve
-                properly. Phase 3 deletes this method with its nine cases.
-
-        Returns:
-            The persisted ``Extraction`` entity.
-        """
-        story_id = getattr(user_story, "id", None)
-
-        try:
-            parsed_tasks, raw_response = await self.extract(
-                user_story,
-                config,
-                system_prompt=system_prompt,
-                instruction_template=instruction_template,
-                workspace_id=workspace_id,
-                few_shot_config=few_shot_config,
-            )
-
-            # Determine confidence from optional judge
-            confidence: float | None = None
-            if self._judge_service is not None:
-                try:
-                    judge_result = await self._judge_service.validate(
-                        user_story=getattr(user_story, "raw_text", str(user_story)),
-                        tasks=[
-                            {"summary": pt.summary, "description": pt.description}
-                            for pt in parsed_tasks
-                        ],
-                        config=config,
-                        system_prompt=system_prompt,
-                    )
-                    confidence = judge_result.total_score / 50.0
-                    if not judge_result.approved and confidence is not None and confidence > 0.5:
-                        confidence = 0.5
-                except LLMError as exc:
-                    # Judge failure should not break extraction, but log it explicitly
-                    logger.warning(
-                        "LLM judge validation failed, skipping confidence scoring",
-                        extra={"error": str(exc), "error_type": type(exc).__name__},
-                    )
-
-            # 4. Persist Extraction (completed)
-            effective_prompt_config = prompt_config or {}
-            if story_id is None:
-                raise LLMError("User story ID is required for extraction persistence")
-            extraction = Extraction(
-                user_story_id=story_id,
-                model_used=config.model,
-                raw_response=raw_response,
-                provider=provider,
-                temperature=config.temperature,
-                status=ExtractionStatus.COMPLETED,
-                user_story_status=UserStoryStatus.EXTRACTED,
-                prompt_config=effective_prompt_config,
-                confidence_score=confidence,
-                completed_at=datetime.now(UTC),
-            )
-            extraction = await self._extraction_repo.create_next_version(extraction)
-
-            # 5. Persist Task entities
-            for pt in parsed_tasks:
-                task = Task(
-                    user_story_id=story_id,
-                    # R5, and ``tasks.extraction_id`` is ``NOT NULL`` from ``0028``: the
-                    # allocation's returned entity carries the run's identity (same
-                    # Phase-3 clause pulled into PR 1 by authorization, 2026-09-29).
-                    extraction_id=extraction.id,
-                    title=pt.summary,
-                    description=pt.description,
-                    labels=list(pt.labels),
-                    dependencies=list(pt.dependencies),
-                )
-                await self._task_repo.save(task)
-
-            # 6. Store in vector store for future few-shot retrieval
-            await self._store_rag(user_story, extraction, parsed_tasks, workspace_id)
-
-            return extraction
-
-        except (LLMError, ParseError) as exc:
-            # Persist failed extraction with error info
-            if story_id is None:
-                logger.error(
-                    "Cannot persist failed extraction: user_story_id is None",
-                    extra={"error": str(exc)},
-                )
-                raise
-            extraction = Extraction(
-                user_story_id=story_id,
-                model_used=config.model,
-                raw_response="",
-                provider=provider,
-                temperature=config.temperature,
-                status=ExtractionStatus.FAILED,
-                user_story_status=UserStoryStatus.FAILED_EXTRACTION,
-                error_info=str(exc),
-                prompt_config=prompt_config,
-                completed_at=datetime.now(UTC),
-            )
-            return await self._extraction_repo.create_next_version(extraction)
-
-    async def _store_rag(
-        self,
-        user_story: object,
-        extraction: Extraction,
-        parsed_tasks: list[ParsedTask],
-        workspace_id: UUID | None,
-    ) -> None:
-        """Store extraction in vector store for future few-shot retrieval."""
-        if self._vector_store is None:
-            logger.debug("Vector store skipped: no vector store configured")
-            return
-        if workspace_id is None:
-            logger.debug("Vector store skipped: no workspace_id supplied")
-            return
-        try:
-            tasks_summary = "\n".join(
-                f"{i + 1}. {t.summary}: {t.description}" for i, t in enumerate(parsed_tasks)
-            )
-            await self._vector_store.store_extraction(
-                extraction_id=str(extraction.id),
-                user_story_text=getattr(user_story, "raw_text", str(user_story)),
-                tasks_summary=tasks_summary,
-                model_used=extraction.model_used,
-                workspace_id=workspace_id,
-                confidence_score=extraction.confidence_score,
-                user_story_id=str(getattr(user_story, "id", "")),
-            )
-        except Exception as exc:
-            logger.warning(
-                "Vector store failed, extraction already saved in database",
-                extra={
-                    "error": str(exc),
-                    "error_type": type(exc).__name__,
-                    "extraction_id": str(extraction.id),
-                },
-            )

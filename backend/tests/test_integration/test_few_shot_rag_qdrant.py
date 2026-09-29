@@ -221,15 +221,13 @@ async def _store_live(
 def _build_service(llm: RecordingLLM, vector_store: VectorStorePort) -> ExtractionService:
     """Build the real service with a recording LLM and no persistence.
 
-    ``extract`` never touches the repositories — only ``extract_and_persist``
-    does — so they are passed as ``None``.
+    The service renders prompts and calls the provider only — it holds no
+    repositories at all, so there is nothing to pass or stub out.
     """
     return ExtractionService(
         llm_port=llm,
         prompt_manager=PromptManager(),
         task_parser=TaskParser(),
-        extraction_repo=None,  # type: ignore[arg-type]  # extract() does not persist
-        task_repo=None,  # type: ignore[arg-type]  # extract() does not persist
         vector_store=vector_store,
     )
 
@@ -257,13 +255,13 @@ async def _extract(
     """Run the real prompt pipeline and return the parsed tasks and the prompt."""
     llm = RecordingLLM()
     service = _build_service(llm, vector_store)
-    tasks, _raw_response = await service.extract(
+    rendered = await service.render(
         Story(raw_text=story_text),
-        LLMConfig(model="pytest-recording"),
         workspace_id=workspace_id,
         few_shot_config=few_shot_config,
     )
-    assert len(llm.prompts) == 1, "extract must render the prompt exactly once"
+    tasks, _raw_response = await service.generate(rendered, LLMConfig(model="pytest-recording"))
+    assert len(llm.prompts) == 1, "render must hand the provider exactly one prompt"
     return tasks, llm.prompts[0]
 
 

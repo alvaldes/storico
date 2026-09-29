@@ -28,8 +28,6 @@ def _make_service(vector_store=None, few_shot_config=None):
         llm_port=llm_port,
         prompt_manager=PromptManager(),
         task_parser=task_parser,
-        extraction_repo=AsyncMock(),
-        task_repo=AsyncMock(),
         vector_store=vector_store,
         few_shot_config=few_shot_config,
     ), llm_port
@@ -57,12 +55,12 @@ class TestFewShotRetrieval:
         story = MagicMock()
         story.raw_text = "Target story"
 
-        await service.extract(
+        rendered = await service.render(
             story,
-            LLMConfig(model="test"),
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
         )
+        await service.generate(rendered, LLMConfig(model="test"))
 
         llm_port.generate.assert_called_once()
         instruction_prompt = llm_port.generate.call_args[0][0]
@@ -81,12 +79,12 @@ class TestFewShotRetrieval:
         story = MagicMock()
         story.raw_text = "Target story"
 
-        await service.extract(
+        rendered = await service.render(
             story,
-            LLMConfig(model="test"),
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
         )
+        await service.generate(rendered, LLMConfig(model="test"))
 
         instruction_prompt = llm_port.generate.call_args[0][0]
         assert "## Few-Shot Examples" not in instruction_prompt
@@ -104,12 +102,12 @@ class TestFewShotRetrieval:
         story = MagicMock()
         story.raw_text = "Target story"
 
-        await service.extract(
+        rendered = await service.render(
             story,
-            LLMConfig(model="test"),
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=False, limit=3, threshold=0.85),
         )
+        await service.generate(rendered, LLMConfig(model="test"))
 
         mock_store.search_similar.assert_not_called()
         instruction_prompt = llm_port.generate.call_args[0][0]
@@ -126,12 +124,12 @@ class TestFewShotRetrieval:
         story = MagicMock()
         story.raw_text = "Target story"
 
-        await service.extract(
+        rendered = await service.render(
             story,
-            LLMConfig(model="test"),
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=2, threshold=0.9),
         )
+        await service.generate(rendered, LLMConfig(model="test"))
 
         mock_store.search_similar.assert_called_once_with(
             text="Target story",
@@ -151,12 +149,12 @@ class TestFewShotRetrieval:
         story = MagicMock()
         story.raw_text = "Target story"
 
-        result_tasks, _ = await service.extract(
+        rendered = await service.render(
             story,
-            LLMConfig(model="test"),
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
         )
+        result_tasks, _ = await service.generate(rendered, LLMConfig(model="test"))
 
         assert len(result_tasks) == 1
         instruction_prompt = llm_port.generate.call_args[0][0]
@@ -173,11 +171,11 @@ class TestFewShotRetrieval:
         story = MagicMock()
         story.raw_text = "Target story"
 
-        await service.extract(
+        rendered = await service.render(
             story,
-            LLMConfig(model="test"),
             workspace_id=workspace_id,
         )
+        await service.generate(rendered, LLMConfig(model="test"))
 
         mock_store.search_similar.assert_called_once_with(
             text="Target story",
@@ -194,12 +192,12 @@ class TestFewShotRetrieval:
         story = MagicMock()
         story.raw_text = "Target story"
 
-        await service.extract(
+        rendered = await service.render(
             story,
-            LLMConfig(model="test"),
             workspace_id=uuid4(),
             few_shot_config=FewShotConfig(enabled=True),
         )
+        await service.generate(rendered, LLMConfig(model="test"))
 
         instruction_prompt = llm_port.generate.call_args[0][0]
         assert "## Few-Shot Examples" not in instruction_prompt
@@ -254,12 +252,12 @@ class TestFewShotInjectionObservability:
 
         caplog.set_level(logging.INFO)
 
-        await service.extract(
+        rendered = await service.render(
             story,
-            LLMConfig(model="test"),
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
         )
+        await service.generate(rendered, LLMConfig(model="test"))
 
         records = _injection_records(caplog)
         assert len(records) == 1
@@ -287,12 +285,12 @@ class TestFewShotInjectionObservability:
 
         caplog.set_level(logging.INFO)
 
-        await service.extract(
+        rendered = await service.render(
             story,
-            LLMConfig(model="test"),
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
         )
+        await service.generate(rendered, LLMConfig(model="test"))
 
         assert _injection_records(caplog) == []
 
@@ -312,12 +310,12 @@ class TestFewShotInjectionObservability:
 
         caplog.set_level(logging.INFO)
 
-        await service.extract(
+        rendered = await service.render(
             story,
-            LLMConfig(model="test"),
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=False, limit=3, threshold=0.85),
         )
+        await service.generate(rendered, LLMConfig(model="test"))
 
         assert _injection_records(caplog) == []
 
@@ -344,12 +342,12 @@ class TestFewShotInjectionObservability:
 
         caplog.set_level(logging.INFO)
 
-        await service.extract(
+        rendered = await service.render(
             story,
-            LLMConfig(model="test"),
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
         )
+        await service.generate(rendered, LLMConfig(model="test"))
 
         records = _injection_records(caplog)
         assert len(records) == 1

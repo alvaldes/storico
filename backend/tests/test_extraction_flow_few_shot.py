@@ -53,22 +53,20 @@ class TestExtractionFlowWithFewShot:
             task_parser=MagicMock(
                 parse=MagicMock(return_value=[ParsedTask(summary="T", description="D")])
             ),
-            extraction_repo=AsyncMock(),
-            task_repo=AsyncMock(),
             vector_store=vector_store,
         )
 
         user_story = MagicMock()
         user_story.raw_text = "As a user, I want to log in"
 
-        await service.extract(
+        rendered = await service.render(
             user_story,
-            LLMConfig(model="test-model"),
             system_prompt="System prompt",
             instruction_template=None,
             workspace_id=uuid4(),
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
         )
+        await service.generate(rendered, LLMConfig(model="test-model"))
 
         instruction_prompt = mock_llm_port.generate.call_args[0][0]
         assert "## Few-Shot Examples" in instruction_prompt
@@ -84,20 +82,18 @@ class TestExtractionFlowWithFewShot:
             llm_port=mock_llm_port,
             prompt_manager=PromptManager(),
             task_parser=MagicMock(parse=MagicMock(return_value=[])),
-            extraction_repo=AsyncMock(),
-            task_repo=AsyncMock(),
             vector_store=vector_store,
         )
 
         user_story = MagicMock()
         user_story.raw_text = "As a user, I want to log in"
 
-        await service.extract(
+        rendered = await service.render(
             user_story,
-            LLMConfig(model="test-model"),
             workspace_id=uuid4(),
             few_shot_config=FewShotConfig(enabled=False),
         )
+        await service.generate(rendered, LLMConfig(model="test-model"))
 
         vector_store.search_similar.assert_not_called()
         instruction_prompt = mock_llm_port.generate.call_args[0][0]

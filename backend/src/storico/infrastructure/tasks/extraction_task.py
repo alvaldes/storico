@@ -367,8 +367,6 @@ async def _run_extraction(
             llm_port=llm_port,
             prompt_manager=prompt_manager,
             task_parser=task_parser,
-            extraction_repo=extraction_repo,
-            task_repo=task_repo,
             judge_service=LLMJudgeService(llm_port=llm_port, prompt_manager=prompt_manager),
             vector_store=vector_store,
             few_shot_config=few_shot_config,
