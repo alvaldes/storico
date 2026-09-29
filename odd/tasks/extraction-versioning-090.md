@@ -96,6 +96,10 @@ on the spec's earlier verification pass, not on new commits.
 - [x] 5. Write slice (c) `extraction-versioning-prompt` — proposal, 4 delta specs, design, tasks
 - [x] 6. Validate all three with native `gentle-ai sdd-status --contract gentle-ai.sdd-status/v2`
   and report the per-slice Review Workload Forecast (ask-on-risk gate)
+- [x] 7. Land the planning artifacts on `main` (`3ddbe28`, `66bbb3b`)
+- [ ] 8. Apply slice (a) WU1 — Schema Identity, **in tranches**: RED (1.1–1.3) authorised; GREEN
+  (1.4–1.17), TRIANGULATE (1.18–1.19) and REFACTOR (1.20) each wait for the user's review of the
+  tranche before it
 
 ## Acceptance-criteria coverage audit (parent, 2026-09-28)
 
@@ -172,8 +176,12 @@ otherwise. Nothing in this document calls an unverified invariant green.
 
 ## Commit evidence
 
-None yet. These are planning artifacts under `openspec/`; no source file is written and nothing
-is committed by this pass. Files created on `main`, uncommitted:
+Planning landed on `main` before any implementation branch was cut:
+
+| Commit | Content |
+| --- | --- |
+| `3ddbe28` | `chore: ignore the local CodeGraph index` — `.codegraph/` is derived state and must not ride a docs commit |
+| `66bbb3b` | `docs(openspec): commit the 0.9.0 extraction-versioning planning` — 27 artifacts |
 
 ```
 openspec/changes/extraction-versioning-schema/{explore,proposal,design,tasks}.md
