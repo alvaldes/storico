@@ -1,0 +1,3 @@
+dependsOn:
+  - extraction-versioning-schema
+  - extraction-versioning-api
