@@ -483,18 +483,22 @@ Runner for this phase: `cd backend && conda run -n storico python -m pytest test
 The table and model land in Phase 1 because the drift gate needs table **and** model in one step;
 this unit owns the invariants, not the DDL.
 
-- [ ] 4.1 RED — `backend/tests/test_repositories/test_task_invalidation.py`: add the invariant cases —
+- [x] 4.1 RED — `backend/tests/test_repositories/test_task_invalidation.py`: add the invariant cases —
       an empty and a space-only `reason` are refused by `ck_task_invalidations_reason_not_blank`; a
       bounded non-empty reason round-trips verbatim; a second active mark for one task is refused; a
       revoke then re-mark succeeds and the first row still records its marking and its revocation;
       revoking sets `revoked_by`/`revoked_at` on the same row and leaves `reason`, `marked_by`,
       `marked_at` unchanged; a mark resolves to extraction v2 only through its task's `extraction_id`;
       a v2 task with the same title as a marked v1 task carries no mark.
-- [ ] 4.2 GREEN/TRIANGULATE — make the SQLite layer actually guard the invariants: delete each model
+- [x] 4.2 GREEN/TRIANGULATE — make the SQLite layer actually guard the invariants: delete each model
       `CHECK` and the `sqlite_where` in turn, confirm the corresponding 4.1 case **fails**, then restore
       it. This is the unit's RED evidence: on a green Phase-1 tree some of these cases pass because the
       model already declares the constraint, and a mutation check is what proves the test guards the
       invariant instead of passing vacuously. Pin that `tasks` still exposes no invalidation columns.
+      **WU4a note (2026-09-29):** mutation matrix run and independently spot-checked by the parent: removing
+      `sqlite_where` alone makes exactly the revoke-then-re-mark case fail (`UNIQUE constraint failed:
+      task_invalidations.task_id`), the other 11 pass. No gap found on the SQLite half, so 4.4's
+      refinement condition did not trigger there; it remains live for 4.3's Postgres half.
 - [ ] 4.3 TRIANGULATE — `backend/tests/test_integration/test_extraction_versioning_schema.py`:
       Postgres-only half — `uq_task_invalidations_active_task` exists as a **partial** index (not a
       full unique index on `task_id`); a revoked row survives while a re-mark succeeds; deleting the
@@ -504,7 +508,7 @@ this unit owns the invariants, not the DDL.
 - [ ] 4.4 GREEN — `backend/src/storico/infrastructure/database/models/task_invalidation.py`: refine only
       if 4.2 or 4.3 exposed a gap (a missing `sqlite_where`, a wrong FK action, a non-portable `CHECK`
       expression), then rerun 4.1–4.3.
-- [ ] 4.5 REFACTOR — rerun the phase runner plus
+- [x] 4.5 REFACTOR — rerun the phase runner plus
       `cd backend && conda run -n storico python -m pytest tests/test_repositories -m "not integration"`.
 
 ## Phase 5: Slice Verification
