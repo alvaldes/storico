@@ -115,6 +115,32 @@ latent, not live.
 Branch total `37 files, 3902 insertions(+), 989 deletions(-)`. PR 1's 2,657 code lines were accepted
 as an explicit `size:exception` by the owner on 2026-09-29; the later tranches came in under 400 each.
 
+## 6. Chained-PR boundaries — each head verified green on its own
+
+A chain only earns review time if every link compiles and passes independently. Each boundary was
+checked out detached, the unit layer run, and the branch restored:
+
+| Boundary | PR | Unit result at that commit |
+| --- | --- | --- |
+| `b52079c` | 1 — merged WU1+WU2 (schema, allocation, birth, seeds, Postgres cases) | `1031 passed, 27 deselected` |
+| `c47a1b2` | 2 — 3a render-time snapshot | `1035 passed` |
+| `94db112` | 3 — 3b marks, dead path gone, `save()` gone, triangulates | `1040 passed` |
+| `20a7e02` | 4 — WU4 invalidation invariants + Postgres half | `1049 passed` |
+| `8c5e514` | (this report) | ledger and verification only |
+
+## 7. Delivery convention actually practised in this repo, checked rather than assumed
+
+The `branch-pr` skill demands an approved linked issue and exactly one `type:*` label per PR. **This
+repository enforces neither and has never used either**: no `PULL_REQUEST_TEMPLATE.md`, no validation
+workflow (only `ci.yml` and `deploy-backend.yml`), the label set is GitHub's default (`bug`,
+`documentation`, …) with no `type:*` or `status:approved`, and the eight most recent merged PRs carry
+**zero** labels and close **zero** issues. Precedent also covers multi-unit PRs directly: PR 26 landed
+`WU1+WU2+WU5` as one PR, and PR 27 was opened against a feature branch and then re-targeted to `main`
+as PR 28 — so chaining works here but has already cost a re-target once.
+
+Applying the skill's issue-first rule to slice (a) would therefore mean inventing a taxonomy the repo
+does not have. Recorded as the user's call, not taken here.
+
 **Deployment is not at risk from this branch**: `deploy-backend.yml` triggers only on push to `main`
 with `backend/**` paths, and `ci.yml` triggers on `pull_request`. Opening a PR from this branch runs CI
 and nothing else. Merging it to `main` would deploy — and CI's Postgres run is the first execution of
