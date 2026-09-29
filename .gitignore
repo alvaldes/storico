@@ -79,3 +79,6 @@ backend/fly.toml
 # repo ya tuvo un incidente de .venv accidental en el working tree.
 .envrc
 .direnv/
+
+# CodeGraph local index — derived from the working tree, machine-specific.
+.codegraph/
