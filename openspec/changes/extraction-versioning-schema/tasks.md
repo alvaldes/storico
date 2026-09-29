@@ -499,7 +499,7 @@ this unit owns the invariants, not the DDL.
       `sqlite_where` alone makes exactly the revoke-then-re-mark case fail (`UNIQUE constraint failed:
       task_invalidations.task_id`), the other 11 pass. No gap found on the SQLite half, so 4.4's
       refinement condition did not trigger there; it remains live for 4.3's Postgres half.
-- [ ] 4.3 TRIANGULATE — `backend/tests/test_integration/test_extraction_versioning_schema.py`:
+- [x] 4.3 TRIANGULATE — `backend/tests/test_integration/test_extraction_versioning_schema.py`:
       Postgres-only half — `uq_task_invalidations_active_task` exists as a **partial** index (not a
       full unique index on `task_id`); a revoked row survives while a re-mark succeeds; deleting the
       task cascades the mark away; deleting the marking user nulls `marked_by` only and keeps
@@ -510,6 +510,31 @@ this unit owns the invariants, not the DDL.
       expression), then rerun 4.1–4.3.
 - [x] 4.5 REFACTOR — rerun the phase runner plus
       `cd backend && conda run -n storico python -m pytest tests/test_repositories -m "not integration"`.
+
+### Discovered defect D-a-2 — `ck_task_invalidations_revoke_pair` contradicts `revoked ON DELETE SET NULL`
+
+Found while writing 4.3, from reading `0028`'s DDL rather than from running it. The table declares
+`fk_task_invalidations_revoked_by_users ... ON DELETE SET NULL` (0028:104-109) **and** the equivalence
+CHECK `(revoked_by IS NULL) = (revoked_at IS NULL)` (0028:114-117). Postgres evaluates CHECK constraints
+during the referential action, so deleting a user who revoked a mark sets `revoked_by = NULL` while
+`revoked_at` stands — violating the CHECK, and the deletion fails instead of completing. `marked_by`
+has the same FK action but no paired CHECK (`marked_at` is `NOT NULL`), so only the revoke pair
+collides.
+
+**This cannot be settled on this machine, and the reason is structural:** `PRAGMA foreign_keys` is OFF
+by default in SQLite and nothing in the repo ever turns it on — verified by grepping `tests/` and
+`src/` (no occurrence) and by printing the pragma from a fresh aiosqlite connection (`0`). So **no FK
+action of any kind fires in the unit layer**: the conflict is Postgres-only, and so is every
+`ON DELETE CASCADE` / `SET NULL` claim in 1.18 and 4.3. Consequence for reading this change's
+evidence: the unit layer proves `NOT NULL`, `CHECK`, `UNIQUE` and partial-index shape, and proves
+*nothing* about referential actions.
+
+Case 4.3-6 asserts the DDL reading (refusal) with both outcomes documented in its docstring, so CI
+adjudicates rather than encodes a guess. The fix is a product decision, not a mechanical one: keep the
+CHECK and make the revoker FK `RESTRICT` (deleting a revoking user fails loudly, audit stays whole),
+or drop the CHECK's second arm and accept an anonymous surviving revocation. `0028` is unreleased —
+this branch is its first deployment — so whichever way goes, it is an edit to `0028` and not a new
+migration. **Not taken here: it needs the owner's call.**
 
 ## Phase 5: Slice Verification
 
