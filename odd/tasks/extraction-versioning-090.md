@@ -1,7 +1,9 @@
 # ODD Feature: extraction-versioning-090 (OpenSpec change authoring)
 
-> **Status**: **planning landed; apply authorized in tranches** — slice (a) WU1 started, RED phase
-> only, with the human reviewing between tranches. No source file under `backend/src/` is written yet.
+> **Status**: **slice (a) merged WU1 landed on its branch** — schema + birth through allocation
+> (`1a90aff`, `1f2d573` on `feat/extraction-versioning-schema-wu1`), verified green on the unit layer.
+> The Postgres half is written but has never executed (no Docker on this machine); CI is its first
+> run. Phase 3 and Phase 4 are **not** authorized.
 > **Created**: 2026-09-28
 > **Workflow**: SDD/OpenSpec (explicitly selected by the user) inside ODD
 > **Session preflight**: `auto` + `openspec` + `ask-on-risk` + 400-line review budget, confirmed
@@ -185,12 +187,42 @@ otherwise. Nothing in this document calls an unverified invariant green.
 
 ## Commit evidence
 
+### Slice (a), merged WU1 — landed on `feat/extraction-versioning-schema-wu1`
+
+| Commit | Content |
+| --- | --- |
+| `1a90aff` | `feat(extraction): give every run a version and its tasks a parent` — migration `0028`, the four new columns, `tasks.extraction_id`, `task_invalidations`, the port/repo allocation, the route's birth through `create_next_version`, `DEFAULT_TEMPERATURE`, the four runner rebuilds, the dead path allocating its own number, and the seed rewiring. 2,125 reviewable code lines |
+| `1f2d573` | `test(extraction): pin the 0028 invariants only Postgres can prove` — the six integration cases (1.18/1.19). 532 lines, **collected and linted but never executed here** |
+
+Branch total against `main`: **33 files, 2,439+/453−**. Task ledger for this slice: 1.1–1.20 and
+2.1–2.6 are checked; 3.x and 4.x are not started.
+
+Verified on this machine before each commit: `1031 passed, 27 skipped, 0 failed`; `ruff check src
+tests` clean; `ruff format --check src tests` clean (253 files). The 27 skips are the
+`@pytest.mark.integration` cases, including the six new ones — **no Docker daemon exists on this
+machine**, so the Postgres half of WU1 has never run and is claimed only by CI.
+
+Two audit findings worth repeating, because they are what made this unit land at all:
+
+- The writer reports died on a provider 429 both times; the tree was verified by the parent against
+  the tasks, not against the writer's narrative. Nothing was committed on the strength of a report.
+- 25 `assert` lines left the suite and 37 arrived. Every removal is accounted for by the plan: three
+  `status_code == 201` → `500` (task 1.17), three `save.called` → `create_next_version.called` (the
+  dead-path decision), and the body of the `delete` case task 1.20 removes. No case was deleted and no
+  assertion was weakened to reach green; test counts per file are unchanged (23→23, 12→12, 9→9,
+  19→19, 24→24).
+
+### Planning artifacts
+
 Planning landed on `main` before any implementation branch was cut:
 
 | Commit | Content |
 | --- | --- |
 | `3ddbe28` | `chore: ignore the local CodeGraph index` — `.codegraph/` is derived state and must not ride a docs commit |
 | `66bbb3b` | `docs(openspec): commit the 0.9.0 extraction-versioning planning` — 27 artifacts |
+| `1737708` | `docs(odd): record the 0.9.0 apply authorization and its commit evidence` |
+
+The 27 artifacts are:
 
 ```
 openspec/changes/extraction-versioning-schema/{explore,proposal,design,tasks}.md
