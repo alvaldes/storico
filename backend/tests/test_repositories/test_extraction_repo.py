@@ -1,22 +1,25 @@
 """Tests for SQLAlchemyExtractionRepository."""
 
+import sqlite3
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import event
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from storico.domain.entities import EntityNotFound, Extraction, Project, UserStory
+from storico.domain.entities import Extraction, Project, UserStory
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
+from storico.domain.ports import ExtractionRepository
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
     SQLAlchemyUserStoryRepository,
 )
-from tests._helpers import create_workspace
+from tests._helpers import create_workspace, seed_extraction
 
 
 @pytest.fixture
@@ -52,29 +55,39 @@ async def _seed_story(db_session: AsyncSession, workspace_id: UUID, name: str) -
     )
 
 
-def _extraction(story_id: UUID, model_used: str, **kwargs) -> Extraction:
-    """Build an extraction with a distinct model name so assertions can name rows."""
-    return Extraction(
-        user_story_id=story_id, model_used=model_used, raw_response="1. summary: s", **kwargs
-    )
+async def _seed_extraction(
+    db_session: AsyncSession, story_id: UUID, model_used: str, **kwargs
+) -> Extraction:
+    """Seed one extraction through the birth path, with a distinct model name.
+
+    Wraps the shared ``seed_extraction`` builder (task 1.16): revision ``0028`` made
+    the birth path the only way a row exists, so the paging and round-trip seeds below
+    allocate a version instead of ``save()``-ing a hand-built row.
+    """
+    return await seed_extraction(db_session, story_id, model_used=model_used, **kwargs)
 
 
 @pytest.mark.asyncio
 async def test_save_with_nullable_fields(db_session: AsyncSession, story_id: UUID) -> None:
-    """Save an extraction with nullable confidence_score and prompt_config."""
+    """An extraction born with nullable confidence_score and prompt_config reads them back.
+
+    The seed goes through ``create_next_version``: ``0028`` left ``save()`` able only to
+    update existing rows — its INSERT names ``version_number`` NULL and the column is
+    ``NOT NULL`` — so the nullable round-trip rides the birth path. ``version_number``
+    on the returned entity is the minted number, not the None a hand-built entity
+    carries, which is why the old ``saved == extraction`` equality became a field read.
+    """
     repo = SQLAlchemyExtractionRepository(db_session)
-    extraction = Extraction(
-        user_story_id=story_id,
-        model_used="llama3.2",
+    created = await _seed_extraction(
+        db_session,
+        story_id,
+        "llama3.2",
         raw_response="1. summary: Task one\ndescription: Do something",
         prompt_config={"temperature": 0.1, "max_tokens": 2048},
         confidence_score=0.85,
     )
 
-    saved = await repo.save(extraction)
-    assert saved == extraction
-
-    found = await repo.find_by_id(extraction.id)
+    found = await repo.find_by_id(created.id)
     assert found is not None
     assert found.model_used == "llama3.2"
     assert found.prompt_config == {"temperature": 0.1, "max_tokens": 2048}
@@ -84,16 +97,16 @@ async def test_save_with_nullable_fields(db_session: AsyncSession, story_id: UUI
 
 @pytest.mark.asyncio
 async def test_save_with_null_fields(db_session: AsyncSession, story_id: UUID) -> None:
-    """Save an extraction without optional fields (prompt_config, confidence_score)."""
+    """An extraction born without optional fields (prompt_config, confidence_score) reads them as None."""
     repo = SQLAlchemyExtractionRepository(db_session)
-    extraction = Extraction(
-        user_story_id=story_id,
-        model_used="mistral",
+    created = await _seed_extraction(
+        db_session,
+        story_id,
+        "mistral",
         raw_response="1. summary: Task one\ndescription: Do something",
     )
 
-    await repo.save(extraction)
-    found = await repo.find_by_id(extraction.id)
+    found = await repo.find_by_id(created.id)
     assert found is not None
     assert found.prompt_config is None
     assert found.confidence_score is None
@@ -121,9 +134,9 @@ async def test_list_page_by_story_excludes_another_storys_extractions(
     mine = await _seed_story(db_session, workspace_id, "Mine")
     other = await _seed_story(db_session, workspace_id, "Other")
 
-    await repo.save(_extraction(mine.id, "mine-1"))
-    await repo.save(_extraction(mine.id, "mine-2"))
-    await repo.save(_extraction(other.id, "other-1"))
+    await _seed_extraction(db_session, mine.id, "mine-1")
+    await _seed_extraction(db_session, mine.id, "mine-2")
+    await _seed_extraction(db_session, other.id, "other-1")
 
     page, total = await repo.list_page(user_story_id=mine.id, limit=10, offset=0)
 
@@ -156,7 +169,9 @@ async def test_list_page_mid_page_carries_the_full_total(
     repo = SQLAlchemyExtractionRepository(db_session)
     story = await _seed_story(db_session, workspace_id, "Paged")
     for day, model in ((1, "oldest"), (2, "middle"), (3, "newest")):
-        await repo.save(_extraction(story.id, model, created_at=datetime(2026, 1, day, tzinfo=UTC)))
+        await _seed_extraction(
+            db_session, story.id, model, created_at=datetime(2026, 1, day, tzinfo=UTC)
+        )
 
     page1, total1 = await repo.list_page(user_story_id=story.id, limit=2, offset=0)
     page2, total2 = await repo.list_page(user_story_id=story.id, limit=2, offset=2)
@@ -178,7 +193,7 @@ async def test_list_page_past_the_end_returns_empty_page_and_real_total(
     repo = SQLAlchemyExtractionRepository(db_session)
     story = await _seed_story(db_session, workspace_id, "Paged")
     for model in ("s1", "s2", "s3"):
-        await repo.save(_extraction(story.id, model))
+        await _seed_extraction(db_session, story.id, model)
 
     page, total = await repo.list_page(user_story_id=story.id, limit=2, offset=4)
 
@@ -201,8 +216,8 @@ async def test_list_page_by_workspace_returns_only_that_workspaces_extractions(
     beta_ws = await create_workspace(db_session, name="Beta", slug="beta-extraction-list-page")
     alpha_story = await _seed_story(db_session, alpha_ws.id, "Alpha project")
     beta_story = await _seed_story(db_session, beta_ws.id, "Beta project")
-    await repo.save(_extraction(alpha_story.id, "alpha-extraction"))
-    await repo.save(_extraction(beta_story.id, "beta-extraction"))
+    await _seed_extraction(db_session, alpha_story.id, "alpha-extraction")
+    await _seed_extraction(db_session, beta_story.id, "beta-extraction")
 
     page, total = await repo.list_page(workspace_id=alpha_ws.id, limit=10, offset=0)
 
@@ -300,7 +315,7 @@ async def test_list_page_pins_the_order_rule_in_sql(
 
     repo = SQLAlchemyExtractionRepository(db_session)
     story = await _seed_story(db_session, workspace_id, "Ordered")
-    await repo.save(_extraction(story.id, "only"))
+    await _seed_extraction(db_session, story.id, "only")
 
     event.listen(test_engine.sync_engine, "before_cursor_execute", record)
     try:
@@ -320,10 +335,8 @@ async def test_list_page_pins_the_order_rule_in_sql(
 async def test_list_all(db_session: AsyncSession, story_id: UUID) -> None:
     """list returns all extractions."""
     repo = SQLAlchemyExtractionRepository(db_session)
-    e1 = Extraction(user_story_id=story_id, model_used="m1", raw_response="r1")
-    e2 = Extraction(user_story_id=story_id, model_used="m2", raw_response="r2")
-    await repo.save(e1)
-    await repo.save(e2)
+    await _seed_extraction(db_session, story_id, "m1")
+    await _seed_extraction(db_session, story_id, "m2")
 
     extractions = await repo.list()
     assert len(extractions) == 2
@@ -336,18 +349,17 @@ async def test_a_completed_extraction_round_trips_its_end_time(
     """``completed_at`` is stored and read back, which is the whole point of the column."""
     repo = SQLAlchemyExtractionRepository(db_session)
     finished = datetime(2026, 9, 19, 12, 30, tzinfo=UTC)
-    extraction = Extraction(
-        user_story_id=story_id,
-        model_used="llama3.2",
+    created = await _seed_extraction(
+        db_session,
+        story_id,
+        "llama3.2",
         raw_response="r",
         status=ExtractionStatus.COMPLETED,
         user_story_status=UserStoryStatus.EXTRACTED,
         completed_at=finished,
     )
 
-    await repo.save(extraction)
-
-    found = await repo.find_by_id(extraction.id)
+    found = await repo.find_by_id(created.id)
     assert found is not None
     # The test database is SQLite, which drops ``tzinfo`` on a ``DateTime(timezone=True)`` column,
     # so the read-back value is naive while the written one was aware — the same note as in
@@ -363,11 +375,9 @@ async def test_a_pending_extraction_has_no_end_time(
 ) -> None:
     """The invariant is "non-null exactly when terminal", not "not null"."""
     repo = SQLAlchemyExtractionRepository(db_session)
-    extraction = Extraction(user_story_id=story_id, model_used="m", raw_response="r")
+    created = await _seed_extraction(db_session, story_id, "m")
 
-    await repo.save(extraction)
-
-    found = await repo.find_by_id(extraction.id)
+    found = await repo.find_by_id(created.id)
     assert found is not None
     assert found.status is ExtractionStatus.PENDING
     assert found.completed_at is None
@@ -386,15 +396,14 @@ async def test_reading_a_terminal_row_invents_no_end_time(
     decision not to backfill silently undone.
     """
     repo = SQLAlchemyExtractionRepository(db_session)
-    historical = Extraction(
-        user_story_id=story_id,
-        model_used="m",
-        raw_response="r",
+    historical = await _seed_extraction(
+        db_session,
+        story_id,
+        "m",
         status=ExtractionStatus.COMPLETED,
         user_story_status=UserStoryStatus.EXTRACTED,
         completed_at=None,
     )
-    await repo.save(historical)
 
     first = await repo.find_by_id(historical.id)
     second = await repo.find_by_id(historical.id)
@@ -404,17 +413,198 @@ async def test_reading_a_terminal_row_invents_no_end_time(
     assert second.completed_at is None
 
 
+def test_the_port_exposes_no_delete() -> None:
+    """The port has no ``delete``: a version's rows are never removed inside a version.
+
+    Task 1.20 removed the former ``delete`` test together with the method: the story
+    cascade is the only deletion path, and nothing in ``backend/src/storico`` calls
+    ``extraction_repo.delete`` — this pin keeps it from coming back through the port.
+    """
+
+    assert not hasattr(ExtractionRepository, "delete")
+
+
+# --- Versioning (task 1.1): allocation, derivation, conflict discrimination ---
+
+
+def _versioned(story_id: UUID, model_used: str, **kwargs) -> Extraction:
+    """Build an extraction the way a birth path does: with its run snapshot set.
+
+    ``provider`` and ``temperature`` are required on the entity from ``0028`` on — a row
+    cannot be born with a provider nobody configured, and ``NOT NULL`` cannot tell an
+    empty string apart from a real value.
+    """
+    return Extraction(
+        user_story_id=story_id,
+        model_used=model_used,
+        raw_response="",
+        provider="ollama",
+        temperature=0.1,
+        **kwargs,
+    )
+
+
 @pytest.mark.asyncio
-async def test_delete_removes_a_row_and_reports_an_absent_one(
+async def test_three_runs_on_one_story_are_numbered_1_2_3(
     db_session: AsyncSession, story_id: UUID
 ) -> None:
-    """The delete path answers both questions: it removes, and it says when there is nothing."""
+    """create_next_version mints the number inside the row's own INSERT: 1, 2, 3."""
     repo = SQLAlchemyExtractionRepository(db_session)
-    extraction = Extraction(user_story_id=story_id, model_used="m", raw_response="r")
-    await repo.save(extraction)
 
-    await repo.delete(extraction.id)
-    assert await repo.find_by_id(extraction.id) is None
+    first = await repo.create_next_version(_versioned(story_id, "m1"))
+    second = await repo.create_next_version(_versioned(story_id, "m2"))
+    third = await repo.create_next_version(_versioned(story_id, "m3"))
 
-    with pytest.raises(EntityNotFound):
-        await repo.delete(extraction.id)
+    assert [e.version_number for e in (first, second, third)] == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_a_burned_version_number_is_never_reused(
+    db_session: AsyncSession, story_id: UUID
+) -> None:
+    """After three consumed numbers the next is 4 — a terminal run never frees its number."""
+    repo = SQLAlchemyExtractionRepository(db_session)
+    for model in ("m1", "m2", "m3"):
+        created = await repo.create_next_version(_versioned(story_id, model))
+        await repo.mark_completed(
+            created.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+        )
+
+    fourth = await repo.create_next_version(_versioned(story_id, "m4"))
+
+    assert fourth.version_number == 4
+
+
+@pytest.mark.asyncio
+async def test_a_pending_run_leaves_the_previous_current_version_current(
+    db_session: AsyncSession, story_id: UUID
+) -> None:
+    """A pending v3 on top of a completed v2 leaves find_current_version at v2.
+
+    "Current" is derived — the highest completed version — never stored, so a run that
+    has not finished cannot steal the title from the version that did.
+    """
+    repo = SQLAlchemyExtractionRepository(db_session)
+    v1 = await repo.create_next_version(_versioned(story_id, "m1"))
+    await repo.mark_completed(
+        v1.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+    )
+    v2 = await repo.create_next_version(_versioned(story_id, "m2"))
+    await repo.mark_completed(
+        v2.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+    )
+    await repo.create_next_version(_versioned(story_id, "m3"))  # v3, still pending
+
+    current = await repo.find_current_version(story_id)
+
+    assert current is not None
+    assert current.version_number == 2
+
+
+@pytest.mark.asyncio
+async def test_a_failed_top_version_is_never_current(
+    db_session: AsyncSession, story_id: UUID
+) -> None:
+    """Completed v1 + failed v2: the current version is still v1."""
+    repo = SQLAlchemyExtractionRepository(db_session)
+    v1 = await repo.create_next_version(_versioned(story_id, "m1"))
+    await repo.mark_completed(
+        v1.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+    )
+    v2 = await repo.create_next_version(_versioned(story_id, "m2"))
+    await repo.mark_failed(v2.id, error_info="LLM call failed", completed_at=datetime.now(UTC))
+
+    current = await repo.find_current_version(story_id)
+
+    assert current is not None
+    assert current.version_number == 1
+
+
+@pytest.mark.asyncio
+async def test_a_failed_row_keeps_its_version_number(
+    db_session: AsyncSession, story_id: UUID
+) -> None:
+    """Every run that reaches row creation consumes a number — including a failed one."""
+    repo = SQLAlchemyExtractionRepository(db_session)
+    created = await repo.create_next_version(_versioned(story_id, "m1"))
+
+    await repo.mark_failed(created.id, error_info="LLM call failed", completed_at=datetime.now(UTC))
+
+    found = await repo.find_by_id(created.id)
+    assert found is not None
+    assert found.status is ExtractionStatus.FAILED
+    assert found.version_number == 1
+
+
+def test_is_version_conflict_knows_both_driver_shapes_and_refuses_others() -> None:
+    """The retry must retry exactly the version-conflict violation and nothing else.
+
+    Both arms are pinned because the retry may not depend on an attribute a driver
+    version may or may not expose: the asyncpg shape carries ``constraint_name`` on the
+    driver error (reachable as ``exc.orig``), the sqlite3 shape reports the violated
+    table/column pair in the message. A ``NOT NULL`` violation is not a collision —
+    retrying it would burn three attempts and then report a conflict that never happened.
+    """
+    from storico.infrastructure.database.repositories import (
+        extraction_repository as extraction_repo_module,
+    )
+
+    class _AsyncpgShapedError(Exception):
+        """The fields asyncpg exposes on a unique-violation error."""
+
+        def __init__(self) -> None:
+            super().__init__("duplicate key value violates unique constraint")
+            self.constraint_name = "uq_extractions_story_version"
+
+    asyncpg_shaped = IntegrityError("INSERT INTO extractions …", None, _AsyncpgShapedError())
+    sqlite_shaped = IntegrityError(
+        "INSERT INTO extractions …",
+        None,
+        sqlite3.IntegrityError(
+            "UNIQUE constraint failed: extractions.user_story_id, extractions.version_number"
+        ),
+    )
+    not_null = IntegrityError(
+        "INSERT INTO extractions …",
+        None,
+        sqlite3.IntegrityError("NOT NULL constraint failed: extractions.provider"),
+    )
+
+    is_version_conflict = extraction_repo_module._is_version_conflict
+    assert is_version_conflict(asyncpg_shaped) is True
+    assert is_version_conflict(sqlite_shaped) is True
+    assert is_version_conflict(not_null) is False
+
+
+@pytest.mark.asyncio
+async def test_an_allocation_that_never_wins_fails_loudly_after_three_attempts(
+    db_session: AsyncSession, story_id: UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A conflict on every attempt stops at the bound of 3 and raises a distinct error.
+
+    The retry lives in the adapter, so the port never learns the word "retry". The bound
+    and the distinct exception type are what slice (b) needs to map the failure to an
+    HTTP status instead of leaving it silent.
+    """
+    from storico.domain.entities.exceptions import VersionAllocationConflictError
+
+    attempts = 0
+
+    async def always_conflict(*args: object, **kwargs: object) -> None:
+        nonlocal attempts
+        attempts += 1
+        raise IntegrityError(
+            "INSERT INTO extractions …",
+            None,
+            sqlite3.IntegrityError(
+                "UNIQUE constraint failed: extractions.user_story_id, extractions.version_number"
+            ),
+        )
+
+    monkeypatch.setattr(db_session, "execute", always_conflict)
+    repo = SQLAlchemyExtractionRepository(db_session)
+
+    with pytest.raises(VersionAllocationConflictError):
+        await repo.create_next_version(_versioned(story_id, "m1"))
+
+    assert attempts == 3

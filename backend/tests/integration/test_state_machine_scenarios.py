@@ -75,6 +75,8 @@ class TestScenarioS02FailurePath:
             user_story_id=uuid4(),
             model_used="llama3.2",
             raw_response="",
+            provider="ollama",
+            temperature=0.1,
             status=ExtractionStatus.FAILED,
             user_story_status=UserStoryStatus.FAILED_EXTRACTION,
             error_info="LLM timeout after 3 retries",

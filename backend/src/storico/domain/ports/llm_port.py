@@ -5,13 +5,19 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+# The one literal for the default generation temperature. The route resolves the request
+# value against it once and writes the same resolved value to the column it declares and
+# to the ``LLMConfig`` the adapter runs at — two sources for one fact is the drift the
+# single literal forbids.
+DEFAULT_TEMPERATURE: float = 0.1
+
 
 @dataclass(frozen=True, slots=True)
 class LLMConfig:
     """Configuration for an LLM generation request."""
 
     model: str
-    temperature: float = 0.1
+    temperature: float = DEFAULT_TEMPERATURE
     max_tokens: int = 2048
     timeout: int = 120
 

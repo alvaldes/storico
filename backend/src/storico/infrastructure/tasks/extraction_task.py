@@ -33,6 +33,7 @@ from storico.domain.entities.exceptions import LLMError, ParseError
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
+from storico.domain.ports.llm_port import DEFAULT_TEMPERATURE
 from storico.domain.services.extraction_judge_service import LLMJudgeService
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.domain.services.llm_config_readiness import normalize_optional
@@ -66,7 +67,7 @@ async def run_background_extraction(
     story_id: UUID,
     workspace_id: UUID,
     model: str,
-    temperature: float | None = None,
+    temperature: float = DEFAULT_TEMPERATURE,
     validate: bool = False,
     provider: str = "ollama",
     api_key: str | None = None,
@@ -90,7 +91,9 @@ async def run_background_extraction(
         workspace_id: ID of the workspace the extraction belongs to (used to
             resolve the workspace prompt config).
         model: LLM model name (e.g. ``gemini-2.0-flash``, ``llama3.2``).
-        temperature: Generation temperature (default: 0.1).
+        temperature: Generation temperature, already resolved by the caller (the route
+            resolves it once against ``DEFAULT_TEMPERATURE``); there is no ``None``
+            here, so the declared temperature and the temperature used cannot drift.
         validate: Whether to run LLM-as-a-Judge validation.
         provider: Workspace provider name.  ``"ollama"``, ``"gemini"``,
             ``"openai"``, and ``"anthropic"`` have dedicated adapters; any
@@ -193,6 +196,10 @@ async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
                         user_story_id=ext.user_story_id,
                         model_used=ext.model_used or "",
                         raw_response=ext.raw_response or "",
+                        provider=ext.provider,
+                        temperature=ext.temperature,
+                        version_number=ext.version_number,
+                        prompt_rendered=ext.prompt_rendered,
                         status=ExtractionStatus.FAILED,
                         user_story_status=UserStoryStatus.FAILED_EXTRACTION,
                         error_info="Server restarted while extraction was pending",
@@ -281,7 +288,7 @@ async def _run_extraction(
     story_id: UUID,
     workspace_id: UUID,
     model: str,
-    temperature: float | None,
+    temperature: float,
     validate: bool,
     provider: str = "ollama",
     api_key: str | None = None,
@@ -380,10 +387,11 @@ async def _run_extraction(
             few_shot_config=few_shot_config,
         )
 
-        # 3. Build LLM config
+        # 3. Build LLM config — the temperature arrived already resolved by the route:
+        # the column that declares it and the config the adapter runs at are one value.
         llm_config = LLMConfig(
             model=model,
-            temperature=temperature if temperature is not None else 0.1,
+            temperature=temperature,
             max_tokens=2048,
             timeout=120,
         )
@@ -425,13 +433,21 @@ async def _run_extraction(
                     },
                 )
 
-        # 5. Persist extraction — reuse the pending ID so the client's poll resolves
-        created_at = await _get_created_at(extraction_repo, extraction_id)
+        # 5. Persist extraction — reuse the pending ID so the client's poll resolves.
+        # The pending row is the source of the run's identity: created_at and the run
+        # snapshot (provider, temperature, version, rendered prompt) are read back from
+        # it instead of being dropped by a fresh entity built without them.
+        pending = await extraction_repo.find_by_id(extraction_id)
+        created_at = pending.created_at if pending else datetime.now(UTC)
         completed = Extraction(
             id=extraction_id,
             user_story_id=story_id,
             model_used=model,
             raw_response=raw_response,
+            provider=pending.provider if pending else provider,
+            temperature=pending.temperature if pending else temperature,
+            version_number=pending.version_number if pending else None,
+            prompt_rendered=pending.prompt_rendered if pending else None,
             status=ExtractionStatus.COMPLETED,
             user_story_status=UserStoryStatus.EXTRACTED,
             confidence_score=confidence,
@@ -449,6 +465,11 @@ async def _run_extraction(
         for pt in parsed_tasks:
             task = Task(
                 user_story_id=story_id,
+                # R5: every extracted task belongs to the run that produced it — and
+                # from ``0028`` the column is ``NOT NULL``, so the INSERT refuses
+                # without it (this clause is task 3.5's, pulled into PR 1 by
+                # authorization on 2026-09-29 because WU1 cannot end green without it).
+                extraction_id=extraction_id,
                 title=pt.summary,
                 description=pt.description,
                 labels=list(pt.labels),
@@ -494,12 +515,17 @@ async def _mark_failed(
     if pending is None:
         return
 
-    # Update extraction record
+    # Update extraction record — the snapshot fields are carried from the pending row
+    # so the failed version keeps its identity instead of losing it to the rebuild.
     failed = Extraction(
         id=extraction_id,
         user_story_id=pending.user_story_id,
         model_used=pending.model_used,
         raw_response=pending.raw_response,
+        provider=pending.provider,
+        temperature=pending.temperature,
+        version_number=pending.version_number,
+        prompt_rendered=pending.prompt_rendered,
         status=ExtractionStatus.FAILED,
         user_story_status=UserStoryStatus.FAILED_EXTRACTION,
         error_info=error_info,
@@ -521,15 +547,6 @@ async def _mark_failed(
         )
         await story_repo.save(updated_story)
         logger.info("UserStory %s transitioned to FAILED_EXTRACTION", pending.user_story_id)
-
-
-async def _get_created_at(
-    repo: SQLAlchemyExtractionRepository,
-    extraction_id: UUID,
-) -> datetime:
-    """Return the ``created_at`` of the pending extraction, or now as fallback."""
-    pending = await repo.find_by_id(extraction_id)
-    return pending.created_at if pending else datetime.now(UTC)
 
 
 async def _store_rag(
@@ -594,6 +611,10 @@ async def _mark_extraction_failed(
             user_story_id=pending.user_story_id,
             model_used=pending.model_used,
             raw_response=pending.raw_response,
+            provider=pending.provider,
+            temperature=pending.temperature,
+            version_number=pending.version_number,
+            prompt_rendered=pending.prompt_rendered,
             status=ExtractionStatus.FAILED,
             user_story_status=UserStoryStatus.FAILED_EXTRACTION,
             error_info=error_info,

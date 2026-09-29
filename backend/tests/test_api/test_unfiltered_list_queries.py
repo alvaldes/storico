@@ -20,11 +20,7 @@ import pytest_asyncio
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from storico.domain.entities import Extraction, Task
-from storico.infrastructure.database.repositories import (
-    SQLAlchemyExtractionRepository,
-    SQLAlchemyTaskRepository,
-)
+from tests._helpers import seed_extraction, seed_task
 
 # endpoint, the table that endpoint lists, and whether the listed rows need seeding on top of a story.
 ENDPOINTS = [
@@ -47,20 +43,15 @@ async def seed_listed_rows(db_session: AsyncSession):
     """Add one task and one extraction to a seeded workspace's story.
 
     Both are saved rather than posted: the task route would be exercised by the same request
-    the test is timing, and an extraction has no HTTP creation route at all.
+    the test is timing, and an extraction has no HTTP creation route at all. The task reuses
+    the extraction the test seeds (passed through ``seed_task``) so the row counts below stay
+    one task and one extraction per workspace — ``seed_task`` would otherwise mint an extra
+    version per task.
     """
 
     async def _seed(seeded) -> None:
-        await SQLAlchemyTaskRepository(db_session).save(
-            Task(user_story_id=seeded.story_id, title="Counted task")
-        )
-        await SQLAlchemyExtractionRepository(db_session).save(
-            Extraction(
-                user_story_id=seeded.story_id,
-                model_used="llama3.2",
-                raw_response="1. summary: Task one\ndescription: Do it",
-            )
-        )
+        extraction = await seed_extraction(db_session, seeded.story_id)
+        await seed_task(db_session, seeded.story_id, "Counted task", extraction=extraction)
 
     return _seed
 

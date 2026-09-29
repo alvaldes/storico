@@ -100,6 +100,15 @@ on the spec's earlier verification pass, not on new commits.
 - [ ] 8. Apply slice (a) WU1 — Schema Identity, **in tranches**: RED (1.1–1.3) authorised; GREEN
   (1.4–1.17), TRIANGULATE (1.18–1.19) and REFACTOR (1.20) each wait for the user's review of the
   tranche before it
+  - **RED landed 2026-09-29, uncommitted on purpose.** 14 new cases across three files;
+    `12 failed, 1010 passed, 21 deselected` against a 1008-pass baseline. WU1 must land as one green
+    commit, so the RED is a review artifact, not a commit.
+  - **The delegated writer died mid-run on a provider quota error**, not on the work: `sdd-apply`
+    returned `API 429 … claude-opus-5 … limit 99.97%` after 7 turns / 22 tool calls, without ever
+    returning its evidence report. All three files were already written; the parent verified them
+    against the tasks, fixed one blemish (a `pytest_asyncio` fixture that imported the missing model
+    at *setup* time, producing `ERROR` instead of a per-test `FAILED`), and re-ran the suite itself.
+    Treat any future `sdd-apply` delegation in this session as quota-at-risk.
 
 ## Acceptance-criteria coverage audit (parent, 2026-09-28)
 

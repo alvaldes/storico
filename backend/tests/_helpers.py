@@ -17,7 +17,15 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from storico.domain.entities.extraction import Extraction
+from storico.domain.entities.task import Task
 from storico.domain.entities.workspace import Workspace
+from storico.infrastructure.database.repositories import (
+    SQLAlchemyExtractionRepository as ExtractionRepository,
+)
+from storico.infrastructure.database.repositories import (
+    SQLAlchemyTaskRepository as TaskRepository,
+)
 from storico.infrastructure.database.repositories.workspace_repository import (
     SQLAlchemyWorkspaceRepository as WorkspaceRepository,
 )
@@ -53,3 +61,63 @@ async def create_workspace(
     workspace = Workspace(name=name, slug=slug_value, owner_id=owner_value)
     repo = WorkspaceRepository(session)
     return await repo.save(workspace)
+
+
+async def seed_extraction(
+    session: AsyncSession,
+    story_id: UUID,
+    *,
+    model_used: str = "llama3.2",
+    raw_response: str = "",
+    provider: str = "ollama",
+    temperature: float = 0.1,
+    **kwargs: object,
+) -> Extraction:
+    """Create an extraction through the birth path and return the versioned entity.
+
+    Revision ``0028`` declares ``version_number``, ``provider`` and ``temperature``
+    ``NOT NULL`` and gives ``version_number`` no default, so a row can only be born
+    through ``create_next_version`` — the same statement every production birth path
+    uses. Seeding through ``save()`` would refuse the INSERT, and writing the number
+    by hand would bypass the allocation the unique pair guards. The returned entity
+    is the only source of the minted ``version_number``.
+
+    ``provider``/``temperature`` default to the same values a birth path with no
+    workspace configuration would record; ``kwargs`` (``status``, ``completed_at``,
+    ``created_at``, ``confidence_score``, ...) pass through to the entity.
+    """
+    repo = ExtractionRepository(session)
+    pending = Extraction(
+        user_story_id=story_id,
+        model_used=model_used,
+        raw_response=raw_response,
+        provider=provider,
+        temperature=temperature,
+        **kwargs,  # type: ignore[arg-type]
+    )
+    return await repo.create_next_version(pending)
+
+
+async def seed_task(
+    session: AsyncSession,
+    story_id: UUID,
+    title: str,
+    *,
+    extraction: Extraction | None = None,
+    **kwargs: object,
+) -> Task:
+    """Create and persist a Task with the extraction its ``NOT NULL`` FK requires.
+
+    ``tasks.extraction_id`` is ``NOT NULL`` from revision ``0028`` on, so every task
+    seed needs an extraction row to belong to. When ``extraction`` is not supplied,
+    one is allocated through ``seed_extraction`` — the mechanical case for tests that
+    only need addressable task rows. Tests that count extraction rows must allocate
+    the extraction themselves and pass it in, so the task reuses it instead of
+    quietly minting an extra version.
+
+    ``kwargs`` (``status``, ``created_at``, ``labels``, ...) pass through to the entity.
+    """
+    if extraction is None:
+        extraction = await seed_extraction(session, story_id)
+    task = Task(user_story_id=story_id, extraction_id=extraction.id, title=title, **kwargs)  # type: ignore[arg-type]
+    return await TaskRepository(session).save(task)

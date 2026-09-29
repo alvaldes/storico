@@ -230,15 +230,21 @@ class ExtractionService:
         instruction_template: str | None = None,
         workspace_id: UUID | None = None,
         few_shot_config: FewShotConfig | None = None,
+        provider: str = "ollama",
     ) -> Extraction:
         """Run the full extraction pipeline and persist results.
 
         Creates an ``Extraction`` entity (status ``completed`` or ``failed``)
         and ``Task`` entities for each parsed task.
 
+        The row is born through ``create_next_version`` — revision ``0028`` gives
+        ``version_number`` no default and no other writer may set it, so a row that
+        allocates at birth cannot mint a second number later (the hazard the dead
+        path's two-numbers-for-one-run note recorded is discharged here).
+
         Args:
             user_story: Domain entity with ``raw_text``, ``id`` attributes.
-            config: LLM configuration.
+            config: LLM configuration (``temperature`` is recorded on the row).
             prompt_config: Optional metadata about the prompts used.
             system_prompt: Workspace system prompt, forwarded to ``extract``
                 and the judge service.
@@ -247,6 +253,13 @@ class ExtractionService:
             workspace_id: Workspace the extraction belongs to (for scoped
                 retrieval and vector storage).
             few_shot_config: Workspace few-shot retrieval config.
+            provider: The provider recorded on the row. The ``"ollama"`` fallback is
+                the same one ``api/routes/extraction.py`` uses when a workspace has no
+                configured provider — but here it is acceptable only because this
+                path is dead and test-only: the provider is not reachable from
+                ``LLMConfig``, and reading workspace settings from the domain
+                service would be the layering violation slice (c) has to solve
+                properly. Phase 3 deletes this method with its nine cases.
 
         Returns:
             The persisted ``Extraction`` entity.
@@ -294,18 +307,24 @@ class ExtractionService:
                 user_story_id=story_id,
                 model_used=config.model,
                 raw_response=raw_response,
+                provider=provider,
+                temperature=config.temperature,
                 status=ExtractionStatus.COMPLETED,
                 user_story_status=UserStoryStatus.EXTRACTED,
                 prompt_config=effective_prompt_config,
                 confidence_score=confidence,
                 completed_at=datetime.now(UTC),
             )
-            extraction = await self._extraction_repo.save(extraction)
+            extraction = await self._extraction_repo.create_next_version(extraction)
 
             # 5. Persist Task entities
             for pt in parsed_tasks:
                 task = Task(
                     user_story_id=story_id,
+                    # R5, and ``tasks.extraction_id`` is ``NOT NULL`` from ``0028``: the
+                    # allocation's returned entity carries the run's identity (same
+                    # Phase-3 clause pulled into PR 1 by authorization, 2026-09-29).
+                    extraction_id=extraction.id,
                     title=pt.summary,
                     description=pt.description,
                     labels=list(pt.labels),
@@ -330,13 +349,15 @@ class ExtractionService:
                 user_story_id=story_id,
                 model_used=config.model,
                 raw_response="",
+                provider=provider,
+                temperature=config.temperature,
                 status=ExtractionStatus.FAILED,
                 user_story_status=UserStoryStatus.FAILED_EXTRACTION,
                 error_info=str(exc),
                 prompt_config=prompt_config,
                 completed_at=datetime.now(UTC),
             )
-            return await self._extraction_repo.save(extraction)
+            return await self._extraction_repo.create_next_version(extraction)
 
     async def _store_rag(
         self,

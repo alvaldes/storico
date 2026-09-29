@@ -27,6 +27,9 @@ class Task:
     priority: str = "medium"
     labels: list[str] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
+    # The run the task was extracted by (revision 0028). Optional on the entity because
+    # only the runner sets it at write time; the column itself is NOT NULL.
+    extraction_id: UUID | None = None
     id: UUID = field(default_factory=uuid7)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))

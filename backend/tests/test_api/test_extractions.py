@@ -10,11 +10,9 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from storico.domain.entities import Extraction, UserStory
-from storico.infrastructure.database.repositories import (
-    SQLAlchemyExtractionRepository,
-    SQLAlchemyUserStoryRepository,
-)
+from storico.domain.entities import UserStory
+from storico.infrastructure.database.repositories import SQLAlchemyUserStoryRepository
+from tests._helpers import seed_extraction
 
 
 class TestListExtractions:
@@ -30,14 +28,13 @@ class TestListExtractions:
         contract under test — not just the extraction row.
         """
         story_id = (await seed_workspace()).story_id
-        repo = SQLAlchemyExtractionRepository(db_session)
 
-        extraction = Extraction(
-            user_story_id=story_id,
+        await seed_extraction(
+            db_session,
+            story_id,
             model_used="llama3.2",
             raw_response="1. summary: Task one\ndescription: Do it",
         )
-        await repo.save(extraction)
 
         response = await authed_client.get(f"/api/v1/extractions/?user_story_id={story_id}")
         assert response.status_code == 200
@@ -76,15 +73,8 @@ class TestListExtractions:
         ``test_unfiltered_list_queries.py``; here it is only the setup for the filtering.
         """
         seeded = await seed_workspace(stories=3)
-        repo = SQLAlchemyExtractionRepository(db_session)
-        for index, story_id in enumerate(seeded.story_ids):
-            await repo.save(
-                Extraction(
-                    user_story_id=story_id,
-                    model_used="test",
-                    raw_response=f"summary: Task {index}",
-                )
-            )
+        for story_id in seeded.story_ids:
+            await seed_extraction(db_session, story_id, model_used="test")
 
         response = await authed_client.get("/api/v1/extractions/")
         assert response.status_code == 200
@@ -118,16 +108,13 @@ class TestListExtractionsPagination:
                 raw_text="As a user, I want the paged feature so that value",
             )
         )
-        repo = SQLAlchemyExtractionRepository(db_session)
         models = [f"model {day}" for day in range(1, count + 1)]
         for day, model in enumerate(models, start=1):
-            await repo.save(
-                Extraction(
-                    user_story_id=story.id,
-                    model_used=model,
-                    raw_response="1. summary: s",
-                    created_at=datetime(2026, 1, day),
-                )
+            await seed_extraction(
+                db_session,
+                story.id,
+                model_used=model,
+                created_at=datetime(2026, 1, day),
             )
         return seeded.workspace_id, story.id, models
 
@@ -156,16 +143,9 @@ class TestListExtractionsPagination:
                 raw_text="As a user, I want the second feature so that value",
             )
         )
-        extraction_repo = SQLAlchemyExtractionRepository(db_session)
-        await extraction_repo.save(
-            Extraction(user_story_id=story_a.id, model_used="model 1", raw_response="r")
-        )
-        await extraction_repo.save(
-            Extraction(user_story_id=story_a.id, model_used="model 2", raw_response="r")
-        )
-        await extraction_repo.save(
-            Extraction(user_story_id=story_b.id, model_used="model 3", raw_response="r")
-        )
+        await seed_extraction(db_session, story_a.id, model_used="model 1")
+        await seed_extraction(db_session, story_a.id, model_used="model 2")
+        await seed_extraction(db_session, story_b.id, model_used="model 3")
 
         response = await authed_client.get("/api/v1/extractions/?page=1&size=2")
 
@@ -205,16 +185,9 @@ class TestListExtractionsPagination:
                 raw_text="As a user, I want the second feature so that value",
             )
         )
-        extraction_repo = SQLAlchemyExtractionRepository(db_session)
-        await extraction_repo.save(
-            Extraction(user_story_id=story_a.id, model_used="model 1", raw_response="r")
-        )
-        await extraction_repo.save(
-            Extraction(user_story_id=story_a.id, model_used="model 2", raw_response="r")
-        )
-        await extraction_repo.save(
-            Extraction(user_story_id=story_b.id, model_used="model 3", raw_response="r")
-        )
+        await seed_extraction(db_session, story_a.id, model_used="model 1")
+        await seed_extraction(db_session, story_a.id, model_used="model 2")
+        await seed_extraction(db_session, story_b.id, model_used="model 3")
 
         response = await authed_client.get("/api/v1/extractions/?page=9&size=2")
 
@@ -307,16 +280,14 @@ class TestGetExtraction:
     async def test_get_extraction(self, authed_client, db_session: AsyncSession, seed_workspace):
         """Save an extraction for a seeded story, then GET by id."""
         story_id = (await seed_workspace()).story_id
-        repo = SQLAlchemyExtractionRepository(db_session)
-
-        extraction = Extraction(
-            user_story_id=story_id,
+        saved = await seed_extraction(
+            db_session,
+            story_id,
             model_used="mistral",
             raw_response="1. summary: Task A\ndescription: Desc A",
             confidence_score=0.92,
             prompt_config={"temperature": 0.1},
         )
-        saved = await repo.save(extraction)
 
         response = await authed_client.get(f"/api/v1/extractions/{saved.id}")
         assert response.status_code == 200

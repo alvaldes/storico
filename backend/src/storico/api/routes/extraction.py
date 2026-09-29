@@ -41,6 +41,7 @@ from storico.api.schemas.extraction import (
 from storico.domain.entities import EntityNotFound, Extraction, Workspace, WorkspaceRole
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
+from storico.domain.ports.llm_port import DEFAULT_TEMPERATURE
 from storico.domain.services.llm_config_readiness import (
     LLM_CONFIG_INCOMPLETE_CODE,
     missing_llm_config_fields,
@@ -227,18 +228,24 @@ async def extract_tasks(
         )
 
     # 1. Create pending extraction record — gives the client something to poll
+    #    ``temperature`` is resolved once, here: the column that declares it, the
+    #    ``LLMConfig`` the adapter runs at, and the value passed to the runner are all
+    #    this one resolved value.
+    resolved_temperature = body.temperature if body.temperature is not None else DEFAULT_TEMPERATURE
     pending = Extraction(
         user_story_id=body.user_story_id,
         model_used=model,
         raw_response="",
+        provider=provider,
+        temperature=resolved_temperature,
         status=ExtractionStatus.PENDING,
         user_story_status=UserStoryStatus.PENDING_EXTRACTION,
+        # ``temperature`` has its own column; a second copy in JSON is drift bait.
         prompt_config={
             "validate": body.run_validation,
-            "temperature": body.temperature,
         },
     )
-    pending = await extraction_repo.save(pending)
+    pending = await extraction_repo.create_next_version(pending)
     extraction_id = pending.id
 
     # 2. Launch background extraction in the same process
@@ -249,7 +256,7 @@ async def extract_tasks(
             story_id=body.user_story_id,
             workspace_id=workspace.id,
             model=model,
-            temperature=body.temperature,
+            temperature=resolved_temperature,
             validate=body.run_validation,
             provider=provider,
             api_key=api_key,

@@ -30,13 +30,13 @@ from sqlalchemy.pool import StaticPool
 
 from storico.domain.entities import Extraction
 from storico.domain.entities.extraction import ExtractionStatus
-from storico.domain.entities.user_story import UserStoryStatus
 from storico.infrastructure.database.models import Base
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyUserStoryRepository,
 )
 from storico.infrastructure.tasks import extraction_task
+from tests._helpers import seed_extraction
 
 
 @pytest_asyncio.fixture
@@ -63,16 +63,14 @@ def _factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
 
 
 async def _store_pending(engine: AsyncEngine, story_id: UUID) -> UUID:
-    """Store a ``pending`` extraction and return its id, the way a started job leaves it."""
+    """Store a ``pending`` extraction and return its id, the way a started job leaves it.
+
+    The seed goes through the birth path (``create_next_version``, via the shared
+    builder): from ``0028`` on a pending row is born with its version number, and
+    ``save()`` cannot create one.
+    """
     async with _factory(engine)() as session:
-        pending = Extraction(
-            user_story_id=story_id,
-            model_used="llama3.2",
-            raw_response="",
-            status=ExtractionStatus.PENDING,
-            user_story_status=UserStoryStatus.PENDING_EXTRACTION,
-        )
-        await SQLAlchemyExtractionRepository(session).save(pending)
+        pending = await seed_extraction(session, story_id)
         return pending.id
 
 

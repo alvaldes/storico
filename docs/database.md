@@ -1,14 +1,14 @@
 # Base de Datos
 
 > Schema, tablas, relaciones y migraciones de Storico.
-> Última actualización: 2026-09-21
+> Última actualización: 2026-09-29
 
 ## Stack
 
 - **Relacional**: PostgreSQL 16 (vía SQLAlchemy async + asyncpg)
 - **Vectorial**: Qdrant (embeddings para RAG)
-- **Migraciones**: Alembic (26 migraciones aplicadas)
-- **Head**: `0026`
+- **Migraciones**: Alembic (28 revisiones)
+- **Head**: `0028`
 
 ## Modelo de Datos
 
@@ -24,7 +24,8 @@ workspaces ──1:1── workspace_prompts
 workspaces ──1:1── workspace_llm_configs
 workspaces ──1:N── custom_providers
 projects ──1:N── user_stories ──1:N── tasks
-user_stories ──1:N── extractions
+user_stories ──1:N── extractions ──1:N── tasks
+extractions ──1:N── task_invalidations
 ```
 
 *\* `projects.created_by` referencia a `users.id` (nullable)*
@@ -180,6 +181,7 @@ Index: `project_id`
 |---------|------|--------------|
 | id | UUID | PK |
 | user_story_id | UUID | FK → user_stories.id |
+| extraction_id | UUID | **NOT NULL** · FK → extractions.id (`ON DELETE CASCADE`) |
 | title | String(255) | NOT NULL |
 | description | Text | default `""` |
 | status | String(50) | default `"backlog"` |
@@ -189,7 +191,12 @@ Index: `project_id`
 | created_at | DateTime(tz) | NOT NULL |
 | updated_at | DateTime(tz) | NOT NULL |
 
-Index: `user_story_id`
+Index: `user_story_id`, `ix_tasks_extraction_id`
+
+`extraction_id` llega en `0028` y responde a una pregunta que `user_story_id` no puede contestar:
+`user_story_id` sigue estando, y es la columna que hace que **todas** las versiones de una historia
+sean visibles desde la historia; `extraction_id` es lo que separa las tareas de una corrida de las de
+la siguiente. Ninguna tarea existe sin la corrida que la produjo.
 
 #### extractions
 
@@ -197,7 +204,11 @@ Index: `user_story_id`
 |---------|------|--------------|
 | id | UUID | PK |
 | user_story_id | UUID | FK → user_stories.id |
+| version_number | Integer | **NOT NULL** · `ck_extractions_version_number_positive` (`> 0`) |
 | model_used | String(100) | NOT NULL |
+| provider | String(50) | **NOT NULL** |
+| temperature | Float | **NOT NULL** |
+| prompt_rendered | Text | nullable — no nulo exactamente cuando la corrida llegó a renderizar el prompt |
 | status | String(20) | default `"pending"` |
 | error_info | Text | nullable |
 | prompt_config | JSON | nullable |
@@ -206,7 +217,52 @@ Index: `user_story_id`
 | created_at | DateTime(tz) | NOT NULL |
 | completed_at | DateTime(tz) | nullable — no nulo exactamente cuando `status` es terminal. Las filas anteriores a la revisión `0023` quedan en `NULL`: no se rellenaron hacia atrás. |
 
-Index: `user_story_id`
+Index: `user_story_id` · Unique: `uq_extractions_story_version` sobre `(user_story_id, version_number)`
+
+Las cuatro columnas nuevas son el snapshot de la corrida y son **obligatorias** (`prompt_rendered`
+no, y no puede serlo: una corrida que muere antes de renderizar no tiene prompt que congelar).
+Hoy `prompt_rendered` está siempre en `NULL`: el método que lo escribe (`record_rendered_prompt`)
+ya existe en el puerto y en el adaptador, pero nadie lo llama todavía — la escritura entre el render
+y la llamada al proveedor es el trabajo de la siguiente unidad de este mismo slice. Congelar el
+insumo de una versión fallida es el requisito; PR 1 pone la columna, la unidad que sigue pone la
+escritura.
+
+`version_number` se **deriva la vigente**, no se almacena: la vigente es la `version_number` más alta
+con `status = 'completed'`. No hay flag, ni trigger, ni vista materializada — la derivación vive en
+la lectura (`ORDER BY version_number DESC`, `status = 'completed'`, `LIMIT 1`). Toda corrida consume
+un número, incluidas la que queda `pending` y la que falla: por eso el tablero no se vacía cuando
+una extracción falla.
+
+#### task_invalidations
+
+La marca de "tarea inválida" es **una fila por evento**, no una columna en `tasks`: sólo una fila
+puede guardar quién la retiró y cuándo.
+
+| Columna | Tipo | Restricciones |
+|---------|------|--------------|
+| id | UUID | PK |
+| task_id | UUID | NOT NULL · FK → tasks.id (`ON DELETE CASCADE`) |
+| reason | String(500) | NOT NULL · `ck_task_invalidations_reason_not_blank` (`length(trim(reason)) > 0`) |
+| marked_by | UUID | nullable · FK → users.id (`ON DELETE SET NULL`) |
+| marked_at | DateTime(tz) | NOT NULL |
+| revoked_by | UUID | nullable · FK → users.id (`ON DELETE SET NULL`) |
+| revoked_at | DateTime(tz) | nullable · `ck_task_invalidations_revoke_pair` — `revoked_by` y `revoked_at` son nulos juntos o no lo son |
+
+Index: `ix_task_invalidations_task_id` · Unique parcial: `uq_task_invalidations_active_task` sobre
+`task_id` `WHERE revoked_at IS NULL` — a lo sumo una marca activa por tarea; retirar es un UPDATE,
+nunca un DELETE. Las referencias a `users.id` sobreviven la baja de una cuenta (`SET NULL`).
+
+La tabla existe desde `0028` y **todavía no la escribe nadie**: los endpoints de marca son el slice
+(b). Su restricción de integridad ya es real, así que una marca duplicada o sin motivo queda rechazada
+por la base de datos desde el primer día.
+
+#### La migración `0028` no rellena hacia atrás
+
+`0028` lee `SELECT count(*) FROM extractions` y `FROM tasks` **antes de cualquier DDL** y levanta un
+error si alguna pareja no está vacía. No hay backfill: las extracciones históricas no tienen provider,
+ni temperatura, ni número de versión real, y una columna `NOT NULL` con default inventado mentiría
+mejor que un error. La limpieza de datos que la precede es una operación destructiva aparte, con su
+propia confirmación, y es **precondición del deploy** que lleva `0028` — no es un paso de Alembic.
 
 ## Convenciones
 
@@ -248,6 +304,8 @@ Index: `user_story_id`
 | `0024` | Encrypt workspace LLM API keys | 2026-09-19 |
 | `0025` | Convert extractions.status to the extraction_status_new enum | 2026-09-21 |
 | `0026` | Drop the duplicate index on tasks.user_story_id | 2026-09-21 |
+| `0027` | Drop the legacy `workspace_prompts.few_shot_examples` column | 2026-09-24 |
+| `0028` | Extraction versioning: `version_number`, `provider`, `temperature`, `prompt_rendered`, `tasks.extraction_id`, `task_invalidations` | 2026-09-29 |
 
 Comandos útiles:
 

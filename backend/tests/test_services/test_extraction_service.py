@@ -184,7 +184,7 @@ class TestExtractionService:
         deps["task_parser"].parse.return_value = [
             ParsedTask(summary="Task one", description="Desc", labels=(), dependencies=()),
         ]
-        deps["extraction_repo"].save.side_effect = lambda e: e
+        deps["extraction_repo"].create_next_version.side_effect = lambda e: e
         deps["task_repo"].save.side_effect = lambda t: t
         deps["judge_service"].validate.return_value = MagicMock(
             approved=True, total_score=45, criteria={}
@@ -194,7 +194,7 @@ class TestExtractionService:
         assert result.status == "completed"
         # A terminal extraction records when it finished, which is what the column exists for.
         assert result.completed_at is not None
-        assert deps["extraction_repo"].save.called
+        assert deps["extraction_repo"].create_next_version.called
         assert deps["task_repo"].save.called
 
     @pytest.mark.asyncio
@@ -215,7 +215,7 @@ class TestExtractionService:
             ParsedTask(summary="T1", description="D1"),
             ParsedTask(summary="T2", description="D2"),
         ]
-        deps["extraction_repo"].save.side_effect = lambda e: e
+        deps["extraction_repo"].create_next_version.side_effect = lambda e: e
         deps["task_repo"].save.side_effect = lambda t: t
 
         await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
@@ -235,7 +235,7 @@ class TestExtractionService:
         deps["prompt_manager"].render_instruction.return_value = "System"
         deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.side_effect = LLMConnectionError("Cannot connect")
-        deps["extraction_repo"].save.side_effect = lambda e: e
+        deps["extraction_repo"].create_next_version.side_effect = lambda e: e
 
         result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
         assert result.status == "failed"
@@ -255,7 +255,7 @@ class TestExtractionService:
         deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.return_value = "garbage output"
         deps["task_parser"].parse.side_effect = ParseError("Could not parse")
-        deps["extraction_repo"].save.side_effect = lambda e: e
+        deps["extraction_repo"].create_next_version.side_effect = lambda e: e
 
         result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
         assert result.status == "failed"
@@ -271,10 +271,10 @@ class TestExtractionService:
         deps["prompt_manager"].render_instruction.return_value = "S"
         deps["prompt_manager"].render_instruction.return_value = "I"
         deps["llm_port"].generate.side_effect = LLMConnectionError("Fail")
-        deps["extraction_repo"].save.side_effect = lambda e: e
+        deps["extraction_repo"].create_next_version.side_effect = lambda e: e
 
         result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
-        assert deps["extraction_repo"].save.called
+        assert deps["extraction_repo"].create_next_version.called
         assert result.status == "failed"
 
     # ── Judge interaction ─────────────────────────────────────────
@@ -292,7 +292,7 @@ class TestExtractionService:
         deps["prompt_manager"].render_instruction.return_value = "I"
         deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
-        deps["extraction_repo"].save.side_effect = lambda e: e
+        deps["extraction_repo"].create_next_version.side_effect = lambda e: e
         deps["task_repo"].save.side_effect = lambda t: t
         deps["judge_service"].validate.return_value = MagicMock(
             approved=True, total_score=45, criteria={}
@@ -315,7 +315,7 @@ class TestExtractionService:
         deps["prompt_manager"].render_instruction.return_value = "I"
         deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
-        deps["extraction_repo"].save.side_effect = lambda e: e
+        deps["extraction_repo"].create_next_version.side_effect = lambda e: e
         deps["task_repo"].save.side_effect = lambda t: t
         deps["judge_service"].validate.side_effect = LLMConnectionError("Judge down")
 
@@ -483,7 +483,7 @@ class TestExtractionService:
         deps["task_parser"].parse.return_value = [
             ParsedTask(summary="Task one", description="Desc"),
         ]
-        deps["extraction_repo"].save.side_effect = lambda e: e
+        deps["extraction_repo"].create_next_version.side_effect = lambda e: e
         deps["task_repo"].save.side_effect = lambda t: t
         deps["judge_service"].validate.return_value = MagicMock(
             approved=True, total_score=45, criteria={}
@@ -515,7 +515,7 @@ class TestExtractionService:
         deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
-        deps["extraction_repo"].save.side_effect = lambda e: e
+        deps["extraction_repo"].create_next_version.side_effect = lambda e: e
         deps["task_repo"].save.side_effect = lambda t: t
 
         result = await deps["service"].extract_and_persist(
@@ -523,5 +523,5 @@ class TestExtractionService:
         )
         assert result.status == "completed"
         # Extraction and tasks should still be persisted
-        assert deps["extraction_repo"].save.called
+        assert deps["extraction_repo"].create_next_version.called
         assert deps["task_repo"].save.called
