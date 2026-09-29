@@ -538,23 +538,28 @@ migration. **Not taken here: it needs the owner's call.**
 
 ## Phase 5: Slice Verification
 
-- [ ] 5.1 Whole suite (the acceptance gate): `cd backend && conda run -n storico python -m pytest`.
+- [x] 5.1 Whole suite (the acceptance gate): `cd backend && conda run -n storico python -m pytest`.
 - [ ] 5.2 Integration layer: `cd backend && conda run -n storico python -m pytest -m integration`.
       Requires a Docker daemon. If it is absent, every case skips and the Postgres-only invariants
       listed under "Verification environment" remain unverified — record that outcome instead of
       reporting green.
+      **Not closable here (2026-09-29):** no Docker daemon. Recorded, per this task's own clause, instead
+      of reported green: the cases skip cleanly and nothing Postgres-only has been executed.
 - [ ] 5.3 Migration chain acceptance: `cd backend && conda run -n storico python -m pytest tests/test_integration/test_migration_chain.py -m integration`
       — the chain reaches head on the empty container and `_KNOWN_DRIFT` is still an empty frozenset
       (Docker).
-- [ ] 5.4 No-delete and no-flag sweep: confirm `ExtractionRepository.delete`,
+      **Not closable here (2026-09-29):** no Docker daemon. Recorded, per this task's own clause, instead
+      of reported green: the cases skip cleanly and nothing Postgres-only has been executed.
+- [x] 5.4 No-delete and no-flag sweep: confirm `ExtractionRepository.delete`,
       `SQLAlchemyExtractionRepository.delete`, `extract_and_persist` and `ExtractionRepository.save`
       no longer exist, that no service/route/background task removes an `extractions` or `tasks` row
       inside a version, and that no `is_current` column, trigger or materialized view is declared
       anywhere.
-- [ ] 5.5 Repo-documented lint/format (AGENTS.md §0): `conda run -n storico python -m ruff check src tests`
+- [x] 5.5 Repo-documented lint/format (AGENTS.md §0): `conda run -n storico python -m ruff check src tests`
       and `conda run -n storico python -m ruff format --check src tests`, run from `backend/`.
-- [ ] 5.6 Record in the verify report the honest split of evidence: what the SQLite unit layer proved,
+- [x] 5.6 Record in the verify report the honest split of evidence: what the SQLite unit layer proved,
       what ran against Postgres, and what skipped without a Docker daemon.
+      **Landed (2026-09-29):** the split is written up in `verification.md` beside this file.
 
 ## Slice Boundary
 
