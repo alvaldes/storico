@@ -29,7 +29,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -423,56 +424,127 @@ async def test_deleting_the_story_removes_its_versions_and_their_tasks_and_nothi
         assert await _count(TaskModel, kept) == 1
 
 
+@asynccontextmanager
+async def _roundtrip_database(pg_url: str) -> AsyncIterator[str]:
+    """A private database on the same container, yielded as an Alembic-ready URL.
+
+    Exists because this file's other cases seed rows into the module-scoped database, and a case
+    that moves the schema cannot share it: ``0028``'s own guard refuses to re-apply once
+    ``extractions`` holds rows, so the round-trip case left the shared schema at ``0027`` and every
+    later case in the session then failed on a missing ``version_number`` column — a fixture
+    ordering bug wearing the costume of eight schema bugs. Creation and removal run in AUTOCOMMIT
+    because ``CREATE/DROP DATABASE`` cannot execute inside a transaction.
+    """
+    maintenance = make_url(pg_url).set(database="postgres")
+    name = f"v0028_roundtrip_{uuid4().hex[:12]}"
+    manager = create_async_engine(
+        maintenance.render_as_string(hide_password=False), poolclass=NullPool
+    )
+    async with manager.connect() as conn:
+        await conn.execute(text(f'CREATE DATABASE "{name}"'))
+    try:
+        yield maintenance.set(database=name).render_as_string(hide_password=False)
+    finally:
+        async with manager.connect() as conn:
+            await conn.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :name AND pid <> pg_backend_pid()"
+                ),
+                {"name": name},
+            )
+            await conn.execute(text(f'DROP DATABASE "{name}"'))
+        await manager.dispose()
+
+
 @pytest.mark.integration
 @_needs_docker
 @pytest.mark.asyncio(loop_scope="module")
-async def test_downgrade_to_0027_and_back_round_trips_on_an_empty_database(
+async def test_downgrade_to_0027_and_back_round_trips_on_a_private_database(
     pg_url: str,
-    alembic_config: Config,
+    throwaway_encryption_key: None,
 ) -> None:
     """``0028`` can be taken back off an empty database and re-applied cleanly.
 
     This is the rollback boundary the unit layer cannot see at all: SQLite refuses to alter a
-    constraint, so the ``downgrade()`` body has never executed on this machine before CI runs this
-    case. Re-applying afterwards proves the pair is symmetric — a downgrade that drops a column the
-    upgrade still expects would otherwise surface as a failed deploy.
+    constraint, so the ``downgrade()`` body has never executed anywhere before CI runs this case.
+    Re-applying afterwards proves the pair is symmetric — a downgrade that drops a column the
+    upgrade still expects would surface as a failed deploy.
+
+    It runs on its **own** database (see ``_roundtrip_database``). The premise of the case is an
+    empty pair of tables, and the shared module database is not empty by the time this runs; on the
+    shared one, ``0028``'s own guard refused the re-apply and left the schema at ``0027`` for every
+    later case in the session.
     """
-    declared_head = ScriptDirectory.from_config(alembic_config).get_current_head()
-    assert declared_head == "0028", f"the packaged scripts declare head {declared_head}"
+    async with _roundtrip_database(pg_url) as roundtrip_url:
+        config = _alembic_config(roundtrip_url)
+        declared_head = ScriptDirectory.from_config(config).get_current_head()
+        assert declared_head == "0028", f"the packaged scripts declare head {declared_head}"
 
-    await asyncio.to_thread(command.downgrade, alembic_config, "0027")
-    async with create_async_engine(pg_url, poolclass=NullPool).connect() as conn:
-        columns = (
-            (
-                await conn.execute(
-                    text(
-                        "SELECT column_name FROM information_schema.columns WHERE table_name = 'extractions'"
+        # A private database starts empty, so head has to be reached before it can be dropped.
+        await asyncio.to_thread(command.upgrade, config, "head")
+        await asyncio.to_thread(command.downgrade, config, "0027")
+
+        async with create_async_engine(roundtrip_url, poolclass=NullPool).connect() as conn:
+            columns = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_name = 'extractions'"
+                        )
                     )
                 )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
-        tables = (
-            (
-                await conn.execute(
-                    text(
-                        "SELECT table_name FROM information_schema.tables WHERE table_name = 'task_invalidations'"
+            tables = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT table_name FROM information_schema.tables "
+                            "WHERE table_name = 'task_invalidations'"
+                        )
                     )
                 )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
-        recorded = (
-            (await conn.execute(text("SELECT version_num FROM alembic_version"))).scalars().all()
-        )
+            recorded = (
+                (await conn.execute(text("SELECT version_num FROM alembic_version")))
+                .scalars()
+                .all()
+            )
 
-    assert not {"version_number", "provider", "temperature", "prompt_rendered"} & set(columns)
-    assert tables == [], "task_invalidations survived its downgrade"
-    assert recorded == ["0027"], f"the chain recorded {recorded} after downgrade"
+        assert not {"version_number", "provider", "temperature", "prompt_rendered"} & set(columns)
+        assert tables == [], "task_invalidations survived its downgrade"
+        assert recorded == ["0027"], f"the chain recorded {recorded} after downgrade"
 
-    await asyncio.to_thread(command.upgrade, alembic_config, "head")
+        await asyncio.to_thread(command.upgrade, config, "head")
+
+        async with create_async_engine(roundtrip_url, poolclass=NullPool).connect() as conn:
+            restored = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_name = 'extractions'"
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            back = (
+                (await conn.execute(text("SELECT version_num FROM alembic_version")))
+                .scalars()
+                .all()
+            )
+
+        assert {"version_number", "provider", "temperature", "prompt_rendered"} <= set(restored), (
+            "the re-applied 0028 did not restore its columns"
+        )
+        assert back == ["0028"], f"the chain recorded {back} after re-applying head"
 
 
 # ── 1.19 — the real collision, provoked rather than simulated ────────────────────
