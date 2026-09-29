@@ -390,7 +390,19 @@ Optional split axis if the delivery decision asks for one: 3.1–3.5 as 3a (with
 thin wrapper over `render()`/`generate()` so the suite stays green), 3.6–3.8 as 3b (marks, `save()`
 removal, dead-path deletion).
 
-- [ ] 3.1 RED — `backend/tests/test_unit/test_extraction_failure_paths.py`: render succeeds, `generate`
+**The split needs one clause the axis note does not mention, found while planning 3a.**
+`_to_orm_kwargs` writes `prompt_rendered` (`extraction_repository.py:335`), and the in-run terminal
+rebuilds in the runner construct `Extraction(... prompt_rendered=pending.prompt_rendered ...)` from a
+row read **before** the render. So the moment 3a writes the prompt at render time, the next `save()`
+re-nulls it and 3.1's survival case fails: 3a could not close green on the axis as written. 3a
+therefore threads the freshly rendered text into those in-run rebuilds (`prompt_rendered=rendered.text`)
+— the same value `record_rendered_prompt` just wrote, so it cannot diverge from the row — and 3b deletes
+the whole rebuild when it swaps in `mark_completed`/`mark_failed`. `_mark_extraction_failed` re-reads
+its row and already preserves the column; it is left alone.
+This is not 3b arriving early: the mark swap, the `save()` removal, the `extract_and_persist()` deletion
+and the nine re-pointed cases all stay in 3b.
+
+- [x] 3.1 RED — `backend/tests/test_unit/test_extraction_failure_paths.py`: render succeeds, `generate`
       raises `LLMError` → `version_number`, `provider`, `temperature`, `prompt_rendered` and
       `prompt_config.system_prompt` are all populated, `raw_response == ""`, no `confidence_score`, no
       `usage`; a run that dies before render keeps `prompt_rendered IS NULL` and it stays null through
@@ -412,11 +424,18 @@ removal, dead-path deletion).
       `text = system_prompt + "\n\n" + instruction`; replace `extract()` with `render(...) ->
       RenderedPrompt` and `generate(rendered, config) -> tuple[list[ParsedTask], str]`; drop the
       repository constructor parameters; delete `extract_and_persist()`.
+      **3a note (2026-09-29):** half landed — `RenderedPrompt` + `render()`/`generate()` with
+      `extract()` kept as the temporary wrapper. The repository-parameter removal and the
+      `extract_and_persist()` deletion stay in 3b, so 3.4 remains open.
 - [ ] 3.5 GREEN — `backend/src/storico/infrastructure/tasks/extraction_task.py`: in order,
       `render()` → `record_rendered_prompt(extraction_id, prompt_rendered=rendered.text,
       prompt_config={"validate": ..., "system_prompt": system_prompt})` → `generate()`; replace the
       terminal writes with `mark_completed(...)` / `mark_failed(...)` and delete `_get_created_at`;
       build every `Task` with `extraction_id=extraction_id`.
+      **3a note (2026-09-29):** half landed — render -> record -> generate, and the completed
+      rebuild threads `rendered.text` instead of reading `prompt_rendered` off a row fetched
+      before the render. The `mark_completed`/`mark_failed` swap and the `_get_created_at`
+      deletion stay in 3b, so 3.5 remains open.
 - [ ] 3.6 GREEN — construction and comment sites of the removed methods:
       `backend/tests/test_extraction_flow_few_shot.py` and
       `backend/tests/test_integration/test_few_shot_rag_qdrant.py` (rewrite the stale comment that

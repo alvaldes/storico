@@ -29,7 +29,9 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import StaticPool
 
 from storico.domain.entities import Extraction
+from storico.domain.entities.exceptions import LLMError
 from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.ports import LLMConfig, LLMPort
 from storico.infrastructure.database.models import Base
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
@@ -164,3 +166,202 @@ async def test_a_pending_job_is_left_alone_by_every_failure_path(
     fresh = await _reload(engine, fresh_id)
     assert fresh.status is ExtractionStatus.PENDING
     assert fresh.completed_at is None
+
+
+# ── Render-time snapshot (WU3 task 3.1, tranche 3a) ───────────────
+
+
+def _make_the_vector_store_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Turn the RAG dependency off before the background task builds it.
+
+    ``_run_extraction`` builds the embedding port and the ``QdrantAdapter`` inside one
+    ``try``, and any failure there takes the production "vector store unavailable"
+    branch (``vector_store=None``) — the same branch a deployment with no vector store
+    configured runs. The tests here are about the extraction row, not retrieval.
+    """
+
+    def _unavailable(_settings: object) -> None:
+        raise RuntimeError("vector store deliberately unavailable for this test")
+
+    monkeypatch.setattr(extraction_task, "get_embedding_port", _unavailable)
+
+
+async def _seed_pending(engine: AsyncEngine, story_id: UUID, **kwargs: object) -> Extraction:
+    """Seed a ``pending`` extraction the way the route's birth path leaves it."""
+    async with _factory(engine)() as session:
+        return await seed_extraction(session, story_id, model_used="llama3.2", **kwargs)  # type: ignore[arg-type]
+
+
+class _ObservingLLM(LLMPort):
+    """Record the row the run holds at the instant the provider is asked, then refuse.
+
+    The observation goes through the repository (``find_by_id``) on a fresh session,
+    never by patching the repo: the assertion is about what the row holds.
+    """
+
+    def __init__(self, engine: AsyncEngine, extraction_id: UUID) -> None:
+        self._engine = engine
+        self._extraction_id = extraction_id
+        self.seen_prompt: str | None = None
+        self.seen_system: str | None = None
+        self.observed: Extraction | None = None
+
+    async def _observe(self, prompt: str, system_prompt: str | None) -> None:
+        self.seen_prompt = prompt
+        self.seen_system = system_prompt
+        async with _factory(self._engine)() as session:
+            self.observed = await SQLAlchemyExtractionRepository(session).find_by_id(
+                self._extraction_id
+            )
+
+    async def generate(
+        self,
+        prompt: str,  # noqa: ARG002
+        config: LLMConfig,  # noqa: ARG002
+        system_prompt: str | None = None,  # noqa: ARG002
+    ) -> str:
+        await self._observe(prompt, system_prompt)
+        raise LLMError("the provider refused after render")
+
+
+class _ObservingAnsweringLLM(_ObservingLLM):
+    """Same observation, then a valid answer so the run completes."""
+
+    async def generate(
+        self,
+        prompt: str,
+        config: LLMConfig,  # noqa: ARG002
+        system_prompt: str | None = None,
+    ) -> str:
+        await self._observe(prompt, system_prompt)
+        return "1. summary: Set up the schema\ndescription: Create the tables.\n"
+
+
+class TestRenderTimeSnapshot:
+    """The rendered prompt becomes a real snapshot column the moment it is rendered.
+
+    Three cases from task 3.1: a run that reaches render freezes the prompt before the
+    provider is contacted; a run that dies before render keeps ``prompt_rendered`` null;
+    and the regression — after a failed run and after a completed run, every snapshot
+    column still holds its birth/render value (the terminal writes must not re-null it).
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_run_that_reaches_render_freezes_the_prompt_before_the_provider_is_asked(
+        self, test_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch, seed_workspace
+    ) -> None:
+        seeded = await seed_workspace(member=False)
+        pending = await _seed_pending(
+            test_engine, seeded.story_id, prompt_config={"validate": False}
+        )
+        llm = _ObservingLLM(test_engine, pending.id)
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        _make_the_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+        observed = llm.observed
+        assert observed is not None, "the adapter was never called, so render was never reached"
+        expected = (llm.seen_system or "") + "\n\n" + (llm.seen_prompt or "")
+        assert observed.prompt_rendered == expected
+        assert observed.prompt_config is not None
+        assert observed.prompt_config.get("system_prompt") == llm.seen_system
+        # At the instant the provider is asked, the run has no output yet.
+        assert observed.raw_response == ""
+        assert observed.confidence_score is None
+        assert "usage" not in observed.prompt_config
+
+    @pytest.mark.asyncio
+    async def test_a_run_that_dies_before_render_keeps_prompt_rendered_null(
+        self, test_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch, seed_workspace
+    ) -> None:
+        seeded = await seed_workspace(member=False)
+        pending = await _seed_pending(
+            test_engine, seeded.story_id, prompt_config={"validate": False}
+        )
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        _make_the_vector_store_unavailable(monkeypatch)
+
+        # A cloud provider without its credential dies inside ``_build_llm_port`` —
+        # before any prompt is rendered — and the failure is still terminal.
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            provider="gemini",
+            api_key=None,
+            max_retries=0,
+        )
+
+        failed = await _reload(test_engine, pending.id)
+        assert failed.status is ExtractionStatus.FAILED
+        assert failed.prompt_rendered is None
+
+    @pytest.mark.asyncio
+    async def test_after_a_failed_run_every_snapshot_column_still_holds_its_birth_or_render_value(
+        self, test_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch, seed_workspace
+    ) -> None:
+        seeded = await seed_workspace(member=False)
+        pending = await _seed_pending(
+            test_engine, seeded.story_id, temperature=0.42, prompt_config={"validate": False}
+        )
+        llm = _ObservingLLM(test_engine, pending.id)
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        _make_the_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+        failed = await _reload(test_engine, pending.id)
+        assert failed.status is ExtractionStatus.FAILED
+        expected = (llm.seen_system or "") + "\n\n" + (llm.seen_prompt or "")
+        assert failed.prompt_rendered == expected
+        assert failed.provider == "ollama"
+        assert failed.temperature == 0.42
+        assert failed.version_number == 1
+
+    @pytest.mark.asyncio
+    async def test_after_a_completed_run_every_snapshot_column_still_holds_its_birth_or_render_value(
+        self, test_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch, seed_workspace
+    ) -> None:
+        seeded = await seed_workspace(member=False)
+        pending = await _seed_pending(
+            test_engine, seeded.story_id, temperature=0.42, prompt_config={"validate": False}
+        )
+        llm = _ObservingAnsweringLLM(test_engine, pending.id)
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        _make_the_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+        completed = await _reload(test_engine, pending.id)
+        assert completed.status is ExtractionStatus.COMPLETED
+        expected = (llm.seen_system or "") + "\n\n" + (llm.seen_prompt or "")
+        assert completed.prompt_rendered == expected
+        assert completed.provider == "ollama"
+        assert completed.temperature == 0.42
+        assert completed.version_number == 1

@@ -396,16 +396,25 @@ async def _run_extraction(
             timeout=120,
         )
 
-        # 4. Run extraction (prompt → LLM → parse) — no persistence yet.
-        #    System prompt and instruction come from the workspace config.
-        parsed_tasks, raw_response = await extraction_service.extract(
+        # 4. Render the prompt, snapshot it, and only then ask the provider. The
+        #    render-time write commits before ``generate()`` is called, so a failed
+        #    run still leaves a version whose input is fully readable — and
+        #    ``record_rendered_prompt`` replaces ``prompt_config`` wholesale (Postgres
+        #    ``json`` has no merge operator), restating ``validate`` and adding the
+        #    resolved system prompt.
+        rendered = await extraction_service.render(
             story,
-            llm_config,
             system_prompt=system_prompt,
             instruction_template=instruction_template,
             workspace_id=workspace_id,
             few_shot_config=few_shot_config,
         )
+        await extraction_repo.record_rendered_prompt(
+            extraction_id,
+            prompt_rendered=rendered.text,
+            prompt_config={"validate": validate, "system_prompt": system_prompt},
+        )
+        parsed_tasks, raw_response = await extraction_service.generate(rendered, llm_config)
 
         # 4. Optionally validate via LLM-as-a-Judge — same system prompt
         confidence: float | None = None
@@ -434,9 +443,12 @@ async def _run_extraction(
                 )
 
         # 5. Persist extraction — reuse the pending ID so the client's poll resolves.
-        # The pending row is the source of the run's identity: created_at and the run
-        # snapshot (provider, temperature, version, rendered prompt) are read back from
-        # it instead of being dropped by a fresh entity built without them.
+        # The pending row is the source of the run's identity: created_at and the rest of
+        # the run snapshot (provider, temperature, version) are read back from it instead
+        # of being dropped by a fresh entity built without them. ``prompt_rendered`` is
+        # NOT read from ``pending``: the freshly rendered text is threaded in directly so
+        # the value written at render time is what survives the terminal write, whatever
+        # ``pending`` happens to hold.
         pending = await extraction_repo.find_by_id(extraction_id)
         created_at = pending.created_at if pending else datetime.now(UTC)
         completed = Extraction(
@@ -447,7 +459,7 @@ async def _run_extraction(
             provider=pending.provider if pending else provider,
             temperature=pending.temperature if pending else temperature,
             version_number=pending.version_number if pending else None,
-            prompt_rendered=pending.prompt_rendered if pending else None,
+            prompt_rendered=rendered.text,
             status=ExtractionStatus.COMPLETED,
             user_story_status=UserStoryStatus.EXTRACTED,
             confidence_score=confidence,
@@ -510,13 +522,19 @@ async def _mark_failed(
     extraction_id: UUID,
     error_info: str,
 ) -> None:
-    """Update a pending extraction record to ``failed`` status and transition UserStory to FAILED_EXTRACTION."""
+    """Update a pending extraction record to ``failed`` status and transition UserStory to FAILED_EXTRACTION.
+
+    This path runs only for failures before any prompt is rendered (e.g. a missing story),
+    so its rebuild carries ``prompt_rendered`` from the re-read row and never invents one.
+    """
     pending = await extraction_repo.find_by_id(extraction_id)
     if pending is None:
         return
 
-    # Update extraction record — the snapshot fields are carried from the pending row
-    # so the failed version keeps its identity instead of losing it to the rebuild.
+    # Update extraction record. The rebuild re-reads the row first, so any value already
+    # written to ``prompt_rendered`` (or the other snapshot columns) is carried through
+    # the terminal write rather than re-nulled — the same reason the mark methods in 3b
+    # will not need this argument at all.
     failed = Extraction(
         id=extraction_id,
         user_story_id=pending.user_story_id,
@@ -603,6 +621,10 @@ async def _mark_extraction_failed(
     async with factory() as session:
         repo = SQLAlchemyExtractionRepository(session)
         story_repo = SQLAlchemyUserStoryRepository(session)
+        # This helper re-reads the row in its own session, so any snapshot written earlier
+        # in the run (the render-time ``prompt_rendered``, in particular) is carried into
+        # the terminal rebuild intact — the failure path after render is exactly the case
+        # the snapshot exists for.
         pending = await repo.find_by_id(extraction_id)
         if pending is None:
             return

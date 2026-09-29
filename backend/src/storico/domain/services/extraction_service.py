@@ -41,6 +41,27 @@ class FewShotConfig:
     threshold: float = 0.85
 
 
+@dataclass(frozen=True, slots=True)
+class RenderedPrompt:
+    """The composed prompt as it left the renderer, frozen before the provider is asked.
+
+    ``text`` is the one definition of "the composed text the provider received, system
+    block included" — the value the runner snapshots into ``prompt_rendered`` between
+    ``render()`` and ``generate()``, so the column and the call it documents cannot
+    drift. ``template_variables`` carries exactly the kwargs ``render_instruction`` was
+    called with (``{"user_story": ...}`` today; slice (c) reads it to fill the
+    ``prompt_config`` context keys without widening the render signature).
+    """
+
+    instruction: str
+    system_prompt: str | None
+    template_variables: dict[str, object]
+
+    @property
+    def text(self) -> str:
+        return (self.system_prompt or "") + "\n\n" + self.instruction
+
+
 class ExtractionService:
     """Orchestrates the full extraction pipeline.
 
@@ -79,20 +100,20 @@ class ExtractionService:
         self._vector_store = vector_store
         self._few_shot_config = few_shot_config or FewShotConfig()
 
-    async def extract(
+    async def render(
         self,
         user_story: object,
-        config: LLMConfig,
+        *,
         system_prompt: str | None = None,
         instruction_template: str | None = None,
         workspace_id: UUID | None = None,
         few_shot_config: FewShotConfig | None = None,
-    ) -> tuple[list[ParsedTask], str]:
-        """Run the extraction pipeline (prompt → LLM → parse) without persistence.
+    ) -> RenderedPrompt:
+        """Compose the prompt the provider will receive, without contacting it.
 
         The system prompt and instruction template are resolved upstream
         (workspace prompt config) and passed in — the service never decides
-        which prompts to use, it only renders and sends them.
+        which prompts to use, it only renders them.
 
         Few-shot examples are retrieved from the vector store, scoped to
         ``workspace_id``, when the resolved ``few_shot_config.enabled`` is true.
@@ -101,22 +122,15 @@ class ExtractionService:
 
         Args:
             user_story: A domain entity with a ``raw_text`` attribute.
-            config: LLM configuration to use for generation.
-            system_prompt: Workspace system prompt. Passed separately to the
-                LLM port (``None`` sends no system message).
+            system_prompt: Workspace system prompt (``None`` sends no system message).
             instruction_template: Workspace instruction template (Jinja2
                 text). ``None`` falls back to ``task_generation.j2``.
-            workspace_id: Workspace the extraction belongs to (for scoped
-                retrieval and storage).
+            workspace_id: Workspace the extraction belongs to (for scoped retrieval).
             few_shot_config: Workspace few-shot retrieval config. ``None``
                 falls back to the service-level default.
 
         Returns:
-            Tuple of (parsed_tasks, raw_response).
-
-        Raises:
-            LLMError: If the LLM call fails.
-            ParseError: If the response cannot be parsed.
+            The frozen ``RenderedPrompt`` — ``text`` is what the provider receives.
         """
         raw_text = getattr(user_story, "raw_text", str(user_story))
 
@@ -151,22 +165,68 @@ class ExtractionService:
             **prompt_kwargs,
         )
 
-        # 2. Call LLM
+        return RenderedPrompt(
+            instruction=instruction_prompt,
+            system_prompt=system_prompt,
+            template_variables=prompt_kwargs,
+        )
+
+    async def generate(
+        self,
+        rendered: RenderedPrompt,
+        config: LLMConfig,
+    ) -> tuple[list[ParsedTask], str]:
+        """Send a rendered prompt to the LLM and parse the answer.
+
+        Args:
+            rendered: The frozen prompt returned by ``render()``.
+            config: LLM configuration to use for generation.
+
+        Returns:
+            Tuple of (parsed_tasks, raw_response).
+
+        Raises:
+            LLMError: If the LLM call fails.
+            ParseError: If the response cannot be parsed.
+        """
         try:
             raw_response = await self._llm.generate(
-                instruction_prompt,
+                rendered.instruction,
                 config,
-                system_prompt=system_prompt,
+                system_prompt=rendered.system_prompt,
             )
         except LLMError:
             raise
         except Exception as exc:
             raise LLMError(f"Unexpected error during LLM generation: {exc}") from exc
 
-        # 3. Parse response
         parsed_tasks = self._task_parser.parse(raw_response)
 
         return parsed_tasks, raw_response
+
+    async def extract(
+        self,
+        user_story: object,
+        config: LLMConfig,
+        system_prompt: str | None = None,
+        instruction_template: str | None = None,
+        workspace_id: UUID | None = None,
+        few_shot_config: FewShotConfig | None = None,
+    ) -> tuple[list[ParsedTask], str]:
+        """Run the extraction pipeline (render → LLM → parse) without persistence.
+
+        Temporary composition wrapper over ``render()`` + ``generate()`` kept so the
+        suite stays green across tranche 3a; task 3b deletes it when the runner owns
+        the render-time write directly and this method's callers are gone.
+        """
+        rendered = await self.render(
+            user_story,
+            system_prompt=system_prompt,
+            instruction_template=instruction_template,
+            workspace_id=workspace_id,
+            few_shot_config=few_shot_config,
+        )
+        return await self.generate(rendered, config)
 
     async def _fetch_rag_examples(
         self,
