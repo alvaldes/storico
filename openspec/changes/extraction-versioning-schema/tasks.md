@@ -409,7 +409,7 @@ and the nine re-pointed cases all stay in 3b.
       any later terminal write; and the regression test — after a failed run and after a completed run
       every snapshot column still holds its birth/render value. RED today because the terminal rebuilds
       null the columns.
-- [ ] 3.2 RED — `backend/tests/test_api/test_extraction.py`: the retry path leaves exactly one
+- [x] 3.2 RED — `backend/tests/test_api/test_extraction.py`: the retry path leaves exactly one
       extraction row and one number; every task row the completed run writes carries its
       `extraction_id`; a v2 run on the same story produces new task rows while v1's remain (disjoint
       sets).
@@ -453,12 +453,29 @@ and the nine re-pointed cases all stay in 3b.
       `backend/tests/test_repositories/test_extraction_repo.py` that the port exposes no `delete`.
       **3b-ii-b note (2026-09-29):** closed. No whole-row writer remains; the port surface is pinned
       by exact method set, and the deletion reached one spy helper outside the granted three.
-- [ ] 3.8 TRIANGULATE — `backend/tests/test_api/test_extraction.py`: run one story twice; v1's task
+- [x] 3.8 TRIANGULATE — `backend/tests/test_api/test_extraction.py`: run one story twice; v1's task
       rows are byte-for-byte untouched, v2's tasks are new rows, `find_current_version` is v2, and the
       story-level read (`user_story_id`) still returns both sets.
-- [ ] 3.9 REFACTOR — rerun
+- [x] 3.9 REFACTOR — rerun
       `cd backend && conda run -n storico python -m pytest tests/test_unit/test_extraction_failure_paths.py tests/test_services/test_extraction_service.py -m "not integration"`
       then the whole suite `cd backend && conda run -n storico python -m pytest`.
+
+### Discovered defect D-a-1 — re-dispatching a run duplicates its task rows (found by 3.2, not fixed here)
+
+A second `run_background_extraction` call for the **same** `extraction_id` re-runs the pipeline and
+appends a second set of `tasks` rows: the persist loop (`extraction_task.py:441`) is INSERT-only and
+carries no guard on `extraction_id`. Probed at 3b-iii — re-dispatching a 2-task run yields 3 rows for
+the story, while extraction rows stay at 1 and `version_number` stays at `[1]`.
+
+**Latent, not live.** Every production path either mints a new version (POST) or marks failed without
+re-running (`recover_stuck_extractions` → `mark_failed`, `extraction_task.py:193`). Nothing re-dispatches
+today, so no user-visible defect exists. This is also why the 3.2 case pins "one extraction row, one
+number" — the invariant the spec states — and not "exactly one set of task rows", which the code does
+not guarantee.
+
+Deliberately **not** fixed in slice (a): the fix is either an idempotent persist or a rejection of a
+non-pending `extraction_id`, and both change behaviour the (b) slice's endpoints will depend on.
+Routed to slice (b) as a named requirement rather than absorbed silently here.
 
 ## Phase 4: WU4 — Invalidation Storage Invariants
 

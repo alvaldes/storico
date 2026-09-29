@@ -21,7 +21,11 @@ from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
 from storico.infrastructure.crypto import FernetCipher
-from storico.infrastructure.database.models import WorkspaceLLMConfigModel
+from storico.infrastructure.database.models import (
+    ExtractionModel,
+    TaskModel,
+    WorkspaceLLMConfigModel,
+)
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyTaskRepository,
@@ -1149,3 +1153,277 @@ class TestVersioningTriangulation:
 
         assert response.status_code == 500
         assert response.json()["error_code"] == "REPOSITORY_ERROR"
+
+
+# ── Tasks 3.2 / 3.8 — versioning on the live runner path ────────────────────
+
+_RESPONSE_V1 = (
+    "1. summary: Write the migration\ndescription: Add the new columns.\n\n"
+    "2. summary: Seed the defaults\ndescription: Fill the config rows.\n"
+)
+_RESPONSE_V2 = "1. summary: Second-run task\ndescription: Output of version two.\n"
+
+
+class _AnsweringLLM(LLMPort):
+    """An LLM boundary that answers with a fixed transcript every call."""
+
+    def __init__(self, answer: str) -> None:
+        self.answer = answer
+        self.calls = 0
+
+    async def generate(
+        self,
+        prompt: str,  # noqa: ARG002
+        config: LLMConfig,  # noqa: ARG002
+        system_prompt: str | None = None,  # noqa: ARG002
+    ) -> str:
+        self.calls += 1
+        return self.answer
+
+
+class _RetryingAdapterLLM(_AnsweringLLM):
+    """An LLM boundary whose adapter retries internally, then answers.
+
+    Mirrors the real adapter contract: ``OllamaAdapter.generate`` loops up to three
+    attempts with backoff before it answers or raises, so the runner sees exactly one
+    ``generate`` call no matter how many times the provider was hit. The transient
+    failure here never escapes the adapter — which is precisely the case that must not
+    disturb versioning.
+    """
+
+    async def generate(
+        self,
+        prompt: str,  # noqa: ARG002
+        config: LLMConfig,  # noqa: ARG002
+        system_prompt: str | None = None,  # noqa: ARG002
+    ) -> str:
+        for attempt in range(3):
+            self.calls += 1  # counts provider attempts, not runner calls
+            try:
+                if attempt == 0:
+                    raise ConnectionError("transient provider blip, the adapter retries")
+                return self.answer
+            except ConnectionError:
+                continue  # the real adapter backs off here (1s, 2s) before retrying
+        raise LLMConnectionError("unreachable: the answer always arrives on attempt 2")
+
+
+async def _extraction_rows(session: AsyncSession, story_id: UUID) -> list[ExtractionModel]:
+    """Read the extraction rows for one story straight off the table."""
+    result = await session.execute(
+        select(ExtractionModel)
+        .where(ExtractionModel.user_story_id == story_id)
+        .order_by(ExtractionModel.version_number)
+    )
+    return list(result.scalars().all())
+
+
+async def _task_rows(session: AsyncSession, story_id: UUID) -> list[TaskModel]:
+    """Read the task rows for one story straight off the table.
+
+    The rows, not the entities a runner or a repository returned, are the witness:
+    what versioning guarantees lives in the table, not in memory.
+    """
+    result = await session.execute(
+        select(TaskModel)
+        .where(TaskModel.user_story_id == story_id)
+        .order_by(TaskModel.created_at, TaskModel.title)
+    )
+    return list(result.scalars().all())
+
+
+def _task_snapshot(row: TaskModel) -> tuple:
+    """Every column of a task row, for the byte-for-byte comparison task 3.8 needs."""
+    return (
+        row.id,
+        row.user_story_id,
+        row.extraction_id,
+        row.title,
+        row.description,
+        row.status,
+        row.priority,
+        row.labels,
+        row.dependencies,
+        row.created_at,
+        row.updated_at,
+    )
+
+
+@pytest.mark.unit
+class TestVersionedTaskRowsOnTheLivePath:
+    """What versioning guarantees when the real runner writes tasks (3.2, 3.8).
+
+    The route mints the number at birth and the runner never allocates, so the
+    invariants below should already hold on a tree where 3b-i/3b-ii-a landed — these
+    cases pin them so a future change to the runner cannot quietly break them.
+    """
+
+    async def _seed_pending(self, factory, story_id: UUID) -> Extraction:
+        """Birth one pending extraction through the allocation path."""
+        async with factory() as session:
+            return await seed_extraction(session, story_id, model_used="llama3.2")
+
+    async def _run(
+        self,
+        monkeypatch,
+        test_engine: AsyncEngine,
+        pending: Extraction,
+        seeded,
+        llm: LLMPort,
+        *,
+        max_retries: int = 0,
+    ) -> None:
+        """Run the real background task against the test engine with a fake LLM."""
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        # The subject here is the rows the runner writes, not retrieval — see the helper.
+        _make_the_vector_store_unavailable(monkeypatch)
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=max_retries,
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_retry_path_leaves_one_extraction_row_and_one_number(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A run that retries inside the LLM call never mints a second version.
+
+        The adapter's own retry loop hits the provider twice inside one ``generate``
+        call; from the runner's view it is one LLM call for one extraction id, so the
+        run must land on the row it already has — one row, one number, completed once.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+        pending = await self._seed_pending(factory, seeded.story_id)
+
+        llm = _RetryingAdapterLLM(_RESPONSE_V1)
+        await self._run(monkeypatch, test_engine, pending, seeded, llm)
+
+        assert llm.calls == 2, "the run never actually retried, so nothing was exercised"
+        async with factory() as session:
+            rows = await _extraction_rows(session, seeded.story_id)
+            tasks = await _task_rows(session, seeded.story_id)
+
+        assert len(rows) == 1
+        assert [row.version_number for row in rows] == [1]
+        assert rows[0].status == ExtractionStatus.COMPLETED
+        # The retry's tasks belong to the same run, not to some second version.
+        assert {task.extraction_id for task in tasks} == {pending.id}
+
+    @pytest.mark.asyncio
+    async def test_a_redispatch_of_the_same_extraction_mints_no_second_row_or_number(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """Re-dispatching ``run_background_extraction`` for one extraction id stays one row.
+
+        The dispatch is fire-and-forget, so a doubled ``create_task`` is the accident
+        this pins: the second dispatch runs the pipeline again for the same id, and
+        versioning must still answer with exactly one extraction row, version 1.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+        pending = await self._seed_pending(factory, seeded.story_id)
+
+        first = _AnsweringLLM(_RESPONSE_V1)
+        await self._run(monkeypatch, test_engine, pending, seeded, first)
+
+        second = _AnsweringLLM(_RESPONSE_V2)
+        await self._run(monkeypatch, test_engine, pending, seeded, second)
+
+        assert first.calls == 1 and second.calls == 1, "the re-dispatch never actually ran"
+        async with factory() as session:
+            rows = await _extraction_rows(session, seeded.story_id)
+
+        assert len(rows) == 1
+        assert [row.version_number for row in rows] == [1]
+
+    @pytest.mark.asyncio
+    async def test_every_task_row_the_completed_run_writes_carries_its_extraction_id(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """R5 read back off the table: no task row is orphaned from its run.
+
+        The rows are the witness — the entity the runner built in memory could carry
+        the id while the INSERT dropped it, and only the table decides.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+        pending = await self._seed_pending(factory, seeded.story_id)
+
+        await self._run(monkeypatch, test_engine, pending, seeded, _AnsweringLLM(_RESPONSE_V1))
+
+        async with factory() as session:
+            tasks = await _task_rows(session, seeded.story_id)
+
+        assert len(tasks) == 2
+        assert all(task.extraction_id == pending.id for task in tasks)
+        assert all(task.extraction_id is not None for task in tasks)
+
+    @pytest.mark.asyncio
+    async def test_a_v2_run_mints_new_task_rows_while_v1s_remain(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A second run adds its own task rows; v1's are neither reused nor deleted.
+
+        The two sets are disjoint by primary key and by extraction: v2's tasks are new
+        rows that belong to v2, and v1's rows still carry v1's id with v1's content.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+        v1 = await self._seed_pending(factory, seeded.story_id)
+        await self._run(monkeypatch, test_engine, v1, seeded, _AnsweringLLM(_RESPONSE_V1))
+
+        v2 = await self._seed_pending(factory, seeded.story_id)
+        await self._run(monkeypatch, test_engine, v2, seeded, _AnsweringLLM(_RESPONSE_V2))
+
+        async with factory() as session:
+            tasks = await _task_rows(session, seeded.story_id)
+
+        v1_tasks = [task for task in tasks if task.extraction_id == v1.id]
+        v2_tasks = [task for task in tasks if task.extraction_id == v2.id]
+        assert {task.title for task in v1_tasks} == {"Write the migration", "Seed the defaults"}
+        assert {task.title for task in v2_tasks} == {"Second-run task"}
+        assert {task.id for task in v1_tasks}.isdisjoint({task.id for task in v2_tasks})
+        assert len(tasks) == len(v1_tasks) + len(v2_tasks)
+
+    @pytest.mark.asyncio
+    async def test_rerunning_a_story_leaves_v1s_task_rows_byte_for_byte_untouched(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The invariant the whole slice exists for: a re-run rewrites nothing (3.8).
+
+        v1's rows are captured column-for-column before v2 runs and compared after:
+        identical. v2's tasks are new rows, the derived current version is v2, and the
+        story-level read still returns both sets.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+        v1 = await self._seed_pending(factory, seeded.story_id)
+        await self._run(monkeypatch, test_engine, v1, seeded, _AnsweringLLM(_RESPONSE_V1))
+
+        async with factory() as session:
+            before = [_task_snapshot(row) for row in await _task_rows(session, seeded.story_id)]
+        assert len(before) == 2
+
+        v2 = await self._seed_pending(factory, seeded.story_id)
+        await self._run(monkeypatch, test_engine, v2, seeded, _AnsweringLLM(_RESPONSE_V2))
+
+        async with factory() as session:
+            rows = await _task_rows(session, seeded.story_id)
+            current = await SQLAlchemyExtractionRepository(session).find_current_version(
+                seeded.story_id
+            )
+            story_read = await SQLAlchemyTaskRepository(session).list_by_story(seeded.story_id)
+
+        v1_rows = [row for row in rows if row.extraction_id == v1.id]
+        v2_rows = [row for row in rows if row.extraction_id == v2.id]
+        # v1's rows, column-for-column, are exactly what they were before v2 ran.
+        assert [_task_snapshot(row) for row in v1_rows] == before
+        assert len(v2_rows) == 1
+        assert {row.id for row in v2_rows}.isdisjoint({snapshot[0] for snapshot in before})
+        assert current is not None and current.version_number == 2
+        assert len(story_read) == 3

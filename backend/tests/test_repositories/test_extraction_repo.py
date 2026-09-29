@@ -68,7 +68,7 @@ async def _seed_extraction(
 
 
 @pytest.mark.asyncio
-async def test_save_with_nullable_fields(db_session: AsyncSession, story_id: UUID) -> None:
+async def test_birth_round_trips_nullable_fields(db_session: AsyncSession, story_id: UUID) -> None:
     """An extraction born with nullable confidence_score and prompt_config reads them back.
 
     The seed goes through ``create_next_version``: ``0028`` left ``save()`` able only to
@@ -96,7 +96,9 @@ async def test_save_with_nullable_fields(db_session: AsyncSession, story_id: UUI
 
 
 @pytest.mark.asyncio
-async def test_save_with_null_fields(db_session: AsyncSession, story_id: UUID) -> None:
+async def test_birth_without_optional_fields_reads_them_as_none(
+    db_session: AsyncSession, story_id: UUID
+) -> None:
     """An extraction born without optional fields (prompt_config, confidence_score) reads them as None."""
     repo = SQLAlchemyExtractionRepository(db_session)
     created = await _seed_extraction(
