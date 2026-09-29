@@ -191,6 +191,13 @@ otherwise. Nothing in this document calls an unverified invariant green.
 
 | Commit | Content |
 | --- | --- |
+| `c47a1b2` | `feat(extraction): snapshot the prompt at the moment it is rendered` — 3a. `1035 passed` |
+| `3364c43` | `refactor(extraction): write terminal states through the mark methods` — 3b-i, task 3.5. `1039 passed` |
+| `366c341` | `refactor(extraction): delete the dead extraction path and its wrapper` — 3b-ii-a, tasks 3.3/3.4/3.6 |
+| `3a23655` | `refactor(extraction): remove save() so the repository has no whole-row writer` — 3b-ii-b, task 3.7 |
+| `94db112` | `test(extraction): pin versioned task rows on the live path` — 3b-iii, tasks 3.2/3.8/3.9, defect D-a-1 |
+| `20a7e02` | `test(extraction): prove the invalidation invariants are guarded` — WU4a, tasks 4.1/4.2/4.5, mutation matrix |
+| `(this)` | `test(extraction): witness the invalidation invariants only Postgres can see` — WU4b, task 4.3, defect D-a-2 |
 | `1a90aff` | `feat(extraction): give every run a version and its tasks a parent` — migration `0028`, the four new columns, `tasks.extraction_id`, `task_invalidations`, the port/repo allocation, the route's birth through `create_next_version`, `DEFAULT_TEMPERATURE`, the four runner rebuilds, the dead path allocating its own number, and the seed rewiring. 2,125 reviewable code lines |
 | `1f2d573` | `test(extraction): pin the 0028 invariants only Postgres can prove` — the six integration cases (1.18/1.19). 532 lines, **collected and linted but never executed here** |
 
