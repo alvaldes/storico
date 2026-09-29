@@ -365,3 +365,148 @@ class TestRenderTimeSnapshot:
         assert completed.provider == "ollama"
         assert completed.temperature == 0.42
         assert completed.version_number == 1
+
+
+# ── Terminal marks (task 3.5, tranche 3b-i) ───────────────────────
+
+
+class TestTerminalWritesGoThroughTheMarks:
+    """The runner's terminal writes stop rebuilding whole entities.
+
+    Tranche 3b-i: the completed and failed writes call the port's
+    ``mark_completed`` / ``mark_failed`` — single UPDATEs that name no snapshot
+    column — and the recovery sweep marks failed the same way. ``save()`` leaves
+    the runner's terminal path entirely, which is *what buys* the snapshot
+    invariant: provider, temperature, version_number and prompt_rendered survive
+    by construction instead of being threaded through a rebuild.
+    """
+
+    @staticmethod
+    def _spy_marks(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        """Record which extraction-repository write methods the runner reaches.
+
+        The spies wrap the real class methods, so every session the runner opens
+        (including the standalone failure helper's own) is covered.
+        """
+        calls: list[str] = []
+        repo_cls = SQLAlchemyExtractionRepository
+        real_completed = repo_cls.mark_completed
+        real_failed = repo_cls.mark_failed
+        real_save = repo_cls.save
+
+        async def spy_completed(
+            self: SQLAlchemyExtractionRepository, extraction_id: UUID, **kwargs: object
+        ) -> None:
+            calls.append("mark_completed")
+            await real_completed(self, extraction_id, **kwargs)  # type: ignore[arg-type]
+
+        async def spy_failed(
+            self: SQLAlchemyExtractionRepository, extraction_id: UUID, **kwargs: object
+        ) -> None:
+            calls.append("mark_failed")
+            await real_failed(self, extraction_id, **kwargs)  # type: ignore[arg-type]
+
+        async def spy_save(
+            self: SQLAlchemyExtractionRepository, extraction: Extraction
+        ) -> Extraction:
+            calls.append("save")
+            return await real_save(self, extraction)
+
+        monkeypatch.setattr(repo_cls, "mark_completed", spy_completed)
+        monkeypatch.setattr(repo_cls, "mark_failed", spy_failed)
+        monkeypatch.setattr(repo_cls, "save", spy_save)
+        return calls
+
+    @pytest.mark.asyncio
+    async def test_the_completed_run_marks_completed_and_never_saves(
+        self,
+        test_engine: AsyncEngine,
+        monkeypatch: pytest.MonkeyPatch,
+        seed_workspace,
+    ) -> None:
+        seeded = await seed_workspace(member=False)
+        pending = await _seed_pending(
+            test_engine, seeded.story_id, prompt_config={"validate": False}
+        )
+        llm = _ObservingAnsweringLLM(test_engine, pending.id)
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        _make_the_vector_store_unavailable(monkeypatch)
+        calls = self._spy_marks(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+        assert calls == ["mark_completed"]
+
+    @pytest.mark.asyncio
+    async def test_the_failed_run_marks_failed_and_never_saves(
+        self,
+        test_engine: AsyncEngine,
+        monkeypatch: pytest.MonkeyPatch,
+        seed_workspace,
+    ) -> None:
+        seeded = await seed_workspace(member=False)
+        pending = await _seed_pending(
+            test_engine, seeded.story_id, prompt_config={"validate": False}
+        )
+        llm = _ObservingLLM(test_engine, pending.id)
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        _make_the_vector_store_unavailable(monkeypatch)
+        calls = self._spy_marks(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+        assert calls == ["mark_failed"]
+
+    @pytest.mark.asyncio
+    async def test_a_missing_story_marks_failed_and_never_saves(
+        self,
+        test_engine: AsyncEngine,
+        monkeypatch: pytest.MonkeyPatch,
+        seed_workspace,
+    ) -> None:
+        """The pre-render failure path through ``_mark_failed`` is a mark too."""
+        seeded = await seed_workspace(member=False)
+        pending = await _seed_pending(test_engine, seeded.story_id)
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        calls = self._spy_marks(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=uuid4(),  # no such story
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+        assert calls == ["mark_failed"]
+
+    @pytest.mark.asyncio
+    async def test_the_recovery_sweep_marks_failed_and_never_saves(
+        self,
+        test_engine: AsyncEngine,
+        monkeypatch: pytest.MonkeyPatch,
+        seed_workspace,
+    ) -> None:
+        seeded = await seed_workspace(member=False)
+        pending = await _seed_pending(test_engine, seeded.story_id)
+        await _age_the_row(test_engine, pending.id)
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        calls = self._spy_marks(monkeypatch)
+
+        await extraction_task.recover_stuck_extractions(max_age_minutes=1)
+
+        assert calls == ["mark_failed"]

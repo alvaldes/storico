@@ -28,7 +28,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from storico.application.prompts.resolve_workspace_prompt import resolve_workspace_prompt
-from storico.domain.entities import Extraction, Task
+from storico.domain.entities import Task
 from storico.domain.entities.exceptions import LLMError, ParseError
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
@@ -190,23 +190,10 @@ async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
                 and ext.created_at
                 and _as_utc(ext.created_at) < deadline
             ):
-                await repo.save(
-                    Extraction(
-                        id=ext.id,
-                        user_story_id=ext.user_story_id,
-                        model_used=ext.model_used or "",
-                        raw_response=ext.raw_response or "",
-                        provider=ext.provider,
-                        temperature=ext.temperature,
-                        version_number=ext.version_number,
-                        prompt_rendered=ext.prompt_rendered,
-                        status=ExtractionStatus.FAILED,
-                        user_story_status=UserStoryStatus.FAILED_EXTRACTION,
-                        error_info="Server restarted while extraction was pending",
-                        prompt_config=ext.prompt_config,
-                        created_at=ext.created_at,
-                        completed_at=datetime.now(UTC),
-                    )
+                await repo.mark_failed(
+                    ext.id,
+                    error_info="Server restarted while extraction was pending",
+                    completed_at=datetime.now(UTC),
                 )
                 recovered += 1
 
@@ -442,36 +429,15 @@ async def _run_extraction(
                     },
                 )
 
-        # 5. Persist extraction — reuse the pending ID so the client's poll resolves.
-        # The pending row is the source of the run's identity: created_at and the rest of
-        # the run snapshot (provider, temperature, version) are read back from it instead
-        # of being dropped by a fresh entity built without them. ``prompt_rendered`` is
-        # NOT read from ``pending``: the freshly rendered text is threaded in directly so
-        # the value written at render time is what survives the terminal write, whatever
-        # ``pending`` happens to hold.
-        pending = await extraction_repo.find_by_id(extraction_id)
-        created_at = pending.created_at if pending else datetime.now(UTC)
-        completed = Extraction(
-            id=extraction_id,
-            user_story_id=story_id,
-            model_used=model,
+        # 5. Mark the run completed — one targeted UPDATE that names no snapshot
+        # column, so provider, temperature, version_number and prompt_rendered keep
+        # the values written at birth/render time without being restated here.
+        await extraction_repo.mark_completed(
+            extraction_id,
             raw_response=raw_response,
-            provider=pending.provider if pending else provider,
-            temperature=pending.temperature if pending else temperature,
-            version_number=pending.version_number if pending else None,
-            prompt_rendered=rendered.text,
-            status=ExtractionStatus.COMPLETED,
-            user_story_status=UserStoryStatus.EXTRACTED,
             confidence_score=confidence,
-            prompt_config={
-                "validate": validate,
-                "temperature": temperature,
-                "system_prompt": system_prompt,
-            },
-            created_at=created_at,
             completed_at=datetime.now(UTC),
         )
-        await extraction_repo.save(completed)
 
         # 6. Persist tasks
         for pt in parsed_tasks:
@@ -525,33 +491,20 @@ async def _mark_failed(
     """Update a pending extraction record to ``failed`` status and transition UserStory to FAILED_EXTRACTION.
 
     This path runs only for failures before any prompt is rendered (e.g. a missing story),
-    so its rebuild carries ``prompt_rendered`` from the re-read row and never invents one.
+    so the terminal write names no snapshot column and never touches what is already stored.
     """
     pending = await extraction_repo.find_by_id(extraction_id)
     if pending is None:
         return
 
-    # Update extraction record. The rebuild re-reads the row first, so any value already
-    # written to ``prompt_rendered`` (or the other snapshot columns) is carried through
-    # the terminal write rather than re-nulled — the same reason the mark methods in 3b
-    # will not need this argument at all.
-    failed = Extraction(
-        id=extraction_id,
-        user_story_id=pending.user_story_id,
-        model_used=pending.model_used,
-        raw_response=pending.raw_response,
-        provider=pending.provider,
-        temperature=pending.temperature,
-        version_number=pending.version_number,
-        prompt_rendered=pending.prompt_rendered,
-        status=ExtractionStatus.FAILED,
-        user_story_status=UserStoryStatus.FAILED_EXTRACTION,
+    # Mark the extraction failed with one targeted UPDATE that names no snapshot
+    # column: anything already written to the row survives without being restated
+    # here. The re-read above only feeds the story transition below.
+    await extraction_repo.mark_failed(
+        extraction_id,
         error_info=error_info,
-        prompt_config=pending.prompt_config,
-        created_at=pending.created_at,
         completed_at=datetime.now(UTC),
     )
-    await extraction_repo.save(failed)
 
     # Transition UserStory to FAILED_EXTRACTION (from EXTRACTING or PENDING_EXTRACTION)
     story = await story_repo.find_by_id(pending.user_story_id)
@@ -621,30 +574,18 @@ async def _mark_extraction_failed(
     async with factory() as session:
         repo = SQLAlchemyExtractionRepository(session)
         story_repo = SQLAlchemyUserStoryRepository(session)
-        # This helper re-reads the row in its own session, so any snapshot written earlier
-        # in the run (the render-time ``prompt_rendered``, in particular) is carried into
-        # the terminal rebuild intact — the failure path after render is exactly the case
-        # the snapshot exists for.
+        # The row is re-read in its own session only to feed the story transition
+        # below; the terminal write itself is one targeted UPDATE that names no
+        # snapshot column, so anything written earlier in the run (the render-time
+        # prompt_rendered, in particular) survives untouched.
         pending = await repo.find_by_id(extraction_id)
         if pending is None:
             return
-        failed = Extraction(
-            id=extraction_id,
-            user_story_id=pending.user_story_id,
-            model_used=pending.model_used,
-            raw_response=pending.raw_response,
-            provider=pending.provider,
-            temperature=pending.temperature,
-            version_number=pending.version_number,
-            prompt_rendered=pending.prompt_rendered,
-            status=ExtractionStatus.FAILED,
-            user_story_status=UserStoryStatus.FAILED_EXTRACTION,
+        await repo.mark_failed(
+            extraction_id,
             error_info=error_info,
-            prompt_config=pending.prompt_config,
-            created_at=pending.created_at,
             completed_at=datetime.now(UTC),
         )
-        await repo.save(failed)
 
         # Transition UserStory to FAILED_EXTRACTION
         story = await story_repo.find_by_id(pending.user_story_id)
