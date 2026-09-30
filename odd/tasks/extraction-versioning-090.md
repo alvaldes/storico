@@ -273,8 +273,9 @@ Written for a session that starts with nothing in context. Read in this order: t
 
 | | |
 | --- | --- |
-| PR | **#30** — <https://github.com/alvaldes/storico/pull/30> — base `main`, **OPEN, NOT MERGED** |
-| Branch | `feat/extraction-versioning-schema-wu1`, head `6fde589` (CI green at that head), 21 commits over `main` `1737708` |
+| PR | **#30** — <https://github.com/alvaldes/storico/pull/30> — base `main`, **OPEN, NOT MERGED**. Its body still describes `4.4` as open and cites "15 commits / 38 files": both are stale as of `7e3aa6e`, and updating it is the owner's call |
+| Branch | `feat/extraction-versioning-schema-wu1`. **Deliberately not pinned to its own HEAD sha or commit count** — a commit cannot truthfully cite the sha it is creating. Measure at review time: `git rev-list --count main..HEAD` and `git diff --shortstat $(git merge-base main HEAD)..HEAD`. Two counts were wrong here before this note (the PR body's "15 commits / 38 files" and this table's "21 commits"), which is why the commands replaced the numbers |
+| Last measured | at `7e3aa6e`: **26** commits over `main` `1737708`, `41 files changed, 5027 insertions(+), 1001 deletions(-)` |
 | CI on that head | `backend pass`, `frontend pass`, `mergeable=CLEAN`; run 36649904378 reported `1064 passed, 18 skipped` |
 | Local suite | `1049 passed, 33 deselected`, 0 failed · `ruff check`/`format --check` exit 0 |
 | Open tasks in the change | **none** — 4.4 closed 2026-09-30; 1.1–1.20, 2.1–2.6, 3.1–3.9, 4.1–4.5 and 5.1–5.6 are closed |
