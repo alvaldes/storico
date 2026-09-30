@@ -847,9 +847,27 @@ and `cd frontend && pnpm test src/components/react/__tests__/TaskEditor.test.tsx
 - [x] b2-3. T2b editor + client GREEN (2.7, 2.9).
 - [x] b2-4. T3 locale mirror and registry count 38 → 39 (2.8).
 - [x] b2-5. REFACTOR reruns 2.10/2.11 + full backend and frontend suites, measured by the parent.
-- [ ] b2-6. One WU2 commit (atomic by design), PR stacked on the WU1 branch.
-- [ ] b2-7. `tasks.md` + `apply-progress.md` + this handoff reconciled; the `frozen` seam recorded where the
+- [x] b2-6. One WU2 commit (atomic by design), PR stacked on the WU1 branch.
+- [x] b2-7. `tasks.md` + `apply-progress.md` + this handoff reconciled; the `frozen` seam recorded where the
   next reader will find it (PR body and `apply-progress.md`, not only here).
+
+### Delivered, and the exception was widened by the owner before the push
+
+**PR #32** → https://github.com/alvaldes/storico/pull/32 — base `feat/extraction-versioning-api-wu1`, head
+`62d780d`, `MERGEABLE` / `mergeStateStatus: CLEAN`. Commits: **`bf12197`** `feat(tasks): enforce the D5/D21 field
+matrix and stop the editor sending removed fields` and **`62d780d`** `docs(odd): record the WU2 tranches and the
+four plan premises they corrected`.
+
+The 918-vs-≈420–520 overrun was put in front of the owner **before** pushing, with the production/test split, and
+ratified: the `size:exception` for WU2 now stands at 918. Nothing was trimmed to meet a number, and the unit was
+not split, because a backend-only half 422s every editor save.
+
+| Check | Result |
+| --- | --- |
+| PR shape | 16 files, **1716** changed lines: **918 code+tests** (210 production / 708 tests) and **798 process artifacts** (`apply-progress.md` 651, this document, `tasks.md` checkboxes) |
+| CI backend | **1081 passed, 18 skipped** in 1m43s — 1099 collected, against WU1's 1084, so the 15 new cases ran and the integration half passed where it can actually run |
+| CI frontend | `pass` in 1m15s, Vercel preview deployed |
+| Reading guide published | the PR names the five files that hold the contract and calls the two big test files evidence for them, so the reviewer is not asked to read 798 lines of process noise as if it were code |
 
 ### What the tranches actually found, because the plan got four premises wrong
 
