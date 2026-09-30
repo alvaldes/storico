@@ -18,6 +18,30 @@ Prerrequisitos que, si faltan, rompen algo en silencio o fallan recién en produ
 | El deploy corre las migraciones | ✅ | `.github/workflows/deploy-backend.yml` aplica `alembic upgrade head` en una **ventana de mantenimiento**: entre el `docker stop` y el `docker run`, o sea sin ningún release vivo. Es la única posición que satisface a la vez a `0022` y `0024` (que piden el código nuevo vivo antes de correr) y a `0023` (que pide la columna antes de que el código nuevo la lea), porque cada peligro necesita un release vivo del lado equivocado. Corre desde la imagen recién construida y con el mismo `--env-file`, así que la URL y la clave son las del contenedor. Costo aceptado: hay downtime durante la migración, y si falla la API queda abajo en vez de servir contra un esquema que no coincide. El gate de readiness pasó a ser la prueba de que la migración quedó aplicada, y los deploys quedaron serializados. Ver `odd/tasks/deploy-migration-window.md` y `docs/deployment.md`. |
 | Suite de integración contra Postgres real | ✅ | Ya corre en CI en cada push: en la ejecución `35546955633` se ejecutó `tests/test_integration/test_projects_integration.py::test_list_projects_with_counts_latency_under_500ms` y el job terminó con `703 passed`. El salto solo ocurre en una máquina sin daemon de Docker, no en CI: `backend/pytest.ini` registra el marcador `integration` pero no lo deselecciona, `.github/workflows/ci.yml` corre `pytest -q` sin filtro de marcadores, `testcontainers>=4.15.0` es dependencia de desarrollo y los runners de GitHub tienen el daemon de Docker que `_docker_reachable()` sondea. Esa deuda ya se pagó: el import usa el módulo canónico `testcontainers.community.postgres` (`backend/tests/test_integration/test_projects_integration.py`), que es lo que fija el piso declarado en `>=4.15.0`, porque por debajo el módulo canónico no existe y el nombre viejo es un shim detrás de un `DeprecationWarning`. |
 
+## Release `v0.9.0` (2026-09-30, por orden explícita del owner: "haz el make bump")
+
+Corrido por `make bump` — la única vía que fija `AGENTS.md` §0; el tag no se tocó a mano. Las guardas se
+verificaron **antes**, no después del hecho: árbol sin cambios trackeados, `main` en `0532799` y a la par
+de `origin/main`, tag baseline `v0.8.0` con **los tres manifests diciendo `0.8.0`** (regla 6), y desde el
+tag **2 `feat(extraction)` sin `!` ni `BREAKING CHANGE`** → increment `MINOR`.
+
+| Paso | Resultado |
+| --- | --- |
+| `cz bump` | `bump: version 0.8.0 → 0.9.0`, commit **`fb25478`**, 4 archivos / 39 inserciones. Tag **`v0.9.0`** |
+| Contenido del diff | **sólo** las tres líneas de `version`. El pin `ruff>=0.6.1` quedó intacto (`backend/pyproject.toml:69`) — que es exactamente la trampa que los `version_files` anclados por archivo existen para evitar (regla 7) |
+| CHANGELOG | `## v0.9.0 (2026-09-30)`, con los dos `feat` del versionado arriba de los `fix` |
+| Push | `main` + tag empujados. El push de `backend/pyproject.toml` **dispara el deploy**: downtime aceptado por el owner al elegir "bumpear y pushear" |
+| Deploy | run **36747695497** → `success` |
+| CI | `fb25478` → `success` |
+| Verificado en prod | `/api/v1/health` → `version: 0.9.0`, `status ok`, `database ok`, `schema ok`. `alembic_version` **sigue `0028`**: el bump no movió esquema, y las once tablas siguen en 0 (`extractions` 0, `tasks` 0, `users` 0) |
+
+**Lo que `0.9.0` publica, dicho sin rodeos:** el versionado de extracciones **por el lado del esquema**
+(revisión `0028`) y la creación manual de tasks rotada por `NOT NULL` — **sin endpoints todavía**, porque
+los slices (b) y (c) no se aplicaron. (b) va a tener que salir en `0.9.1` o `0.10.0`. Quedan abiertas las
+dos cosas que no dependen de esta máquina: **el config de LLM**, que el owner va a crear al rehacer su
+workspace (los valores no secretos para reconstruirlo están en el inventario de D-a-3), y **D-a-5** (`410`
+en (b) WU1, predicado de versión vigente en (b) WU3).
+
 ## Contratos de API que mienten en producción (**D-a-5**, abierto al desplegar (a) sola)
 
 | Ítem | Estado | Detalle |
@@ -214,7 +238,8 @@ task 4.4 y la opción A del owner, ahora probada en el Postgres de producción y
 `uq_extractions_story_version`, `uq_task_invalidations_active_task` (parcial, `WHERE revoked_at IS
 NULL`), `ck_task_invalidations_revoke_pair` y `ck_task_invalidations_reason_not_blank` presentes,
 `tasks.extraction_id` `NOT NULL`, once tablas todavía en 0, y `/api/v1/health` → `ok` (`database ok`,
-`schema ok`, versión `0.8.0`: **no se bumpeó, eso sigue siendo decisión del owner**).
+`schema ok`). Leída en ese instante la app todavía reportaba `0.8.0`: **el bump a `0.9.0` corrió
+después, el mismo día** (sección "Release `v0.9.0`").
 
 🔲 **No hace falta tocar la VM ni el `.env`:** `STORICO_ENCRYPTION_KEY` sigue ahí y ahora no tiene
 ningún ciphertext que desencriptar; `STORICO_GOOGLE_API_KEY` sí sigue sirviendo, para el embedding.

@@ -151,9 +151,9 @@ on the spec's earlier verification pass, not on new commits.
   (8 reqs / 23 scenarios) and `openspec/specs/task-invalidation/spec.md` (6 reqs / 13 scenarios), each
   verified byte-identical to its delta modulo the header. The change moved to
   `openspec/changes/archive/2026-09-30-extraction-versioning-schema/` with an `archive-report.md` that says
-  plainly it was hand-made and that **`openspec validate` never ran**.
-  What was NOT done, on purpose: **`make bump`** — all three manifests and `/api/v1/health` still say
-  `0.8.0`, and `0.9.0` is planned as three slices with one shipped; releasing is the owner's call.
+  plainly it was hand-made and that **`openspec validate` never ran**. What was originally left undone
+  —`make bump`— **was done later the same day on the owner's explicit instruction**: `v0.9.0` is released
+  and deployed, evidence in `prod.todo.md` ("Release `v0.9.0`").
 - [ ] 18. **Operational, needs the owner's hands:** log in again, then create the workspace LLM config in
   Configuración before any extraction — `resolve_llm_config` falls back to `provider = "ollama"` and
   production has no Ollama. The two api_key values must come from the AI Studio and nan.builders consoles.
@@ -326,7 +326,7 @@ Written for a session that starts with nothing in context. Read in this order: t
 | Open tasks in the change | **none** — 4.4 closed 2026-09-30; 1.1–1.20, 2.1–2.6, 3.1–3.9, 4.1–4.5 and 5.1–5.6 are closed |
 | Blocked on | **nothing** — D-a-3 closed end to end: interlock → wipe → merge → deploy → verification |
 | Deployed | production now runs `0028`: `alembic_version = 0028`, `task_invalidations` exists with `fk_task_invalidations_revoked_by_users ... ON DELETE RESTRICT`, `uq_extractions_story_version`, partial `uq_task_invalidations_active_task`, `ck_task_invalidations_revoke_pair`, `tasks.extraction_id NOT NULL`; eleven business tables at 0; three Qdrant collections at 0 points; `/api/v1/health` → `ok` |
-| Not bumped | version is still `0.8.0` in all three manifests and in `/api/v1/health`. **No `make bump`**: publishing a release is the owner's call, and `0.9.0` is planned as three slices with only (a) shipped |
+| Released | **`v0.9.0`** — `make bump` on the owner's order 2026-09-30: commit `fb25478`, tag `v0.9.0`, MINOR from the two `feat(extraction)` commits with no `!`/`BREAKING CHANGE`. Pushed with the tag; deploy `36747695497` → `success`; CI → `success`; `/api/v1/health` → `0.9.0`. `alembic_version` still `0028`: the bump moved no schema |
 | Needs a human | re-create the workspace LLM config in Configuración before any extraction: `resolve_llm_config` (`api/routes/workspace_settings.py:121-129`) falls back to `provider = "ollama"` + `settings.ollama_host` when a workspace has no config row, and production has no Ollama. Also: log in again (no `users` rows), and the AI Studio / nan.builders keys must come from their consoles |
 | Archived | **by hand, 2026-09-30** — store updated (`openspec/specs/extraction-versioning`, `openspec/specs/task-invalidation`) and the change moved to `openspec/changes/archive/2026-09-30-extraction-versioning-schema/` with `archive-report.md`. **`openspec validate` did not run** (no CLI); structure was diffed against the repo's own `2026-09-14-few-shot-qdrant` precedent instead |
 | Not authorized | slice (b) `extraction-versioning-api`, slice (c) `extraction-versioning-prompt` |
@@ -654,8 +654,10 @@ would have hidden: two of (b)'s API-layer requirements restate (a)'s storage inv
 will hold the same rule twice at two layers once (b) archives — recorded as an authoring note for (b),
 not silently accepted and not "fixed" by editing requirements that are correct where they stand.
 
-**What is deliberately not done.** `make bump` (release is the owner's call; `0.8.0` in all three manifests
-and in `/api/v1/health`, and `0.9.0` is planned as three slices with one shipped). Slice (b)
+**What was left undone at the time, and is now closed.** `make bump` sat in this list as a deliberate
+non-action while the version question was the owner's; on the owner's instruction it ran the same day —
+`fb25478` + tag `v0.9.0`, deploy `36747695497` `success`, health reports `0.9.0`, `alembic_version` still
+`0028`. Slice (b)
 `extraction-versioning-api` and slice (c) `extraction-versioning-prompt` are **not authorized** and each
 needs its own apply authorization; (b) carries **D-a-1**, **D-a-4** and the retirement of
 `POST /api/v1/tasks/`. The Qdrant dev/prod cluster-sharing design decision is still open. The published
