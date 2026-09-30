@@ -71,7 +71,7 @@ Prerrequisitos que, si faltan, rompen algo en silencio o fallan recién en produ
 Este archivo lo mantiene quien despliega. Si un ítem se cierra, se marca acá y se deja el detalle en
 el documento que le corresponda — no se abre una segunda lista.
 
-## Bloqueo de despliegue: la migración `0028` no corre sobre la base de producción
+## Bloqueo de despliegue (**D-a-3**): la migración `0028` no corre sobre la base de producción
 
 **Descubierto el 2026-09-30, al cerrar el slice (a) de versionado de extracciones (PR #30). Ningún
 otro archivo de este repo lo decía.**

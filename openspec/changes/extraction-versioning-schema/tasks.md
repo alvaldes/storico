@@ -540,6 +540,28 @@ migration. **Not taken here: it needs the owner's call.**
 refuse the deletion — `0028` cannot be deployed against any user who has revoked a mark without that
 delete failing. D-a-2 is now an observed fact, not a reading, and 4.4's condition is met.
 
+
+### Discovered defect D-a-3 — `0028` cannot be deployed against populated data (blocks the merge)
+
+Found while closing Phase 5, by reading the deploy workflow next to the migration instead of trusting
+that a green CI meant the branch was shippable. `deploy-backend.yml:101` runs `alembic upgrade head` on
+every deploy; `0028:41` raises `RuntimeError` if `SELECT count(*)` on `extractions` or `tasks` is
+non-zero (D11, deliberate: `provider` and `temperature` are not reconstructable for old rows).
+Production holds real data — `storico_extractions_prod` was measured on 2026-09-28.
+
+Consequence: merging `main` with this revision stops the container, fails the migration, and leaves the
+API down. That is the workflow behaving as designed, not a defect in it; the defect is in the plan,
+which never said how the populated production database would get to `0028`.
+
+Three owner paths, written out in `prod.todo.md` ("Bloqueo de despliegue") and `docs/deployment.md`:
+purge the pair in a maintenance window with a backup; write a `0029` backfill that must invent and
+declare the unreconstructable values; or hold the PR until the thesis evaluation has data of its own.
+**None chosen. The PR stays open and unmerged for exactly this reason.**
+
+Not a slice (a) code defect: nothing in the change's own tests would pass or fail differently. It is
+recorded here because the change's acceptance is "deployed", and that acceptance is unreachable without
+a data decision.
+
 ## Phase 5: Slice Verification
 
 - [x] 5.1 Whole suite (the acceptance gate): `cd backend && conda run -n storico python -m pytest`.

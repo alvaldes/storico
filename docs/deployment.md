@@ -197,7 +197,7 @@ usa `%(here)s`, así que el comando funciona desde cualquier directorio; la imag
 - Los deploys están **serializados** (`concurrency` en el workflow): dos a la vez competirían por el
   swap y por la migración.
 
-### Una revisión que se niega a correr sobre datos: `0028` (bloqueo conocido, 2026-09-30)
+### Una revisión que se niega a correr sobre datos: `0028` (bloqueo **D-a-3**, 2026-09-30)
 
 El punto anterior asume que toda migración puede aplicarse a la base de producción. `0028` —el
 versionado de extracciones del slice (a) de 0.9.0, todavía en el **PR #30, sin mergear**— está escrita

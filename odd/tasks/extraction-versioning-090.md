@@ -280,7 +280,7 @@ render snapshot), `3364c43` (3b-i marks), `366c341` (3b-ii-a dead path deleted),
 `7a98c19` (WU4b Postgres half), then the `fix(test)` chain `3333b7b` / `4da58fb` / `962359a` and the
 doc commits.
 
-### The blocker, which is the reason the PR is not merged
+### The blocker (D-a-3), which is the reason the PR is not merged
 
 `.github/workflows/deploy-backend.yml:101` runs `alembic upgrade head` on **every** deploy.
 `0028:41` reads `SELECT count(*)` on `extractions` and `tasks` and raises `RuntimeError` if either is

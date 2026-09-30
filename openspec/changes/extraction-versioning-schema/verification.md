@@ -164,10 +164,18 @@ as PR 28 — so chaining works here but has already cost a re-target once.
 Applying the skill's issue-first rule to slice (a) would therefore mean inventing a taxonomy the repo
 does not have. Recorded as the user's call, not taken here.
 
-**Deployment is not at risk from this branch**: `deploy-backend.yml` triggers only on push to `main`
-with `backend/**` paths, and `ci.yml` triggers on `pull_request`. Opening a PR from this branch runs CI
-and nothing else. Merging it to `main` would deploy — and CI's Postgres run is the first execution of
-§2, so it must be green before that merge.
+**Opening the PR deploys nothing**: `deploy-backend.yml` triggers only on push to `main` with
+`backend/**` paths, and `ci.yml` triggers on `pull_request`.
+
+**But a green CI is not sufficient to merge, and this paragraph said it was.** Corrected on 2026-09-30
+after §1b: the deploy window runs `alembic upgrade head` unconditionally
+(`deploy-backend.yml:101`), and `0028` raises `RuntimeError` when `extractions` or `tasks` holds even
+one row (D11, no backfill). Production has real rows. So merging this branch to `main` stops the
+container, fails the migration and **leaves the API down** — the workflow behaving exactly as designed,
+which is not the same thing as a working deploy. Recorded as **D-a-3** with its three owner paths in
+`prod.todo.md` ("Bloqueo de despliegue"), `docs/deployment.md` and
+`odd/tasks/extraction-versioning-090.md`. CI green is necessary; the data decision is what unblocks
+the merge.
 
 ## 8. The three CI rounds, because the failures were the discovery
 
