@@ -79,29 +79,101 @@ otro archivo de este repo lo decía.**
 `0028_extraction_versioning` lee `SELECT count(*) FROM extractions` y `SELECT count(*) FROM tasks`
 antes de tocar el esquema, y **lanza `RuntimeError` si alguna de las dos tablas tiene una fila**
 (decisión D11: no se hace backfill). `.github/workflows/deploy-backend.yml:101` ejecuta
-`alembic upgrade head` en la ventana de mantenimiento de **todo** despliegue. Producción tiene datos
-reales: la colección `storico_extractions_prod` existe y fue medida el 2026-09-28 (AGENTS.md, ADR-005).
+`alembic upgrade head` en la ventana de mantenimiento de **todo** despliegue.
+
+**La premisa ahora está medida en el lugar correcto (2026-09-30).** Esta fila afirmaba que producción
+tiene datos citando la colección **Qdrant** `storico_extractions_prod`, medida el 2026-09-28. No es la
+misma cosa: la guarda de `0028` cuenta las tablas **relacionales** de Neon. Conectando en lectura —solo
+`SELECT count(*)`, sin DDL y sin imprimir la cadena de conexión—, medido directamente:
+
+| Medido en producción | Valor |
+| --- | --- |
+| `alembic_version` | **`0027`** — `0028` es la siguiente y **se va a negar** |
+| `extractions` | **17** (11 `failed`, 6 `completed`; span 2026-08-03 → 2026-09-24) |
+| `tasks` | **42**, todos en `status = backlog` |
+| `user_stories` / `projects` / `users` / `workspaces` | 6 / 3 / 3 / 4 |
+| `workspace_llm_configs` | 4, ninguna con `provider` NULL |
+| `task_invalidations` | **la tabla no existe** (consecuencia natural de estar en `0027`) |
+
+Cada número salió de dos caminos SQL independientes que coinciden; donde no coincidían, la sonda se
+descartó y no se reportó. La primera pasada usó `fetchval` sobre consultas de varias filas y devolvió
+solo la primera: reportó `temperature` como reconstruible cuando no lo es.
 
 Consecuencia exacta: **mergear `main` con `0028` dentro deja la API abajo a propósito.** El `docker stop`
 ya ocurrió, la migración falla, y el `docker run` no llega — que es el comportamiento diseñado del
 workflow (un fallo deja la API abajo antes que servir contra un esquema que no coincide), pero no es
 un despliegue: es una caída.
 
-`0028` es correcta como código; lo que falta es la decisión operativa, y es del owner. Tres caminos,
-no incompatibles pero sí distintos:
+`0028` es correcta como código; lo que faltaba era la decisión operativa. **Elegida el 2026-09-30:
+camino 1, ventana de purga.** El merge y la purga siguen siendo dos decisiones ordinarias aparte, y
+**ninguna se ejecutó**: nada se borró en producción al escribir esta línea.
 
-1. **Ventana de purga.** Borrar los datos relacionales de `extractions`/`tasks` en Neon (con respaldo
-   previo) antes de mergear, y dejar que `0028` corra sobre el par vacío. Es lo que el propio mensaje
-   de la guarda indica. Costo: se pierde el historial de extracciones de producción, y con él la
-   coherencia de los puntos ya guardados en `storico_extractions_prod`.
-2. **Revisión de backfill aparte.** Escribir una `0029` que asigne `version_number = 1` a cada
-   extracción existente, fije `provider`/`temperature` desde `prompt_config` donde sea recuperable, y
-   vincule `tasks.extraction_id` por `user_story_id`. Choca de frente con D11: `temperature` y
-   `provider` **no** son reconstruibles para las filas viejas, así que el backfill tendría que inventar
-   un valor y decir cuál. Requiere decidir qué se afirma de esos datos históricos.
+Antes de elegir se midió el costo real de cada camino, y dos afirmaciones de este documento estaban
+mal: D11 nombraba la columna equivocada y el costo de la purga estaba sobrevendido.
+
+| Campo que una `0029` tendría que rellenar | Estado medido |
+| --- | --- |
+| `temperature` | clave presente en 17/17 filas pero **valor `null` JSON en 17/17** → no reconstruible. Ojo: `prompt_config ? 'temperature'` (clave) da 17 y `->> 'temperature' IS NOT NULL` (valor) da 0; mirar solo la clave saca la conclusión contraria |
+| `provider` | **derivable por fila** por la cadena story → project → workspace → `workspace_llm_configs.provider` (17/17 con config). Es una *suposición*: la config de hoy no es necesariamente la del 3 de agosto |
+| `version_number` | derivable ordenando `created_at` dentro de la historia; solo 2 historias tienen más de una extracción (9 y 4) |
+| `tasks.extraction_id` | **esto es lo irreductible**: 28 de 42 tasks caen en historias con una sola extracción (derivable); **14 de 42** caen en las dos historias multi-run y no hay registro de qué run los produjo |
+
+Y el costo de la purga era más chico y distinto del escrito: el `id` del punto de Qdrant **es** el
+`extraction_id` (`qdrant_adapter.py:255`), y el payload se alcanza solo (`user_story_text`,
+`tasks_summary`, `model_used`, `workspace_id`). Purgar no rompe el few-shot: lo que se pierde es
+**procedencia**, no funcionamiento. Lo que se purga son 11 runs fallidos y 42 tareas que nunca salieron
+de `backlog`.
+
+Los tres caminos, ya evaluados:
+
+1. **Ventana de purga.** ← **ELEGIDO.** Borrar los datos relacionales de `extractions`/`tasks` en Neon
+   (con respaldo previo) antes de mergear, y dejar que `0028` corra sobre el par vacío. Es lo que el
+   propio mensaje de la guarda indica. Corregido por medición: no "pierde la coherencia de los puntos
+   de Qdrant", pierde la procedencia de 17 runs de prueba.
+2. **Revisión de backfill aparte.** Descartada por costo: habría que afirmar tres cosas —`temperature`
+   inventado en las 17 filas, `provider` por hipótesis de config actual, y un run elegido a mano para
+   14/42 tasks— sobre datos que la medición describe como tráfico de prueba. Queda disponible si la
+   evaluación de la tesis necesita conservar esos runs.
 3. **No mergear todavía.** Dejar el PR abierto y que el slice (a) viva en la rama hasta que la
    evaluación de la tesis tenga datos propios que purgar sin costo. Es el camino que el plan de slices
    ya asumía al decir que (a) no está desplegado.
 
-Ninguno se ejecutó. Antes de mergear hace falta elegir uno y escribirlo acá; después, el merge es una
-decisión ordinaria de `main`.
+### Runbook del camino 1 (escrito, **no ejecutado**)
+
+Es una operación destructiva sobre producción y su confirmación es explícita y separada del merge.
+Revisar cada paso antes de correr el siguiente; no hay atajo automatizado a propósito.
+
+0. **Ventana.** Avisar: entre el paso 2 y el 5 la API está caída o sirve contra un esquema viejo.
+1. **Respaldo.** `pg_dump` de la base de Neon antes de tocar nada, o un branch de Neon (que es el
+   mecanismo nativo de Neon y no gasta disco local). Verificado en esta máquina: **no hay ni `psql`,
+   ni `pg_dump`, ni `neonctl`, ni Docker**, así que este paso se corre desde fuera de este worktree.
+   Sin respaldo en mano, el paso 2 no se corre.
+2. **Purga.** Mismo `DATABASE_URL` de la VM, en una sola transacción:
+   `TRUNCATE TABLE tasks; TRUNCATE TABLE extractions;` — `tasks` primero porque referencia a
+   `user_stories` igual que `extractions`, y ninguna de las dos es referenciada por nada más en `0027`
+   (`task_invalidations` todavía no existe). Confirmar contando: ambos `count(*)` deben dar **0**.
+3. **Estado desnormalizado (decisión propia, no obvia).** `user_stories.status` sigue diciendo
+   `extracted` / `failed_extraction` sobre historias que se quedaron sin ninguna extracción, y
+   `extraction_repository` reescribe ese campo en cada run. Si se quiere coherencia, el mismo
+   `TRUNCATE` va acompañado de `UPDATE user_stories SET status = 'pending_extraction'`. Dejarlo como
+   está también es una opción: la app muestra la historia sin tareas. Elegir y anotar acá.
+4. **Mergear.** Recién con el par vacío: el merge a `main` dispara `deploy-backend.yml`, que corre
+   `alembic upgrade head` y `0028` pasa la guarda. El orden es **purgar y después mergear**, nunca al
+   revés: mergear primero deja el deploy fallando en cada push hasta que alguien purgue.
+5. **Comprobación.** `alembic_version` = `0028`, `task_invalidations` existe, y los puntos de Qdrant
+   (`storico_extractions_prod`: 1 punto, `storico_extractions`: 19 — medidos el 2026-09-28, no hoy)
+   siguen ahí y siguen sirviendo few-shot: la purga relacional no los toca.
+
+Lo que **no** hace este runbook: no borra `user_stories`, ni `projects`, ni `users`, ni los puntos de
+Qdrant. Y no re-escribe la historia de la feature: los 17 runs purgados quedan solo en el respaldo.
+
+### Hallazgo lateral: un `provider` de producción vale literalmente `'Nan'`
+
+Medido de paso, y verificado por `md5()` + `length()` sin imprimir valores: una de las cuatro filas de
+`workspace_llm_configs` tiene `provider = 'Nan'`, y es el config al que caen los 2 runs con
+`model_used = qwen3.8-flash`. Alguien guardó un `NaN` stringificado. No lo detecta ningún test: la
+columna acepta cualquier string de hasta 50. Queda como pendiente propio, ajeno a `0.9.0`.
+
+🔲 **Pendiente:** validar `provider` contra el enumerado de proveedores en la escritura de
+`workspace_llm_configs`, o decidir si `'Nan'` es un valor admisible. Detalle arriba, en el hallazgo
+lateral de D-a-3.

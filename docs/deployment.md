@@ -203,17 +203,23 @@ El punto anterior asume que toda migración puede aplicarse a la base de producc
 versionado de extracciones del slice (a) de 0.9.0, todavía en el **PR #30, sin mergear**— está escrita
 para **negarse**: lee `SELECT count(*) FROM extractions` y `FROM tasks` antes de tocar el esquema y
 lanza `RuntimeError` si alguna de las dos tiene una sola fila. Es la decisión D11 del diseño: no se
-hace backfill, porque `provider` y `temperature` de las filas viejas no son reconstruibles.
+hace backfill.
 
 Consecuencia directa sobre el mecanismo de esta sección: como `deploy-backend.yml` corre
-`alembic upgrade head` en **todo** despliegue, y producción tiene filas reales (la colección
-`storico_extractions_prod` fue medida el 2026-09-28), **mergear esa rama a `main` deja la API abajo**.
-No es un fallo del workflow — es exactamente la política de "antes abajo que servir con un esquema que
-no coincide" de la que habla el bloque de arriba — pero tampoco es un despliegue.
+`alembic upgrade head` en **todo** despliegue, y producción tiene filas reales, **mergear esa rama a
+`main` deja la API abajo**. No es un fallo del workflow — es exactamente la política de "antes abajo que
+servir con un esquema que no coincide" de la que habla el bloque de arriba — pero tampoco es un
+despliegue.
 
-Las tres salidas están escritas y evaluadas en `prod.todo.md` (ítem *"Bloqueo de despliegue"*): purgar
-el par en una ventana con respaldo, escribir una `0029` de backfill que tenga que inventar y declarar
-qué valores, o no mergear todavía. **Ninguna fue elegida; es decisión del owner.**
+**Medido en la base de producción el 2026-09-30, en lectura y solo con `count(*)`:**
+`alembic_version = 0027`, **17** filas en `extractions` (11 `failed`, 6 `completed`, span
+2026-08-03 → 2026-09-24) y **42** en `tasks`, todos en `backlog`. Hasta este día la prueba citada era la
+colección de **Qdrant** `storico_extractions_prod`, que es otra tienda: la guarda lee Postgres. La
+conclusión no cambió, pero ahora la sostiene el dato de la columna que la guarda consulta.
+
+**Decidido el 2026-09-30: ventana de purga** (camino 1 de tres). El runbook paso a paso está en
+`prod.todo.md`, ítem *"Bloqueo de despliegue"*. **Está escrito y no ejecutado**: ni la purga ni el merge
+ocurrieron, y cada uno pide su propia confirmación del owner.
 
 La regla general que sale de acá, para cualquier revisión futura con esta forma: **una migración que se
 niega ante datos existentes necesita su plan de datos escrito en `prod.todo.md` antes de llegar a
