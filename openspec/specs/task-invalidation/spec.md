@@ -1,8 +1,6 @@
 # task-invalidation Specification
 
-> **Change**: `extraction-versioning-schema`
-
-## ADDED Requirements
+## Requirements
 
 ### Requirement: The Mark Is a Row in `task_invalidations`
 
@@ -93,10 +91,15 @@ that both events remain readable.
 
 ### Requirement: Actor References Survive Account Deletion
 
-`marked_by` and `revoked_by` MUST reference users with `ON DELETE SET NULL`, matching the
-repository's `projects.created_by` attribution convention. When an account is deleted, the actor
-reference alone MUST be nulled; the `reason`, `marked_at` and `revoked_at` of the mark MUST never
-disappear with the user.
+`marked_by` MUST reference users with `ON DELETE SET NULL`, matching the repository's
+`projects.created_by` attribution convention. `revoked_by` MUST reference users with **`ON DELETE
+RESTRICT`**: the pair `(revoked_by, revoked_at)` is constrained to be both-null-or-both-set, and Postgres
+re-evaluates that CHECK while it performs the referential action, so nulling `revoked_by` alone fails the
+transaction anyway. `RESTRICT` is the honest shape of the same behaviour — the refusal names the
+constraint that exists to hold it.
+
+In every case the mark row itself MUST survive: `reason`, `marked_at` and `revoked_at` never disappear
+with a user.
 
 #### Scenario: Deleting the marking user nulls only the reference
 
@@ -106,12 +109,13 @@ disappear with the user.
 - **AND** `marked_by` is null
 - **AND** no other field of the mark was changed
 
-#### Scenario: Deleting the revoking user preserves the revoke record
+#### Scenario: Deleting the revoking user is refused
 
 - **GIVEN** a revoked mark row whose `revoked_by` references a user account
 - **WHEN** that user account is deleted
-- **THEN** `revoked_at` still holds the revocation timestamp
-- **AND** `revoked_by` is null
+- **THEN** the deletion is refused by `fk_task_invalidations_revoked_by_users`
+- **AND** the mark row keeps both `revoked_at` and `revoked_by`
+- **AND** the revoke audit is never silently downgraded to a timestamp without an actor
 
 ### Requirement: The Mark Belongs to the Version It Was Made On
 

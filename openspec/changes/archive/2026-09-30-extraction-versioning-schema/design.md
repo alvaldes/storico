@@ -270,6 +270,13 @@ and `:67`, which assert 201 today, change to pin the refusal.
 `VARCHAR(500) NOT NULL`, `marked_by` / `revoked_by` (`UUID NULL`, FK → `users.id`,
 `ON DELETE SET NULL`), `marked_at` `TIMESTAMPTZ NOT NULL`, `revoked_at` `TIMESTAMPTZ NULL`, plus
 
+> **[Superseded 2026-09-30, task 4.4 / D-a-2, Option A chosen by the owner.]** `revoked_by` ships as
+> `ON DELETE RESTRICT`, not `SET NULL`. Postgres re-evaluates `CHECK ((revoked_by IS NULL) =
+> (revoked_at IS NULL))` during the referential action, so the `SET NULL` planned here fails anyway
+> whenever `revoked_at` is set; `RESTRICT` names the constraint that actually holds the invariant, and
+> leaves the equivalence CHECK intact. `marked_by` stays `SET NULL`, as written above. The normative text
+> is `specs/task-invalidation/spec.md`, "Actor References Survive Account Deletion".
+
 ```
 CHECK (length(trim(reason)) > 0)                       -- ck_task_invalidations_reason_not_blank
 CHECK ((revoked_by IS NULL) = (revoked_at IS NULL))    -- ck_task_invalidations_revoke_pair

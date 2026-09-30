@@ -137,7 +137,10 @@ contract.
 *Spec-phase note:* in `openspec/changes/extraction-versioning-api/specs/`, the deltas for
 `extraction-versioning` and `task-invalidation` are `ADDED Requirements` when (a) has not archived
 yet and `MODIFIED Requirements` when it has; the spec phase resolves that against the base at
-authoring time. The four live capabilities are `MODIFIED Requirements` either way.
+authoring time. **Resolved 2026-09-30: slice (a) is merged, deployed and archived, and both capabilities
+now live in `openspec/specs/` — so slice (b)'s deltas for them are `MODIFIED Requirements`, written
+full-text with the header verbatim, never as a pointer.** The four live capabilities are `MODIFIED
+Requirements` either way.
 
 ## Decisions This Change Makes
 

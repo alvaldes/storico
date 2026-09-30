@@ -16,7 +16,7 @@ Measured starting point: `main` `ecea3e2`. Slice (a) is **artifacts only** — n
 in `domain/entities/exceptions.py`. `alembic/versions/` tops out at `0027` with no revision
 declaring `down_revision = "0027"`, so this slice claims `0029` behind (a)'s `0028`. Every (a)
 mechanism this slice consumes is therefore cited to
-`openspec/changes/extraction-versioning-schema/design.md`, not to code, and the two slices ship in
+`openspec/changes/archive/2026-09-30-extraction-versioning-schema/design.md`, not to code, and the two slices ship in
 one release (proposal, *Sequencing*).
 
 The spine of the design is three sentences. **"Frozen" is derived by comparing the task's

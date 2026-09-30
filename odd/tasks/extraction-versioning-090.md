@@ -1,11 +1,17 @@
 # ODD Feature: extraction-versioning-090 (OpenSpec change authoring)
 
-> **Status (2026-09-30, close of this session)**: **slice (a) is code-complete — 46/46 tasks** — on
-> `feat/extraction-versioning-schema-wu1`, PR #30 still **OPEN** with CI green at head. Task 4.4 landed
-> with the owner's Option A (`revoked_by` → `RESTRICT`). **D-a-3 is decided (purge window) and NOT
-> executed**: the wipe and the merge are separate confirmations the owner fires, in that order. New
-> defect **D-a-4** (the account-delete route exists and would 500) is recorded and carried into slice
-> (b). → read **"Session handoff — 2026-09-30"** at the end of this file first.
+> **Status (2026-09-30, final)**: **slice (a) is SHIPPED.** 46/46 tasks, PR #30 merged to `main` as merge
+> commit `1dcc716`, deploy run 36675276096 `success`, `0028` verified in production Neon (`alembic_version
+> = 0028`, `task_invalidations` with `revoked_by ... ON DELETE RESTRICT`, `uq_extractions_story_version`,
+> partial `uq_task_invalidations_active_task`, `tasks.extraction_id NOT NULL`) and the change archived by
+> hand under `openspec/changes/archive/2026-09-30-extraction-versioning-schema/`. **D-a-2 closed** (Option
+> A, `RESTRICT`), **D-a-3 closed** (purge window executed: eleven business tables and all three Qdrant
+> collections emptied, no backup by the owner's choice). Not done, deliberately: `make bump` (release is
+> the owner's call) and the two operations that need human hands — logging in again and re-creating the
+> workspace LLM config, because `resolve_llm_config` defaults to `provider = "ollama"` and production runs
+> no Ollama. **D-a-4** (the account-delete route 500s on the refusal) and **D-a-1** (re-dispatch duplicates
+> task rows) are carried into slice (b), which is **not authorized**.
+> → read **"Session handoff — 2026-09-30 (final)"** at the end of this file first.
 > **Created**: 2026-09-28
 > **Workflow**: SDD/OpenSpec (explicitly selected by the user) inside ODD
 > **Session preflight**: `auto` + `openspec` + `ask-on-risk` + 400-line review budget, confirmed
@@ -48,7 +54,7 @@ reads. Ship (a) and (b) in the same release train.
 ## Verification ledger — result
 
 Full evidence, every claim with `file:line`, is in
-`openspec/changes/extraction-versioning-schema/explore.md` (shared base for the three changes).
+`openspec/changes/archive/2026-09-30-extraction-versioning-schema/explore.md` (shared base for the three changes).
 
 **No code moved** between the spec's `475964c` and `ecea3e2` — the one extra commit is docs-only
 (`AGENTS.md`, `docs/architecture.md`, `docs/deployment.md`). So every verdict below is a verdict
@@ -92,7 +98,7 @@ on the spec's earlier verification pass, not on new commits.
 ## Task list
 
 - [x] 1. Re-verify D16–D23 measurements against `main` (3 bounded read-only scouts + parent
-  re-reads) → ledger in `openspec/changes/extraction-versioning-schema/explore.md`
+  re-reads) → ledger in `openspec/changes/archive/2026-09-30-extraction-versioning-schema/explore.md`
 - [x] 2. Resolve the four drifts into change requirements (Δ1–Δ4 above)
 - [x] 3. Write slice (a) `extraction-versioning-schema` — proposal, delta specs, design, tasks
   (`sdd-proposal` → `sdd-spec` → `sdd-design` → `sdd-tasks`, auto mode, each gate-validated)
@@ -126,10 +132,15 @@ on the spec's earlier verification pass, not on new commits.
   36675276085 `success`, and `0028` verified by reading production Neon: `alembic_version = 0028`,
   `task_invalidations` with the revoker FK `ON DELETE RESTRICT`, both unique/partial indexes,
   `tasks.extraction_id NOT NULL`, eleven tables still at 0, health `ok`.
-- [ ] 17. **Not done, and deliberately not done by me:** `make bump` (release is the owner's call; all
-  three manifests and `/api/v1/health` still say `0.8.0`, and `0.9.0` is planned as three slices with one
-  shipped) and `openspec archive extraction-versioning-schema` (the CLI is neither installed nor a project
-  dependency here; hand-moving the directory would apply spec deltas without the tool).
+- [x] 17. **Archive — DONE by hand 2026-09-30.** `openspec` is neither installed nor a project dependency
+  here, so `openspec archive` could not run. Both deltas are pure `## ADDED Requirements` for capabilities
+  that did not exist in the store, which makes the sync mechanical and diff-checkable: `openspec/specs/extraction-versioning/spec.md`
+  (8 reqs / 23 scenarios) and `openspec/specs/task-invalidation/spec.md` (6 reqs / 13 scenarios), each
+  verified byte-identical to its delta modulo the header. The change moved to
+  `openspec/changes/archive/2026-09-30-extraction-versioning-schema/` with an `archive-report.md` that says
+  plainly it was hand-made and that **`openspec validate` never ran**.
+  What was NOT done, on purpose: **`make bump`** — all three manifests and `/api/v1/health` still say
+  `0.8.0`, and `0.9.0` is planned as three slices with one shipped; releasing is the owner's call.
 - [ ] 18. **Operational, needs the owner's hands:** log in again, then create the workspace LLM config in
   Configuración before any extraction — `resolve_llm_config` falls back to `provider = "ollama"` and
   production has no Ollama. The two api_key values must come from the AI Studio and nan.builders consoles.
@@ -268,7 +279,7 @@ Planning landed on `main` before any implementation branch was cut:
 The 27 artifacts are:
 
 ```
-openspec/changes/extraction-versioning-schema/{explore,proposal,design,tasks}.md
+openspec/changes/archive/2026-09-30-extraction-versioning-schema/{explore,proposal,design,tasks}.md
   + specs/{extraction-versioning,task-invalidation}/spec.md
 openspec/changes/extraction-versioning-api/{explore,proposal,design,tasks}.md + state.yaml
   + specs/{extraction-versioning,task-invalidation,workspace-permissions,task-editor,
@@ -286,7 +297,7 @@ switch, which reads **off** in this clone.
 ## Session handoff — 2026-09-30 (slice (a) delivered, merge blocked on purpose)
 
 Written for a session that starts with nothing in context. Read in this order: this section, then
-`openspec/changes/extraction-versioning-schema/verification.md`, then `prod.todo.md`'s
+`openspec/changes/archive/2026-09-30-extraction-versioning-schema/verification.md`, then `prod.todo.md`'s
 "Bloqueo de despliegue" item.
 
 ### Where things stand
@@ -304,7 +315,7 @@ Written for a session that starts with nothing in context. Read in this order: t
 | Deployed | production now runs `0028`: `alembic_version = 0028`, `task_invalidations` exists with `fk_task_invalidations_revoked_by_users ... ON DELETE RESTRICT`, `uq_extractions_story_version`, partial `uq_task_invalidations_active_task`, `ck_task_invalidations_revoke_pair`, `tasks.extraction_id NOT NULL`; eleven business tables at 0; three Qdrant collections at 0 points; `/api/v1/health` → `ok` |
 | Not bumped | version is still `0.8.0` in all three manifests and in `/api/v1/health`. **No `make bump`**: publishing a release is the owner's call, and `0.9.0` is planned as three slices with only (a) shipped |
 | Needs a human | re-create the workspace LLM config in Configuración before any extraction: `resolve_llm_config` (`api/routes/workspace_settings.py:121-129`) falls back to `provider = "ollama"` + `settings.ollama_host` when a workspace has no config row, and production has no Ollama. Also: log in again (no `users` rows), and the AI Studio / nan.builders keys must come from their consoles |
-| Archive not done | `openspec` is neither installed nor a project dependency here. `openspec/changes/extraction-versioning-schema/` stays where it is: moving it by hand would apply its spec deltas without the tool |
+| Archived | **by hand, 2026-09-30** — store updated (`openspec/specs/extraction-versioning`, `openspec/specs/task-invalidation`) and the change moved to `openspec/changes/archive/2026-09-30-extraction-versioning-schema/` with `archive-report.md`. **`openspec validate` did not run** (no CLI); structure was diffed against the repo's own `2026-09-14-few-shot-qdrant` precedent instead |
 | Not authorized | slice (b) `extraction-versioning-api`, slice (c) `extraction-versioning-prompt` |
 | Receipt-driven development | still **off** in this clone; no native review ran on any tranche |
 
@@ -314,7 +325,7 @@ render snapshot), `3364c43` (3b-i marks), `366c341` (3b-ii-a dead path deleted),
 `7a98c19` (WU4b Postgres half), then the `fix(test)` chain `3333b7b` / `4da58fb` / `962359a` and the
 doc commits.
 
-### The blocker (D-a-3), which was the reason the PR was not merged
+### The blocker (D-a-3), the reason the PR was not merged — **CLOSED 2026-09-30: purge → merge → deploy → verification**
 
 `.github/workflows/deploy-backend.yml:101` runs `alembic upgrade head` on **every** deploy.
 `0028:41` reads `SELECT count(*)` on `extractions` and `tasks` and raises `RuntimeError` if either is
@@ -461,8 +472,9 @@ to assert more than the code does.
    `alembic_version = 0028`, `task_invalidations` with the revoker FK `ON DELETE RESTRICT`,
    `uq_extractions_story_version`, `uq_task_invalidations_active_task`, `tasks.extraction_id NOT NULL`,
    eleven tables still at 0, health `ok`. **Deliberately not done: `make bump`** (release decision, and
-   `0.9.0` is three slices with one shipped) **and `openspec archive`** (CLI not installed; hand-moving
-   the change would apply spec deltas without the tool).
+   `0.9.0` is three slices with one shipped). **`openspec archive` was done by hand**, because the CLI is
+   absent and both deltas are pure additions to capabilities the store did not have — see the archive
+   report, which names the one check that could not run (`openspec validate`).
 4. Slice (b) then needs its own apply authorization, carrying **three** named requirements: **D-a-1**
    (re-dispatch duplicates task rows), **D-a-4** (the account-delete 500), and retiring
    `POST /api/v1/tasks/`, which slice (a) currently pins as a 500 refusal (`tasks.extraction_id NOT
@@ -542,3 +554,75 @@ gate are both `integration`-marked. Run 36658068793 on `382a9c5` — after the p
 authorized — reports `1064 passed, 18 skipped`: the renamed case ran and asserted the FK name in the
 driver message. So 4.4 has evidence on both halves, and the one thing this machine could never prove is
 no longer open. Both needed Postgres, and Postgres only exists in CI here.
+
+---
+
+## Session handoff — 2026-09-30 (final): the merge, the deploy, and the archive nobody could run
+
+Slice (a) is **shipped**. What happened after the purge, and what is now true.
+
+**The merge, and why it was not a squash.** The owner said "haz tú el merge y todo lo que queda", so the
+merge became an executed action instead of a recommendation. `main`'s first-parent history is merge
+commits (`#24`–`#29`), and this branch's reviewable unit is twelve work-unit commits — squashing would
+have collapsed exactly the thing the whole session was built around. So: `gh pr merge 30 --merge` →
+merge commit **`1dcc716`**, mergedAt `2026-09-30T05:50:33Z`.
+
+**The deploy was the risky half, and it was a real swap, not a rollout.** `deploy-backend.yml` stops the
+container, runs `alembic upgrade head` between `stop` and `run`, and starts again: the maintenance window
+that ADR-005 chose. Run **36675276096** → `success` in 2m1s. CI on `main` run 36675276085 → `success`.
+Had the pair not been empty, this is the step that would have left the API down on purpose.
+
+**`0028` verified by reading production, not by reading the job log.** Independent read-only pass:
+`alembic_version = 0028`; `task_invalidations` exists with `fk_task_invalidations_revoked_by_users`
+**`ON DELETE RESTRICT`** (the task 4.4 fix the owner chose as Option A — CI proved it on CI's Postgres,
+this is the first time it was observed on Neon), `fk_task_invalidations_marked_by_users` still
+`SET NULL`, `ck_task_invalidations_revoke_pair` and `ck_task_invalidations_reason_not_blank` intact;
+`uq_extractions_story_version`, partial `uq_task_invalidations_active_task` (`WHERE revoked_at IS NULL`),
+`tasks.extraction_id` **NOT NULL**; eleven business tables still at 0; three Qdrant collections at 0
+points, `status=green`; `/api/v1/health` → `ok`, `database ok`, `schema ok`, version `0.8.0`.
+
+**The finding that outlived the deploy: the app is healthy and cannot extract.** Nobody asked for this
+and no migration reports it. With `workspace_llm_configs` empty, `resolve_llm_config`
+(`api/routes/workspace_settings.py:121-129`) returns `provider = "ollama"` + `settings.ollama_host`, and
+production runs no Ollama (`health/services` → `ollama: not reachable`, optional). So "deploy succeeded"
++ "health ok" ≠ "the product works". The unblock is: log in (the first login creates user + personal
+workspace + admin membership + prompt row, `api/routes/auth.py:119-126`), then create the LLM config in
+Configuración with a key from the AI Studio or nan.builders console — the VM's `STORICO_GOOGLE_API_KEY`
+does **not** serve extraction (`infrastructure/tasks/extraction_task.py:241-247` refuses a workspace
+without its own credential; that env key feeds embeddings only).
+
+**Archive: done by hand, with the gap declared.** `openspec` is not installed here and is not a project
+dependency (`npx --no-install openspec` → "could not determine executable to run"), so `openspec archive`
+could not run. Both deltas were pure `## ADDED Requirements` for capabilities absent from the store, which
+made the sync mechanical: created `openspec/specs/extraction-versioning/spec.md` (8 reqs / 23 scenarios)
+and `openspec/specs/task-invalidation/spec.md` (6 reqs / 13 scenarios), each **diff-verified byte-identical
+to its delta modulo the header**, then moved the change to
+`openspec/changes/archive/2026-09-30-extraction-versioning-schema/` with an `archive-report.md` that states
+the method and names the one check that never ran: **`openspec validate`**. The structure was checked
+against the repo's own precedent (`2026-09-14-few-shot-qdrant`: same header shape, `ADDED` → `Requirements`,
+`> **Change**` line dropped).
+
+**A spec bug the archive almost froze in place.** While checking what I was about to promote to the store,
+I found the delta still said `marked_by` **and** `revoked_by` are `ON DELETE SET NULL` with a scenario
+asserting "`revoked_by` is null" — written before task 4.4, and never updated when the owner chose
+`RESTRICT`. Archiving as-is would have made the contradicted text permanent and normative. Fixed in the
+delta first ("Actor References Survive Account Deletion": `marked_by` `SET NULL`, `revoked_by` `RESTRICT`,
+deleting the revoking user is **refused**), with `> [Superseded]` notes left under the original `SET NULL`
+wording in `design.md` and `proposal.md` — planning artifacts keep their history, the spec keeps the truth.
+
+**Also corrected while writing closure:** the earlier claim that production `provider = 'Nan'` was a
+stringified `NaN` was wrong. It is a legitimate custom provider: `custom_providers` (a feature since
+revision `0021`) has one row whose `name` md5 equals md5('Nan'), referenced by exactly one
+`workspace_llm_configs` row with a real encrypted key, `api.nan.builders`, `qwen3.8-flash`. Second
+self-correction of the same class in this session, after "temperature is recoverable". The rule that came
+out of both: **do not call production data broken until you have read the place that creates it** — and do
+not let a decision that destroys rows depend on my reading numbers off a terminal, which is why the purge
+went behind an in-memory count interlock instead.
+
+**What is deliberately not done.** `make bump` (release is the owner's call; `0.8.0` in all three manifests
+and in `/api/v1/health`, and `0.9.0` is planned as three slices with one shipped). Slice (b)
+`extraction-versioning-api` and slice (c) `extraction-versioning-prompt` are **not authorized** and each
+needs its own apply authorization; (b) carries **D-a-1**, **D-a-4** and the retirement of
+`POST /api/v1/tasks/`. The Qdrant dev/prod cluster-sharing design decision is still open. The published
+commits `7e3aa6e` / `d4fea8b` still carry the withdrawn `'Nan'` claim in their messages — rewriting
+published history is the owner's call.

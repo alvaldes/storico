@@ -215,6 +215,11 @@ Modifications are **deferred, not forgotten** — the spec phase for the sibling
     row (and its history) is the record D6 asks for. Rejected alternative: `is_invalid` +
     `invalid_reason` columns on `tasks` — simpler, but it cannot record who revoked a mark or when,
     and D6 requires the revoke history.
+
+    > **[Superseded 2026-09-30, task 4.4 / D-a-2 — Option A, owner's choice.]** `revoked_by` ships as
+    > `ON DELETE RESTRICT`. The equivalence CHECK makes a nulling delete fail anyway, so `RESTRICT` is
+    > the same refusal with the right constraint named. `marked_by` keeps `SET NULL` as described here.
+    > Normative text: `specs/task-invalidation/spec.md`.
 12. **No delete path for versions.** Port and implementation of `ExtractionRepository.delete` are
     removed with its single test; the only deletion of an extraction remains the story-delete
     cascade (D15). The `410 Gone` for `DELETE /tasks/{task_id}` is HTTP contract and stays in
