@@ -245,12 +245,18 @@ puede guardar quién la retiró y cuándo.
 | reason | String(500) | NOT NULL · `ck_task_invalidations_reason_not_blank` (`length(trim(reason)) > 0`) |
 | marked_by | UUID | nullable · FK → users.id (`ON DELETE SET NULL`) |
 | marked_at | DateTime(tz) | NOT NULL |
-| revoked_by | UUID | nullable · FK → users.id (`ON DELETE SET NULL`) |
+| revoked_by | UUID | nullable · FK → users.id (`ON DELETE RESTRICT`) — borrar al usuario que retiró una marca **se niega** |
 | revoked_at | DateTime(tz) | nullable · `ck_task_invalidations_revoke_pair` — `revoked_by` y `revoked_at` son nulos juntos o no lo son |
 
 Index: `ix_task_invalidations_task_id` · Unique parcial: `uq_task_invalidations_active_task` sobre
 `task_id` `WHERE revoked_at IS NULL` — a lo sumo una marca activa por tarea; retirar es un UPDATE,
-nunca un DELETE. Las referencias a `users.id` sobreviven la baja de una cuenta (`SET NULL`).
+nunca un DELETE. Las referencias a `users.id` **no** se tratan igual: `marked_by` es `SET NULL` (la marca
+sobrevive y sólo se pierde el actor), pero `revoked_by` es `RESTRICT`. La razón es la dupla
+`ck_task_invalidations_revoke_pair`: Postgres re-evalúa ese `CHECK` *durante* la acción referencial, así
+que intentar poner `revoked_by` a `NULL` sobre una fila con `revoked_at` poblado viola el `CHECK` y la
+baja falla igual. `RESTRICT` es la misma negativa con el nombre de la restricción correcta
+(`fk_task_invalidations_revoked_by_users`), y deja el `CHECK` de equivalencia intacto en vez de
+desnaturalizarlo. Verificado en la base de producción, no sólo en CI.
 
 La tabla existe desde `0028` y **todavía no la escribe nadie**: los endpoints de marca son el slice
 (b). Su restricción de integridad ya es real, así que una marca duplicada o sin motivo queda rechazada

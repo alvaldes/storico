@@ -205,19 +205,26 @@ usa `%(here)s`, así que el comando funciona desde cualquier directorio; la imag
 - Los deploys están **serializados** (`concurrency` en el workflow): dos a la vez competirían por el
   swap y por la migración.
 
-### Una revisión que se niega a correr sobre datos: `0028` (bloqueo **D-a-3**, 2026-09-30)
+### Una revisión que se niega a correr sobre datos: `0028` (bloqueo **D-a-3**, 2026-09-30 — **cerrado el mismo día**)
 
 El punto anterior asume que toda migración puede aplicarse a la base de producción. `0028` —el
-versionado de extracciones del slice (a) de 0.9.0, todavía en el **PR #30, sin mergear**— está escrita
-para **negarse**: lee `SELECT count(*) FROM extractions` y `FROM tasks` antes de tocar el esquema y
-lanza `RuntimeError` si alguna de las dos tiene una sola fila. Es la decisión D11 del diseño: no se
-hace backfill.
+versionado de extracciones del slice (a) de 0.9.0— está escrita para **negarse**: lee
+`SELECT count(*) FROM extractions` y `FROM tasks` antes de tocar el esquema y lanza `RuntimeError` si
+alguna de las dos tiene una sola fila. Es la decisión D11 del diseño: no se hace backfill.
 
-Consecuencia directa sobre el mecanismo de esta sección: como `deploy-backend.yml` corre
-`alembic upgrade head` en **todo** despliegue, y producción tiene filas reales, **mergear esa rama a
-`main` deja la API abajo**. No es un fallo del workflow — es exactamente la política de "antes abajo que
-servir con un esquema que no coincide" de la que habla el bloque de arriba — pero tampoco es un
-despliegue.
+Consecuencia directa sobre el mecanismo de esta sección, **que era el bloqueo hasta el 2026-09-30**: como
+`deploy-backend.yml` corre `alembic upgrade head` en **todo** despliegue, y producción tenía filas reales,
+**mergear esa rama a `main` dejaba la API abajo**. No era un fallo del workflow — es exactamente la
+política de "antes abajo que servir con un esquema que no coincide" de la que habla el bloque de arriba —
+pero tampoco era un despliegue.
+
+**Como quedó resuelto, y por qué la regla sigue vigente:** primero la purga (once tablas de negocio y las
+tres colecciones de Qdrant, detrás de un interlock que comparó cada conteo con el inventario commiteado y
+negó a borrar ante cualquier diferencia), después el merge (`1dcc716`), después el deploy
+(`36675276096`), que corrió `0028` sobre bases vacías y pasó la guarda. Verificado leyendo Neon:
+`alembic_version = 0028` con las restricciones y los índices de la feature presentes. **El bloqueo se pagó
+con datos; la mecánica no cambió: una migración que se niega ante datos existentes sigue necesitando su
+plan de datos en `prod.todo.md` antes de llegar a `main`.**
 
 **Medido en la base de producción el 2026-09-30, en lectura y solo con `count(*)`:**
 `alembic_version = 0027`, **17** filas en `extractions` (11 `failed`, 6 `completed`, span

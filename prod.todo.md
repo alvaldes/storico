@@ -138,9 +138,9 @@ Los tres caminos, ya evaluados:
    inventado en las 17 filas, `provider` por hipótesis de config actual, y un run elegido a mano para
    14/42 tasks— sobre datos que la medición describe como tráfico de prueba. Queda disponible si la
    evaluación de la tesis necesita conservar esos runs.
-3. **No mergear todavía.** Dejar el PR abierto y que el slice (a) viva en la rama hasta que la
-   evaluación de la tesis tenga datos propios que purgar sin costo. Es el camino que el plan de slices
-   ya asumía al decir que (a) no está desplegado.
+3. **No mergear todavía.** Descartado: fue lo que venía pasando hasta el 2026-09-30, y era el camino que
+   el plan de slices asumía al decir que (a) no estaba desplegado. **Hoy (a) está desplegado**, así que esta
+   opción ya no existe; queda anotada porque fue la opción por defecto durante todo el desarrollo del slice.
 
 ### Ejecución real (2026-09-30, ~04:28 UTC)
 
