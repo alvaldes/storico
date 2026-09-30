@@ -105,7 +105,7 @@ def upgrade() -> None:
             ["revoked_by"],
             ["users.id"],
             name=op.f("fk_task_invalidations_revoked_by_users"),
-            ondelete="SET NULL",
+            ondelete="RESTRICT",
         ),
         sa.CheckConstraint(
             "length(trim(reason)) > 0",

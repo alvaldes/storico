@@ -864,19 +864,23 @@ async def test_deleting_the_marking_user_nulls_marked_by_and_keeps_the_mark(
 @pytest.mark.integration
 @_needs_docker
 @pytest.mark.asyncio(loop_scope="module")
-async def test_deleting_the_revoking_user_meets_the_revoke_pair_check(
+async def test_deleting_the_revoking_user_is_refused_by_the_revoker_fk(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    """Reading ``0028``'s DDL, deleting the revoking user is *refused* — and this case says so.
+    """Deleting the revoking user is refused by the named revoker FK — by design.
 
-    The DDL pairs ``revoked_by``'s ``ON DELETE SET NULL`` with the CHECK
-    ``(revoked_by IS NULL) = (revoked_at IS NULL)``. On a revoked mark, the SET NULL update
-    leaves ``revoked_at`` standing while ``revoked_by`` goes null, which the CHECK's equivalence
-    rejects — so the account deletion errors with the named check. That is precisely the "wrong
-    FK action" refinement condition task 4.4 names, and this case is the one instrument CI has
-    to adjudicate it: **if this case fails**, the SET NULL went through, R13 holds for revokers
-    too, and this assertion must be rewritten to pin the surviving revoke record instead. Both
-    arms are inference from the DDL; nothing here is observed until a container runs it.
+    Since task 4.4 of ``extraction-versioning-schema`` (owner's decision, Option A), 0028
+    declares ``fk_task_invalidations_revoked_by_users`` as ``ON DELETE RESTRICT``: a user
+    who revoked a mark cannot be deleted while the revoke stands. The equivalence CHECK
+    ``ck_task_invalidations_revoke_pair`` is deliberately kept whole — it still guards the
+    revoke update path — but the user-delete refusal now comes from the FK whose name states
+    the intent, not from a CHECK collision during the (removed) SET NULL referential action.
+
+    This case is inference from the DDL: this machine has no Docker daemon, so no Postgres
+    container runs here and the Postgres half of the behaviour is CI's job. The CI run
+    observed the original SET-NULL-vs-CHECK refusal (run 36649904378); it must now observe
+    the driver message naming the FK instead. If the delete ever succeeds, R13 broke for
+    revokers and this case must be rewritten to pin the surviving revoke record.
     """
     async with session_factory() as session:
         task_id = await _seed_task(session, "Marked task")
@@ -900,9 +904,9 @@ async def test_deleting_the_revoking_user_meets_the_revoke_pair_check(
         with pytest.raises(IntegrityError) as raised:
             await session.execute(delete(UserModel).where(UserModel.id == revoker.id))
             await session.commit()
-        assert "ck_task_invalidations_revoke_pair" in str(raised.value.orig), (
-            "the delete was not refused by the revoke-pair check — see the docstring: if R13 "
-            "holds for revokers, this case must be rewritten to pin the surviving revoke record"
+        assert "fk_task_invalidations_revoked_by_users" in str(raised.value.orig), (
+            "the delete was not refused by the revoker FK — see the docstring: if the delete "
+            "succeeds, R13 broke for revokers and this case must pin the surviving revoke record"
         )
         await session.rollback()
 

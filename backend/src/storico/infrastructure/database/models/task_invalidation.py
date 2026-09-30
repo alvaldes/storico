@@ -32,8 +32,12 @@ class TaskInvalidationModel(Base):
     marked_by: Mapped[UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # RESTRICT, not SET NULL: the revoke-pair CHECK ((revoked_by IS NULL) = (revoked_at IS
+    # NULL)) would collide with SET NULL — nulled revoker with revoked_at standing — and
+    # refuse the user delete via the CHECK. RESTRICT states the intent: the revoker must
+    # exist while the revoke stands.
     revoked_by: Mapped[UUID | None] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        Uuid, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
     marked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
