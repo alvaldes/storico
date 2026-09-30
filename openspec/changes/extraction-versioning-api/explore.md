@@ -2,7 +2,7 @@
 
 > **Change**: `extraction-versioning-api` — slice (b) of three
 > **Depends on**: `extraction-versioning-schema` (a)
-> **Shared evidence base**: `../extraction-versioning-schema/explore.md` (the D16–D23
+> **Shared evidence base**: `../archive/2026-09-30-extraction-versioning-schema/explore.md` (the D16–D23
 > re-verification ledger, every claim with `file:line` at `main` `ecea3e2`)
 > **Created**: 2026-09-28
 

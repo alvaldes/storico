@@ -2,7 +2,7 @@
 
 Slice (b) of three for Storico 0.9.0. Planning artifact only: every line below is unchecked and no
 line claims a check that has not run. Evidence base: `explore.md` (this change), the shared ledger
-`../extraction-versioning-schema/explore.md` (`main` `ecea3e2`), the seven `specs/` deltas (25
+`../archive/2026-09-30-extraction-versioning-schema/explore.md` (`main` `ecea3e2`), the seven `specs/` deltas (25
 requirements), the 14 design decisions, slice (a)'s `tasks.md`, and `openspec/config.yaml`
 (`strict_tdd: true`, `rules.tasks.protect_review_workload: true`).
 

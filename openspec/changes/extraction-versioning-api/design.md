@@ -3,7 +3,7 @@
 > **Change**: `extraction-versioning-api`
 > **Status**: `design`
 > **Based on**: `proposal.md`, the seven `specs/` deltas, `explore.md`, and slice (a)'s artifacts
-> (`../extraction-versioning-schema/explore.md`, `../extraction-versioning-schema/design.md`)
+> (`../archive/2026-09-30-extraction-versioning-schema/explore.md`, `../archive/2026-09-30-extraction-versioning-schema/design.md`)
 > **Created**: 2026-09-28
 
 Slice (b) of three. It gives the storage slice (a) built its HTTP contract: the current-version

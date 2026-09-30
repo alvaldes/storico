@@ -2,7 +2,7 @@
 
 > **Slice (b) of 3** for Storico feature 0.9.0. Siblings: `extraction-versioning-schema` (a, the
 > root dependency) and `extraction-versioning-prompt` (c). Evidence:
-> `explore.md` in this change, plus the shared ledger `../extraction-versioning-schema/explore.md`
+> `explore.md` in this change, plus the shared ledger `../archive/2026-09-30-extraction-versioning-schema/explore.md`
 > (D16–D23 re-verified with every claim at `file:line`, measured at `main` `ecea3e2`). Source spec:
 > vault note *"Storico — versionado de extracción y tareas inválidas"* (D1–D23, all closed; no open
 > questions).

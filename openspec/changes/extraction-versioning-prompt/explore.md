@@ -2,7 +2,7 @@
 
 > **Change**: `extraction-versioning-prompt` — slice (c) of three
 > **Depends on**: `extraction-versioning-schema` (a), `extraction-versioning-api` (b)
-> **Shared evidence base**: `../extraction-versioning-schema/explore.md` (the D16–D23
+> **Shared evidence base**: `../archive/2026-09-30-extraction-versioning-schema/explore.md` (the D16–D23
 > re-verification ledger, every claim with `file:line` at `main` `ecea3e2`)
 > **Created**: 2026-09-28
 
@@ -15,7 +15,7 @@ exclusions, D20's measurement, D23's two context ports.
 | Fact | Evidence | Why (c) cares |
 | --- | --- | --- |
 | The template references exactly two variables, `examples` and `user_story` | `infrastructure/llm/prompts/task_generation.j2:18-20,26`; renderer builds `prompt_kwargs` at `domain/services/extraction_service.py:145`, adds `examples` at `:146-147`, renders at `:149-152`; `PromptManager.render_instruction` forwards `**kwargs` verbatim (`prompt_manager.py:110-135`) | Every D9/D7 block is a **new template variable plus a render-contract change**. This is the row the source spec's "Estado del código hoy" already flags |
-| (a) already split render from generate and persists at render time | `../extraction-versioning-schema/design.md`, decisions "The render/generate split" and "the snapshot is written once between `render()` and `generate()`"; the named seam is `RenderedPrompt.template_variables` | (c) fills its `prompt_config` keys **into (a)'s existing render-time write**. No new write moment, no reordering, no second refactor |
+| (a) already split render from generate and persists at render time | `../archive/2026-09-30-extraction-versioning-schema/design.md`, decisions "The render/generate split" and "the snapshot is written once between `render()` and `generate()`"; the named seam is `RenderedPrompt.template_variables` | (c) fills its `prompt_config` keys **into (a)'s existing render-time write**. No new write moment, no reordering, no second refactor |
 | The only cap is on output: `max_tokens=2048`, hardcoded in the runner, which silently **ignores** the workspace's own `max_tokens` column | `domain/ports/llm_port.py:15`; `infrastructure/tasks/extraction_task.py:385-388`; `domain/entities/workspace_llm_config.py:28` | D9 adds input against no input cap. The runner overriding a setting that already exists is recorded here and **not fixed** in 0.9.0 |
 | There is no truncation anywhere in the extraction path | no length operation between `extraction_service.py:112` (`raw_text = getattr(user_story, "raw_text", …)`) and the template; no `truncat\|max_chars\|max_input` hit in `infrastructure/llm/` | Confirms the spec's premise for the block that grows |
 | Each story is capped at **2000 characters** upstream | `api/schemas/story.py:20` and `:31`; `domain/services/story_import.py:35` `FIELD_LIMITS = {actor:100, feature:300, benefit:300, raw_text:2000}` | The unbounded dimension is the **count of items**, not their size. That is what makes the arithmetic below computable instead of open-ended |

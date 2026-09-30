@@ -3,7 +3,7 @@
 > **Change**: `extraction-versioning-prompt`
 > **Status**: `design`
 > **Based on**: `proposal.md`, the four `specs/` deltas, `explore.md`, and the two sibling slices
-> (`../extraction-versioning-schema/explore.md`, `../extraction-versioning-schema/design.md`,
+> (`../archive/2026-09-30-extraction-versioning-schema/explore.md`, `../archive/2026-09-30-extraction-versioning-schema/design.md`,
 > `../extraction-versioning-api/design.md`)
 > **Created**: 2026-09-28
 
