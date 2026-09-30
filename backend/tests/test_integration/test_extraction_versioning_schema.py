@@ -876,11 +876,12 @@ async def test_deleting_the_revoking_user_is_refused_by_the_revoker_fk(
     revoke update path — but the user-delete refusal now comes from the FK whose name states
     the intent, not from a CHECK collision during the (removed) SET NULL referential action.
 
-    This case is inference from the DDL: this machine has no Docker daemon, so no Postgres
-    container runs here and the Postgres half of the behaviour is CI's job. The CI run
-    observed the original SET-NULL-vs-CHECK refusal (run 36649904378); it must now observe
-    the driver message naming the FK instead. If the delete ever succeeds, R13 broke for
-    revokers and this case must be rewritten to pin the surviving revoke record.
+    This case was written as inference from the DDL, on a machine with no Docker daemon: no Postgres
+    container runs here, so the Postgres half of the behaviour is CI's to observe. CI did — run
+    36658068793 on ``382a9c5`` reports ``1064 passed, 18 skipped``, so this case executed and the driver
+    message named ``fk_task_invalidations_revoked_by_users``. The earlier run 36649904378 had observed
+    the same refusal arriving through the CHECK, under the SET NULL this replaced. If the delete ever
+    succeeds, R13 broke for revokers and this case must be rewritten to pin the surviving revoke record.
     """
     async with session_factory() as session:
         task_id = await _seed_task(session, "Marked task")

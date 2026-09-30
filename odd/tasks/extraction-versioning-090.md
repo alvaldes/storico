@@ -276,10 +276,10 @@ Written for a session that starts with nothing in context. Read in this order: t
 | PR | **#30** — <https://github.com/alvaldes/storico/pull/30> — base `main`, **OPEN, NOT MERGED**. Its body still describes `4.4` as open and cites "15 commits / 38 files": both are stale as of `7e3aa6e`, and updating it is the owner's call |
 | Branch | `feat/extraction-versioning-schema-wu1`. **Deliberately not pinned to its own HEAD sha or commit count** — a commit cannot truthfully cite the sha it is creating. Measure at review time: `git rev-list --count main..HEAD` and `git diff --shortstat $(git merge-base main HEAD)..HEAD`. Two counts were wrong here before this note (the PR body's "15 commits / 38 files" and this table's "21 commits"), which is why the commands replaced the numbers |
 | Last measured | at `7e3aa6e`: **26** commits over `main` `1737708`, `41 files changed, 5027 insertions(+), 1001 deletions(-)` |
-| CI on that head | `backend pass`, `frontend pass`, `mergeable=CLEAN`; run 36649904378 reported `1064 passed, 18 skipped` |
+| CI on `382a9c5` | **`1064 passed, 18 skipped`** (run 36658068793) — the same 15 integration cases as the earlier run, now including the renamed revoker-FK case, so `RESTRICT` is observed and not inferred |
 | Local suite | `1049 passed, 33 deselected`, 0 failed · `ruff check`/`format --check` exit 0 |
 | Open tasks in the change | **none** — 4.4 closed 2026-09-30; 1.1–1.20, 2.1–2.6, 3.1–3.9, 4.1–4.5 and 5.1–5.6 are closed |
-| Blocked on | the D-a-3 runbook (**not executed**): backup → purge → merge. The wipe and the merge are the owner's calls, and the RESTRICT half of 4.4 is unverified until CI runs it |
+| Blocked on | the D-a-3 runbook (**not executed**): backup → purge → merge. The wipe and the merge are the owner's calls |
 | Not authorized | slice (b) `extraction-versioning-api`, slice (c) `extraction-versioning-prompt` |
 | Receipt-driven development | still **off** in this clone; no native review ran on any tranche |
 
@@ -335,7 +335,9 @@ ORM mirror in the same change (the autogenerate drift gate catches a one-sided e
 itself `integration`-marked, so it runs in CI too). The case is now
 `test_deleting_the_revoking_user_is_refused_by_the_revoker_fk` and expects the FK name in the driver
 message. Locally: `1049 passed, 33 deselected` plus `540 passed`, lint and format clean. **The RESTRICT
-behaviour is unverified here — no Docker daemon; CI has to observe it.**
+behaviour could not be verified here — no Docker daemon — and CI observed it: run 36658068793 on
+`382a9c5` reports `1064 passed, 18 skipped`, so the refusal came with a message naming
+`fk_task_invalidations_revoked_by_users`.** D-a-2 is closed with evidence on both halves.
 
 ~~The app serves no user-deletion route, so it is latent either way.~~ **That justification was false.**
 See **D-a-4** below, which replaces it.
@@ -474,5 +476,8 @@ earlier session — "production has data" — was worth measuring even though th
 
 **Verified locally:** `1049 passed, 33 deselected` over the same 1082 · `540 passed` for
 `tests/test_repositories tests/test_unit` · `ruff check` and `ruff format --check` exit 0.
-**Unverified here, by construction:** the RESTRICT refusal itself, and the autogenerate drift gate.
-Both need Postgres, so both are CI's to observe on the next push.
+**Not verifiable here, and closed by CI afterwards:** the RESTRICT refusal and the autogenerate drift
+gate are both `integration`-marked. Run 36658068793 on `382a9c5` — after the push this session
+authorized — reports `1064 passed, 18 skipped`: the renamed case ran and asserted the FK name in the
+driver message. So 4.4 has evidence on both halves, and the one thing this machine could never prove is
+no longer open. Both needed Postgres, and Postgres only exists in CI here.

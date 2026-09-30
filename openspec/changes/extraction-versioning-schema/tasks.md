@@ -517,9 +517,11 @@ this unit owns the invariants, not the DDL.
       `fk_task_invalidations_revoked_by_users` in the driver message instead of the CHECK name.
       4.1–4.3 rerun after the change: `1049 passed, 33 deselected` over the same 1082, `540 passed` for
       `tests/test_repositories tests/test_unit`, `ruff check` and `ruff format --check` clean. **The
-      RESTRICT behaviour itself remains unproven on this machine — no Docker daemon. CI is what must
-      observe the refusal coming from the FK; that is the one assertion this tranche changed and cannot
-      verify locally.**
+      RESTRICT behaviour itself was unproven on this machine — no Docker daemon — and CI observed it:
+      run 36658068793 on `382a9c5` reports `1064 passed, 18 skipped` against the same 1082 collected, so
+      the renamed case executed and its assertion held: Postgres refused the delete with a message
+      naming `fk_task_invalidations_revoked_by_users`.** That is the closure this task was waiting on.
+      The local `1049 passed` was a regression check, never evidence about an FK action.
 - [x] 4.5 REFACTOR — rerun the phase runner plus
       `cd backend && conda run -n storico python -m pytest tests/test_repositories -m "not integration"`.
 
