@@ -438,7 +438,12 @@ async def _roundtrip_database(pg_url: str) -> AsyncIterator[str]:
     maintenance = make_url(pg_url).set(database="postgres")
     name = f"v0028_roundtrip_{uuid4().hex[:12]}"
     manager = create_async_engine(
-        maintenance.render_as_string(hide_password=False), poolclass=NullPool
+        maintenance.render_as_string(hide_password=False),
+        poolclass=NullPool,
+        # Not merely documented: without it asyncpg rejects the statement with
+        # ``CREATE DATABASE cannot run inside a transaction block``, which is how this helper
+        # failed on its first CI run.
+        isolation_level="AUTOCOMMIT",
     )
     async with manager.connect() as conn:
         await conn.execute(text(f'CREATE DATABASE "{name}"'))
@@ -887,6 +892,11 @@ async def test_deleting_the_revoking_user_meets_the_revoke_pair_check(
         mark.revoked_at = datetime.now(UTC)
         await session.commit()
 
+        # Read the identifiers before this session closes: the factory expires instances on commit,
+        # so touching ``mark.id``/``revoker.id`` from the verification block raised
+        # DetachedInstanceError in CI — nothing about the schema was in question.
+        mark_id, revoker_id = mark.id, revoker.id
+
         with pytest.raises(IntegrityError) as raised:
             await session.execute(delete(UserModel).where(UserModel.id == revoker.id))
             await session.commit()
@@ -897,7 +907,7 @@ async def test_deleting_the_revoking_user_meets_the_revoke_pair_check(
         await session.rollback()
 
     async with session_factory() as verify:
-        row = await verify.get(TaskInvalidationModel, mark.id)
+        row = await verify.get(TaskInvalidationModel, mark_id)
         assert row is not None, "the refused delete removed the mark"
         assert row.revoked_at is not None, "the refused delete destroyed the revoke timestamp"
-        assert row.revoked_by == revoker.id, "the refused delete still nulled the revoker"
+        assert row.revoked_by == revoker_id, "the refused delete still nulled the revoker"
