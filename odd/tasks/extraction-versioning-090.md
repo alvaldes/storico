@@ -479,6 +479,14 @@ to assert more than the code does.
    (re-dispatch duplicates task rows), **D-a-4** (the account-delete 500), and retiring
    `POST /api/v1/tasks/`, which slice (a) currently pins as a 500 refusal (`tasks.extraction_id NOT
    NULL`) — that pin is honest about being temporary. Slice (c) after that.
+   **The carry-over is materialized, not just promised:** `grep` for `D-a-1`/`D-a-4` in slice (b)'s
+   artifacts returned **zero** before this, so the sentence above was a promise in (a) and absent from
+   the destination. Both defects are now named in
+   `openspec/changes/extraction-versioning-api/tasks.md` (§"Defects carried in from slice (a)",
+   commit `5f04d10`), with line numbers re-measured on `main` — `extraction_task.py:441` for D-a-1 and
+   `settings.py:335` → `user_repository.py:74-78` → `errors.py:161` for D-a-4 — attached to the work unit
+   where each stops being latent (WU5 for D-a-4), and explicitly **excluded** from the 77 tasks and the
+   line forecast so the estimate gets updated by choice, not by surprise mid-PR.
 5. Do not renumber task IDs. Slices (b) and (c) reference (a) IDs such as 2.3, 3.4 and 3.7.
 6. Side item, closed by measurement rather than by a fix: the production `provider = 'Nan'` that an
    earlier version of this document called a defect is a legitimate custom provider (`custom_providers`,
