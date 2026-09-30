@@ -123,8 +123,13 @@ CHECK, so only the revoke side collides. Task 4.3-6 asserts the DDL reading with
 documented, so CI adjudicates rather than me encoding a guess. Task 4.4 stays open because its fix is a
 product decision — `RESTRICT` and keep the audit whole, or relax the CHECK and allow an anonymous
 surviving revocation — and `0028` is unreleased, so either way is an edit to `0028`, not a new migration.
-The app serves no user-deletion route today (checked: no `router.delete` for users), so the conflict is
-latent, not live.
+~~The app serves no user-deletion route today (checked: no `router.delete` for users), so the conflict
+is latent, not live.~~ **That last sentence was false and is corrected here: `DELETE /api/v1/users/me`
+exists (`api/routes/settings.py:335`), nothing tests its DELETE verb, and `UserRepository.delete` lets
+the `IntegrityError` escape to `generic_error_handler`, so the refusal would surface as a 500. The
+conflict is latent for a different and true reason — slice (a) ships no port, repository or route that
+can write a `task_invalidations` row. Recorded as D-a-4 in `tasks.md` and carried into slice (b).**
+**Closed 2026-09-30: the owner chose Option A (`RESTRICT`), and task 4.4 is done** — see `tasks.md`.
 
 ## 5. Delivery facts
 
@@ -170,12 +175,22 @@ does not have. Recorded as the user's call, not taken here.
 **But a green CI is not sufficient to merge, and this paragraph said it was.** Corrected on 2026-09-30
 after §1b: the deploy window runs `alembic upgrade head` unconditionally
 (`deploy-backend.yml:101`), and `0028` raises `RuntimeError` when `extractions` or `tasks` holds even
-one row (D11, no backfill). Production has real rows. So merging this branch to `main` stops the
+one row (D11, no backfill). So merging this branch to `main` stops the
 container, fails the migration and **leaves the API down** — the workflow behaving exactly as designed,
 which is not the same thing as a working deploy. Recorded as **D-a-3** with its three owner paths in
 `prod.todo.md` ("Bloqueo de despliegue"), `docs/deployment.md` and
 `odd/tasks/extraction-versioning-090.md`. CI green is necessary; the data decision is what unblocks
 the merge.
+
+**Two corrections landed on 2026-09-30 after measuring production directly, in reading only.** (1) The
+premise here cited the **Qdrant** collection as proof that production holds data, while `0028` counts
+the **relational** tables: measured on the production database, `alembic_version = 0027` with **17**
+`extractions` (11 failed, 6 completed) and **42** `tasks` (all `backlog`). The premise survives; the
+evidence behind it did not. (2) The owner chose **path 1, the purge window**, with its runbook written
+in `prod.todo.md` and **not executed** — the wipe and the merge each still need their own explicit
+go-ahead. Costing the alternative also showed D11 named the wrong unreconstructable column: `provider`
+is derivable per row as a hypothesis, and what genuinely cannot be recovered is which run produced
+**14 of the 42** existing task rows.
 
 ## 8. The three CI rounds, because the failures were the discovery
 

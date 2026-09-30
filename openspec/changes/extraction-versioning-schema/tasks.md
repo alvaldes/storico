@@ -505,9 +505,21 @@ this unit owns the invariants, not the DDL.
       task cascades the mark away; deleting the marking user nulls `marked_by` only and keeps
       `reason`/`marked_at`; deleting the revoking user keeps `revoked_at`. **Requires a Docker daemon;
       skipped and unverified otherwise.**
-- [ ] 4.4 GREEN — `backend/src/storico/infrastructure/database/models/task_invalidation.py`: refine only
+- [x] 4.4 GREEN — `backend/src/storico/infrastructure/database/models/task_invalidation.py`: refine only
       if 4.2 or 4.3 exposed a gap (a missing `sqlite_where`, a wrong FK action, a non-portable `CHECK`
       expression), then rerun 4.1–4.3.
+      **Closed 2026-09-30 — the gap was the FK action, and the owner chose Option A** (`RESTRICT`, keep
+      the equivalence CHECK whole), which is the option that preserves the audit. Two files moved as one
+      edit — `0028` (:108) and the ORM model — because the autogenerate drift gate (`_KNOWN_DRIFT =
+      frozenset()`) catches a one-sided edit, and that gate is itself `integration`-marked, so it too
+      runs only in CI. The 4.3 case was renamed to
+      `test_deleting_the_revoking_user_is_refused_by_the_revoker_fk` and now expects
+      `fk_task_invalidations_revoked_by_users` in the driver message instead of the CHECK name.
+      4.1–4.3 rerun after the change: `1049 passed, 33 deselected` over the same 1082, `540 passed` for
+      `tests/test_repositories tests/test_unit`, `ruff check` and `ruff format --check` clean. **The
+      RESTRICT behaviour itself remains unproven on this machine — no Docker daemon. CI is what must
+      observe the refusal coming from the FK; that is the one assertion this tranche changed and cannot
+      verify locally.**
 - [x] 4.5 REFACTOR — rerun the phase runner plus
       `cd backend && conda run -n storico python -m pytest tests/test_repositories -m "not integration"`.
 
@@ -527,7 +539,8 @@ by default in SQLite and nothing in the repo ever turns it on — verified by gr
 action of any kind fires in the unit layer**: the conflict is Postgres-only, and so is every
 `ON DELETE CASCADE` / `SET NULL` claim in 1.18 and 4.3. Consequence for reading this change's
 evidence: the unit layer proves `NOT NULL`, `CHECK`, `UNIQUE` and partial-index shape, and proves
-*nothing* about referential actions.
+*nothing* about referential actions. That includes the `RESTRICT` this change finally chose: no local
+run can witness it.
 
 Case 4.3-6 asserts the DDL reading (refusal) with both outcomes documented in its docstring, so CI
 adjudicates rather than encodes a guess. The fix is a product decision, not a mechanical one: keep the
@@ -536,9 +549,39 @@ or drop the CHECK's second arm and accept an anonymous surviving revocation. `00
 this branch is its first deployment — so whichever way goes, it is an edit to `0028` and not a new
 migration. **Not taken here: it needs the owner's call.**
 
+**Taken 2026-09-30 — Option A (`RESTRICT`).** See the closed task 4.4 above. The consequence for this
+section's wording: the delete is still refused, and the CHECK is still true; only the constraint that
+refuses it is now the one whose name says why.
+
 **CI settled it (2026-09-30, run 36649904378):** the revoking-user case passed, so Postgres does
 refuse the deletion — `0028` cannot be deployed against any user who has revoked a mark without that
 delete failing. D-a-2 is now an observed fact, not a reading, and 4.4's condition is met.
+
+### Discovered defect D-a-4 — the account-delete route exists, and this defect's refusal surfaces as a 500
+
+Found while closing 4.4, by checking the claim this section used to call D-a-2 *latent*. That claim was
+**false**: `DELETE /api/v1/users/me` exists (`api/routes/settings.py:335`, router prefix
+`/api/v1/users/me` at `:31`) and its own docstring promises "All projects, stories, tasks, extractions,
+and linked accounts are cascade-deleted". It reaches `UserRepository.delete` (`:74-79`), which issues a
+bare `delete(UserModel)` with **no `IntegrityError` handling** — unlike `save()` and `link_account()` in
+the same file, which both catch it. There is no handler registered for `IntegrityError` or
+`SQLAlchemyError` in `api/app.py:149-176`, so the refusal falls through to `generic_error_handler`
+(`api/errors.py:161-175`) and the user sees **HTTP 500 `{"detail": "Internal server error"}`**.
+
+So the correct statement is: D-a-2 was latent **because nothing in slice (a) can write a
+`task_invalidations` row** — grep `Invalidation` over `src/storico` returns only
+`models/task_invalidation.py` and `models/__init__.py`: no port, no repository, no route — not because
+no user-deletion route exists. And no test issues the DELETE verb on that route: grepping
+`delete("…/users/me")` across `tests/` is empty, and `test_api/test_auth.py:12` and
+`test_api/test_users.py:13` only GET it.
+
+Why Option A does not fix it and slice (b) must: choosing `RESTRICT` makes the refusal deliberate, so
+the 500 stops being an accident of a CHECK collision and becomes the designed answer to "delete an
+account that revoked a mark" — which is not an answer. **Carried into slice (b) as a named requirement
+next to D-a-1**: the mark endpoints make the row writable, and at that moment the route needs either a
+409 with a reason or a pre-check that revokes-or-blocks, plus its first test of the DELETE verb. Not
+fixed here: slice (a) has no write path to guard, and inventing an error contract for a route that
+cannot yet be reached is (b)'s call, not (a)'s.
 
 
 ### Discovered defect D-a-3 — `0028` cannot be deployed against populated data (blocks the merge)
@@ -556,7 +599,36 @@ which never said how the populated production database would get to `0028`.
 Three owner paths, written out in `prod.todo.md` ("Bloqueo de despliegue") and `docs/deployment.md`:
 purge the pair in a maintenance window with a backup; write a `0029` backfill that must invent and
 declare the unreconstructable values; or hold the PR until the thesis evaluation has data of its own.
-**None chosen. The PR stays open and unmerged for exactly this reason.**
+
+**Chosen 2026-09-30 by the owner: path 1, the purge window.** The runbook is written in `prod.todo.md`
+and **has not been executed**: neither the wipe nor the merge happened, and each needs its own explicit
+confirmation. The order is load-bearing — purge first, then merge; merging into a populated database
+fails the deploy on every later push until someone wipes it.
+
+**And the premise was measured, in the store the guard actually reads.** Until 2026-09-30 this section
+cited the **Qdrant** collection `storico_extractions_prod` as the proof that production holds data, but
+`0028`'s guard counts the **relational** tables. A read-only `SELECT count(*)` pass against the
+production database gives: `alembic_version = 0027`, **17** rows in `extractions` (11 `failed`, 6
+`completed`, span 2026-08-03 → 2026-09-24), **42** rows in `tasks` (every one still `backlog`), 6
+stories, 3 projects, 3 users, 4 workspaces, and **no `task_invalidations` table at all** — consistent
+with `0027`. Same conclusion, now on the right column.
+
+**What that measurement cost the path-2 option, and it corrected D11.** D11 justified the refusal with
+"`provider` and `temperature` are not reconstructable for old rows". Measured, that named the wrong
+column and understated the rest:
+
+| Field a `0029` would have to fill | Measured state |
+| --- | --- |
+| `temperature` | key present in 17/17 rows, **value JSON `null` in 17/17** → genuinely unreconstructable. `prompt_config ? 'temperature'` (key) returns 17 while `->> 'temperature' IS NOT NULL` (value) returns 0: checking only the key yields the opposite conclusion, which is exactly what the first pass of this probe did |
+| `provider` | **derivable per row** through story → project → workspace → `workspace_llm_configs.provider` (17/17 resolve, no NULLs) — but as a *hypothesis about the past*: today's config is not necessarily August's |
+| `version_number` | derivable by ordering `created_at` within a story; only 2 stories have more than one extraction (9 and 4) |
+| `tasks.extraction_id` | **the irreducible one**: 28 of 42 tasks sit on single-run stories (derivable), **14 of 42** sit on the two multi-run stories with no record of which run produced them |
+
+**And the cost of path 1 was overstated, in the other direction.** The Qdrant point id **is** the
+`extraction_id` (`qdrant_adapter.py:255`), and the payload is self-contained (`user_story_text`,
+`tasks_summary`, `model_used`, `workspace_id`). Wiping the relational pair does not break few-shot
+retrieval; it removes provenance. What gets purged is 11 failed runs and 42 tasks that never left
+`backlog`.
 
 Not a slice (a) code defect: nothing in the change's own tests would pass or fail differently. It is
 recorded here because the change's acceptance is "deployed", and that acceptance is unreachable without

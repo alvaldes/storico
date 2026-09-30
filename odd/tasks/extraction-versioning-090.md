@@ -1,11 +1,11 @@
 # ODD Feature: extraction-versioning-090 (OpenSpec change authoring)
 
-> **Status (2026-09-30)**: **slice (a) is delivered as PR #30 and CI is green on its head.** All of
-> Phase 1–4 landed on `feat/extraction-versioning-schema-wu1` (17 commits over `main` `1737708`,
-> head `6614140`); Postgres invariants that this machine could not execute were run by CI and passed.
-> **The PR is NOT merged, and it must not be merged until the owner chooses a path for the `0028`
-> production-data blocker** (`prod.todo.md`, and §Blocker below). Slice (b) and slice (c) are not
-> authorized. → read **"Session handoff — 2026-09-30"** at the end of this file first.
+> **Status (2026-09-30, close of this session)**: **slice (a) is code-complete — 46/46 tasks** — on
+> `feat/extraction-versioning-schema-wu1`, PR #30 still **OPEN** with CI green at head. Task 4.4 landed
+> with the owner's Option A (`revoked_by` → `RESTRICT`). **D-a-3 is decided (purge window) and NOT
+> executed**: the wipe and the merge are separate confirmations the owner fires, in that order. New
+> defect **D-a-4** (the account-delete route exists and would 500) is recorded and carried into slice
+> (b). → read **"Session handoff — 2026-09-30"** at the end of this file first.
 > **Created**: 2026-09-28
 > **Workflow**: SDD/OpenSpec (explicitly selected by the user) inside ODD
 > **Session preflight**: `auto` + `openspec` + `ask-on-risk` + 400-line review budget, confirmed
@@ -101,11 +101,18 @@ on the spec's earlier verification pass, not on new commits.
 - [x] 6. Validate all three with native `gentle-ai sdd-status --contract gentle-ai.sdd-status/v2`
   and report the per-slice Review Workload Forecast (ask-on-risk gate)
 - [x] 7. Land the planning artifacts on `main` (`3ddbe28`, `66bbb3b`)
-- [ ] 9. **Owner decision on the `0028` deploy blocker** (purge window / a `0029` backfill that must
-  invent `provider`+`temperature` / hold the PR). Nothing merges before this is chosen.
-- [ ] 10. **Task 4.4 of slice (a)** — `0028` currently makes a revoking user undeletable (confirmed by
-  CI, not inferred). Either the FK becomes `RESTRICT` deliberately, or the CHECK's second arm is
-  relaxed. Since `0028` is unreleased, this is an edit to `0028`, not a new revision.
+- [x] 9. **Owner decision on the `0028` deploy blocker** — asked and answered 2026-09-30: **purge
+  window**. Nothing was executed; the runbook lives in `prod.todo.md`, and the wipe and the merge are
+  two separate confirmations that still have to happen, in that order.
+- [x] 10. **Task 4.4 of slice (a)** — closed 2026-09-30 with Option A: `revoked_by` becomes `RESTRICT`
+  deliberately, the equivalence CHECK stays whole, and `0028` was edited rather than superseded because
+  it is unreleased. Cost of finding out: the "it is latent because no user-deletion route exists"
+  argument used to justify it was **false** — that is defect **D-a-4**, carried into slice (b).
+- [ ] 13. **D-a-4** — `DELETE /api/v1/users/me` (`api/routes/settings.py:335`) has no `IntegrityError`
+  mapping, so once a revocation row can exist the refusal is an HTTP 500. Belongs to slice (b), with the
+  route's first DELETE-verb test.
+- [ ] 14. **Production `workspace_llm_configs.provider = 'Nan'`** — one of four rows, md5-verified, not a
+  tool artifact. Outside 0.9.0; waiting on a decision about what should validate that column.
 - [ ] 11. Apply slice (b) `extraction-versioning-api` **after (a) merges** — it inherits **D-a-1** as a
   named requirement (re-dispatch duplicates task rows, `extraction_task.py:441`).
 - [ ] 12. Apply slice (c) `extraction-versioning-prompt`.
@@ -267,10 +274,11 @@ Written for a session that starts with nothing in context. Read in this order: t
 | | |
 | --- | --- |
 | PR | **#30** — <https://github.com/alvaldes/storico/pull/30> — base `main`, **OPEN, NOT MERGED** |
-| Branch | `feat/extraction-versioning-schema-wu1`, head `6614140`, 17 commits over `main` `1737708` |
+| Branch | `feat/extraction-versioning-schema-wu1`, head `6fde589` (CI green at that head), 21 commits over `main` `1737708` |
 | CI on that head | `backend pass`, `frontend pass`, `mergeable=CLEAN`; run 36649904378 reported `1064 passed, 18 skipped` |
 | Local suite | `1049 passed, 33 deselected`, 0 failed · `ruff check`/`format --check` exit 0 |
-| Open tasks in the change | **only 4.4**. 1.1–1.20, 2.1–2.6, 3.1–3.9, 4.1–4.3, 4.5 and 5.1–5.6 are closed |
+| Open tasks in the change | **none** — 4.4 closed 2026-09-30; 1.1–1.20, 2.1–2.6, 3.1–3.9, 4.1–4.5 and 5.1–5.6 are closed |
+| Blocked on | the D-a-3 runbook (**not executed**): backup → purge → merge. The wipe and the merge are the owner's calls, and the RESTRICT half of 4.4 is unverified until CI runs it |
 | Not authorized | slice (b) `extraction-versioning-api`, slice (c) `extraction-versioning-prompt` |
 | Receipt-driven development | still **off** in this clone; no native review ran on any tranche |
 
@@ -280,35 +288,68 @@ render snapshot), `3364c43` (3b-i marks), `366c341` (3b-ii-a dead path deleted),
 `7a98c19` (WU4b Postgres half), then the `fix(test)` chain `3333b7b` / `4da58fb` / `962359a` and the
 doc commits.
 
-### The blocker (D-a-3), which is the reason the PR is not merged
+### The blocker (D-a-3), which was the reason the PR was not merged
 
 `.github/workflows/deploy-backend.yml:101` runs `alembic upgrade head` on **every** deploy.
 `0028:41` reads `SELECT count(*)` on `extractions` and `tasks` and raises `RuntimeError` if either is
-non-empty — decision D11, no backfill. Production has real rows (`storico_extractions_prod` measured
-2026-09-28, ADR-005). So **merging to `main` takes the API down on purpose**: the container is already
-stopped by the time the migration fails. That is the workflow behaving as designed, not a deploy.
+non-empty — decision D11, no backfill. So **merging to `main` takes the API down on purpose**: the
+container is already stopped by the time the migration fails. That is the workflow behaving as designed,
+not a deploy.
 
-Three paths, written out in `prod.todo.md`; **none chosen, none executed**:
+**Decided 2026-09-30: path 1, the purge window.** Not executed: the wipe and the merge are separate
+explicit confirmations, and the runbook in `prod.todo.md` is the thing to read before either.
 
-1. **Purge window** — empty `extractions`/`tasks` in Neon with a backup, let `0028` run on the empty
-   pair. Loses the production extraction history and desyncs it from the Qdrant points already stored.
-2. **A `0029` backfill** — collides with D11: `provider` and `temperature` are not reconstructable for
-   old rows, so the backfill must **invent** a value and say which. That is a claim about thesis data.
-3. **Hold the PR** — what the slice plan already assumed when it said slice (a) is not deployed.
+**The premise was cited against the wrong store until it was measured.** This section said production has
+real rows because the **Qdrant** collection `storico_extractions_prod` was measured on 2026-09-28, but
+the guard counts the **relational** tables. A read-only pass against the production database gives:
+`alembic_version = 0027`; **17** `extractions` (11 `failed`, 6 `completed`, 2026-08-03 → 2026-09-24);
+**42** `tasks`, all in `backlog`; 6 stories, 3 projects, 3 users, 4 workspaces; and
+`task_invalidations` **does not exist** there yet. Same verdict, honest evidence.
 
-Assessment offered, not decided: (3) costs nothing today; (1) becomes unavoidable before real use. If
-the owner picks (2), the invented values need recording as a thesis-methodology caveat.
+Three paths, written out in `prod.todo.md`; **path 1 chosen, none executed**:
+
+1. **Purge window** ← **chosen.** Empty `extractions`/`tasks` in Neon with a backup, let `0028` run on
+   the empty pair. Costed, then corrected downward: the Qdrant point id **is** the `extraction_id`
+   (`qdrant_adapter.py:255`) and the payload carries the story text and the task summary, so few-shot
+   retrieval keeps working after the wipe. What is lost is **provenance**, not function — and what gets
+   purged is 11 failed runs and 42 tasks that never left `backlog`.
+2. **A `0029` backfill** — rejected on cost, after measuring what it would actually have to invent.
+   D11's stated reason named the wrong column: `temperature` is genuinely unrecoverable (the key is on
+   17/17 rows, the **value is JSON `null` on 17/17**), `provider` **is** derivable per row through
+   story → project → workspace → `workspace_llm_configs.provider`, as a hypothesis about the past, and
+   `version_number` is derivable from `created_at`. The irreducible field is **`tasks.extraction_id`:
+   28 of 42 tasks sit on single-run stories and 14 of 42 do not**, with no record of which run produced
+   them. Three assertions about thesis data, for data the measurement describes as test traffic.
+3. **Hold the PR** — what the slice plan already assumed; still available, and what has been happening
+   until this decision.
 
 ### Two open defects
 
-**D-a-2 / task 4.4 — `0028` makes a revoking user undeletable.** `revoked_by ON DELETE SET NULL`
-(:104-109) coexists with `CHECK ((revoked_by IS NULL) = (revoked_at IS NULL))` (:114-117). Postgres
-evaluates CHECKs during the referential action, so deleting such a user **fails**. CI observed it:
-`test_deleting_the_revoking_user_meets_the_revoke_pair_check` passes, asserting the refusal and that the
-mark survives with `revoked_at`. `marked_by` has the same FK action but no paired CHECK (`marked_at` is
-`NOT NULL`), so only the revoke side collides. The fix is an edit to unreleased `0028`: FK → `RESTRICT`
-(same behaviour, explicit intent, clearer error) or relax the CHECK's second arm (an anonymous
-surviving revocation). The app serves no user-deletion route, so it is latent either way.
+**D-a-2 / task 4.4 — CLOSED 2026-09-30, Option A (`RESTRICT`).** `revoked_by ON DELETE SET NULL`
+(:104-109) coexisted with `CHECK ((revoked_by IS NULL) = (revoked_at IS NULL))` (:114-117). Postgres
+evaluates CHECKs during the referential action, so deleting such a user **fails**. CI observed it under
+the old shape: `test_deleting_the_revoking_user_meets_the_revoke_pair_check` passed by asserting the
+refusal. The owner chose FK → `RESTRICT`, keeping the equivalence CHECK whole, edited in `0028` and its
+ORM mirror in the same change (the autogenerate drift gate catches a one-sided edit, and that gate is
+itself `integration`-marked, so it runs in CI too). The case is now
+`test_deleting_the_revoking_user_is_refused_by_the_revoker_fk` and expects the FK name in the driver
+message. Locally: `1049 passed, 33 deselected` plus `540 passed`, lint and format clean. **The RESTRICT
+behaviour is unverified here — no Docker daemon; CI has to observe it.**
+
+~~The app serves no user-deletion route, so it is latent either way.~~ **That justification was false.**
+See **D-a-4** below, which replaces it.
+
+**D-a-4 — the account-delete route exists, and the refusal surfaces as a 500.** Found while writing the
+sentence above. `DELETE /api/v1/users/me` is live (`api/routes/settings.py:335`; router prefix at `:31`)
+and its docstring promises every related row is cascade-deleted. `UserRepository.delete`
+(`:74-79`) issues a bare `delete(UserModel)` with **no `IntegrityError` handling** — unlike `save()` and
+`link_account()` in the same file — and `api/app.py:149-176` registers no handler for it, so it falls to
+`generic_error_handler` (`api/errors.py:161-175`): **HTTP 500, `{"detail": "Internal server error"}`**.
+No test issues that verb (`delete("…/users/me")` across `tests/`: empty). D-a-2 is still latent, but
+because **slice (a) ships no port, repository or route that writes a `task_invalidations` row** (grep
+`Invalidation` in `src/storico`: only the model and `__init__`), not because no deletion path exists.
+Carried into slice (b) as a named requirement: when the mark endpoints make the row writable, that 500
+becomes the designed answer to a real user action and has to become a 409-with-reason or a pre-check.
 
 **D-a-1 — re-dispatching a run duplicates its task rows.** `extraction_task.py:441` is an INSERT-only
 persist loop with no `extraction_id` guard; re-dispatching `run_background_extraction` for the same id
@@ -370,9 +411,67 @@ to assert more than the code does.
 
 ### Resuming, in order
 
-1. Ask the owner for the blocker decision (paths 1/2/3 above). Nothing merges without it.
-2. Close task 4.4 in the same edit as that decision, since both touch `0028`.
-3. Only after a merge: start slice (b) with its own apply authorization, carrying **D-a-1** as a named
-   requirement. Slice (b) is the one that retires `POST /api/v1/tasks/`, which slice (a) currently
-   pins as a 500 refusal (`tasks.extraction_id NOT NULL`) — that pin is honest about being temporary.
-4. Do not renumber task IDs. Slices (b) and (c) reference (a) IDs such as 2.3, 3.4 and 3.7.
+1. ~~Ask the owner for the blocker decision.~~ **Asked and answered 2026-09-30: path 1, the purge
+   window.** Runbook written in `prod.todo.md`, **not executed**.
+2. ~~Close task 4.4 in the same edit as that decision.~~ **Done** — Option A, `RESTRICT`, both files.
+3. **Execute the runbook, in its own order: backup → purge → confirm both counts are 0 → merge.** The
+   owner fires the wipe and the merge; neither is this document's call. Purging *before* merging is not
+   a detail: merging first fails the deploy on every later push until somebody wipes the pair.
+   Step 3 of the runbook is still an open choice — whether to reset `user_stories.status` to
+   `pending_extraction` along with the `TRUNCATE`.
+4. Slice (b) then needs its own apply authorization, carrying **three** named requirements: **D-a-1**
+   (re-dispatch duplicates task rows), **D-a-4** (the account-delete 500), and retiring
+   `POST /api/v1/tasks/`, which slice (a) currently pins as a 500 refusal (`tasks.extraction_id NOT
+   NULL`) — that pin is honest about being temporary. Slice (c) after that.
+5. Do not renumber task IDs. Slices (b) and (c) reference (a) IDs such as 2.3, 3.4 and 3.7.
+6. Side item, outside this feature: a production `workspace_llm_configs.provider` holds the literal
+   string `'Nan'` (md5-verified, not a tool artifact). Filed in `prod.todo.md`; nobody has said what
+   should validate it.
+
+## Session handoff — 2026-09-30 (b): the blocker got decided, and the measurement corrected two documents
+
+Everything above stays true. This is what changed in the session that closed 4.4.
+
+**Two owner decisions, both taken inside the session's question round:**
+
+- **D-a-3 → path 1, the purge window.** Nothing was executed. `prod.todo.md` now carries a six-step
+  runbook whose only missing piece is a client: this machine has no `psql`, no `pg_dump`, no `neonctl`
+  and no Docker, so the backup step happens outside this worktree.
+- **D-a-2 → Option A, `revoked_by` `ON DELETE RESTRICT`,** which closes task 4.4 and makes slice (a)
+  **46/46**. `0028` and `models/task_invalidation.py` moved as one edit because the autogenerate drift
+  gate catches a one-sided change — and that gate is `integration`-marked, so it runs in CI, not here.
+
+**The measurement that changed the docs.** A read-only pass against production (authorized in the same
+round, `SELECT count(*)` and type probes only, DSN never printed) found that D-a-3's premise was
+*correct but cited against the wrong store* — Qdrant instead of the relational tables the guard counts —
+and that **D11 named the wrong unreconstructable column**. `provider` is derivable per row (as a
+hypothesis about the past); `temperature` is genuinely gone (key on 17/17 rows, **value JSON `null` on
+17/17**); `version_number` is derivable from `created_at`; the irreducible field is
+`tasks.extraction_id`, ambiguous for **14 of 42** rows. Costing the purge in the other direction: the
+Qdrant point id *is* the `extraction_id` and the payload is self-contained, so wiping relational data
+removes provenance, not few-shot function.
+
+**A justification that was false, and the defect it hid.** Slice (a) called D-a-2 latent because "the app
+serves no user-deletion route". It does: `DELETE /api/v1/users/me` (`api/routes/settings.py:335`), with
+`UserRepository.delete` (`:74-79`) issuing a bare delete that catches nothing, no `IntegrityError`
+handler registered in `api/app.py:149-176`, and `generic_error_handler` (`api/errors.py:161-175`)
+turning the refusal into **HTTP 500 `{"detail": "Internal server error"}`**. No test issues that verb.
+Recorded as **D-a-4** and carried into slice (b) next to D-a-1: the refusal is only reachable once the
+mark endpoints exist, which is exactly when it must stop being a 500.
+
+**A production defect nobody asked for.** One of the four `workspace_llm_configs` rows holds
+`provider = 'Nan'`. It is not a tool-transcription artifact — `md5()` and `length()` both match — and it
+is the config the two `qwen3.8-flash` runs fall through to. Filed in `prod.todo.md`, outside 0.9.0.
+
+**Method lessons, because they repeat.** (1) `prompt_config ? 'key'` measures the *key*;
+`->> 'key' IS NOT NULL` measures the *value*. Reading only the first produced the opposite answer for
+`temperature`, and my own first pass reported "17 recoverable" from it. (2) `fetchval` on a multi-row
+query silently returns row one: the first probe's key list showed `system_prompt` as the only key when
+there were three. (3) Both were caught only because every number was computed twice through
+independent SQL and the disagreements were printed instead of picked. (4) A premise inherited from an
+earlier session — "production has data" — was worth measuring even though the conclusion held.
+
+**Verified locally:** `1049 passed, 33 deselected` over the same 1082 · `540 passed` for
+`tests/test_repositories tests/test_unit` · `ruff check` and `ruff format --check` exit 0.
+**Unverified here, by construction:** the RESTRICT refusal itself, and the autogenerate drift gate.
+Both need Postgres, so both are CI's to observe on the next push.
