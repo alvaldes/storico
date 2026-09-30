@@ -619,6 +619,20 @@ out of both: **do not call production data broken until you have read the place 
 not let a decision that destroys rows depend on my reading numbers off a terminal, which is why the purge
 went behind an in-memory count interlock instead.
 
+**And a third wrong claim of mine, committed and then corrected inside the same hour.** In the closure
+commit I edited slice (b)'s spec-phase note to say that because (a) was now archived, (b)'s deltas for
+`extraction-versioning` and `task-invalidation` had to become `MODIFIED Requirements`, full text, header
+verbatim. It read convincingly and it was false: `MODIFIED` requires a stored header to modify, and
+(b)'s 7 + 4 requirements **collide with none of** the 8 + 6 the store holds — they are new obligations on
+capabilities that exist, which is exactly what `ADDED Requirements` means. (c) is the same shape. I wrote
+that sentence from the tool's vocabulary instead of from the files, and the only reason it got caught is
+that I went to check the collision count for a different reason. It is retracted in place in
+`extraction-versioning-api/proposal.md`, with the numbers, and the check surfaced something the assumption
+would have hidden: two of (b)'s API-layer requirements restate (a)'s storage invariants in other words
+(`Revoking Updates the Row and Never Deletes It` vs `Revoking Is an Update, Never a Delete`), so the store
+will hold the same rule twice at two layers once (b) archives — recorded as an authoring note for (b),
+not silently accepted and not "fixed" by editing requirements that are correct where they stand.
+
 **What is deliberately not done.** `make bump` (release is the owner's call; `0.8.0` in all three manifests
 and in `/api/v1/health`, and `0.9.0` is planned as three slices with one shipped). Slice (b)
 `extraction-versioning-api` and slice (c) `extraction-versioning-prompt` are **not authorized** and each

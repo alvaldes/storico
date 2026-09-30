@@ -137,10 +137,30 @@ contract.
 *Spec-phase note:* in `openspec/changes/extraction-versioning-api/specs/`, the deltas for
 `extraction-versioning` and `task-invalidation` are `ADDED Requirements` when (a) has not archived
 yet and `MODIFIED Requirements` when it has; the spec phase resolves that against the base at
-authoring time. **Resolved 2026-09-30: slice (a) is merged, deployed and archived, and both capabilities
-now live in `openspec/specs/` — so slice (b)'s deltas for them are `MODIFIED Requirements`, written
-full-text with the header verbatim, never as a pointer.** The four live capabilities are `MODIFIED
-Requirements` either way.
+authoring time. The four live capabilities are `MODIFIED Requirements` either way.
+
+> **Resolved by measurement 2026-09-30, and the resolution is the opposite of what this note assumed.**
+> Slice (a) is archived and both capabilities now live in `openspec/specs/`. An earlier correction to this
+> paragraph concluded that therefore (b)'s deltas must be `MODIFIED`. That was wrong and is retracted
+> here. Counted, not reasoned: (b) declares **7** requirements in `extraction-versioning` and **4** in
+> `task-invalidation`; the store holds **8** and **6**. **Zero name collisions** — so every one of (b)'s
+> requirements is a new obligation on an existing capability, which is exactly what `ADDED Requirements`
+> means in OpenSpec. `MODIFIED` would be wrong: it requires the existing header verbatim, and none of
+> (b)'s headers matches a stored one. (c) is the same shape: 7 new requirements on
+> `extraction-versioning`, 0 on `task-invalidation`.
+>
+> **What the collision check did surface, and it is an authoring note rather than a blocker:** two of
+> (b)'s requirements restate (a)'s invariants *at the API layer*, with different wording.
+> `Revoking Updates the Row and Never Deletes It` (the endpoint: 204, 404 when there is no active mark,
+> 409 `TASK_VERSION_FROZEN`, owner/`ADMIN` gate) contains the sentence "The mark row MUST never be
+> deleted by revocation", which `task-invalidation` already guarantees as `Revoking Is an Update, Never a
+> Delete` (the storage invariant). `Creating a Mark Requires a Reason, the Current Version and the Gate`
+> likewise overlaps `The Mark Belongs to the Version It Was Made On` and `The Reason Is Mandatory as a
+> Database Invariant`. Both layers legitimately need to say it — one binds the schema, one binds the
+> route — but when (b) archives, `openspec/specs/` will hold **two requirements asserting the same
+> never-delete rule**. Keep them deliberately: (b)'s text should state the HTTP contract and cite the
+> stored invariant rather than re-derive it, so a future change does not have to edit the same obligation
+> in two places and can tell which layer each one governs.
 
 ## Decisions This Change Makes
 
