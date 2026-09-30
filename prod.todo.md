@@ -247,6 +247,28 @@ ningún ciphertext que desencriptar; `STORICO_GOOGLE_API_KEY` sí sigue sirviend
 ~~**Modificado el 2026-09-30 por decisión del owner: no se toma respaldo.**~~ Se cumplió: en lugar del
 respaldo quedó el inventario commiteado, que es lo que el interlock usó como condición de partida.
 
+### El andamiaje de operación: los scripts viven en `~/storico-ops/` (fuera del repo, a propósito)
+
+Las sondas y la purga de esta sección **no se escribieron dentro del repositorio ni corrieron por un
+router de la app**: son scripts de un solo uso que hablan contra producción con el DSN de
+`.env.prod.local`, y se ejecutan con `conda run -n storico python ~/storico-ops/<script>.py`.
+
+Copiados de `/tmp` a `~/storico-ops/` el 2026-09-30, con su `README.md` al lado que los clasifica por
+riesgo (🔴 muta producción / 🟢 lectura / 🟡 toca material sensible en memoria). Razón de ser de la
+copia: `/tmp` se limpia al reiniciar, y esta sección describe un runbook que alguien va a tener que
+volver a ejecutar.
+
+**Ninguno está bajo control de versiones, y ninguno debería estarlo.** No embuten secretos: todos leen
+`os.environ`. Dos cosas que hay que saber antes de reutilizarlos, del README:
+
+- `d_a_3_purge.py` **no se vuelve a correr tal cual**: su interlock fija `EXPECTED_ALEMBIC = "0027"` y
+  producción está en `0028`, así que hoy **se niega solo**. Eso es el diseño funcionando. Cualquier purga
+  futura necesita un bloque `EXPECTED_*` freshly medido, nunca heredado.
+- El patrón que vale la pena robar no es el script, es **el interlock**: una purga se ejecuta detrás de
+  una re-medición que se niega a correr si la realidad cambió, no detrás de mi lectura de hace una hora.
+  Esta sesión me equivoqué dos veces leyendo datos de producción (`provider = 'Nan'` y la tabla donde
+  vivía el conteo de D-a-3); el interlock es lo que hizo que esas dos veces no fueran destructivas.
+
 ### El inventario que reemplazó al respaldo (medido antes de borrar)
 
 Inventario medido el 2026-09-30, en lectura, contra la base y el cluster de producción. Ampliado el

@@ -663,3 +663,27 @@ needs its own apply authorization; (b) carries **D-a-1**, **D-a-4** and the reti
 `POST /api/v1/tasks/`. The Qdrant dev/prod cluster-sharing design decision is still open. The published
 commits `7e3aa6e` / `d4fea8b` still carry the withdrawn `'Nan'` claim in their messages — rewriting
 published history is the owner's call.
+
+## Where the production scaffolding lives — read this before re-deriving anything
+
+The probes and the purge used to close D-a-3 were **one-off scripts, never repository code**: they speak
+to Neon and Qdrant Cloud directly, with the DSN from `~/Developer/storico/.env.prod.local`, run as
+`conda run -n storico python <script>.py`. They were copied out of `/tmp` to **`~/storico-ops/`** on
+2026-09-30, with a `README.md` there classifying them by risk (🔴 mutates production / 🟢 read-only /
+🟡 touches decrypted material in memory).
+
+They are deliberately **not under version control**, and they embed no secrets — all read `os.environ`.
+
+Two things worth knowing before touching them, from that README:
+
+- **`d_a_3_purge.py` is not re-runnable as-is.** Its interlock pins `EXPECTED_ALEMBIC = "0027"` and
+  production is at `0028`, so today it refuses itself. That is the interlock working, not a bug: any
+  future purge needs a freshly measured `EXPECTED_*` block, never an inherited one.
+- **The pattern to steal is the interlock, not the script.** A destructive run executes behind a
+  re-measurement that aborts if reality moved — not behind my reading from an hour ago. This session was
+  wrong twice about production data (`provider = 'Nan'`, and which store held the D-a-3 counts); the
+  interlock is what kept both errors non-destructive.
+
+If `~/storico-ops/` is gone (new machine, wiped home), the *procedure* is still reproducible from
+`prod.todo.md` — inventory, runbook, executed steps, and the verification checklist — and the scripts are
+regenerable from it in a few minutes. Nothing in the repo depends on their existence.
