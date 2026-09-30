@@ -57,6 +57,29 @@ Behaviour proven here:
   `TaskModel` columns including timestamps); `find_current_version` is v2; the story-level read
   returns both sets.
 
+## 1b. What CI subsequently proved (2026-09-30, run 36649904378 on `962359a`)
+
+The PR's CI ran the previously-unexecutable cases and is green: `1064 passed, 18 skipped` over the
+same 1082 tests this machine collects, so **15 integration cases executed and passed**. That settles,
+with observation rather than DDL-reading:
+
+- `0028` upgrades and `downgrade 0027` round-trips on a real Postgres, and re-applying head restores
+  the four columns — proven on a **private database**, after the shared-database version of the case
+  poisoned its own session (three CI runs to find that; see §8).
+- The index-name drift I could not measure locally is **absent**: `pg_indexes` reports exactly
+  `pk_task_invalidations`, `ix_task_invalidations_task_id`, `uq_task_invalidations_active_task`,
+  matching what `Base.metadata` expands, and the migration chain's `_KNOWN_DRIFT` is empty.
+- `uq_task_invalidations_active_task` really is a **partial** index, and no full unique index on
+  `task_id` exists.
+- The duplicate `(user_story_id, version_number)` pair is refused by that named constraint; `tasks`
+  refuses a null `extraction_id`; the story cascade removes exactly one story's versions and tasks.
+- **D-a-2 is confirmed, not inferred**: deleting a user who revoked a mark is **refused** by
+  `ck_task_invalidations_revoke_pair`, and the mark survives with `revoked_at` set. `0028` as written
+  therefore makes such an account undeletable. Task 4.4's condition is met and needs the owner's call.
+
+Still unexecuted by anyone: the 18 Qdrant-backed cases (they need a live vector store), and therefore
+nothing in this change claims evidence about Qdrant behaviour.
+
 ## 2. Declared and lint-clean, but never executed — CI's verdict, not mine
 
 Thirty-three cases skip. Two files are entirely in this category:
@@ -145,3 +168,25 @@ does not have. Recorded as the user's call, not taken here.
 with `backend/**` paths, and `ci.yml` triggers on `pull_request`. Opening a PR from this branch runs CI
 and nothing else. Merging it to `main` would deploy — and CI's Postgres run is the first execution of
 §2, so it must be green before that merge.
+
+## 8. The three CI rounds, because the failures were the discovery
+
+- **Round 1 — 8 failed.** All in the new integration file: `null value in column "owner_id" of
+  relation "workspaces"`. `UserModel.id` is `default=uuid7`, applied at INSERT, and `_seed_story`
+  read `owner.id` at construction time. The mechanism was then reproduced locally on SQLite (id is
+  `None` before flush, a uuid after), but the failure itself was only visible under Docker, because
+  the file is Docker-gated.
+- **Round 2 — still 8 failed, different seven.** The round-trip case moved the *shared* module
+  database down to `0027` and could not bring it back — `0028`'s own D11 guard refuses to re-apply
+  while `extractions` holds rows, and earlier cases had already seeded rows. Every later case then
+  failed on `column "version_number" does not exist` or empty `pg_indexes`. One fixture-ordering bug
+  presented as seven schema bugs; the case's own premise ("on an empty database") was the defect. It
+  now runs against a private database it creates and drops.
+- **Round 3 — 2 failed, then green.** `CREATE DATABASE cannot run inside a transaction block` (the
+  helper documented AUTOCOMMIT and never set it), and a `DetachedInstanceError`: the factory uses
+  `expire_on_commit=False`, but that setting does not govern **rollbacks**, and the expected-failure
+  case rolls back by design. The neighbouring case that passes is the one whose delete *succeeds*.
+
+Worth stating plainly: every one of these was invisible to the machine that wrote the tests, and each
+one was reported by CI as a schema failure while being a test-harness failure. A green local unit
+layer was never evidence about this file, and the PR said so before any of it ran.

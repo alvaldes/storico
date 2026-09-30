@@ -536,20 +536,29 @@ or drop the CHECK's second arm and accept an anonymous surviving revocation. `00
 this branch is its first deployment — so whichever way goes, it is an edit to `0028` and not a new
 migration. **Not taken here: it needs the owner's call.**
 
+**CI settled it (2026-09-30, run 36649904378):** the revoking-user case passed, so Postgres does
+refuse the deletion — `0028` cannot be deployed against any user who has revoked a mark without that
+delete failing. D-a-2 is now an observed fact, not a reading, and 4.4's condition is met.
+
 ## Phase 5: Slice Verification
 
 - [x] 5.1 Whole suite (the acceptance gate): `cd backend && conda run -n storico python -m pytest`.
-- [ ] 5.2 Integration layer: `cd backend && conda run -n storico python -m pytest -m integration`.
+- [x] 5.2 Integration layer: `cd backend && conda run -n storico python -m pytest -m integration`.
       Requires a Docker daemon. If it is absent, every case skips and the Postgres-only invariants
       listed under "Verification environment" remain unverified — record that outcome instead of
       reporting green.
-      **Not closable here (2026-09-29):** no Docker daemon. Recorded, per this task's own clause, instead
-      of reported green: the cases skip cleanly and nothing Postgres-only has been executed.
-- [ ] 5.3 Migration chain acceptance: `cd backend && conda run -n storico python -m pytest tests/test_integration/test_migration_chain.py -m integration`
+      **Closed by CI, not by this machine (2026-09-30):** run 36649904378 on `962359a` reports
+      `1064 passed, 18 skipped` against the same 1082 collected locally, so **15 integration cases
+      executed and passed** — the 12 in `test_extraction_versioning_schema.py` plus the migration
+      chain. The 18 that still skip are the Qdrant-backed ones, which need a live vector store and
+      are not this slice's evidence. Recorded here exactly as the clause demands: this machine never
+      ran them; CI did.
+- [x] 5.3 Migration chain acceptance: `cd backend && conda run -n storico python -m pytest tests/test_integration/test_migration_chain.py -m integration`
       — the chain reaches head on the empty container and `_KNOWN_DRIFT` is still an empty frozenset
       (Docker).
-      **Not closable here (2026-09-29):** no Docker daemon. Recorded, per this task's own clause, instead
-      of reported green: the cases skip cleanly and nothing Postgres-only has been executed.
+      **Closed by CI (2026-09-30):** the chain reached head on the empty container and
+      `_KNOWN_DRIFT` was empty — which is the first real witness that the index names `0028` writes
+      match what `Base.metadata` expands. Proven in run 36649904378, never on this machine.
 - [x] 5.4 No-delete and no-flag sweep: confirm `ExtractionRepository.delete`,
       `SQLAlchemyExtractionRepository.delete`, `extract_and_persist` and `ExtractionRepository.save`
       no longer exist, that no service/route/background task removes an `extractions` or `tasks` row
