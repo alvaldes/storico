@@ -604,10 +604,14 @@ declare the unreconstructable values; or hold the PR until the thesis evaluation
 of its own. The chosen path 1 was later widened to wipe Qdrant too, and its backup step was
 replaced by a measured inventory at the owner's call.
 
-**Chosen 2026-09-30 by the owner: path 1, the purge window.** The runbook is written in `prod.todo.md`
-and **has not been executed**: neither the wipe nor the merge happened, and each needs its own explicit
-confirmation. The order is load-bearing — purge first, then merge; merging into a populated database
-fails the deploy on every later push until someone wipes it.
+**Chosen 2026-09-30 by the owner: path 1, the purge window — and EXECUTED the same day (~04:28 UTC).**
+The runbook lives in `prod.todo.md`. The wipe happened behind an interlock that refused to run unless
+eleven table counts, `alembic_version` and three Qdrant counts matched the inventory committed at
+`9a5086c`; then one transaction truncated the eleven tables (`RESTART IDENTITY CASCADE`) and three
+`points/delete?wait=true` calls emptied all three collections. Verified from a separate process: eleven
+tables at 0, three collections at 0 points, `alembic_version` still `0027`, `task_invalidations` still
+absent, `GET /api/v1/health` → `ok`. **The merge has not been executed** — it is the owner's call, and
+until it lands nothing may run an extraction in production, because one row re-creates this blocker.
 
 **And the premise was measured, in the store the guard actually reads.** Until 2026-09-30 this section
 cited the **Qdrant** collection `storico_extractions_prod` as the proof that production holds data, but

@@ -225,9 +225,14 @@ despliegue.
 colección de **Qdrant** `storico_extractions_prod`, que es otra tienda: la guarda lee Postgres. La
 conclusión no cambió, pero ahora la sostiene el dato de la columna que la guarda consulta.
 
-**Decidido el 2026-09-30: ventana de purga** (camino 1 de tres). El runbook paso a paso está en
-`prod.todo.md`, ítem *"Bloqueo de despliegue"*. **Está escrito y no ejecutado**: ni la purga ni el merge
-ocurrieron, y cada uno pide su propia confirmación del owner.
+**Decidido el 2026-09-30: ventana de purga** (camino 1 de tres), **y ejecutada el mismo día ~04:28 UTC.**
+El runbook paso a paso y la evidencia de la ejecución están en `prod.todo.md`, ítem *"Bloqueo de
+despliegue"*. El `TRUNCATE` de las once tablas del esquema de negocio y el vaciado de las tres colecciones
+de Qdrant ocurrieron detrás de un interlock que comparó cada conteo con el inventario commiteado y se
+negó a borrar ante cualquier diferencia. Verificado después desde un proceso aparte: once tablas en 0,
+tres colecciones en 0 puntos, `alembic_version` todavía `0027`, `GET /api/v1/health` → `ok`. **El merge no
+se ejecutó: es decisión del owner, y hasta que aterrice no se puede correr ni una extracción en
+producción**, porque una sola fila devuelve el bloqueo que acabamos de pagar con datos.
 
 La regla general que sale de acá, para cualquier revisión futura con esta forma: **una migración que se
 niega ante datos existentes necesita su plan de datos escrito en `prod.todo.md` antes de llegar a

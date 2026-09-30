@@ -71,10 +71,11 @@ Prerrequisitos que, si faltan, rompen algo en silencio o fallan recién en produ
 Este archivo lo mantiene quien despliega. Si un ítem se cierra, se marca acá y se deja el detalle en
 el documento que le corresponda — no se abre una segunda lista.
 
-## Bloqueo de despliegue (**D-a-3**): la migración `0028` no corre sobre la base de producción
+## Bloqueo de despliegue (**D-a-3**): la purga se ejecutó; queda el merge
 
 **Descubierto el 2026-09-30, al cerrar el slice (a) de versionado de extracciones (PR #30). Ningún
-otro archivo de este repo lo decía.**
+otro archivo de este repo lo decía. La purga se ejecutó el mismo día 2026-09-30 ~04:28 UTC; lo que
+queda es el merge, que es decisión del owner.**
 
 `0028_extraction_versioning` lee `SELECT count(*) FROM extractions` y `SELECT count(*) FROM tasks`
 antes de tocar el esquema, y **lanza `RuntimeError` si alguna de las dos tablas tiene una fila**
@@ -126,11 +127,13 @@ de `backlog`.
 
 Los tres caminos, ya evaluados:
 
-1. **Ventana de purga.** ← **ELEGIDO.** Borrar los datos relacionales de `extractions`/`tasks` en Neon —
-   y los puntos de Qdrant, extendido el 2026-09-30— antes de mergear, y dejar que `0028` corra sobre el
-   par vacío. Es lo que el propio mensaje de la guarda indica. Sin respaldo: se reemplazó por inventario
-   (ver el runbook). Corregido por medición: no "pierde la coherencia de los puntos de Qdrant", pierde
-   la procedencia de 17 runs de prueba.
+1. **Ventana de purga.** ← **ELEGIDO y EJECUTADO el 2026-09-30 ~04:28 UTC.** Borrar los datos relacionales
+   de las once tablas del esquema de negocio en Neon —y los puntos de las tres colecciones de Qdrant—
+   antes de mergear, y dejar que `0028` corra sobre el par vacío. Es lo que el propio mensaje de la guarda
+   indica. Sin respaldo: se reemplazó por inventario commiteado, que además fue la condición del interlock
+   (ver "Ejecución real"). Corregido por medición: no "pierde la coherencia de los puntos de Qdrant", pierde
+   la procedencia de 17 runs de prueba **y las dos únicas copias de dos API keys, eso último a sabiendas
+   del owner**.
 2. **Revisión de backfill aparte.** Descartada por costo: habría que afirmar tres cosas —`temperature`
    inventado en las 17 filas, `provider` por hipótesis de config actual, y un run elegido a mano para
    14/42 tasks— sobre datos que la medición describe como tráfico de prueba. Queda disponible si la
@@ -139,11 +142,48 @@ Los tres caminos, ya evaluados:
    evaluación de la tesis tenga datos propios que purgar sin costo. Es el camino que el plan de slices
    ya asumía al decir que (a) no está desplegado.
 
-### Runbook del camino 1 (escrito, **no ejecutado**)
+### Ejecución real (2026-09-30, ~04:28 UTC)
 
-**Modificado el 2026-09-30 por decisión del owner: no se toma respaldo.** "No hay nada que salvar", así
-que el paso de respaldo se reemplaza por **el inventario de lo que se destruye**, medido en lectura antes
-de tocar nada. Es la única forma de que la pérdida quede registrada si alguien la pregunta después.
+**EJECUTADO el 2026-09-30 ~04:28 UTC por orden del owner, sin respaldo.** Secuencia real y su evidencia:
+
+1. **Interlock antes de romper.** Un script midió los once conteos, `alembic_version` y los tres
+   conteos de Qdrant, y **se negó a ejecutar el `TRUNCATE` si algo no coincidía exactamente con el
+   inventario commiteado en `9a5086c`.** Coincidieron los doce números, así que el borrado empezó con
+   una prueba de que no había dato no inventariado. Esperado-vs-encontrado se comparó **en memoria**, no
+   leído por mí: después de dos errores propios en esta sesión por leer mal una salida de herramienta,
+   esa elección no es decoración.
+2. **Purga relacional:** `TRUNCATE` de las once tablas en **una sola transacción**, `RESTART IDENTITY
+   CASCADE`.
+3. **Purga vectorial:** `POST /collections/{name}/points/delete?wait=true` con `"filter": {}` en las tres
+   colecciones. La API key de `.env.prod.local` **sí tiene permisos de escritura** (operaciones 4, 4 y
+   101, todas `completed`): la sospecha de clave de sólo lectura del runbook era falsa.
+4. **Verificación con un proceso distinto**, releyendo desde cero: **once tablas en 0**, tres colecciones
+   en **0 puntos** con `status=green`, `alembic_version` todavía **`0027`**, `task_invalidations`
+   sigue sin existir (viene con `0028`, por el merge).
+5. **La app no se cayó:** `GET /api/v1/health` → `status ok`, `database ok`, `schema ok`, `version
+   0.8.0`. `ollama: not reachable` es opcional y ya era así antes.
+
+⚠️ **Lo que hay que NO hacer desde ahora y hasta el merge.** La guarda de `0028` mira si hay filas. **Una
+sola extracción ejecutada en producción vuelve a poblar `extractions` y devuelve el bloqueo exacto que
+acabamos de pagar con datos.** Con `workspace_llm_configs` vacío el few-shot tampoco tiene de dónde
+sacar, así que no hay ninguna ganancia en extraer ahora: **no correr extracciones en prod hasta que el
+merge aplique `0028`**. No lo probé porque probarlo es escribir, y escribir ahora recrea el problema.
+
+🔲 **Pendiente de datos: el merge** (decisión del owner). Recién con las tablas en cero, el merge a `main`
+dispara `deploy-backend.yml`, `alembic upgrade head` corre `0028` sobre bases vacías y pasa la guarda.
+Después: `alembic_version` = `0028`, `task_invalidations` existe, once tablas en 0, tres colecciones en 0.
+
+🔲 **Pendiente posterior, y es de uso:** re-cargar la clave de AI Studio y la de nan.builders en
+Configuración (se perdieron a propósito, ver arriba), y crear workspace/proyecto/historia de nuevo. El
+primer login ya crea workspace personal + rol admin solo.
+
+🔲 **No hace falta tocar la VM ni el `.env`:** `STORICO_ENCRYPTION_KEY` sigue ahí y ahora no tiene
+ningún ciphertext que desencriptar; `STORICO_GOOGLE_API_KEY` sí sigue sirviendo, para el embedding.
+
+~~**Modificado el 2026-09-30 por decisión del owner: no se toma respaldo.**~~ Se cumplió: en lugar del
+respaldo quedó el inventario commiteado, que es lo que el interlock usó como condición de partida.
+
+### El inventario que reemplazó al respaldo (medido antes de borrar)
 
 Inventario medido el 2026-09-30, en lectura, contra la base y el cluster de producción. Ampliado el
 mismo día: el owner eligió **todo el esquema de negocio, incluidas configs y prompts**, así que la lista
@@ -190,6 +230,8 @@ Gemini la ignore y use `STORICO_GOOGLE_API_KEY`. No lo afirmo sin medirlo.
 | Qdrant `storico_extractions_prod` | **1** punto, 768 dims |
 | Qdrant `storico_extractions_dev` | **1** punto — esta colección **no existía el 2026-09-28**: alguien escribió desde dev contra el cluster de producción |
 | Qdrant `storico_extractions` (legado) | **19** puntos |
+
+### Runbook como se planificó (ya ejecutado; se conservan los pasos y las dos notas que cambió la medición)
 
 0. **Ventana.** Avisar: entre el paso 2 y el 5 la API está caída o sirve contra un esquema viejo.
 1. **Inventario, no respaldo.** Correr las dos mediciones de arriba y dejar los números acá antes de la

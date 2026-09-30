@@ -284,7 +284,7 @@ Written for a session that starts with nothing in context. Read in this order: t
 | CI on `382a9c5` | **`1064 passed, 18 skipped`** (run 36658068793) — the same 15 integration cases as the earlier run, now including the renamed revoker-FK case, so `RESTRICT` is observed and not inferred |
 | Local suite | `1049 passed, 33 deselected`, 0 failed · `ruff check`/`format --check` exit 0 |
 | Open tasks in the change | **none** — 4.4 closed 2026-09-30; 1.1–1.20, 2.1–2.6, 3.1–3.9, 4.1–4.5 and 5.1–5.6 are closed |
-| Blocked on | the D-a-3 runbook (**not executed**): inventory → purge (relational + Qdrant) → merge. No backup — the owner waived it 2026-09-30, so the measured inventory in `prod.todo.md` is the only record of what is destroyed |
+| Blocked on | **only the merge** — the D-a-3 wipe executed 2026-09-30 ~04:28 UTC: 11 tables at 0, 3 Qdrant collections at 0, `alembic_version` still `0027`, health `ok` |
 | Not authorized | slice (b) `extraction-versioning-api`, slice (c) `extraction-versioning-prompt` |
 | Receipt-driven development | still **off** in this clone; no native review ran on any tranche |
 
@@ -423,15 +423,20 @@ to assert more than the code does.
 1. ~~Ask the owner for the blocker decision.~~ **Asked and answered 2026-09-30: path 1, the purge
    window.** Runbook written in `prod.todo.md`, **not executed**.
 2. ~~Close task 4.4 in the same edit as that decision.~~ **Done** — Option A, `RESTRICT`, both files.
-3. **Execute the runbook, in its own order: inventory → purge (relational + Qdrant) → confirm the counts
-   are 0 → merge.** No backup: the owner waived it, and the inventory stands in its place. Wiping *before*
-   merging is not a detail: merging first fails the deploy on every later push until somebody empties the
-   pair. Two choices are still open inside the runbook:
-   - **step 2b, the scope of the vector wipe** — only `storico_extractions_prod` (1 point), or all three
-     collections (`_prod` 1, `_dev` 1, the legacy `storico_extractions` 19).
-   - **step 3, the denormalized story state** — `user_stories.status` keeps saying `extracted` /
-     `failed_extraction` over stories that will have no extraction row at all. Reset to
-     `pending_extraction`, or leave it.
+3. **The wipe is DONE (2026-09-30 ~04:28 UTC); only the merge is left.** Executed after the owner confirmed
+   the scope three times, including once with the API-key consequence stated explicitly. An interlock
+   refused to run unless all eleven table counts, `alembic_version` and the three Qdrant counts matched
+   the inventory committed at `9a5086c`; then one transaction truncated the eleven tables
+   (`RESTART IDENTITY CASCADE`) and three `points/delete` calls emptied the three collections.
+   Verified from a separate process: 11 tables at 0, 3 collections at 0 points, `alembic_version` still
+   `0027`, `GET /api/v1/health` → `ok` (`database ok`, `schema ok`). Both open runbook choices closed by
+   the owner's scope decision: all three collections, and `user_stories` wiped — so the denormalized
+   `status` question no longer applies.
+   ⚠️ **Until the merge lands, nothing may run an extraction in production.** `0028`'s guard fires on
+   *any* row, so a single extraction re-creates the exact blocker that was just paid for in data.
+4. **Mergear** — la decisión sigue siendo del owner. Con once tablas en cero, `deploy-backend.yml` corre
+   `alembic upgrade head`, `0028` pasa la guarda sobre bases vacías y `task_invalidations` nace. Después
+   hay que re-cargar en Configuración las claves de AI Studio y nan.builders (se perdieron a propósito).
 4. Slice (b) then needs its own apply authorization, carrying **three** named requirements: **D-a-1**
    (re-dispatch duplicates task rows), **D-a-4** (the account-delete 500), and retiring
    `POST /api/v1/tasks/`, which slice (a) currently pins as a 500 refusal (`tasks.extraction_id NOT
