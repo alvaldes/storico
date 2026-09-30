@@ -12,14 +12,14 @@ from storico.api.dependencies import (
     get_repository,
     require_story_workspace_access,
 )
-from storico.api.error_codes import NOT_A_WORKSPACE_MEMBER
+from storico.api.error_codes import (
+    NOT_A_WORKSPACE_MEMBER,
+    TASK_CREATION_ENDPOINT_REMOVED,
+    TASK_DELETE_ENDPOINT_REMOVED,
+)
 from storico.api.errors import ApiError
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
-from storico.api.schemas.task import (
-    CreateTaskRequest,
-    TaskResponse,
-    UpdateTaskRequest,
-)
+from storico.api.schemas.task import TaskResponse, UpdateTaskRequest
 from storico.application.services.task_service import (
     InvalidStateTransition,
     TaskService,
@@ -86,50 +86,34 @@ async def _validate_task_workspace_access(
     return task
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
-async def create_task(
-    body: CreateTaskRequest,
-    current_user: User = Depends(get_current_user),
-    repo: TaskRepoDep = None,  # type: ignore[assignment]
-    story_repo: StoryRepoDep = None,  # type: ignore[assignment]
-    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
-    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
-) -> TaskResponse:
-    """Create a new task.
+@router.api_route(
+    "/",
+    methods=["POST"],
+    status_code=status.HTTP_410_GONE,
+    include_in_schema=False,
+)
+async def deprecated_create_task() -> None:
+    """Retired endpoint — manual task creation is gone (410 Gone).
 
-    The caller must be a member of the workspace that owns the story's project; a
-    ``user_story_id`` the caller merely knows is not authorization, and the foreign
-    key on ``tasks.user_story_id`` does not enforce that on its own.
+    A task is only ever born from an extraction run (design decision D3):
+    revision ``0028`` made ``tasks.extraction_id`` ``NOT NULL``, so no
+    hand-written task can be persisted. To produce tasks, extract the story
+    again: POST /api/v1/workspaces/{workspace_id}/extract
+
+    The handler reads no body and runs no authorization walk: the story id it
+    used to authorize against lived in the deleted request body, so the
+    retirement is the whole answer and it discloses nothing about any
+    workspace.
     """
-    await require_story_workspace_access(
-        body.user_story_id,
-        current_user,
-        story_repo=story_repo,
-        project_repo=project_repo,
-        member_repo=member_repo,
-    )
-
-    task = Task(
-        user_story_id=body.user_story_id,
-        title=body.title,
-        description=body.description,
-        status=body.status,
-        priority=body.priority,
-        labels=body.labels,
-        dependencies=body.dependencies,
-    )
-    result = await repo.save(task)
-    return TaskResponse(
-        id=result.id,
-        user_story_id=result.user_story_id,
-        title=result.title,
-        description=result.description,
-        status=result.status,
-        priority=result.priority,
-        labels=result.labels,
-        dependencies=result.dependencies,
-        created_at=result.created_at,
-        updated_at=result.updated_at,
+    raise ApiError(
+        status_code=status.HTTP_410_GONE,
+        error_code=TASK_CREATION_ENDPOINT_REMOVED,
+        detail=(
+            "Manual task creation has been removed. Tasks are only born from an "
+            "extraction run (design decision D3): since revision 0028 every task "
+            "row must belong to the run that extracted it. To create tasks, "
+            "extract the story again via POST /api/v1/workspaces/{workspace_id}/extract."
+        ),
     )
 
 
@@ -317,8 +301,13 @@ async def update_task(
     )
 
 
-@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_task(
+@router.api_route(
+    "/{task_id}",
+    methods=["DELETE"],
+    status_code=status.HTTP_410_GONE,
+    include_in_schema=False,
+)
+async def deprecated_delete_task(
     task_id: UUID,
     current_user: User = Depends(get_current_user),
     repo: TaskRepoDep = None,  # type: ignore[assignment]
@@ -326,11 +315,26 @@ async def delete_task(
     project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
     member_repo: MemberRepoDep = None,  # type: ignore[assignment]
 ) -> None:
-    """Delete a task by its ID.
+    """Retired endpoint — single-task deletion is gone (410 Gone).
 
-    The user must be a member of the workspace that owns the task's user story project.
+    No product path deletes a single task (design decision D12): a task
+    belongs to a version of its story and is only ever destroyed together with
+    that story.
+
+    The membership walk is unchanged, so a missing task still answers 404 and a
+    non-member still answers 403 ``NOT_A_WORKSPACE_MEMBER`` before the
+    retirement is ever reached — the retired door teaches a caller nothing
+    about a workspace they are not in.
     """
     await _validate_task_workspace_access(
         task_id, current_user, repo, story_repo, project_repo, member_repo
     )
-    await repo.delete(task_id)
+    raise ApiError(
+        status_code=status.HTTP_410_GONE,
+        error_code=TASK_DELETE_ENDPOINT_REMOVED,
+        detail=(
+            "Single-task deletion has been removed. No product path deletes a "
+            "single task (design decision D12): a task belongs to a version of "
+            "its story and is only ever destroyed together with that story."
+        ),
+    )

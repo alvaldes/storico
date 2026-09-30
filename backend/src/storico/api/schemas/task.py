@@ -3,23 +3,9 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from storico.domain.entities.task import TaskStatus
-
-
-class CreateTaskRequest(BaseModel):
-    """Request body for creating a new task."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    user_story_id: UUID
-    title: str
-    description: str = ""
-    status: TaskStatus = Field(default=TaskStatus.BACKLOG)
-    priority: str = Field(default="medium")
-    labels: list[str] = Field(default_factory=list)
-    dependencies: list[str] = Field(default_factory=list)
 
 
 class UpdateTaskRequest(BaseModel):

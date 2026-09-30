@@ -86,6 +86,8 @@
     "STORY_NOT_IN_WORKSPACE": "Esa historia no pertenece a este espacio de trabajo. Ábrela desde su espacio de trabajo.",
     "EXTRACTION_ENDPOINT_REMOVED": "El endpoint antiguo de extracción ya no existe. Usa el endpoint de extracción del espacio de trabajo.",
     "EXTRACTION_NOT_FOUND": "Esa extracción ya no está disponible. Actualiza la página para trabajar con la lista actual.",
+    "TASK_CREATION_ENDPOINT_REMOVED": "La creación manual de tareas ya no existe. Las tareas nacen solo de una extracción; extrae la historia de nuevo para crear tareas.",
+    "TASK_DELETE_ENDPOINT_REMOVED": "La eliminación de tareas individuales ya no existe. Una tarea pertenece a la versión de su historia y solo se elimina junto con esa historia.",
     "DUPLICATE_USER_STORY": "Ya existe una historia con el mismo actor, funcionalidad y beneficio. Edita la historia existente.",
     "UNSUPPORTED_EXPORT_FORMAT": "Ese formato de exportación no está disponible. Elige JSON o Markdown e inténtalo de nuevo.",
     "CUSTOM_PROVIDER_NOT_FOUND": "Ese proveedor personalizado ya no está disponible. Actualiza la página y revisa la lista.",

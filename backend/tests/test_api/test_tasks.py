@@ -23,17 +23,21 @@ from tests._helpers import seed_task
 
 
 class TestCreateTask:
-    """POST /api/v1/tasks/"""
+    """POST /api/v1/tasks/ — retired with 410 Gone.
 
-    async def test_create_task(self, authed_client, seed_workspace):
-        """POST /api/v1/tasks/ can no longer create a row: it answers the refusal.
+    Revision ``0028`` made ``tasks.extraction_id`` ``NOT NULL`` — every task must
+    belong to the run that extracted it — so a manually created task can never be
+    persisted. The route is retired: it answers 410 with a ``detail`` naming the
+    rule (design decision D3) and writes nothing, for members and non-members
+    alike. The handler reads no body and runs no authorization walk, because the
+    story id it used to authorize against lived in the deleted request body.
+    """
 
-        Revision ``0028`` made ``tasks.extraction_id`` ``NOT NULL`` — every task must
-        belong to the run that extracted it — and a manually created task has no
-        extraction, so the INSERT is refused and the repository's ``RepositoryError``
-        reaches ``repository_error_handler`` as a 500 ``REPOSITORY_ERROR``. Accepted
-        for slice (a) because (a) is not deployed and slice (b) retires this route;
-        the pin keeps the retirement from hiding a silent shape change.
+    async def test_create_task(self, authed_client, db_session: AsyncSession, seed_workspace):
+        """POST /api/v1/tasks/ answers 410 and adds no row.
+
+        The retirement replaces slice (a)'s pinned 500: the refusal is now a
+        designed contract, not a schema accident.
         """
         story_id = (await seed_workspace()).story_id
         payload = {
@@ -44,17 +48,17 @@ class TestCreateTask:
             "priority": "high",
         }
         response = await authed_client.post("/api/v1/tasks/", json=payload)
-        assert response.status_code == 500
-        assert response.json()["error_code"] == "REPOSITORY_ERROR"
+        assert response.status_code == 410
+        assert response.json()["error_code"] == "TASK_CREATION_ENDPOINT_REMOVED"
+        assert "D3" in response.json()["detail"]
 
-    async def test_create_task_with_labels(self, authed_client, seed_workspace):
-        """POST /api/v1/tasks/ refuses the row for the same NOT NULL reason.
+        persisted = await SQLAlchemyTaskRepository(db_session).list_by_story(story_id)
+        assert persisted == []
 
-        ``tasks.extraction_id`` is ``NOT NULL`` from ``0028`` and a manual creation
-        cannot satisfy it; the route answers 500 ``REPOSITORY_ERROR`` through
-        ``repository_error_handler``. Accepted for slice (a) because (a) is not
-        deployed and slice (b) retires the route.
-        """
+    async def test_create_task_with_labels(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """POST /api/v1/tasks/ answers 410 with labels in the body too, and adds no row."""
         story_id = (await seed_workspace()).story_id
         payload = {
             "user_story_id": str(story_id),
@@ -64,19 +68,21 @@ class TestCreateTask:
             "dependencies": ["US-001"],
         }
         response = await authed_client.post("/api/v1/tasks/", json=payload)
-        assert response.status_code == 500
-        assert response.json()["error_code"] == "REPOSITORY_ERROR"
+        assert response.status_code == 410
+        assert response.json()["error_code"] == "TASK_CREATION_ENDPOINT_REMOVED"
+        assert "D3" in response.json()["detail"]
 
-    async def test_create_task_is_forbidden_for_a_non_member(
+        persisted = await SQLAlchemyTaskRepository(db_session).list_by_story(story_id)
+        assert persisted == []
+
+    async def test_create_task_answers_the_retirement_to_a_non_member_too(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ):
-        """POST into a workspace the caller is not a member of returns 403.
+        """A non-member's POST gets the same 410, and nothing persists.
 
-        The foreign key on ``tasks.user_story_id`` is not an authorization
-        control: the story id alone used to be enough to write a task into
-        someone else's workspace. ``member=False`` keeps the story addressable
-        while withholding exactly the membership the route must require, and the
-        empty repository read afterwards proves nothing was persisted.
+        The retired door authorizes nothing: the story id it used to walk lived
+        in the deleted request body, so the refusal is the retirement itself and
+        it discloses nothing about any workspace.
         """
         story = await seed_workspace(member=False)
 
@@ -88,22 +94,20 @@ class TestCreateTask:
                 "description": "Written into a workspace the caller cannot reach",
             },
         )
-        assert response.status_code == 403
-        assert response.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
-        assert response.json()["detail"] == "Not a member of this workspace"
+        assert response.status_code == 410
+        assert response.json()["error_code"] == "TASK_CREATION_ENDPOINT_REMOVED"
 
         persisted = await SQLAlchemyTaskRepository(db_session).list_by_story(story.story_id)
         assert persisted == []
 
-    async def test_create_task_is_forbidden_in_another_users_workspace(
+    async def test_create_task_answers_the_retirement_in_another_users_workspace_too(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ):
-        """POST into another user's workspace returns 403, not 201.
+        """A POST addressed into another user's workspace gets the same 410.
 
-        ``seed_workspace(user=other_user)`` builds a fully consistent chain —
-        ``other_user`` really is its admin member — so the only thing between the
-        authenticated caller and a 201 is the membership check on the caller's
-        identity rather than on the story's existence.
+        The chain is seeded consistently (``other_user`` really is its admin
+        member), so the only thing between the authenticated caller and the old
+        201 was the membership check — retired together with the route.
         """
         other_user = await SQLAlchemyUserRepository(db_session).save(
             User(email="other@test.com", name="Other Test")
@@ -117,37 +121,35 @@ class TestCreateTask:
                 "title": "Cross-tenant task",
             },
         )
-        assert response.status_code == 403
-        assert response.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
-        assert response.json()["detail"] == "Not a member of this workspace"
+        assert response.status_code == 410
+        assert response.json()["error_code"] == "TASK_CREATION_ENDPOINT_REMOVED"
 
         persisted = await SQLAlchemyTaskRepository(db_session).list_by_story(story.story_id)
         assert persisted == []
 
-    async def test_create_task_rejects_an_unknown_story_id(self, authed_client):
-        """POST with a story id that does not exist returns 404.
+    async def test_create_task_answers_the_retirement_for_an_unknown_story_id_too(
+        self, authed_client
+    ):
+        """POST with a story id that does not exist answers the same 410.
 
-        An unknown story is reported as the caller's own head entity
-        (``UserStory``), so the route never reveals which hop of the
-        ``story → project → workspace`` walk failed.
+        The handler runs no walk, so it cannot report the miss of the walk's head
+        entity: the retirement is the whole answer, and it reveals nothing about
+        which story ids exist.
         """
         response = await authed_client.post(
             "/api/v1/tasks/",
             json={"user_story_id": str(uuid4()), "title": "Orphan task"},
         )
-        assert response.status_code == 404
-        assert response.json()["error_code"] == "ENTITY_NOT_FOUND"
+        assert response.status_code == 410
+        assert response.json()["error_code"] == "TASK_CREATION_ENDPOINT_REMOVED"
 
-    async def test_a_member_post_answers_the_refusal_too_and_persists_nothing(
-        self, authed_client, db_session: AsyncSession, seed_workspace
+    async def test_a_member_post_answers_the_retirement_too_and_persists_nothing(
+        self, authed_client, seed_workspace
     ):
-        """A member's POST gets the refusal, not a 403 — and nothing persists.
+        """A member's POST gets the 410, not a 403 — and nothing persists.
 
-        The positive pin for the membership check, re-pointed when ``0028`` made the
-        creation route unable to persist: the distinction between "not a member" (403,
-        checked before persistence) and "a member the schema refuses" (500
-        ``REPOSITORY_ERROR``) must survive the refusal. Accepted for slice (a) because
-        (a) is not deployed and slice (b) retires the route.
+        The positive pin for the retirement: a caller with full membership still
+        meets the same door, because no identity may create a task by hand.
         """
         story = await seed_workspace()
 
@@ -155,8 +157,8 @@ class TestCreateTask:
             "/api/v1/tasks/",
             json={"user_story_id": str(story.story_id), "title": "Member task"},
         )
-        assert response.status_code == 500
-        assert response.json()["error_code"] == "REPOSITORY_ERROR"
+        assert response.status_code == 410
+        assert response.json()["error_code"] == "TASK_CREATION_ENDPOINT_REMOVED"
 
         listed = await authed_client.get(f"/api/v1/tasks/?user_story_id={story.story_id}")
         assert listed.status_code == 200
@@ -518,23 +520,91 @@ class TestUpdateTask:
 
 
 class TestDeleteTask:
-    """DELETE /api/v1/tasks/{task_id}"""
+    """DELETE /api/v1/tasks/{task_id} — retired with 410 Gone.
+
+    The handler keeps the membership walk it has today, so a missing task still
+    answers 404 and a non-member still answers 403 before the retirement is ever
+    reached; a member learns the door is retired and the row survives.
+    """
 
     async def test_delete_task(self, authed_client, db_session: AsyncSession, seed_workspace):
-        """Seed a task then DELETE returns 204."""
+        """DELETE returns 410 and leaves the task row linked to its version.
+
+        The retirement replaces the old 204: no product path deletes a single
+        task (design decision D12), so the row must still exist — and still
+        belong to the extraction run that produced it — after the call.
+        """
         story_id = (await seed_workspace()).story_id
-        task = await seed_task(db_session, story_id, "To delete")
+        task = await seed_task(db_session, story_id, "To keep")
 
         response = await authed_client.delete(f"/api/v1/tasks/{task.id}")
-        assert response.status_code == 204
+        assert response.status_code == 410
+        assert response.json()["error_code"] == "TASK_DELETE_ENDPOINT_REMOVED"
+        assert "D12" in response.json()["detail"]
 
-        # Verify it's gone
+        # Verify the row is intact and still linked to its version.
         get_resp = await authed_client.get(f"/api/v1/tasks/{task.id}")
-        assert get_resp.status_code == 404
+        assert get_resp.status_code == 200
+        assert get_resp.json()["id"] == str(task.id)
+        persisted = await SQLAlchemyTaskRepository(db_session).find_by_id(task.id)
+        assert persisted is not None
+        assert persisted.extraction_id == task.extraction_id
 
     async def test_delete_task_not_found(self, authed_client):
-        """DELETE on a non-existent UUID returns 404."""
+        """DELETE on a non-existent UUID returns 404 — the walk fires before the 410."""
         fake_id = str(uuid4())
         response = await authed_client.delete(f"/api/v1/tasks/{fake_id}")
         assert response.status_code == 404
         assert response.json()["error_code"] == "ENTITY_NOT_FOUND"
+
+    async def test_delete_task_refuses_a_non_member_before_the_retirement(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A non-member's DELETE answers 403 before the 410, and the row survives.
+
+        The retirement must not teach a caller anything about a workspace they
+        are not in: the answer is the same ``NOT_A_WORKSPACE_MEMBER`` refusal the
+        walk gives today, the body names no workspace, and the task — its row
+        and its link to its version — is untouched by the refused call.
+        """
+        seeded = await seed_workspace(member=False)
+        task = await seed_task(db_session, seeded.story_id, "Untouchable")
+
+        response = await authed_client.delete(f"/api/v1/tasks/{task.id}")
+        assert response.status_code == 403
+        assert response.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
+        assert response.json()["detail"] == "Not a member of this workspace"
+        assert str(seeded.workspace_id) not in response.text
+
+        # The refused call changed nothing: the row is intact and still linked.
+        persisted = await SQLAlchemyTaskRepository(db_session).find_by_id(task.id)
+        assert persisted is not None
+        assert persisted.extraction_id == task.extraction_id
+
+    async def test_delete_on_the_collection_root_still_answers_405(self, authed_client):
+        """DELETE /api/v1/tasks/ answers 405, not 410.
+
+        The retirement is two exact published methods, not a catch-all: the
+        collection root never had a DELETE handler and must keep saying so.
+        """
+        response = await authed_client.delete("/api/v1/tasks/")
+        assert response.status_code == 405
+        assert response.status_code != 410
+
+    async def test_the_invalidations_revoke_path_is_not_swallowed_by_the_retirement(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """DELETE /api/v1/tasks/{task_id}/invalidations/current is not a 410.
+
+        Neither retirement may become a ``/{path:path}`` catch-all: the marks
+        work (slice (b) WU5) registers its revoke route on this exact path, and a
+        greedy retirement would swallow it behind an ordering coupling. Today the
+        route does not exist yet, so the answer is the router's plain 404 — the
+        pin is that the answer is not the retirement.
+        """
+        story_id = (await seed_workspace()).story_id
+        task = await seed_task(db_session, story_id, "Marked later")
+
+        response = await authed_client.delete(f"/api/v1/tasks/{task.id}/invalidations/current")
+        assert response.status_code != 410
+        assert b"TASK_DELETE_ENDPOINT_REMOVED" not in response.content
