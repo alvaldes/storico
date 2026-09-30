@@ -92,6 +92,44 @@ dos: prender Ollama en `localhost:11434`, o crear un config con clave real en Co
 El andamiaje que ejecutó el reset vive fuera del repo, en `~/storico-ops/` (`dev_purge_0028.py` con tres
 guardas y dry-run por defecto, `dev_verify_0028.py` read-only); el procedimiento y la evidencia, acá.
 
+### Estado de las dos bases, lado a lado
+
+**Este es el lugar canónico donde se comparan los dos entornos** (decisión del owner del 2026-09-30, que
+también decidió **no** tocar `prod.todo.md`: ese archivo sigue siendo la lista única de pendientes de
+producción, y el detalle de cada reset vive en su doc de feature).
+
+| | **dev** — Supabase | **prod** — Neon |
+| --- | --- | --- |
+| endpoint | `aws-0-us-east-1.pooler.supabase.com:5432` (session mode) | `ep-damp-sea-at0qjzd2…neon.tech` |
+| rol conectado | `postgres` | `neondb_owner` |
+| **motor (medido)** | **Postgres 17.6** | **Postgres 18.6** |
+| `alembic_version` | **0028** | **0028** |
+| tablas de negocio | **13** (12 + `task_invalidations`), todas en **0** | **13**, todas en **0** |
+| purga | 2026-09-30: **12 tablas / 422 filas**, sin respaldo (`odd/tasks/dev-reset-0028.md`) | 2026-09-30 ~04:28 UTC: **11 tablas / 90 filas**, sin respaldo (`prod.todo.md`, D-a-3) |
+| credenciales de LLM | **0** — se perdió 1 `api_key` única (`NaN/gemma4`) | **0** — se perdieron 2 `api_key` únicas |
+| ¿extrae hoy? | **no**: sin config y **sin Ollama en esta máquina** | **no**: sin config y sin Ollama en la VM |
+| acceso a la base | `asyncpg` **sin `ssl`**: el pooler de Supabase presenta cadena auto-firmada y `ssl=True` falla con `SSLCertVerificationError` | `asyncpg` con **`ssl=True`**: Neon presenta cadena válida |
+| embeddings | default `ollama` / `nomic-embed-text` / 768 dims — requiere un Ollama corriendo | `google` / `gemini-embedding-001` / 768 dims |
+| colección Qdrant | `storico_extractions_dev` (0 puntos) | `storico_extractions_prod` (0 puntos) |
+
+Las dos celdas de "¿extrae hoy?" son idénticas por razones distintas de las que habla cualquier migración:
+**ninguno de los dos entornos puede extraer hasta que alguien cree un config de LLM en Configuración**, y
+`resolve_llm_config` cae a `provider = "ollama"` sin avisar.
+
+#### Los motores no coinciden entre sí, y ninguno es el de CI
+
+Medido en esta sesión: **CI y los tests de integración corren en Postgres 16**
+(`PostgresContainer("postgres:16-alpine")`, y `docs/database.md:8` y `docs/architecture.md:21` declaran
+"PostgreSQL 16"), **dev está en 17.6** y **producción en 18.6**. O sea que `0028` se validó en un motor, se
+aplicó en producción sobre otro major, y acaba de aplicarse en dev sobre un tercero.
+
+Esto no rompió nada: la verificación de forma de dev se hizo **leyendo el motor real de dev**, no el de CI,
+y coincide objeto por objeto. Pero es exactamente la lección que D-a-3 ya dejó escrita —"CI había probado en
+su Postgres pero no en el de producción"— y sigue vigente para la próxima revisión: **una migración que CI
+prueba en 16 puede comportarse distinto en 17 y en 18, y la prueba que vale es la que se lee contra la base
+real.** La decisión de alinear versiones (subir CI, o fijar 17 en los dos entornos) es del owner, no de esta
+sesión, y no la tomé: cambiar el motor de producción es un incidente en potencia.
+
 ## Producción
 
 ### Stack actual
