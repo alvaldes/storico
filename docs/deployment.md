@@ -197,6 +197,28 @@ usa `%(here)s`, así que el comando funciona desde cualquier directorio; la imag
 - Los deploys están **serializados** (`concurrency` en el workflow): dos a la vez competirían por el
   swap y por la migración.
 
+### Una revisión que se niega a correr sobre datos: `0028` (bloqueo conocido, 2026-09-30)
+
+El punto anterior asume que toda migración puede aplicarse a la base de producción. `0028` —el
+versionado de extracciones del slice (a) de 0.9.0, todavía en el **PR #30, sin mergear**— está escrita
+para **negarse**: lee `SELECT count(*) FROM extractions` y `FROM tasks` antes de tocar el esquema y
+lanza `RuntimeError` si alguna de las dos tiene una sola fila. Es la decisión D11 del diseño: no se
+hace backfill, porque `provider` y `temperature` de las filas viejas no son reconstruibles.
+
+Consecuencia directa sobre el mecanismo de esta sección: como `deploy-backend.yml` corre
+`alembic upgrade head` en **todo** despliegue, y producción tiene filas reales (la colección
+`storico_extractions_prod` fue medida el 2026-09-28), **mergear esa rama a `main` deja la API abajo**.
+No es un fallo del workflow — es exactamente la política de "antes abajo que servir con un esquema que
+no coincide" de la que habla el bloque de arriba — pero tampoco es un despliegue.
+
+Las tres salidas están escritas y evaluadas en `prod.todo.md` (ítem *"Bloqueo de despliegue"*): purgar
+el par en una ventana con respaldo, escribir una `0029` de backfill que tenga que inventar y declarar
+qué valores, o no mergear todavía. **Ninguna fue elegida; es decisión del owner.**
+
+La regla general que sale de acá, para cualquier revisión futura con esta forma: **una migración que se
+niega ante datos existentes necesita su plan de datos escrito en `prod.todo.md` antes de llegar a
+`main`.** El gate de readiness no protege de esto: con la migración abortada, el job muere antes.
+
 ### Artefactos de build del frontend
 
 `frontend/dist/` y `frontend/.vercel/output/` son **salidas**, no fuentes: están en

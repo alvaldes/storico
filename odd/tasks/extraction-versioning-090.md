@@ -1,9 +1,11 @@
 # ODD Feature: extraction-versioning-090 (OpenSpec change authoring)
 
-> **Status**: **slice (a) merged WU1 landed on its branch** — schema + birth through allocation
-> (`1a90aff`, `1f2d573` on `feat/extraction-versioning-schema-wu1`), verified green on the unit layer.
-> The Postgres half is written but has never executed (no Docker on this machine); CI is its first
-> run. Phase 3 and Phase 4 are **not** authorized.
+> **Status (2026-09-30)**: **slice (a) is delivered as PR #30 and CI is green on its head.** All of
+> Phase 1–4 landed on `feat/extraction-versioning-schema-wu1` (17 commits over `main` `1737708`,
+> head `6614140`); Postgres invariants that this machine could not execute were run by CI and passed.
+> **The PR is NOT merged, and it must not be merged until the owner chooses a path for the `0028`
+> production-data blocker** (`prod.todo.md`, and §Blocker below). Slice (b) and slice (c) are not
+> authorized. → read **"Session handoff — 2026-09-30"** at the end of this file first.
 > **Created**: 2026-09-28
 > **Workflow**: SDD/OpenSpec (explicitly selected by the user) inside ODD
 > **Session preflight**: `auto` + `openspec` + `ask-on-risk` + 400-line review budget, confirmed
@@ -99,9 +101,16 @@ on the spec's earlier verification pass, not on new commits.
 - [x] 6. Validate all three with native `gentle-ai sdd-status --contract gentle-ai.sdd-status/v2`
   and report the per-slice Review Workload Forecast (ask-on-risk gate)
 - [x] 7. Land the planning artifacts on `main` (`3ddbe28`, `66bbb3b`)
-- [ ] 8. Apply slice (a) WU1 — Schema Identity, **in tranches**: RED (1.1–1.3) authorised; GREEN
-  (1.4–1.17), TRIANGULATE (1.18–1.19) and REFACTOR (1.20) each wait for the user's review of the
-  tranche before it
+- [ ] 9. **Owner decision on the `0028` deploy blocker** (purge window / a `0029` backfill that must
+  invent `provider`+`temperature` / hold the PR). Nothing merges before this is chosen.
+- [ ] 10. **Task 4.4 of slice (a)** — `0028` currently makes a revoking user undeletable (confirmed by
+  CI, not inferred). Either the FK becomes `RESTRICT` deliberately, or the CHECK's second arm is
+  relaxed. Since `0028` is unreleased, this is an edit to `0028`, not a new revision.
+- [ ] 11. Apply slice (b) `extraction-versioning-api` **after (a) merges** — it inherits **D-a-1** as a
+  named requirement (re-dispatch duplicates task rows, `extraction_task.py:441`).
+- [ ] 12. Apply slice (c) `extraction-versioning-prompt`.
+- [x] 8. Apply slice (a) — Schema Identity **and** Birth Through Allocation, merged into one green
+  work unit (`1a90aff`, `1f2d573`), then Phase 3 in four tranches and Phase 4 in two
   - **RED landed 2026-09-29, uncommitted on purpose.** 14 new cases across three files;
     `12 failed, 1010 passed, 21 deselected` against a 1008-pass baseline. WU1 must land as one green
     commit, so the RED is a review artifact, not a commit.
@@ -244,3 +253,126 @@ odd/tasks/extraction-versioning-090.md
 
 Work-unit commits get recorded here as they happen; native review runs only under the user-owned RDD
 switch, which reads **off** in this clone.
+
+---
+
+## Session handoff — 2026-09-30 (slice (a) delivered, merge blocked on purpose)
+
+Written for a session that starts with nothing in context. Read in this order: this section, then
+`openspec/changes/extraction-versioning-schema/verification.md`, then `prod.todo.md`'s
+"Bloqueo de despliegue" item.
+
+### Where things stand
+
+| | |
+| --- | --- |
+| PR | **#30** — <https://github.com/alvaldes/storico/pull/30> — base `main`, **OPEN, NOT MERGED** |
+| Branch | `feat/extraction-versioning-schema-wu1`, head `6614140`, 17 commits over `main` `1737708` |
+| CI on that head | `backend pass`, `frontend pass`, `mergeable=CLEAN`; run 36649904378 reported `1064 passed, 18 skipped` |
+| Local suite | `1049 passed, 33 deselected`, 0 failed · `ruff check`/`format --check` exit 0 |
+| Open tasks in the change | **only 4.4**. 1.1–1.20, 2.1–2.6, 3.1–3.9, 4.1–4.3, 4.5 and 5.1–5.6 are closed |
+| Not authorized | slice (b) `extraction-versioning-api`, slice (c) `extraction-versioning-prompt` |
+| Receipt-driven development | still **off** in this clone; no native review ran on any tranche |
+
+Landed tranches, in order: `1a90aff` + `1f2d573` (merged WU1+WU2: schema and birth), `c47a1b2` (3a
+render snapshot), `3364c43` (3b-i marks), `366c341` (3b-ii-a dead path deleted), `3a23655` (3b-ii-b
+`save()` removed), `94db112` (3b-iii triangulates), `20a7e02` (WU4a invariants + mutation matrix),
+`7a98c19` (WU4b Postgres half), then the `fix(test)` chain `3333b7b` / `4da58fb` / `962359a` and the
+doc commits.
+
+### The blocker, which is the reason the PR is not merged
+
+`.github/workflows/deploy-backend.yml:101` runs `alembic upgrade head` on **every** deploy.
+`0028:41` reads `SELECT count(*)` on `extractions` and `tasks` and raises `RuntimeError` if either is
+non-empty — decision D11, no backfill. Production has real rows (`storico_extractions_prod` measured
+2026-09-28, ADR-005). So **merging to `main` takes the API down on purpose**: the container is already
+stopped by the time the migration fails. That is the workflow behaving as designed, not a deploy.
+
+Three paths, written out in `prod.todo.md`; **none chosen, none executed**:
+
+1. **Purge window** — empty `extractions`/`tasks` in Neon with a backup, let `0028` run on the empty
+   pair. Loses the production extraction history and desyncs it from the Qdrant points already stored.
+2. **A `0029` backfill** — collides with D11: `provider` and `temperature` are not reconstructable for
+   old rows, so the backfill must **invent** a value and say which. That is a claim about thesis data.
+3. **Hold the PR** — what the slice plan already assumed when it said slice (a) is not deployed.
+
+Assessment offered, not decided: (3) costs nothing today; (1) becomes unavoidable before real use. If
+the owner picks (2), the invented values need recording as a thesis-methodology caveat.
+
+### Two open defects
+
+**D-a-2 / task 4.4 — `0028` makes a revoking user undeletable.** `revoked_by ON DELETE SET NULL`
+(:104-109) coexists with `CHECK ((revoked_by IS NULL) = (revoked_at IS NULL))` (:114-117). Postgres
+evaluates CHECKs during the referential action, so deleting such a user **fails**. CI observed it:
+`test_deleting_the_revoking_user_meets_the_revoke_pair_check` passes, asserting the refusal and that the
+mark survives with `revoked_at`. `marked_by` has the same FK action but no paired CHECK (`marked_at` is
+`NOT NULL`), so only the revoke side collides. The fix is an edit to unreleased `0028`: FK → `RESTRICT`
+(same behaviour, explicit intent, clearer error) or relax the CHECK's second arm (an anonymous
+surviving revocation). The app serves no user-deletion route, so it is latent either way.
+
+**D-a-1 — re-dispatching a run duplicates its task rows.** `extraction_task.py:441` is an INSERT-only
+persist loop with no `extraction_id` guard; re-dispatching `run_background_extraction` for the same id
+appends a second set of rows (probed: a 2-task run yields 3 rows). Latent: every live path either mints
+a new version or only calls `mark_failed` (`recover_stuck_extractions` → `:193`). Deliberately not fixed
+in slice (a) — both candidate fixes change behaviour slice (b)'s endpoints depend on. **Carry it into
+(b) as a named requirement.** Note that `3b-iii`'s test pins the spec's "one row, one number" and *not*
+"one set of task rows", precisely because the code does not guarantee the latter; do not "fix" that test
+to assert more than the code does.
+
+### What CI proved that this machine could not
+
+- No index-name drift: `pg_indexes` reports exactly `pk_task_invalidations`,
+  `ix_task_invalidations_task_id`, `uq_task_invalidations_active_task`, matching what `Base.metadata`
+  expands, and `test_migration_chain.py`'s `_KNOWN_DRIFT` is empty.
+- `uq_task_invalidations_active_task` really is a **partial** index, and no full unique index on
+  `task_id` exists.
+- `0028` upgrades, downgrades to `0027`, and re-applies head on a real Postgres.
+- The duplicate `(user_story_id, version_number)` pair is refused by name; `tasks` refuses a null
+  `extraction_id`; the story cascade is scoped to one story.
+- **15 integration cases ran green in CI.** The 18 that still skip are Qdrant-backed and need a live
+  vector store — nothing in this change claims evidence about Qdrant.
+
+### Environment facts a new session must not re-derive
+
+- **No Docker daemon on this machine** (no `docker`, OrbStack, colima, podman).
+  `@pytest.mark.integration` cases skip locally. Never describe a Postgres-only invariant as verified
+  unless CI ran it.
+- `PRAGMA foreign_keys` is **OFF** and nothing in the repo enables it (verified: zero occurrences in
+  `tests/` and `src/`; a fresh aiosqlite connection reports `0`). **No FK action of any kind fires in
+  the unit layer** — the unit suite proves `NOT NULL`, `CHECK`, `UNIQUE` and partial-unique behaviour,
+  and proves nothing about `CASCADE` or `SET NULL`.
+- Runner: `cd backend && conda run -n storico python -m pytest -m "not integration" -q`. There is no
+  `.venv`; the conda env `storico` is canonical.
+- When reading `conda run` output, **do not pipe to `tail` before checking the exit status**: a pipe
+  reports the tail's status, which is how a lint failure nearly entered a commit here.
+- Provider quota killed two `sdd-apply` writers in the previous session (HTTP 429, cache-read ≈100%).
+  What worked instead: **2–4 file surfaces per tranche** — five consecutive writers landed green.
+
+### Notes on the harness, because they repeat
+
+- **Commit messages: write them to a file and use `git commit -F /tmp/msg`.** Two heredoc attempts
+  failed in this session and one pushed a commit titled literally `NOPE`, which is still in the branch
+  history (`3333b7b`) because rewriting published history needs the owner's explicit say-so.
+- A lease-holding force-push is blocked by this repo's Gentle AI safety policy, which then asks the
+  human. The non-destructive repair for a duplicated local commit was rebasing the branch onto its own
+  remote: git dropped the identical patch on its own.
+- Destructive-looking command literals inside a heredoc also trip that policy, even when the intent is
+  documentation. Write the prose to a file instead of inlining it in a shell command.
+- The `branch-pr` skill (issue-first, one `type:*` label) is **not** this repo's practice: no PR
+  template, no validation workflow, GitHub's default label set with no `type:*` or `status:approved`,
+  and the eight most recent merged PRs carry 0 labels and close 0 issues. PR 26 landed `WU1+WU2+WU5`
+  as a single PR.
+- Three CI rounds were needed on my own integration file, and **every failure was a harness bug wearing
+  a schema costume**: `default=uuid7` read before the flush; a schema-mutating case sharing the module
+  database (which poisoned seven later cases); `AUTOCOMMIT` documented but never set; and ORM
+  attributes read after a rollback — `expire_on_commit=False` does not govern rollbacks. A green local
+  unit layer was never evidence about that file, and the PR body said so before anything ran.
+
+### Resuming, in order
+
+1. Ask the owner for the blocker decision (paths 1/2/3 above). Nothing merges without it.
+2. Close task 4.4 in the same edit as that decision, since both touch `0028`.
+3. Only after a merge: start slice (b) with its own apply authorization, carrying **D-a-1** as a named
+   requirement. Slice (b) is the one that retires `POST /api/v1/tasks/`, which slice (a) currently
+   pins as a 500 refusal (`tasks.extraction_id NOT NULL`) — that pin is honest about being temporary.
+4. Do not renumber task IDs. Slices (b) and (c) reference (a) IDs such as 2.3, 3.4 and 3.7.
