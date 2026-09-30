@@ -1,5 +1,4 @@
 import { api, ApiRequestError } from './api';
-import { toCamelCase, toSnakeCase } from './utils';
 import type { Task, TaskStatus, RawTaskItem } from '@/types/task';
 import { getAllowedTaskTransitions, isValidTaskTransition } from '@/types/task';
 
@@ -64,19 +63,35 @@ export async function updateTaskStatus(
   return mapTaskItem(raw);
 }
 
-/** Update arbitrary task fields (used by TaskEditor). */
-export async function updateTask(
-  taskId: string,
-  fields: {
-    title?: string;
-    description?: string;
-    labels?: string[];
-    dependencies?: string[];
-    status?: TaskStatus;
-    priority?: string;
-  },
-): Promise<Task> {
-  const raw = await api.put<RawTaskItem>(`/api/v1/tasks/${taskId}`, toSnakeCase(fields));
+/** Fields `updateTask` writes.
+ *
+ * D5/D21 field matrix (WU2): the backend's `UpdateTaskRequest` carries only
+ * `status`, `labels` and `dependencies` with `extra="forbid"`, so any other
+ * key in the PUT body is a 422. This type is the whole write contract: a
+ * caller that names a removed field (`title`, `description`, `priority`)
+ * fails to compile instead of silently getting that key discarded at
+ * runtime. Deliberate runtime-discard probes (tests) admit the stale literal
+ * through a local cast, never through a permissive export.
+ */
+export type TaskUpdateFields = {
+  status?: TaskStatus;
+  labels?: string[];
+  dependencies?: string[];
+};
+
+/** Update a task's editable fields (used by TaskEditor).
+ *
+ * Sends ONLY what the caller actually passed: the `dependencies` key appears
+ * in the body only when the caller passed it (its presence is the write — it
+ * must never be materialized as `[]` or `undefined`), and the removed legacy
+ * fields never reach the body even if a caller still names them.
+ */
+export async function updateTask(taskId: string, fields: TaskUpdateFields): Promise<Task> {
+  const body: { status?: TaskStatus; labels?: string[]; dependencies?: string[] } = {};
+  if (fields.status !== undefined) body.status = fields.status;
+  if (fields.labels !== undefined) body.labels = fields.labels;
+  if (fields.dependencies !== undefined) body.dependencies = fields.dependencies;
+  const raw = await api.put<RawTaskItem>(`/api/v1/tasks/${taskId}`, body);
   return mapTaskItem(raw);
 }
 

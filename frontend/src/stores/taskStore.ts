@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { getAllowedTaskTransitions, type Task, type TaskStatus } from '@/types/task';
 import type { UserStory, UserStoryStatus } from '@/types/story';
 import * as api from '@/lib/tasks-api';
+import type { TaskUpdateFields } from '@/lib/tasks-api';
 import { extractErrorInfo, type ErrorInfo } from '@/lib/error-info';
 import { LLM_CONFIG_INCOMPLETE_CODE } from '@/lib/llm-config-readiness';
 import { isScopedWorkspace, setScopedWorkspaceId } from '@/lib/workspace-scope';
@@ -431,7 +432,15 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     });
 
     try {
-      const serverTask = await api.updateTask(taskId, updates);
+      // D5/D21 field matrix (WU2): only contract fields reach the PUT, and a
+      // key the caller never passed must not be materialized — presence is the
+      // write, so each key is picked in only when the caller passed it. The
+      // optimistic merge above still applies the full `Partial<Task>`.
+      const writeFields: TaskUpdateFields = {};
+      if (updates.status !== undefined) writeFields.status = updates.status;
+      if (updates.labels !== undefined) writeFields.labels = updates.labels;
+      if (updates.dependencies !== undefined) writeFields.dependencies = updates.dependencies;
+      const serverTask = await api.updateTask(taskId, writeFields);
       // Overwrite the optimistic with the server-authoritative Task.
       set((s) => {
         const newTasks = { ...s.tasks };

@@ -44,6 +44,7 @@ __all__ = [
     "STORY_NOT_IN_WORKSPACE",
     "TASK_CREATION_ENDPOINT_REMOVED",
     "TASK_DELETE_ENDPOINT_REMOVED",
+    "TASK_VERSION_FROZEN",
     "UNSUPPORTED_EXPORT_FORMAT",
     "WORKSPACE_NOT_FOUND",
     "WORKSPACE_SLUG_TAKEN",
@@ -119,6 +120,12 @@ TASK_CREATION_ENDPOINT_REMOVED = "TASK_CREATION_ENDPOINT_REMOVED"
 # ``tasks.py`` DELETE: single-task deletion is gone (410) — no product path
 # deletes a single task (design decision D12 of extraction-versioning).
 TASK_DELETE_ENDPOINT_REMOVED = "TASK_DELETE_ENDPOINT_REMOVED"
+
+# ``tasks.py`` PUT: dependencies are only editable on the story's current
+# version — a dependencies write (presence, not value) on a frozen version is
+# refused with the current version number in the detail (design decisions
+# D5/D21 of extraction-versioning).
+TASK_VERSION_FROZEN = "TASK_VERSION_FROZEN"
 
 # ``stories.py`` POST: actor + feature + benefit already exist in the project.
 DUPLICATE_USER_STORY = "DUPLICATE_USER_STORY"

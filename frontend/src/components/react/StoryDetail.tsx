@@ -573,6 +573,9 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
               key={editingTask.id}
               task={editingTask}
               open={!!editingTaskId}
+              // Explicit `false` for now: WU3 is the tranche that computes this
+              // from the version selector's `is_current`. No speculative source.
+              frozen={false}
               onOpenChange={(open) => {
                 if (!open) setEditingTaskId(null);
               }}

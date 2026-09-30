@@ -9,7 +9,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Field, FieldLabel, FieldError } from '@/components/ui/field';
 import { Loader2, X } from 'lucide-react';
@@ -24,6 +23,15 @@ import { ApiRequestError } from '@/lib/api';
 interface TaskEditorProps {
   task: Task;
   open: boolean;
+  /**
+   * True when `task` belongs to a non-current extraction version. While frozen,
+   * the dependencies control is disabled and the key is omitted from the save
+   * payload (its presence is the write), so the editor can never trigger
+   * `TASK_VERSION_FROZEN`; `status` and `labels` stay live in every state.
+   * Required — WU3 computes it at the call site from the version selector's
+   * `is_current`.
+   */
+  frozen: boolean;
   onOpenChange: (open: boolean) => void;
   locale?: Locale;
 }
@@ -44,12 +52,10 @@ function normalizeTag(tag: string): string {
  */
 const NO_TASKS: readonly Task[] = Object.freeze([]);
 
-export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEditorProps) {
+export function TaskEditor({ task, open, frozen, onOpenChange, locale = 'en' }: TaskEditorProps) {
   const t = useTranslations(locale);
   const updateTask = useTaskStore((s) => s.updateTask);
 
-  const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description);
   const [labels, setLabels] = useState<string[]>(task.labels);
   const [dependencies, setDependencies] = useState<string[]>(task.dependencies);
   const [status, setStatus] = useState<TaskStatus>(task.status);
@@ -69,11 +75,10 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
   const labelInputRef = useRef<HTMLInputElement>(null);
   const [labelInput, setLabelInput] = useState('');
 
-  // Reset form when task or dialog changes
+  // Reset form when task or dialog changes. `title`/`description` are not
+  // state — they render read-only straight from `task` under the D5/D21 matrix.
   useEffect(() => {
     if (open) {
-      setTitle(task.title);
-      setDescription(task.description);
       setLabels(task.labels);
       setDependencies(task.dependencies);
       setStatus(task.status);
@@ -161,7 +166,6 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
 
   const handleSave = async () => {
     const localErrors: Record<string, string> = {};
-    if (!title.trim()) localErrors.title = t.taskEditor.title_required;
     if (!isValidStatus(status)) {
       // Composed from translated pieces with language-neutral separators, so no
       // English word order is baked in and no raw enum slug reaches the user.
@@ -178,13 +182,17 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
     try {
       // Store handles optimistic update + server response + rollback internally.
       // On failure it re-throws so we can show the error and keep the dialog open.
-      await updateTask(task.id, {
-        title: title.trim(),
-        description,
-        labels,
-        dependencies,
+      // D5/D21 field matrix: the write contract is status/labels/dependencies
+      // only — `title` and `description` render read-only because the backend
+      // refuses them. `status` and `labels` stay live in every state, including
+      // frozen; the `dependencies` key is omitted while frozen so its presence
+      // can never trigger `TASK_VERSION_FROZEN` on a frozen version.
+      const payload: { status: TaskStatus; labels: string[]; dependencies?: string[] } = {
         status,
-      });
+        labels,
+      };
+      if (!frozen) payload.dependencies = dependencies;
+      await updateTask(task.id, payload);
       setSaving(false);
       toast.success(t.taskEditor.saved);
       onOpenChange(false);
@@ -217,33 +225,22 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
         </DialogHeader>
 
         <div className="space-y-5">
-          {/* Title */}
+          {/* Title — read-only text under the D5/D21 field matrix: the write
+              contract no longer accepts it, so an editable control that cannot
+              save would be a lie. */}
           <Field>
-            <FieldLabel htmlFor="te-title">{t.taskEditor.title_label}</FieldLabel>
-            <Input
-              id="te-title"
-              value={title}
-              onChange={(e) => {
-                setTitle(e.target.value);
-                setErrors((prev) => ({ ...prev, title: '' }));
-              }}
-              placeholder={t.taskEditor.title_placeholder}
-              aria-invalid={!!errors.title}
-              autoFocus
-            />
-            <FieldError>{errors.title}</FieldError>
+            <FieldLabel>{t.taskEditor.title_label}</FieldLabel>
+            <p id="te-title" className="text-sm text-foreground">
+              {task.title}
+            </p>
           </Field>
 
-          {/* Description */}
+          {/* Description — read-only text, same matrix rule as the title. */}
           <Field>
-            <FieldLabel htmlFor="te-description">{t.taskEditor.description_label}</FieldLabel>
-            <Textarea
-              id="te-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={t.taskEditor.description_placeholder}
-              rows={3}
-            />
+            <FieldLabel>{t.taskEditor.description_label}</FieldLabel>
+            <p id="te-description" className="text-sm whitespace-pre-wrap text-muted-foreground">
+              {task.description}
+            </p>
           </Field>
 
           {/* Status */}
@@ -313,7 +310,8 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
                   <button
                     type="button"
                     onClick={() => removeDependency(i)}
-                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20 transition-colors"
+                    disabled={frozen}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -328,7 +326,7 @@ export function TaskEditor({ task, open, onOpenChange, locale = 'en' }: TaskEdit
               }}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               aria-invalid={!!errors.dependencies}
-              disabled={availableSiblings.length === 0}
+              disabled={frozen || availableSiblings.length === 0}
             >
               <option value="">{t.taskEditor.dependencies_placeholder}</option>
               {availableSiblings.map((s) => (
