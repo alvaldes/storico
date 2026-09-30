@@ -175,6 +175,43 @@ All 25 `### Requirement:` headings across the seven deltas map to at least one t
 
 ---
 
+## Defects carried in from slice (a) — named before they are tasked
+
+Slice (a) closed with two defects it found by reading its own shipped schema. Both were declared
+"carried into (b) as a named requirement", and neither appeared anywhere in this change's artifacts
+until now. Lines verified against `main` at `1c3f59b`, not from memory.
+
+**D-a-1 — re-dispatching a run duplicates its task rows.**
+`backend/src/storico/infrastructure/tasks/extraction_task.py:441` is an INSERT-only persist loop over
+`parsed_tasks` with no `extraction_id` guard, so calling `run_background_extraction` twice for the same
+extraction id appends a second set of tasks against the same version. Latent today because every live
+caller either mints a new version or only calls `mark_failed`
+(`recover_stuck_extractions`). It becomes live the moment (b) exposes any endpoint that can re-trigger a
+run. Attach to **WU3 (the reads)** only if (b) adds a retry/redo surface; otherwise keep it as an
+explicit non-goal with the reasoning, and do **not** let `3b-iii`'s test be widened to assert "one set of
+task rows per version" — that test pins "one row, one number", which is all the code guarantees.
+
+**D-a-4 — account deletion answers HTTP 500 once a revoke exists.**
+`DELETE /api/v1/users/me` (`backend/src/storico/api/routes/settings.py:335`) promises in its docstring
+(`:343`) that all associated data is cascade-deleted, and calls
+`UserRepository.delete` (`repositories/user_repository.py:74-78`), a bare `delete(UserModel)` with no
+`IntegrityError` handling — unlike `save()` and `link_account()` in the same file. No `IntegrityError`
+handler is registered, so the refusal raised by `fk_task_invalidations_revoked_by_users`
+(`ON DELETE RESTRICT`, live in production since `0028`) falls to
+`api/errors.py:161 generic_error_handler` → **500 `{"detail": "Internal server error"}`**. No test in the
+repository issues that verb. Slice (a) keeps it latent only because nothing can write a
+`task_invalidations` row yet; **WU5 (marks backend) is exactly when it stops being latent**, so the
+mark-endpoint work must decide the contract here — a designed 409 with a reason, or a pre-check that
+explains which marks block the deletion — and add the route's first DELETE-verb test.
+
+**Scope accounting, stated instead of smuggled:** these two are **not** among the 77 unchecked tasks
+below and are **not** in the ≈4,400–5,700 line forecast. D-a-4 will add at least one backend test file
+case plus either a handler or a pre-check, and a frontend copy decision if the account page must explain
+the refusal. Give them task IDs and forecast numbers when apply is authorized for this slice, so the
+review workload estimate reflects them rather than discovering them mid-PR.
+
+---
+
 ## Phase 1: WU1 — The Two 410 Retirements
 
 Commit: `refactor(api): retire manual task creation and single-task deletion with 410 Gone`.
