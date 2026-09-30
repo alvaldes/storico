@@ -767,6 +767,25 @@ then `cd frontend && pnpm test src/lib/__tests__/error-codes.test.ts src/i18n/__
 | Hard greps | zero `repo.delete(` in `routes/tasks.py`; zero `CreateTaskRequest` anywhere in `src/`; zero `path:path` catch-all; both new codes sorted at `error_codes.py:45-46`. |
 | Native status after | `gentle-ai.sdd-status@2` → **8/77 complete**, `next: apply`, `apply: ready`, `blockedReasons: []`. |
 | RDD | `gentle-ai review mode status` → **off (clone_local)**: the switch was read, not skipped, and ordinary repository policy decided delivery. |
+| Delivered | Pushed and opened as **PR #31** → https://github.com/alvaldes/storico/pull/31 (base `main` `241cd55`, head `21fb611`). CI **green**: backend `1066 passed, 18 skipped` in 1m32s, frontend `606 passed` + `tsc --noEmit` clean + Astro build in 1m18s, Vercel preview deployed. The 15 integration cases that cannot run on this machine (1051 local vs 1066 CI) passed in CI, the same delta slice (a) showed. |
+| PR shape | 12 files, 499+/152− total, of which **357 lines are code** and **294 are process artifacts** (`apply-progress.md` 182, this document 96, `tasks.md` 16). The repo has no PR template, no issue-linkage gate and no `type:*` label gate — the `branch-pr` skill's checks belong to a different repo, and #23–#30 ship label-less with no `Closes #N`. |
+| Not yet in production | Merging is the owner's call and it **deploys**: `deploy-backend.yml` matches `main` + `backend/**`, so the maintenance window (stop → `alembic upgrade head` → start) runs. WU1 adds no migration, so the upgrade is a no-op and the only cost is the window. |
+
+### The push hung, and the cause is not mine to guess at
+
+`git push` produced no output and no result three times under this harness's shell. `GIT_TRACE=1` named it: git ran
+`git credential-osxkeychain get` and that process **blocked forever** waiting for a keychain authorization a
+non-GUI shell cannot answer. Reads are unaffected because the repository is public, so `ls-remote` succeeds and
+the failure looks like a network problem until you trace it.
+
+Two things about the fix are worth keeping, because both were wrong the first time:
+
+- `GIT_ASKPASS=…` alone does **not** bypass the helper. `credential.helper` is a multivar, so
+  `-c credential.helper='!gh auth git-credential'` **appends** to the chain and `osxkeychain` still runs first
+  and still hangs. The value that clears the chain is an empty one: `-c credential.helper=`.
+- With the chain cleared, `GIT_ASKPASS` supplying `alvaldes` + `gh auth token` pushes fine, and the token never
+  reaches `argv` or the remote URL. The askpass script is a `/tmp` throwaway that calls `gh` at runtime; nothing
+  was written to `~/.gitconfig`, and the user's own interactive pushes keep working exactly as before.
 
 **Two deviations recorded, both accepted:** the handlers are annotated `-> None` because FastAPI rejects `-> NoReturn` as a response field (same shape as the repo's own 410 precedents); and deleting `CreateTaskRequest` mechanically required two companion edits outside the declared four-file surface — `api/schemas/__init__.py` (its re-export) and `tests/contract/test_api_schemas.py` (the case importing it). The writer disclosed both before I measured them; widening a surface is not mine to overlook.
 
