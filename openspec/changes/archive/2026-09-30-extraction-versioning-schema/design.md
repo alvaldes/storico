@@ -264,6 +264,15 @@ consequence ("left untouched for (b) to retire, no user is exposed because (a) i
 and it is pinned by test rather than left to be discovered; the tests at `tests/test_api/test_tasks.py:42`
 and `:67`, which assert 201 today, change to pin the refusal.
 
+> **[Premise of that acceptance expired the day (a) shipped, 2026-09-30.]** The accepted consequence
+> relied on "(a) is not deployed". (a) is deployed (`1dcc716`, deploy `36675276096`), so production now
+> publishes `POST /api/v1/tasks/` as `201 Successful Response` in its live `openapi.json`, with `/docs`
+> answering `200`, while the route itself answers 500 `REPOSITORY_ERROR`. Two accidental facts keep the
+> exposure at zero today: no frontend client calls it (`tasks-api.ts` has no create-task function), and
+> `users` is empty after the D-a-3 purge. Neither is a design guarantee. Tracked in `prod.todo.md`
+> ("Contratos de API que mienten en producción"), to be closed by slice (b) WU1's `410 Gone` retirement
+> before any evaluator has an account.
+
 ### Decision: the invalidation mark is a table with two `CHECK`s and a partial unique index; blank reasons are a database invariant
 
 `task_invalidations`: `id` (pk), `task_id` (FK → `tasks.id`, `ON DELETE CASCADE`), `reason`

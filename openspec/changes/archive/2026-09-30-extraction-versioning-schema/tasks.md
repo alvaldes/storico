@@ -336,6 +336,14 @@ then REFACTOR.
       201 today (`:42`, `:67`) change to pin the refusal: `POST /api/v1/tasks/` can no longer satisfy
       `extraction_id NOT NULL` and answers 500 `REPOSITORY_ERROR` through `repository_error_handler`.
       Accepted for (a) because (a) is not deployed; slice (b) retires the route.
+
+      > **[Premise expired 2026-09-30.]** (a) IS deployed now (`1dcc716` → deploy `36675276096`), so
+      > "no user is exposed because (a) is not deployed" no longer holds: production's `openapi.json`
+      > advertises this POST as `201 Successful Response` while the route answers 500, and `/docs` is
+      > public. Exposure measured as nil today for two accidental reasons — `frontend/src/lib/tasks-api.ts`
+      > has no create-task call at all, and `users` is empty after the D-a-3 purge — which is why the fix
+      > stays with (b) WU1 rather than becoming an emergency deploy. Tracked in `prod.todo.md`
+      > ("Contratos de API que mienten en producción"). Do not invite evaluators before that WU1 lands.
 - [x] 1.18 TRIANGULATE — `backend/tests/test_integration/test_extraction_versioning_schema.py` (new),
       `@pytest.mark.integration` + the `_docker_reachable()` skipif per test: raw duplicate
       `(user_story_id, version_number)` insert is refused by `uq_extractions_story_version`;

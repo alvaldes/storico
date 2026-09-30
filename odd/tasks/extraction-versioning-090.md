@@ -132,6 +132,19 @@ on the spec's earlier verification pass, not on new commits.
   36675276085 `success`, and `0028` verified by reading production Neon: `alembic_version = 0028`,
   `task_invalidations` with the revoker FK `ON DELETE RESTRICT`, both unique/partial indexes,
   `tasks.extraction_id NOT NULL`, eleven tables still at 0, health `ok`.
+- [ ] 19. **D-a-5 — live consequence of shipping (a) alone, found while closing the merge.** Two
+  production-visible facts, both confirmed in shipped code and measured against the running API, neither
+  reachable by a human today: (1) `task_repository.list_by_story:120-123` and `list_by_workspace:125-133`
+  (plus `routes/export.py:53,102`) have **no current-version predicate**, so two `completed` runs on one
+  story show **both runs' task sets** in the board, story detail and export — precisely the effect slice
+  (a)'s own proposal item 13 predicted when it said *"do not deploy (a) alone"*; (2) `POST /api/v1/tasks/`
+  is published as `201 Successful Response` in production's live `openapi.json` with `/docs` returning
+  `200`, while the route answers 500 `REPOSITORY_ERROR` (pinned by `tests/test_api/test_tasks.py:47,:67`).
+  Exposure today is zero for two accidental reasons, not by design: `users` is empty after the purge, and
+  `frontend/src/lib/tasks-api.ts` has no create-task call at all. **Fix is already planned:** (b) WU1
+  retires the route with `410`, (b) WU3 adds the current-version predicate. So the rule that comes out is
+  a sequencing rule: **(b) WU1 + WU3 before the thesis evaluation**, and anyone testing before that must
+  know re-extracting a story duplicates its tasks. Tracked in `prod.todo.md`.
 - [x] 17. **Archive — DONE by hand 2026-09-30.** `openspec` is neither installed nor a project dependency
   here, so `openspec archive` could not run. Both deltas are pure `## ADDED Requirements` for capabilities
   that did not exist in the store, which makes the sync mechanical and diff-checkable: `openspec/specs/extraction-versioning/spec.md`

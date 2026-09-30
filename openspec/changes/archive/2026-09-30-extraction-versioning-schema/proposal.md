@@ -230,6 +230,18 @@ Modifications are **deferred, not forgotten** — the spec phase for the sibling
     same release; do not deploy (a) alone. The same note covers the manual
     `POST /api/v1/tasks/` route, which cannot satisfy a `NOT NULL` `extraction_id` and is left
     untouched for (b) to retire — no user is exposed because (a) is not deployed.
+
+    > **[Both halves of this note expired on 2026-09-30: (a) WAS deployed alone.]** Merge `1dcc716`,
+    > deploy `36675276096`. What the plan said would happen, happened, and is now confirmed in the shipped
+    > code rather than predicted: `task_repository.list_by_story:120-123` and `list_by_workspace:125-133`
+    > filter by story and by workspace only, with no current-version predicate (`routes/export.py:53,102`
+    > groups the same way), so **two completed runs on one story show both runs' task sets** in the board,
+    > the story detail and the export. That predicate is slice (b) **WU3** (tasks 3.3–3.7). The 500 on the
+    > manual `POST /api/v1/tasks/` is now advertised as `201` in production's live `openapi.json`, with
+    > `/docs` public. Neither is reachable today for two accidental reasons — `users` is empty after the
+    > D-a-3 purge, and `frontend/src/lib/tasks-api.ts` has no create-task call at all — so the safe
+    > sequence is **(b) WU1 + WU3 before the thesis evaluation**, not a hotfix deploy. Recorded in
+    > `prod.todo.md` ("Contratos de API que mienten en producción").
 14. **Review workload forecast.** This slice is expected to exceed the 400-line budget (migration,
     two models + two entities, repository allocation with retry, service split, route and runner
     changes, deletion of the dead path, plus DB-level tests). Candidate work units for the tasks
