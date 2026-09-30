@@ -158,7 +158,7 @@ runbook.**
 | 3 | Run the purge; confirm 12 tables at 0 and `alembic_version` still `0027` | **done** | 422 rows destroyed in one transaction; re-counted from a separate process: 12 tables at 0, `alembic_version` still `0027` |
 | 4 | `alembic upgrade head` against dev | **done** | `Running upgrade 0027 -> 0028`; `alembic current` → **`0028 (head)`** |
 | 5 | Verify `0028` exists in dev as written (FK actions, CHECKs, uniques, `NOT NULL`) | **done** | 29/29 checks in `~/storico-ops/dev_verify_0028.py`, plus the delegated independent pass below |
-| 6 | Record the outcome and commit as one work unit | **in progress** | this file, `docs/deployment.md`, `odd/tasks/board-debt-closure.md` written; commit pending |
+| 6 | Record the outcome and commit as one work unit | **done** | `95507b9` (this file + `docs/deployment.md` + `odd/tasks/board-debt-closure.md`), second commit for the `AGENTS.md` pointer and the ADR-005 drift finding |
 
 ## Result — measured, not assumed
 
@@ -245,6 +245,24 @@ without a single error — the app layer reads `0028` as written.
 
 The schema is converged; neither environment has data or credentials. Both are waiting on the same human
 step — create the workspace LLM config in Configuración.
+
+## Deliberately not done
+
+- **The ADR-005 documentation drift is reported, not repaired.** `AGENTS.md` §4 ("Contenedores"), ADR-005
+  and feature row 40 all say development runs on **Docker Compose with a PostgreSQL container**. Measured
+  here: `docker` is not installed, `docker-compose.yml` defines `postgres:16-alpine` with its own internal
+  `STORICO_DATABASE_URL`, and this environment's `.env` connects to the **Supabase pooler** instead. So the
+  dev path three documents describe is not the one this reset used. I cannot prove nobody runs it on another
+  machine, which is exactly why this stays a finding for the owner rather than a correction I make on my own:
+  changing what three documents assert about the architecture is an owner decision.
+- **`user_preferences` is in the twelve.** The D-a-3 production list was eleven tables and omitted it (it had
+  no rows there either). For a genuine start-from-zero it belongs in the set, so dev's scope is twelve.
+  Nothing else differs between the two purges.
+- **No application-level smoke test was run** (no login, no extraction attempt). It would fail for reasons
+  unrelated to the migration — no LLM config, no Ollama — so it would prove nothing about `0028` while
+  looking like it did. The ORM read-path check above is the honest substitute.
+- **No `git push`, no pull request, no merge.** Branch `chore/dev-reset-0028` is local; delivery is the
+  owner's call, and these are `docs`-only commits, so nothing triggers a deploy.
 
 ## Session handoff
 
