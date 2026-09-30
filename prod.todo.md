@@ -126,10 +126,11 @@ de `backlog`.
 
 Los tres caminos, ya evaluados:
 
-1. **Ventana de purga.** ← **ELEGIDO.** Borrar los datos relacionales de `extractions`/`tasks` en Neon
-   (con respaldo previo) antes de mergear, y dejar que `0028` corra sobre el par vacío. Es lo que el
-   propio mensaje de la guarda indica. Corregido por medición: no "pierde la coherencia de los puntos
-   de Qdrant", pierde la procedencia de 17 runs de prueba.
+1. **Ventana de purga.** ← **ELEGIDO.** Borrar los datos relacionales de `extractions`/`tasks` en Neon —
+   y los puntos de Qdrant, extendido el 2026-09-30— antes de mergear, y dejar que `0028` corra sobre el
+   par vacío. Es lo que el propio mensaje de la guarda indica. Sin respaldo: se reemplazó por inventario
+   (ver el runbook). Corregido por medición: no "pierde la coherencia de los puntos de Qdrant", pierde
+   la procedencia de 17 runs de prueba.
 2. **Revisión de backfill aparte.** Descartada por costo: habría que afirmar tres cosas —`temperature`
    inventado en las 17 filas, `provider` por hipótesis de config actual, y un run elegido a mano para
    14/42 tasks— sobre datos que la medición describe como tráfico de prueba. Queda disponible si la
@@ -140,18 +141,40 @@ Los tres caminos, ya evaluados:
 
 ### Runbook del camino 1 (escrito, **no ejecutado**)
 
-Es una operación destructiva sobre producción y su confirmación es explícita y separada del merge.
-Revisar cada paso antes de correr el siguiente; no hay atajo automatizado a propósito.
+**Modificado el 2026-09-30 por decisión del owner: no se toma respaldo.** "No hay nada que salvar", así
+que el paso de respaldo se reemplaza por **el inventario de lo que se destruye**, medido en lectura antes
+de tocar nada. Es la única forma de que la pérdida quede registrada si alguien la pregunta después.
+
+Inventario medido el 2026-09-30, en lectura, contra la base y el cluster de producción:
+
+| Almacén | Contenido al momento de medir |
+| --- | --- |
+| `alembic_version` | `0027` |
+| `extractions` | **17** — 11 `failed`, 6 `completed`; span 2026-08-03 23:16 → 2026-09-24 20:17 UTC |
+| `tasks` | **42** — los 42 con `status = backlog`; ninguno avanzó nunca de ahí |
+| `user_stories` / `projects` / `users` / `workspaces` | 6 / 3 / 3 / 4 |
+| `workspace_llm_configs` | 4 (una con `provider = 'Nan'`) |
+| Qdrant `storico_extractions_prod` | **1** punto, 768 dims |
+| Qdrant `storico_extractions_dev` | **1** punto — esta colección **no existía el 2026-09-28**: alguien escribió desde dev contra el cluster de producción |
+| Qdrant `storico_extractions` (legado) | **19** puntos |
 
 0. **Ventana.** Avisar: entre el paso 2 y el 5 la API está caída o sirve contra un esquema viejo.
-1. **Respaldo.** `pg_dump` de la base de Neon antes de tocar nada, o un branch de Neon (que es el
-   mecanismo nativo de Neon y no gasta disco local). Verificado en esta máquina: **no hay ni `psql`,
-   ni `pg_dump`, ni `neonctl`, ni Docker**, así que este paso se corre desde fuera de este worktree.
-   Sin respaldo en mano, el paso 2 no se corre.
-2. **Purga.** Mismo `DATABASE_URL` de la VM, en una sola transacción:
+1. **Inventario, no respaldo.** Correr las dos mediciones de arriba y dejar los números acá antes de la
+   purga. Sin esto, la destrucción no tiene testigo. (Opción conservadora si cambia el humor: un branch
+   de Neon se toma en segundos y no gasta disco local — pero el owner decidió que no hace falta.)
+2. **Purga relacional.** Mismo `DATABASE_URL` de la VM, en una sola transacción:
    `TRUNCATE TABLE tasks; TRUNCATE TABLE extractions;` — `tasks` primero porque referencia a
    `user_stories` igual que `extractions`, y ninguna de las dos es referenciada por nada más en `0027`
    (`task_invalidations` todavía no existe). Confirmar contando: ambos `count(*)` deben dar **0**.
+2b. **Purga vectorial (nueva, por la misma decisión).** Borrar los puntos de las colecciones que se
+   decida limpiar. Con las tres arriba, hay dos lecturas y **el owner tiene que elegir cuál**:
+   - **Solo lo que sirve producción:** vaciar `storico_extractions_prod` (1 punto). Lo demás queda.
+   - **Slate limpio:** vaciar las tres (`_prod` 1, `_dev` 1, la legado 19). Es lo que implica "limpiar
+     Qdrant", y deja el few-shot sin un solo ejemplo hasta que haya runs nuevos.
+   Mecanismo: `DELETE /collections/{name}/points` con `"filter": {}` (o `?wait=true`), o
+   `client.delete(collection_name, points_selector=... )`. Verificado en esta máquina: la clave de
+   `.env.prod.local` **lee** los conteos; si es una clave de sólo lectura, el borrado falla con 403 y
+   hay que usar la clave del cluster.
 3. **Estado desnormalizado (decisión propia, no obvia).** `user_stories.status` sigue diciendo
    `extracted` / `failed_extraction` sobre historias que se quedaron sin ninguna extracción, y
    `extraction_repository` reescribe ese campo en cada run. Si se quiere coherencia, el mismo
@@ -164,8 +187,26 @@ Revisar cada paso antes de correr el siguiente; no hay atajo automatizado a prop
    (`storico_extractions_prod`: 1 punto, `storico_extractions`: 19 — medidos el 2026-09-28, no hoy)
    siguen ahí y siguen sirviendo few-shot: la purga relacional no los toca.
 
-Lo que **no** hace este runbook: no borra `user_stories`, ni `projects`, ni `users`, ni los puntos de
-Qdrant. Y no re-escribe la historia de la feature: los 17 runs purgados quedan solo en el respaldo.
+Lo que **no** hace este runbook: no borra `user_stories`, ni `projects`, ni `users`, ni —salvo que se
+decida lo contrario en el paso 2b— las colecciones de Qdrant. Y no re-escribe la historia de la feature:
+los 17 runs quedan registrados solo en el inventario de arriba.
+
+### Hallazgo del inventario: dev escribe contra el cluster de producción
+
+Medido el 2026-09-30 al contar las colecciones. `storico_extractions_dev` existe con 1 punto y **no
+existía el 2026-09-28**. La razón no es un bug del adaptador: el `.env` de desarrollo de esta máquina
+apunta `STORICO_QDRANT_URL` al **mismo cluster** que producción, y lo único que separa un entorno del
+otro es el nombre de colección (`_dev` vs `_prod`). Con una sola variable mal escrita —o sin escribirla,
+cayendo al default `storico_extractions` del adaptador, que es lo que explican los 19 puntos de esa
+colección legado— una corrida de desarrollo escribe en el clúster de producción.
+
+Esto no rompe nada hoy, pero acota el sentido de "una colección por entorno" que documenta
+`docs/deployment.md`: hay separación lógica, no física. Mientras el plan de aislamiento siga siendo ese,
+la purga vectorial tiene que nombrar las tres colecciones explícitamente, no "la de producción".
+
+🔲 **Pendiente (decisión de diseño, no de esta purga):** si los entornos tienen que estar separados de
+verdad, o se usa un cluster/API key distinto para dev, o se documenta que la separación es sólo de
+nombre y se controla por ahí.
 
 ### Hallazgo lateral: un `provider` de producción vale literalmente `'Nan'`
 

@@ -279,7 +279,7 @@ Written for a session that starts with nothing in context. Read in this order: t
 | CI on `382a9c5` | **`1064 passed, 18 skipped`** (run 36658068793) — the same 15 integration cases as the earlier run, now including the renamed revoker-FK case, so `RESTRICT` is observed and not inferred |
 | Local suite | `1049 passed, 33 deselected`, 0 failed · `ruff check`/`format --check` exit 0 |
 | Open tasks in the change | **none** — 4.4 closed 2026-09-30; 1.1–1.20, 2.1–2.6, 3.1–3.9, 4.1–4.5 and 5.1–5.6 are closed |
-| Blocked on | the D-a-3 runbook (**not executed**): backup → purge → merge. The wipe and the merge are the owner's calls |
+| Blocked on | the D-a-3 runbook (**not executed**): inventory → purge (relational + Qdrant) → merge. No backup — the owner waived it 2026-09-30, so the measured inventory in `prod.todo.md` is the only record of what is destroyed |
 | Not authorized | slice (b) `extraction-versioning-api`, slice (c) `extraction-versioning-prompt` |
 | Receipt-driven development | still **off** in this clone; no native review ran on any tranche |
 
@@ -309,8 +309,9 @@ the guard counts the **relational** tables. A read-only pass against the product
 
 Three paths, written out in `prod.todo.md`; **path 1 chosen, none executed**:
 
-1. **Purge window** ← **chosen.** Empty `extractions`/`tasks` in Neon with a backup, let `0028` run on
-   the empty pair. Costed, then corrected downward: the Qdrant point id **is** the `extraction_id`
+1. **Purge window** ← **chosen.** Empty `extractions`/`tasks` in Neon — and, extended 2026-09-30, the
+   Qdrant points too — letting `0028` run on the empty pair, with **no backup**: the owner waived it
+   ("nothing worth saving") and the runbook's backup step became a measured inventory instead. Costed, then corrected downward: the Qdrant point id **is** the `extraction_id`
    (`qdrant_adapter.py:255`) and the payload carries the story text and the task summary, so few-shot
    retrieval keeps working after the wipe. What is lost is **provenance**, not function — and what gets
    purged is 11 failed runs and 42 tasks that never left `backlog`.
@@ -417,11 +418,15 @@ to assert more than the code does.
 1. ~~Ask the owner for the blocker decision.~~ **Asked and answered 2026-09-30: path 1, the purge
    window.** Runbook written in `prod.todo.md`, **not executed**.
 2. ~~Close task 4.4 in the same edit as that decision.~~ **Done** — Option A, `RESTRICT`, both files.
-3. **Execute the runbook, in its own order: backup → purge → confirm both counts are 0 → merge.** The
-   owner fires the wipe and the merge; neither is this document's call. Purging *before* merging is not
-   a detail: merging first fails the deploy on every later push until somebody wipes the pair.
-   Step 3 of the runbook is still an open choice — whether to reset `user_stories.status` to
-   `pending_extraction` along with the `TRUNCATE`.
+3. **Execute the runbook, in its own order: inventory → purge (relational + Qdrant) → confirm the counts
+   are 0 → merge.** No backup: the owner waived it, and the inventory stands in its place. Wiping *before*
+   merging is not a detail: merging first fails the deploy on every later push until somebody empties the
+   pair. Two choices are still open inside the runbook:
+   - **step 2b, the scope of the vector wipe** — only `storico_extractions_prod` (1 point), or all three
+     collections (`_prod` 1, `_dev` 1, the legacy `storico_extractions` 19).
+   - **step 3, the denormalized story state** — `user_stories.status` keeps saying `extracted` /
+     `failed_extraction` over stories that will have no extraction row at all. Reset to
+     `pending_extraction`, or leave it.
 4. Slice (b) then needs its own apply authorization, carrying **three** named requirements: **D-a-1**
    (re-dispatch duplicates task rows), **D-a-4** (the account-delete 500), and retiring
    `POST /api/v1/tasks/`, which slice (a) currently pins as a 500 refusal (`tasks.extraction_id NOT
@@ -437,9 +442,9 @@ Everything above stays true. This is what changed in the session that closed 4.4
 
 **Two owner decisions, both taken inside the session's question round:**
 
-- **D-a-3 → path 1, the purge window.** Nothing was executed. `prod.todo.md` now carries a six-step
-  runbook whose only missing piece is a client: this machine has no `psql`, no `pg_dump`, no `neonctl`
-  and no Docker, so the backup step happens outside this worktree.
+- **D-a-3 → path 1, the purge window.** Nothing was executed. `prod.todo.md` carries the runbook; the
+  backup step was replaced by a measured inventory (the owner's call — "nothing worth saving"), and the
+  wipe now names Qdrant as well as the relational pair.
 - **D-a-2 → Option A, `revoked_by` `ON DELETE RESTRICT`,** which closes task 4.4 and makes slice (a)
   **46/46**. `0028` and `models/task_invalidation.py` moved as one edit because the autogenerate drift
   gate catches a one-sided change — and that gate is `integration`-marked, so it runs in CI, not here.

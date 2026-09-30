@@ -100,6 +100,14 @@ STORICO_QDRANT_COLLECTION=storico_extractions_dev
 Medido el 2026-09-24: el `.env` local no la tenía, y el cluster tenía `storico_extractions` (19 puntos
 de verificación) y `storico_extractions_prod` (1 punto) — `storico_extractions_dev` **no existía**.
 
+**Re-medido el 2026-09-30: hoy existen las tres.** `storico_extractions_prod` 1 punto,
+`storico_extractions_dev` **1** punto (apareció: el `.env` de esta máquina ya tenía la variable puesta),
+y `storico_extractions` 19 puntos. Consecuencia que hay que leer sin eufemismos: **dev y prod comparten
+cluster**, y lo único que los separa es el nombre de colección; la colección legado de 19 puntos existe
+porque el default del adaptador (`qdrant_adapter.py:39`) es `storico_extractions` y esa fue la época en
+que el `.env` no declaraba colección. "Una colección por entorno" es separación lógica, no física. El
+hallazgo y su pendiente de diseño están en `prod.todo.md`.
+
 ### Variables de entorno requeridas
 
 Ver `.env.example` y `prod.todo.md` para la lista completa. En producción el contrato vive en

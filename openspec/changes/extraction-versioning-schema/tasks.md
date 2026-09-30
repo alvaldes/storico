@@ -599,8 +599,10 @@ API down. That is the workflow behaving as designed, not a defect in it; the def
 which never said how the populated production database would get to `0028`.
 
 Three owner paths, written out in `prod.todo.md` ("Bloqueo de despliegue") and `docs/deployment.md`:
-purge the pair in a maintenance window with a backup; write a `0029` backfill that must invent and
-declare the unreconstructable values; or hold the PR until the thesis evaluation has data of its own.
+purge the pair in a maintenance window; write a `0029` backfill that must invent and
+declare the unreconstructable values; or hold the PR until the thesis evaluation has data
+of its own. The chosen path 1 was later widened to wipe Qdrant too, and its backup step was
+replaced by a measured inventory at the owner's call.
 
 **Chosen 2026-09-30 by the owner: path 1, the purge window.** The runbook is written in `prod.todo.md`
 and **has not been executed**: neither the wipe nor the merge happened, and each needs its own explicit
