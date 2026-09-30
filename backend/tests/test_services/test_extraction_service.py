@@ -1,42 +1,52 @@
 """Integration tests for ExtractionService — EXT-T21.
 
-Uses mocked ports (LLMPort, repos) to test the service layer logic
-in isolation from real API calls and databases.
+Uses mocked ports (LLMPort, judge, vector store) to test the service layer
+logic in isolation from real API calls and databases. The service renders
+prompts and generates tasks only; persistence lives in the background task,
+whose invariants are exercised in ``TestRunnerPersistencePath`` below.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+import storico.infrastructure.tasks.extraction_task as extraction_task
 from storico.domain.entities import LLMConnectionError, ParseError
-from storico.domain.ports import ExtractionExample, LLMConfig, ParsedTask
+from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.ports import (
+    ExtractionExample,
+    LLMConfig,
+    LLMPort,
+    ParsedTask,
+    VectorStorePort,
+)
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
+from storico.infrastructure.database.repositories import SQLAlchemyExtractionRepository
+from tests._helpers import seed_extraction
 
 
 class TestExtractionService:
-    """ExtractionService orchestrates the full extraction pipeline.
+    """ExtractionService renders prompts and generates tasks.
 
-    Tests mock all ports (LLMPort, repositories, judge) so no real
+    Tests mock all ports (LLMPort, judge, vector store) so no real
     network or database calls are made.
     """
 
     @pytest.fixture
     def setup(self):
-        """Create an ExtractionService with all ports mocked."""
+        """Create an ExtractionService with its ports mocked."""
         llm_port = AsyncMock()
         prompt_manager = MagicMock()
         task_parser = MagicMock()
-        extraction_repo = AsyncMock()
-        task_repo = AsyncMock()
         judge_service = AsyncMock()
 
         service = ExtractionService(
             llm_port=llm_port,
             prompt_manager=prompt_manager,
             task_parser=task_parser,
-            extraction_repo=extraction_repo,
-            task_repo=task_repo,
             judge_service=judge_service,
         )
         return {
@@ -44,12 +54,10 @@ class TestExtractionService:
             "llm_port": llm_port,
             "prompt_manager": prompt_manager,
             "task_parser": task_parser,
-            "extraction_repo": extraction_repo,
-            "task_repo": task_repo,
             "judge_service": judge_service,
         }
 
-    # ── extract() — happy path ─────────────────────────────────────
+    # ── render() + generate() — happy path ─────────────────────────
 
     @pytest.mark.asyncio
     async def test_extract_success(self, setup) -> None:
@@ -66,14 +74,15 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "As a user, I want X"
 
-        result_tasks, raw = await deps["service"].extract(mock_story, LLMConfig(model="test"))
+        rendered = await deps["service"].render(mock_story)
+        result_tasks, raw = await deps["service"].generate(rendered, LLMConfig(model="test"))
         assert len(result_tasks) == 1
         assert result_tasks[0].summary == "Task one"
         assert raw == "1. summary: Task one\ndescription: Desc"
 
     @pytest.mark.asyncio
     async def test_extract_calls_prompt_manager(self, setup) -> None:
-        """extract() calls render_instruction with the workspace template."""
+        """render() calls render_instruction with the workspace template."""
         deps = setup
         deps["prompt_manager"].render_instruction.return_value = "Instruction"
         deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
@@ -83,7 +92,7 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "As a user, I want X"
 
-        await deps["service"].extract(mock_story, LLMConfig(model="test"))
+        await deps["service"].render(mock_story)
 
         deps["prompt_manager"].render_instruction.assert_called_once_with(
             None,
@@ -102,7 +111,8 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        await deps["service"].extract(mock_story, LLMConfig(model="test"), system_prompt="SYSTEM")
+        rendered = await deps["service"].render(mock_story, system_prompt="SYSTEM")
+        await deps["service"].generate(rendered, LLMConfig(model="test"))
 
         # Verify the system prompt is passed separately, not concatenated
         deps["llm_port"].generate.assert_called_once_with(
@@ -123,9 +133,8 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        await deps["service"].extract(
+        await deps["service"].render(
             mock_story,
-            LLMConfig(model="test"),
             instruction_template="Custom: {{user_story}}",
         )
 
@@ -134,11 +143,11 @@ class TestExtractionService:
             user_story="Story",
         )
 
-    # ── extract() — error handling ─────────────────────────────────
+    # ── render() + generate() — error handling ─────────────────────
 
     @pytest.mark.asyncio
     async def test_extract_llm_error_propagates(self, setup) -> None:
-        """LLM errors propagate through extract()."""
+        """LLM errors propagate through generate()."""
         deps = setup
         deps["prompt_manager"].render_instruction.return_value = "System"
         deps["prompt_manager"].render_instruction.return_value = "Instruction"
@@ -148,12 +157,13 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
+        rendered = await deps["service"].render(mock_story)
         with pytest.raises(LLMConnectionError):
-            await deps["service"].extract(mock_story, LLMConfig(model="test"))
+            await deps["service"].generate(rendered, LLMConfig(model="test"))
 
     @pytest.mark.asyncio
     async def test_extract_parse_error_propagates(self, setup) -> None:
-        """Parse errors propagate through extract()."""
+        """Parse errors propagate through generate()."""
         deps = setup
         deps["prompt_manager"].render_instruction.return_value = "System"
         deps["prompt_manager"].render_instruction.return_value = "Instruction"
@@ -164,164 +174,15 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
+        rendered = await deps["service"].render(mock_story)
         with pytest.raises(ParseError):
-            await deps["service"].extract(mock_story, LLMConfig(model="test"))
-
-    # ── extract_and_persist() — happy path ─────────────────────────
-
-    @pytest.mark.asyncio
-    async def test_extract_and_persist_full_pipeline(self, setup) -> None:
-        """Full pipeline creates Extraction + Task entities."""
-        deps = setup
-        story_id = uuid4()
-        mock_story = MagicMock()
-        mock_story.id = story_id
-        mock_story.raw_text = "As a user, I want X"
-
-        deps["prompt_manager"].render_instruction.return_value = "System"
-        deps["prompt_manager"].render_instruction.return_value = "Instruction"
-        deps["llm_port"].generate.return_value = "1. summary: Task one\ndescription: Desc"
-        deps["task_parser"].parse.return_value = [
-            ParsedTask(summary="Task one", description="Desc", labels=(), dependencies=()),
-        ]
-        deps["extraction_repo"].save.side_effect = lambda e: e
-        deps["task_repo"].save.side_effect = lambda t: t
-        deps["judge_service"].validate.return_value = MagicMock(
-            approved=True, total_score=45, criteria={}
-        )
-
-        result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
-        assert result.status == "completed"
-        # A terminal extraction records when it finished, which is what the column exists for.
-        assert result.completed_at is not None
-        assert deps["extraction_repo"].save.called
-        assert deps["task_repo"].save.called
-
-    @pytest.mark.asyncio
-    async def test_extract_and_persist_saves_tasks(self, setup) -> None:
-        """Each parsed task is persisted via task_repo.save()."""
-        deps = setup
-        story_id = uuid4()
-        mock_story = MagicMock()
-        mock_story.id = story_id
-        mock_story.raw_text = "Story"
-
-        deps["prompt_manager"].render_instruction.return_value = "S"
-        deps["prompt_manager"].render_instruction.return_value = "I"
-        deps[
-            "llm_port"
-        ].generate.return_value = "1. summary: T1\ndescription: D1\n2. summary: T2\ndescription: D2"
-        deps["task_parser"].parse.return_value = [
-            ParsedTask(summary="T1", description="D1"),
-            ParsedTask(summary="T2", description="D2"),
-        ]
-        deps["extraction_repo"].save.side_effect = lambda e: e
-        deps["task_repo"].save.side_effect = lambda t: t
-
-        await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
-        assert deps["task_repo"].save.call_count == 2
-
-    # ── extract_and_persist() — error handling ─────────────────────
-
-    @pytest.mark.asyncio
-    async def test_extract_llm_error_persists_failed(self, setup) -> None:
-        """LLM error persists failed extraction with error_info."""
-        deps = setup
-        story_id = uuid4()
-        mock_story = MagicMock()
-        mock_story.id = story_id
-        mock_story.raw_text = "As a user, I want X"
-
-        deps["prompt_manager"].render_instruction.return_value = "System"
-        deps["prompt_manager"].render_instruction.return_value = "Instruction"
-        deps["llm_port"].generate.side_effect = LLMConnectionError("Cannot connect")
-        deps["extraction_repo"].save.side_effect = lambda e: e
-
-        result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
-        assert result.status == "failed"
-        assert "Cannot connect" in (result.error_info or "")
-        # A failure is terminal too, and it ends at a known moment rather than never.
-        assert result.completed_at is not None
-
-    @pytest.mark.asyncio
-    async def test_extract_parse_error_persists_failed(self, setup) -> None:
-        """Parse error persists failed extraction."""
-        deps = setup
-        mock_story = MagicMock()
-        mock_story.id = uuid4()
-        mock_story.raw_text = "Test"
-
-        deps["prompt_manager"].render_instruction.return_value = "System"
-        deps["prompt_manager"].render_instruction.return_value = "Instruction"
-        deps["llm_port"].generate.return_value = "garbage output"
-        deps["task_parser"].parse.side_effect = ParseError("Could not parse")
-        deps["extraction_repo"].save.side_effect = lambda e: e
-
-        result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
-        assert result.status == "failed"
-
-    @pytest.mark.asyncio
-    async def test_extract_and_persist_failed_extraction_still_saved(self, setup) -> None:
-        """Even a failed extraction is saved to the repo."""
-        deps = setup
-        mock_story = MagicMock()
-        mock_story.id = uuid4()
-        mock_story.raw_text = "Story"
-
-        deps["prompt_manager"].render_instruction.return_value = "S"
-        deps["prompt_manager"].render_instruction.return_value = "I"
-        deps["llm_port"].generate.side_effect = LLMConnectionError("Fail")
-        deps["extraction_repo"].save.side_effect = lambda e: e
-
-        result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
-        assert deps["extraction_repo"].save.called
-        assert result.status == "failed"
+            await deps["service"].generate(rendered, LLMConfig(model="test"))
 
     # ── Judge interaction ─────────────────────────────────────────
 
-    @pytest.mark.asyncio
-    async def test_extract_and_persist_with_judge(self, setup) -> None:
-        """Judge is called and confidence is computed."""
-        deps = setup
-        story_id = uuid4()
-        mock_story = MagicMock()
-        mock_story.id = story_id
-        mock_story.raw_text = "Story"
-
-        deps["prompt_manager"].render_instruction.return_value = "S"
-        deps["prompt_manager"].render_instruction.return_value = "I"
-        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
-        deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
-        deps["extraction_repo"].save.side_effect = lambda e: e
-        deps["task_repo"].save.side_effect = lambda t: t
-        deps["judge_service"].validate.return_value = MagicMock(
-            approved=True, total_score=45, criteria={}
-        )
-
-        result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
-        assert result.confidence_score == 45 / 50.0
-        deps["judge_service"].validate.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_extract_and_persist_judge_failure_does_not_break(self, setup) -> None:
-        """Judge failure should not break extraction — confidence stays None."""
-        deps = setup
-        story_id = uuid4()
-        mock_story = MagicMock()
-        mock_story.id = story_id
-        mock_story.raw_text = "Story"
-
-        deps["prompt_manager"].render_instruction.return_value = "S"
-        deps["prompt_manager"].render_instruction.return_value = "I"
-        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
-        deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
-        deps["extraction_repo"].save.side_effect = lambda e: e
-        deps["task_repo"].save.side_effect = lambda t: t
-        deps["judge_service"].validate.side_effect = LLMConnectionError("Judge down")
-
-        result = await deps["service"].extract_and_persist(mock_story, LLMConfig(model="test"))
-        assert result.status == "completed"
-        # Confidence is None because judge failed, but extraction still succeeds
+    # The judge is no longer driven by the service: the runner reaches into
+    # ``_judge_service`` between generate() and mark_completed(). Its wiring
+    # is exercised in ``TestRunnerPersistencePath``.
 
     # ── RAG integration ──────────────────────────────────────────────
 
@@ -331,8 +192,6 @@ class TestExtractionService:
         llm_port = AsyncMock()
         prompt_manager = MagicMock()
         task_parser = MagicMock()
-        extraction_repo = AsyncMock()
-        task_repo = AsyncMock()
         judge_service = AsyncMock()
         vector_store = AsyncMock()
 
@@ -340,8 +199,6 @@ class TestExtractionService:
             llm_port=llm_port,
             prompt_manager=prompt_manager,
             task_parser=task_parser,
-            extraction_repo=extraction_repo,
-            task_repo=task_repo,
             judge_service=judge_service,
             vector_store=vector_store,
             few_shot_config=FewShotConfig(enabled=True, limit=2, threshold=0.8),
@@ -351,8 +208,6 @@ class TestExtractionService:
             "llm_port": llm_port,
             "prompt_manager": prompt_manager,
             "task_parser": task_parser,
-            "extraction_repo": extraction_repo,
-            "task_repo": task_repo,
             "judge_service": judge_service,
             "vector_store": vector_store,
         }
@@ -370,7 +225,8 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        result_tasks, raw = await deps["service"].extract(mock_story, LLMConfig(model="test"))
+        rendered = await deps["service"].render(mock_story)
+        result_tasks, raw = await deps["service"].generate(rendered, LLMConfig(model="test"))
         assert len(result_tasks) == 1
         # Vector store should not be referenced at all
         assert (
@@ -402,7 +258,7 @@ class TestExtractionService:
 
         # RAG retrieval requires a workspace scope; this call exercises the
         # scoped-search path end to end.
-        await deps["service"].extract(mock_story, LLMConfig(model="test"), workspace_id=uuid4())
+        await deps["service"].render(mock_story, workspace_id=uuid4())
 
         # Verify search_similar was called
         deps["vector_store"].search_similar.assert_called_once()
@@ -426,9 +282,8 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        result_tasks, raw = await deps["service"].extract(
-            mock_story, LLMConfig(model="test"), workspace_id=uuid4()
-        )
+        rendered = await deps["service"].render(mock_story, workspace_id=uuid4())
+        result_tasks, raw = await deps["service"].generate(rendered, LLMConfig(model="test"))
         assert len(result_tasks) == 1
         # Should render WITHOUT examples kwarg
         call_kwargs = deps["prompt_manager"].render_instruction.call_args[1]
@@ -460,68 +315,276 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        result_tasks, raw = await deps["service"].extract(mock_story, LLMConfig(model="test"))
+        rendered = await deps["service"].render(mock_story)
+        result_tasks, raw = await deps["service"].generate(rendered, LLMConfig(model="test"))
 
         assert len(result_tasks) == 1
         deps["vector_store"].search_similar.assert_not_called()
         call_kwargs = deps["prompt_manager"].render_instruction.call_args[1]
         assert "examples" not in call_kwargs
 
+
+# ── The live persistence path (the runner) ──────────────────────────
+
+_ANSWER = (
+    "1. summary: Set up the schema\n"
+    "description: Create the tables.\n\n"
+    "2. summary: Build the endpoint\n"
+    "description: Expose the data.\n"
+)
+
+
+class _AnsweringLLM(LLMPort):
+    """LLM fake that answers with two well-formed tasks."""
+
+    async def generate(
+        self,
+        prompt: str,  # noqa: ARG002
+        config: LLMConfig,  # noqa: ARG002
+        system_prompt: str | None = None,  # noqa: ARG002
+    ) -> str:
+        return _ANSWER
+
+
+class _UnreachableLLM(LLMPort):
+    """LLM fake whose connection always fails."""
+
+    async def generate(
+        self,
+        prompt: str,  # noqa: ARG002
+        config: LLMConfig,  # noqa: ARG002
+        system_prompt: str | None = None,  # noqa: ARG002
+    ) -> str:
+        raise LLMConnectionError("Cannot connect")
+
+
+class _FailingParser:
+    """Parser fake that refuses every response."""
+
+    def parse(self, raw_response: str) -> list[ParsedTask]:  # noqa: ARG002
+        raise ParseError("Could not parse")
+
+
+class _ApprovingJudge:
+    """Judge fake scoring 45/50, approved."""
+
+    async def validate(self, **kwargs: object) -> SimpleNamespace:  # noqa: ARG002
+        return SimpleNamespace(approved=True, total_score=45, criteria={})
+
+
+class _BrokenJudge:
+    """Judge fake whose validation call fails."""
+
+    async def validate(self, **kwargs: object) -> SimpleNamespace:  # noqa: ARG002
+        raise LLMConnectionError("Judge down")
+
+
+class _RecordingVectorStore(VectorStorePort):
+    """Vector store that records ``store_extraction`` calls instead of writing."""
+
+    def __init__(self, store_error: Exception | None = None) -> None:
+        self.stored: list[dict] = []
+        self._store_error = store_error
+
+    async def search_similar(  # noqa: ARG002
+        self,
+        text: str,
+        limit: int = 3,
+        threshold: float = 0.85,
+        *,
+        workspace_id: UUID,  # noqa: ARG002
+    ) -> list:
+        return []
+
+    async def store_extraction(self, **kwargs: object) -> bool:
+        if self._store_error is not None:
+            raise self._store_error
+        self.stored.append(kwargs)
+        return True
+
+
+def _make_vector_store_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Turn the RAG dependency off before the background task builds it.
+
+    Same pattern as ``tests/test_api/test_extraction.py``: raising from the
+    embedding-port factory takes the runner's production "vector store
+    unavailable" branch (``vector_store=None``) and keeps the test off every
+    live service.
+    """
+
+    def _unavailable(_settings) -> None:
+        raise RuntimeError("vector store deliberately unavailable for this test")
+
+    monkeypatch.setattr(extraction_task, "get_embedding_port", _unavailable)
+
+
+class TestRunnerPersistencePath:
+    """The dead ``extract_and_persist`` path's invariants, on the live runner.
+
+    ``ExtractionService`` no longer persists anything, so the cases that
+    exercised the deleted dead path run ``run_background_extraction`` instead —
+    the real engine (SQLite in-memory) with the LLM adapter, parser, judge and
+    vector store swapped by monkeypatch, the pattern
+    ``tests/test_api/test_extraction.py`` already uses.
+    """
+
     @pytest.mark.asyncio
-    async def test_extract_and_persist_stores_in_vector_store(self, setup_with_rag) -> None:
-        """store_extraction called after successful persist."""
-        deps = setup_with_rag
-        story_id = uuid4()
-        mock_story = MagicMock()
-        mock_story.id = story_id
-        mock_story.raw_text = "As a user, I want X"
+    async def test_llm_error_is_recorded_on_a_failed_extraction(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """An LLM error marks the same row failed, with error_info and a stamp."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
 
-        deps["vector_store"].search_similar.return_value = []
-        deps["prompt_manager"].render_instruction.return_value = "System"
-        deps["prompt_manager"].render_instruction.return_value = "Instruction"
-        deps["llm_port"].generate.return_value = "1. summary: Task one\ndescription: Desc"
-        deps["task_parser"].parse.return_value = [
-            ParsedTask(summary="Task one", description="Desc"),
-        ]
-        deps["extraction_repo"].save.side_effect = lambda e: e
-        deps["task_repo"].save.side_effect = lambda t: t
-        deps["judge_service"].validate.return_value = MagicMock(
-            approved=True, total_score=45, criteria={}
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _UnreachableLLM())
+        _make_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=0,
         )
 
-        result = await deps["service"].extract_and_persist(
-            mock_story, LLMConfig(model="test"), workspace_id=uuid4()
-        )
-        assert result.status == "completed"
+        async with factory() as session:
+            failed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
 
-        # Verify store_extraction was called
-        deps["vector_store"].store_extraction.assert_called_once()
-        call_args = deps["vector_store"].store_extraction.call_args[1]
-        assert call_args["extraction_id"] == str(result.id)
-        assert call_args["model_used"] == "test"
+        assert failed is not None
+        # The run marks its own birth row — no second row, no second number.
+        assert failed.id == pending.id
+        assert failed.status == ExtractionStatus.FAILED
+        assert "Cannot connect" in (failed.error_info or "")
+        # A failure is terminal too, and it ends at a known moment rather than never.
+        assert failed.completed_at is not None
 
     @pytest.mark.asyncio
-    async def test_extract_and_persist_vector_store_fails(self, setup_with_rag) -> None:
-        """store_extraction raises, extraction still succeeds."""
-        deps = setup_with_rag
-        story_id = uuid4()
-        mock_story = MagicMock()
-        mock_story.id = story_id
-        mock_story.raw_text = "Story"
+    async def test_parse_error_is_recorded_on_a_failed_extraction(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A ParseError is a deterministic failure: the row is marked failed."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
 
-        deps["vector_store"].search_similar.return_value = []
-        deps["vector_store"].store_extraction.side_effect = RuntimeError("Store failed")
-        deps["prompt_manager"].render_instruction.return_value = "System"
-        deps["prompt_manager"].render_instruction.return_value = "Instruction"
-        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
-        deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
-        deps["extraction_repo"].save.side_effect = lambda e: e
-        deps["task_repo"].save.side_effect = lambda t: t
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
 
-        result = await deps["service"].extract_and_persist(
-            mock_story, LLMConfig(model="test"), workspace_id=uuid4()
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        monkeypatch.setattr(extraction_task, "TaskParser", lambda: _FailingParser())
+        _make_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=0,
         )
-        assert result.status == "completed"
-        # Extraction and tasks should still be persisted
-        assert deps["extraction_repo"].save.called
-        assert deps["task_repo"].save.called
+
+        async with factory() as session:
+            failed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+
+        assert failed is not None
+        assert failed.status == ExtractionStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_judge_is_called_and_confidence_is_recorded(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """With validate on, the judge runs and the row carries its score."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        monkeypatch.setattr(extraction_task, "LLMJudgeService", lambda **_: _ApprovingJudge())
+        _make_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            validate=True,
+            max_retries=0,
+        )
+
+        async with factory() as session:
+            completed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+
+        assert completed is not None
+        assert completed.status == ExtractionStatus.COMPLETED
+        assert completed.confidence_score == pytest.approx(45 / 50.0)
+
+    @pytest.mark.asyncio
+    async def test_judge_failure_does_not_break_the_run(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A failing judge still completes the run, with no confidence score."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        monkeypatch.setattr(extraction_task, "LLMJudgeService", lambda **_: _BrokenJudge())
+        _make_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            validate=True,
+            max_retries=0,
+        )
+
+        async with factory() as session:
+            completed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+
+        assert completed is not None
+        assert completed.status == ExtractionStatus.COMPLETED
+        # Confidence is None because the judge failed, but the run still succeeds.
+        assert completed.confidence_score is None
+
+    @pytest.mark.asyncio
+    async def test_vector_store_failure_does_not_break_the_run(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A raising vector store still completes the run."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+
+        store = _RecordingVectorStore(store_error=RuntimeError("Store failed"))
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        monkeypatch.setattr(extraction_task, "get_embedding_port", lambda _settings: object())
+        monkeypatch.setattr(extraction_task, "QdrantAdapter", lambda **_: store)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+        async with factory() as session:
+            completed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+
+        assert completed is not None
+        assert completed.status == ExtractionStatus.COMPLETED
+        assert completed.completed_at is not None

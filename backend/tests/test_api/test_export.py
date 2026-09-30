@@ -20,6 +20,7 @@ from storico.infrastructure.database.repositories import (
 from storico.infrastructure.database.repositories.user_story_repository import (
     SQLAlchemyUserStoryRepository,
 )
+from tests._helpers import seed_extraction
 
 
 def _get_jwt_secret() -> str:
@@ -66,13 +67,17 @@ async def _create_tasks(db_session: AsyncSession, story_id, count=3) -> list[Tas
 
     Local on purpose: the first task carries ``["backend", "api"]`` and the rest
     ``["frontend"]`` because the export assertions pin exactly that, so it is a
-    fixture for these tests rather than a knob on the shared seeding factory.
+    fixture for these tests rather than a knob on the shared seeding factory. The
+    tasks share one extraction allocated through the birth path (``0028`` made
+    ``tasks.extraction_id`` ``NOT NULL``; the export reads tasks, not versions).
     """
+    extraction = await seed_extraction(db_session, story_id)
     repo = SQLAlchemyTaskRepository(db_session)
     tasks = []
     for i in range(count):
         task = Task(
             user_story_id=story_id,
+            extraction_id=extraction.id,
             title=f"Task {i + 1}",
             description=f"Description for task {i + 1}",
             status=TaskStatus.TODO,
@@ -214,9 +219,11 @@ class TestExportTasks:
         story_id = (await _create_story(db_session, seeded.project_id)).id
         ws_id = seeded.workspace_id
         task_repo = SQLAlchemyTaskRepository(db_session)
+        extraction = await seed_extraction(db_session, story_id)
         predecessor = await task_repo.save(
             Task(
                 user_story_id=story_id,
+                extraction_id=extraction.id,
                 title="Predecessor task",
                 description="Comes first",
                 status=TaskStatus.DONE,
@@ -227,6 +234,7 @@ class TestExportTasks:
         )
         task = Task(
             user_story_id=story_id,
+            extraction_id=extraction.id,
             title="Task with meta",
             description="Has labels and deps",
             status=TaskStatus.TODO,

@@ -14,7 +14,7 @@ from storico.infrastructure.database.repositories import (
     SQLAlchemyTaskRepository,
     SQLAlchemyUserStoryRepository,
 )
-from tests._helpers import create_workspace
+from tests._helpers import create_workspace, seed_extraction, seed_task
 
 
 @pytest.fixture
@@ -49,17 +49,23 @@ async def _seed_story(db_session: AsyncSession, workspace_id: UUID, name: str) -
     )
 
 
-def _task(story_id: UUID, title: str, **kwargs) -> Task:
-    """Build a task with a distinct title so assertions can name rows."""
-    return Task(user_story_id=story_id, title=title, **kwargs)
+async def _seed_task(db_session: AsyncSession, story_id: UUID, title: str, **kwargs) -> Task:
+    """Seed one task through the shared builder, with a distinct title.
+
+    ``tasks.extraction_id`` is ``NOT NULL`` from ``0028`` on, so a task seed needs an
+    extraction to belong to; ``seed_task`` allocates one through the birth path.
+    """
+    return await seed_task(db_session, story_id, title, **kwargs)
 
 
 @pytest.mark.asyncio
 async def test_save_with_json_labels_and_deps(db_session: AsyncSession, story_id: UUID) -> None:
     """Save a task with labels and dependencies, then verify they round-trip."""
     repo = SQLAlchemyTaskRepository(db_session)
+    extraction = await seed_extraction(db_session, story_id)
     task = Task(
         user_story_id=story_id,
+        extraction_id=extraction.id,
         title="Implement login",
         description="Build the login form and validation",
         labels=["frontend", "auth"],
@@ -92,12 +98,9 @@ async def test_list_by_story(db_session: AsyncSession, story_id: UUID) -> None:
     repo = SQLAlchemyTaskRepository(db_session)
     other_id = uuid4()
 
-    t1 = Task(user_story_id=story_id, title="Task 1")
-    t2 = Task(user_story_id=story_id, title="Task 2")
-    t3 = Task(user_story_id=other_id, title="Other task")
-    await repo.save(t1)
-    await repo.save(t2)
-    await repo.save(t3)
+    await _seed_task(db_session, story_id, "Task 1")
+    await _seed_task(db_session, story_id, "Task 2")
+    await _seed_task(db_session, other_id, "Other task")
 
     tasks = await repo.list_by_story(story_id)
     assert len(tasks) == 2
@@ -117,7 +120,8 @@ async def test_list_by_story_empty(db_session: AsyncSession) -> None:
 async def test_update_sets_updated_at(db_session: AsyncSession, story_id: UUID) -> None:
     """Saving an existing task updates its updated_at timestamp."""
     repo = SQLAlchemyTaskRepository(db_session)
-    task = Task(user_story_id=story_id, title="Original")
+    extraction = await seed_extraction(db_session, story_id)
+    task = Task(user_story_id=story_id, extraction_id=extraction.id, title="Original")
     await repo.save(task)
 
     found_before = await repo.find_by_id(task.id)
@@ -146,9 +150,9 @@ async def test_list_page_by_story_excludes_another_storys_tasks(
     mine = await _seed_story(db_session, workspace_id, "Mine")
     other = await _seed_story(db_session, workspace_id, "Other")
 
-    await repo.save(_task(mine.id, "mine-1"))
-    await repo.save(_task(mine.id, "mine-2"))
-    await repo.save(_task(other.id, "other-1"))
+    await _seed_task(db_session, mine.id, "mine-1")
+    await _seed_task(db_session, mine.id, "mine-2")
+    await _seed_task(db_session, other.id, "other-1")
 
     page, total = await repo.list_page(user_story_id=mine.id, limit=10, offset=0)
 
@@ -181,7 +185,7 @@ async def test_list_page_mid_page_carries_the_full_total(
     repo = SQLAlchemyTaskRepository(db_session)
     story = await _seed_story(db_session, workspace_id, "Paged")
     for day, title in ((1, "oldest"), (2, "middle"), (3, "newest")):
-        await repo.save(_task(story.id, title, created_at=datetime(2026, 1, day)))
+        await _seed_task(db_session, story.id, title, created_at=datetime(2026, 1, day))
 
     page1, total1 = await repo.list_page(user_story_id=story.id, limit=2, offset=0)
     page2, total2 = await repo.list_page(user_story_id=story.id, limit=2, offset=2)
@@ -203,7 +207,7 @@ async def test_list_page_past_the_end_returns_empty_page_and_real_total(
     repo = SQLAlchemyTaskRepository(db_session)
     story = await _seed_story(db_session, workspace_id, "Paged")
     for title in ("s1", "s2", "s3"):
-        await repo.save(_task(story.id, title))
+        await _seed_task(db_session, story.id, title)
 
     page, total = await repo.list_page(user_story_id=story.id, limit=2, offset=4)
 
@@ -226,8 +230,8 @@ async def test_list_page_by_workspace_returns_only_that_workspaces_tasks(
     beta_ws = await create_workspace(db_session, name="Beta", slug="beta-task-list-page")
     alpha_story = await _seed_story(db_session, alpha_ws.id, "Alpha project")
     beta_story = await _seed_story(db_session, beta_ws.id, "Beta project")
-    await repo.save(_task(alpha_story.id, "alpha-task"))
-    await repo.save(_task(beta_story.id, "beta-task"))
+    await _seed_task(db_session, alpha_story.id, "alpha-task")
+    await _seed_task(db_session, beta_story.id, "beta-task")
 
     page, total = await repo.list_page(workspace_id=alpha_ws.id, limit=10, offset=0)
 
@@ -325,7 +329,7 @@ async def test_list_page_pins_the_order_rule_in_sql(
 
     repo = SQLAlchemyTaskRepository(db_session)
     story = await _seed_story(db_session, workspace_id, "Ordered")
-    await repo.save(_task(story.id, "only"))
+    await _seed_task(db_session, story.id, "only")
 
     event.listen(test_engine.sync_engine, "before_cursor_execute", record)
     try:
@@ -345,10 +349,8 @@ async def test_list_page_pins_the_order_rule_in_sql(
 async def test_list_all(db_session: AsyncSession, story_id: UUID) -> None:
     """list returns all tasks."""
     repo = SQLAlchemyTaskRepository(db_session)
-    t1 = Task(user_story_id=story_id, title="Task 1")
-    t2 = Task(user_story_id=story_id, title="Task 2")
-    await repo.save(t1)
-    await repo.save(t2)
+    await _seed_task(db_session, story_id, "Task 1")
+    await _seed_task(db_session, story_id, "Task 2")
 
     tasks = await repo.list()
     assert len(tasks) == 2

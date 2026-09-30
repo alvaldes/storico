@@ -146,6 +146,7 @@ class SQLAlchemyTaskRepository(TaskRepository):
     def _to_domain(self, model: TaskModel) -> Task:
         return Task(
             user_story_id=model.user_story_id,
+            extraction_id=model.extraction_id,
             title=model.title,
             description=model.description,
             status=TaskStatus(model.status),
@@ -162,6 +163,7 @@ class SQLAlchemyTaskRepository(TaskRepository):
         return {
             "id": task.id,
             "user_story_id": task.user_story_id,
+            "extraction_id": task.extraction_id,
             "title": task.title,
             "description": task.description,
             "status": task.status.value,

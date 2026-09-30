@@ -6,6 +6,7 @@ Tests the workspace-scoped routes at
 
 import asyncio
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
@@ -20,7 +21,11 @@ from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
 from storico.infrastructure.crypto import FernetCipher
-from storico.infrastructure.database.models import WorkspaceLLMConfigModel
+from storico.infrastructure.database.models import (
+    ExtractionModel,
+    TaskModel,
+    WorkspaceLLMConfigModel,
+)
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyTaskRepository,
@@ -29,6 +34,7 @@ from storico.infrastructure.database.repositories import (
     SQLAlchemyWorkspaceLLMConfigRepository,
 )
 from storico.infrastructure.tasks import extraction_task
+from tests._helpers import seed_extraction
 
 _MASTER_KEY = Fernet.generate_key().decode("ascii")
 
@@ -184,15 +190,7 @@ class TestExtractEndpoint:
 
         async with factory() as session:
             repo = SQLAlchemyExtractionRepository(session)
-            pending = await repo.save(
-                Extraction(
-                    user_story_id=story_id,
-                    model_used="llama3.2",
-                    raw_response="",
-                    status=ExtractionStatus.PENDING,
-                    user_story_status=UserStoryStatus.PENDING_EXTRACTION,
-                )
-            )
+            pending = await seed_extraction(session, story_id, model_used="llama3.2")
 
         class UnreachableLLM(LLMPort):
             async def generate(
@@ -241,15 +239,7 @@ class TestExtractEndpoint:
 
         async with factory() as session:
             repo = SQLAlchemyExtractionRepository(session)
-            pending = await repo.save(
-                Extraction(
-                    user_story_id=seeded.story_id,
-                    model_used="llama3.2",
-                    raw_response="",
-                    status=ExtractionStatus.PENDING,
-                    user_story_status=UserStoryStatus.PENDING_EXTRACTION,
-                )
-            )
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
 
         class AnsweringLLM(LLMPort):
             async def generate(
@@ -308,16 +298,7 @@ class TestExtractEndpoint:
         seeded = await seed_workspace(member=False)
 
         async with factory() as session:
-            repo = SQLAlchemyExtractionRepository(session)
-            pending = await repo.save(
-                Extraction(
-                    user_story_id=seeded.story_id,
-                    model_used="llama3.1:8b",
-                    raw_response="",
-                    status=ExtractionStatus.PENDING,
-                    user_story_status=UserStoryStatus.PENDING_EXTRACTION,
-                )
-            )
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.1:8b")
 
         class AnsweringLLM(LLMPort):
             async def generate(
@@ -426,15 +407,14 @@ class TestExtractionStatusEndpoint:
         seeded = await seed_workspace(user=user)
         ws_id = seeded.workspace_id
         story_id = seeded.story_id
-        repo = SQLAlchemyExtractionRepository(db_session)
 
-        extraction = Extraction(
-            user_story_id=story_id,
+        saved = await seed_extraction(
+            db_session,
+            story_id,
             model_used="llama3.2",
             raw_response="1. summary: Task one\ndescription: Desc",
             status=ExtractionStatus.COMPLETED,
         )
-        saved = await repo.save(extraction)
 
         response = await async_client.get(
             f"/api/v1/workspaces/{ws_id}/extract/status/{saved.id}",
@@ -455,16 +435,14 @@ class TestExtractionStatusEndpoint:
         seeded = await seed_workspace(user=user)
         ws_id = seeded.workspace_id
         story_id = seeded.story_id
-        repo = SQLAlchemyExtractionRepository(db_session)
 
-        extraction = Extraction(
-            user_story_id=story_id,
+        saved = await seed_extraction(
+            db_session,
+            story_id,
             model_used="llama3.2",
-            raw_response="",
             status=ExtractionStatus.FAILED,
             error_info="LLM connection failed",
         )
-        saved = await repo.save(extraction)
 
         response = await async_client.get(
             f"/api/v1/workspaces/{ws_id}/extract/status/{saved.id}",
@@ -484,16 +462,15 @@ class TestExtractionStatusEndpoint:
         seeded = await seed_workspace(user=user)
         ws_id = seeded.workspace_id
         story_id = seeded.story_id
-        repo = SQLAlchemyExtractionRepository(db_session)
 
-        extraction = Extraction(
-            user_story_id=story_id,
+        saved = await seed_extraction(
+            db_session,
+            story_id,
             model_used="mistral",
             raw_response="Some response",
             status=ExtractionStatus.COMPLETED,
             confidence_score=0.85,
         )
-        saved = await repo.save(extraction)
 
         response = await async_client.get(
             f"/api/v1/workspaces/{ws_id}/extract/status/{saved.id}",
@@ -518,15 +495,12 @@ class TestExtractionStatusEndpoint:
         user = await _create_user(db_session)
         owner = await seed_workspace(user=user)
         foreign = await seed_workspace(user=user, stories=0)
-        repo = SQLAlchemyExtractionRepository(db_session)
 
-        saved = await repo.save(
-            Extraction(
-                user_story_id=owner.story_id,
-                model_used="llama3.2",
-                raw_response="",
-                status=ExtractionStatus.COMPLETED,
-            )
+        saved = await seed_extraction(
+            db_session,
+            owner.story_id,
+            model_used="llama3.2",
+            status=ExtractionStatus.COMPLETED,
         )
 
         response = await async_client.get(
@@ -550,15 +524,13 @@ class TestExtractionStatusEndpoint:
         """
         user = await _create_user(db_session)
         seeded = await seed_workspace(user=user)
-        repo = SQLAlchemyExtractionRepository(db_session)
 
-        saved = await repo.save(
-            Extraction(
-                user_story_id=seeded.story_id,
-                model_used="llama3.2",
-                raw_response="1. summary: Task one\ndescription: Desc",
-                status=ExtractionStatus.COMPLETED,
-            )
+        saved = await seed_extraction(
+            db_session,
+            seeded.story_id,
+            model_used="llama3.2",
+            raw_response="1. summary: Task one\ndescription: Desc",
+            status=ExtractionStatus.COMPLETED,
         )
 
         response = await async_client.get(
@@ -912,3 +884,546 @@ class TestLegacyExtractEndpointGone:
 
         assert response.status_code == 410
         assert response.json()["error_code"] == "EXTRACTION_ENDPOINT_REMOVED"
+
+
+@pytest.mark.unit
+class TestExtractionVersioningAtBirth:
+    """The pending row is born versioned (WU1 task 2.1, absorbed from WU2 on 2026-09-29).
+
+    ``0028`` declares ``version_number``, ``provider`` and ``temperature`` ``NOT NULL``, and
+    ``version_number`` has no server default: allocation happens at INSERT time or the INSERT
+    is refused. That makes the birth path part of the schema unit — a schema unit that leaves
+    the route writing ``NULL`` into a ``NOT NULL`` column has no green end state, so this
+    class lands in the same commit as the migration.
+    """
+
+    async def _post_extract(self, async_client, db_session, seed_workspace, monkeypatch, **body):
+        """POST one extraction and return ``(row, scheduled)`` for the assertions below.
+
+        The background run is replaced by a recording mock: the subject here is what the
+        route wrote at birth, not what an adapter would answer.
+        """
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(
+            db_session,
+            seeded.workspace_id,
+            provider="gemini",
+            model="gemini-2.0-flash",
+            api_key="g-workspace-key",
+        )
+        scheduled = AsyncMock()
+        monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", scheduled)
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id), **body},
+            headers=_auth_headers(str(user.id)),
+        )
+        assert response.status_code == 202, response.text
+
+        repo = SQLAlchemyExtractionRepository(db_session)
+        row = await repo.find_by_id(UUID(response.json()["extraction_id"]))
+        assert row is not None
+        return row, seeded, user, scheduled
+
+    @pytest.mark.asyncio
+    async def test_the_pending_row_is_born_with_its_version_number(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """The first run on a story is version 1, and the number exists before any task runs."""
+        row, _seeded, _user, _scheduled = await self._post_extract(
+            async_client, db_session, seed_workspace, monkeypatch
+        )
+
+        assert row.version_number == 1
+
+    @pytest.mark.asyncio
+    async def test_the_pending_row_is_born_with_the_workspace_provider(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """The provider column carries the workspace's configured provider, not a default."""
+        row, _seeded, _user, _scheduled = await self._post_extract(
+            async_client, db_session, seed_workspace, monkeypatch
+        )
+
+        assert row.provider == "gemini"
+
+    @pytest.mark.asyncio
+    async def test_an_omitted_temperature_is_recorded_as_the_default(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """No ``temperature`` in the body still stores ``0.1``, the value the adapter gets.
+
+        One literal for the default: the route reads the same constant ``LLMConfig`` uses, so
+        a row can never claim a temperature the provider did not run at.
+        """
+        row, _seeded, _user, scheduled = await self._post_extract(
+            async_client, db_session, seed_workspace, monkeypatch
+        )
+
+        assert row.temperature == 0.1
+        assert scheduled.call_args.kwargs["temperature"] == 0.1
+
+    @pytest.mark.asyncio
+    async def test_an_explicit_temperature_is_recorded_on_the_row(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """The explicit request value is what the column holds — resolved once, in the route."""
+        row, _seeded, _user, scheduled = await self._post_extract(
+            async_client, db_session, seed_workspace, monkeypatch, temperature=0.7
+        )
+
+        assert row.temperature == 0.7
+        assert scheduled.call_args.kwargs["temperature"] == 0.7
+
+    @pytest.mark.asyncio
+    async def test_prompt_config_no_longer_carries_the_temperature(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """``temperature`` has its own column now; a second copy in JSON is drift bait."""
+        row, _seeded, _user, _scheduled = await self._post_extract(
+            async_client, db_session, seed_workspace, monkeypatch
+        )
+
+        assert "temperature" not in (row.prompt_config or {})
+
+    @pytest.mark.asyncio
+    async def test_two_posts_on_one_story_mint_one_then_two(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """Two runs on one story are two versions, not one row rewritten in place.
+
+        The same caller posts twice: a second number minted under a different user would
+        prove allocation but not that the pair belongs to the one story.
+        """
+        first, seeded, user, _scheduled = await self._post_extract(
+            async_client, db_session, seed_workspace, monkeypatch
+        )
+
+        scheduled_second = AsyncMock()
+        monkeypatch.setattr(
+            "storico.api.routes.extraction.run_background_extraction", scheduled_second
+        )
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(user.id)),
+        )
+        assert response.status_code == 202, response.text
+
+        second = await SQLAlchemyExtractionRepository(db_session).find_by_id(
+            UUID(response.json()["extraction_id"])
+        )
+
+        assert (first.version_number, second.version_number) == (1, 2)
+
+
+@pytest.mark.unit
+class TestVersioningTriangulation:
+    """The edges the allocation and the default temperature are judged on (WU1 task 2.5).
+
+    Task 1.1 pins the repository and 2.1 pins the birth path; this class pins what neither can
+    see: the three runner call sites that never name a temperature, the fact that two POSTs are
+    two rows before either finishes, and that an exhausted allocation is not a silent 202.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_run_that_never_names_a_temperature_still_runs_at_the_default(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """``run_background_extraction`` without a ``temperature`` argument runs at 0.1.
+
+        The runner's public wrapper defaults to ``DEFAULT_TEMPERATURE``, so the three pre-existing
+        call sites that omit the keyword are not a hole in the one-literal rule: the adapter must
+        receive the default, not ``None``. A recording adapter is the only witness — the column
+        would happily store whatever the caller passed.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await SQLAlchemyExtractionRepository(session).create_next_version(
+                Extraction(
+                    user_story_id=seeded.story_id,
+                    model_used="llama3.2",
+                    raw_response="",
+                    provider="ollama",
+                    temperature=0.1,
+                    status=ExtractionStatus.PENDING,
+                    user_story_status=UserStoryStatus.PENDING_EXTRACTION,
+                )
+            )
+
+        seen: list[LLMConfig] = []
+
+        class RecordingLLM(LLMPort):
+            async def generate(
+                self,
+                prompt: str,  # noqa: ARG002
+                config: LLMConfig,
+                system_prompt: str | None = None,  # noqa: ARG002
+            ) -> str:
+                seen.append(config)
+                return "1. summary: Seed the schema\ndescription: Create the tables.\n"
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: RecordingLLM())
+        _make_the_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+        assert seen, "the adapter was never called, so nothing was observed"
+        assert seen[0].temperature == 0.1
+
+    @pytest.mark.asyncio
+    async def test_two_posts_are_two_rows_and_neither_is_current_until_one_finishes(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """Two POSTs leave the board populated and the current version undecided.
+
+        Each run consumes a number at birth (D22), so the story has two versions while both are
+        ``pending`` — and "current" is derived from ``status = 'completed'``, so it is ``None`` until
+        one of them finishes. The tablero does not empty when a second run starts, and it does not
+        promote a run that has not answered.
+        """
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(db_session, seeded.workspace_id, provider="ollama", model="llama3.2")
+        monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", AsyncMock())
+
+        ids = []
+        for _ in range(2):
+            response = await async_client.post(
+                f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+                json={"user_story_id": str(seeded.story_id)},
+                headers=_auth_headers(str(user.id)),
+            )
+            assert response.status_code == 202, response.text
+            ids.append(UUID(response.json()["extraction_id"]))
+
+        repo = SQLAlchemyExtractionRepository(db_session)
+        first, second = await repo.find_by_id(ids[0]), await repo.find_by_id(ids[1])
+        assert (first.version_number, second.version_number) == (1, 2)
+        assert await repo.find_current_version(seeded.story_id) is None, (
+            "a pending run was made current"
+        )
+
+        await repo.mark_completed(
+            second.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+        )
+        current = await repo.find_current_version(seeded.story_id)
+        assert current is not None and current.version_number == 2
+
+    @pytest.mark.asyncio
+    async def test_an_exhausted_allocation_is_not_silent(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """A lost race on every attempt surfaces as an error, never as a half-started run.
+
+        ``VersionAllocationConflictError`` reaches the generic ``repository_error_handler`` and
+        answers 500 ``REPOSITORY_ERROR`` **today**, and this case pins exactly that: slice (b) owns
+        the final status code and will move it, which is why the assertion names the code and not a
+        promise. The alternative — a 202 with no row to poll — is the silent failure this prevents.
+        """
+        from storico.domain.entities.exceptions import VersionAllocationConflictError
+
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(db_session, seeded.workspace_id, provider="ollama", model="llama3.2")
+
+        async def exhaust_every_attempt(*args: object, **kwargs: object) -> Extraction:
+            raise VersionAllocationConflictError("Could not allocate a version number")
+
+        monkeypatch.setattr(
+            SQLAlchemyExtractionRepository, "create_next_version", exhaust_every_attempt
+        )
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 500
+        assert response.json()["error_code"] == "REPOSITORY_ERROR"
+
+
+# ── Tasks 3.2 / 3.8 — versioning on the live runner path ────────────────────
+
+_RESPONSE_V1 = (
+    "1. summary: Write the migration\ndescription: Add the new columns.\n\n"
+    "2. summary: Seed the defaults\ndescription: Fill the config rows.\n"
+)
+_RESPONSE_V2 = "1. summary: Second-run task\ndescription: Output of version two.\n"
+
+
+class _AnsweringLLM(LLMPort):
+    """An LLM boundary that answers with a fixed transcript every call."""
+
+    def __init__(self, answer: str) -> None:
+        self.answer = answer
+        self.calls = 0
+
+    async def generate(
+        self,
+        prompt: str,  # noqa: ARG002
+        config: LLMConfig,  # noqa: ARG002
+        system_prompt: str | None = None,  # noqa: ARG002
+    ) -> str:
+        self.calls += 1
+        return self.answer
+
+
+class _RetryingAdapterLLM(_AnsweringLLM):
+    """An LLM boundary whose adapter retries internally, then answers.
+
+    Mirrors the real adapter contract: ``OllamaAdapter.generate`` loops up to three
+    attempts with backoff before it answers or raises, so the runner sees exactly one
+    ``generate`` call no matter how many times the provider was hit. The transient
+    failure here never escapes the adapter — which is precisely the case that must not
+    disturb versioning.
+    """
+
+    async def generate(
+        self,
+        prompt: str,  # noqa: ARG002
+        config: LLMConfig,  # noqa: ARG002
+        system_prompt: str | None = None,  # noqa: ARG002
+    ) -> str:
+        for attempt in range(3):
+            self.calls += 1  # counts provider attempts, not runner calls
+            try:
+                if attempt == 0:
+                    raise ConnectionError("transient provider blip, the adapter retries")
+                return self.answer
+            except ConnectionError:
+                continue  # the real adapter backs off here (1s, 2s) before retrying
+        raise LLMConnectionError("unreachable: the answer always arrives on attempt 2")
+
+
+async def _extraction_rows(session: AsyncSession, story_id: UUID) -> list[ExtractionModel]:
+    """Read the extraction rows for one story straight off the table."""
+    result = await session.execute(
+        select(ExtractionModel)
+        .where(ExtractionModel.user_story_id == story_id)
+        .order_by(ExtractionModel.version_number)
+    )
+    return list(result.scalars().all())
+
+
+async def _task_rows(session: AsyncSession, story_id: UUID) -> list[TaskModel]:
+    """Read the task rows for one story straight off the table.
+
+    The rows, not the entities a runner or a repository returned, are the witness:
+    what versioning guarantees lives in the table, not in memory.
+    """
+    result = await session.execute(
+        select(TaskModel)
+        .where(TaskModel.user_story_id == story_id)
+        .order_by(TaskModel.created_at, TaskModel.title)
+    )
+    return list(result.scalars().all())
+
+
+def _task_snapshot(row: TaskModel) -> tuple:
+    """Every column of a task row, for the byte-for-byte comparison task 3.8 needs."""
+    return (
+        row.id,
+        row.user_story_id,
+        row.extraction_id,
+        row.title,
+        row.description,
+        row.status,
+        row.priority,
+        row.labels,
+        row.dependencies,
+        row.created_at,
+        row.updated_at,
+    )
+
+
+@pytest.mark.unit
+class TestVersionedTaskRowsOnTheLivePath:
+    """What versioning guarantees when the real runner writes tasks (3.2, 3.8).
+
+    The route mints the number at birth and the runner never allocates, so the
+    invariants below should already hold on a tree where 3b-i/3b-ii-a landed — these
+    cases pin them so a future change to the runner cannot quietly break them.
+    """
+
+    async def _seed_pending(self, factory, story_id: UUID) -> Extraction:
+        """Birth one pending extraction through the allocation path."""
+        async with factory() as session:
+            return await seed_extraction(session, story_id, model_used="llama3.2")
+
+    async def _run(
+        self,
+        monkeypatch,
+        test_engine: AsyncEngine,
+        pending: Extraction,
+        seeded,
+        llm: LLMPort,
+        *,
+        max_retries: int = 0,
+    ) -> None:
+        """Run the real background task against the test engine with a fake LLM."""
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        # The subject here is the rows the runner writes, not retrieval — see the helper.
+        _make_the_vector_store_unavailable(monkeypatch)
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=max_retries,
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_retry_path_leaves_one_extraction_row_and_one_number(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A run that retries inside the LLM call never mints a second version.
+
+        The adapter's own retry loop hits the provider twice inside one ``generate``
+        call; from the runner's view it is one LLM call for one extraction id, so the
+        run must land on the row it already has — one row, one number, completed once.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+        pending = await self._seed_pending(factory, seeded.story_id)
+
+        llm = _RetryingAdapterLLM(_RESPONSE_V1)
+        await self._run(monkeypatch, test_engine, pending, seeded, llm)
+
+        assert llm.calls == 2, "the run never actually retried, so nothing was exercised"
+        async with factory() as session:
+            rows = await _extraction_rows(session, seeded.story_id)
+            tasks = await _task_rows(session, seeded.story_id)
+
+        assert len(rows) == 1
+        assert [row.version_number for row in rows] == [1]
+        assert rows[0].status == ExtractionStatus.COMPLETED
+        # The retry's tasks belong to the same run, not to some second version.
+        assert {task.extraction_id for task in tasks} == {pending.id}
+
+    @pytest.mark.asyncio
+    async def test_a_redispatch_of_the_same_extraction_mints_no_second_row_or_number(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """Re-dispatching ``run_background_extraction`` for one extraction id stays one row.
+
+        The dispatch is fire-and-forget, so a doubled ``create_task`` is the accident
+        this pins: the second dispatch runs the pipeline again for the same id, and
+        versioning must still answer with exactly one extraction row, version 1.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+        pending = await self._seed_pending(factory, seeded.story_id)
+
+        first = _AnsweringLLM(_RESPONSE_V1)
+        await self._run(monkeypatch, test_engine, pending, seeded, first)
+
+        second = _AnsweringLLM(_RESPONSE_V2)
+        await self._run(monkeypatch, test_engine, pending, seeded, second)
+
+        assert first.calls == 1 and second.calls == 1, "the re-dispatch never actually ran"
+        async with factory() as session:
+            rows = await _extraction_rows(session, seeded.story_id)
+
+        assert len(rows) == 1
+        assert [row.version_number for row in rows] == [1]
+
+    @pytest.mark.asyncio
+    async def test_every_task_row_the_completed_run_writes_carries_its_extraction_id(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """R5 read back off the table: no task row is orphaned from its run.
+
+        The rows are the witness — the entity the runner built in memory could carry
+        the id while the INSERT dropped it, and only the table decides.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+        pending = await self._seed_pending(factory, seeded.story_id)
+
+        await self._run(monkeypatch, test_engine, pending, seeded, _AnsweringLLM(_RESPONSE_V1))
+
+        async with factory() as session:
+            tasks = await _task_rows(session, seeded.story_id)
+
+        assert len(tasks) == 2
+        assert all(task.extraction_id == pending.id for task in tasks)
+        assert all(task.extraction_id is not None for task in tasks)
+
+    @pytest.mark.asyncio
+    async def test_a_v2_run_mints_new_task_rows_while_v1s_remain(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A second run adds its own task rows; v1's are neither reused nor deleted.
+
+        The two sets are disjoint by primary key and by extraction: v2's tasks are new
+        rows that belong to v2, and v1's rows still carry v1's id with v1's content.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+        v1 = await self._seed_pending(factory, seeded.story_id)
+        await self._run(monkeypatch, test_engine, v1, seeded, _AnsweringLLM(_RESPONSE_V1))
+
+        v2 = await self._seed_pending(factory, seeded.story_id)
+        await self._run(monkeypatch, test_engine, v2, seeded, _AnsweringLLM(_RESPONSE_V2))
+
+        async with factory() as session:
+            tasks = await _task_rows(session, seeded.story_id)
+
+        v1_tasks = [task for task in tasks if task.extraction_id == v1.id]
+        v2_tasks = [task for task in tasks if task.extraction_id == v2.id]
+        assert {task.title for task in v1_tasks} == {"Write the migration", "Seed the defaults"}
+        assert {task.title for task in v2_tasks} == {"Second-run task"}
+        assert {task.id for task in v1_tasks}.isdisjoint({task.id for task in v2_tasks})
+        assert len(tasks) == len(v1_tasks) + len(v2_tasks)
+
+    @pytest.mark.asyncio
+    async def test_rerunning_a_story_leaves_v1s_task_rows_byte_for_byte_untouched(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The invariant the whole slice exists for: a re-run rewrites nothing (3.8).
+
+        v1's rows are captured column-for-column before v2 runs and compared after:
+        identical. v2's tasks are new rows, the derived current version is v2, and the
+        story-level read still returns both sets.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+        v1 = await self._seed_pending(factory, seeded.story_id)
+        await self._run(monkeypatch, test_engine, v1, seeded, _AnsweringLLM(_RESPONSE_V1))
+
+        async with factory() as session:
+            before = [_task_snapshot(row) for row in await _task_rows(session, seeded.story_id)]
+        assert len(before) == 2
+
+        v2 = await self._seed_pending(factory, seeded.story_id)
+        await self._run(monkeypatch, test_engine, v2, seeded, _AnsweringLLM(_RESPONSE_V2))
+
+        async with factory() as session:
+            rows = await _task_rows(session, seeded.story_id)
+            current = await SQLAlchemyExtractionRepository(session).find_current_version(
+                seeded.story_id
+            )
+            story_read = await SQLAlchemyTaskRepository(session).list_by_story(seeded.story_id)
+
+        v1_rows = [row for row in rows if row.extraction_id == v1.id]
+        v2_rows = [row for row in rows if row.extraction_id == v2.id]
+        # v1's rows, column-for-column, are exactly what they were before v2 ran.
+        assert [_task_snapshot(row) for row in v1_rows] == before
+        assert len(v2_rows) == 1
+        assert {row.id for row in v2_rows}.isdisjoint({snapshot[0] for snapshot in before})
+        assert current is not None and current.version_number == 2
+        assert len(story_read) == 3

@@ -39,6 +39,15 @@ class DuplicateEntity(RepositoryError):
         return f"{self.entity_type} with {self.field} '{self.value}' already exists"
 
 
+class VersionAllocationConflictError(RepositoryError):
+    """Raised when a version number could not be allocated after the bounded retries.
+
+    Every attempt lost the race against a concurrent run on the same story. A distinct
+    type — not a bare ``RepositoryError`` — is what the API slice needs to map the failure
+    to its own HTTP status instead of leaving it silent inside the generic 500.
+    """
+
+
 class LLMError(Exception):
     """Base exception for all LLM-related errors."""
 

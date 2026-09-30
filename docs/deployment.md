@@ -100,6 +100,14 @@ STORICO_QDRANT_COLLECTION=storico_extractions_dev
 Medido el 2026-09-24: el `.env` local no la tenía, y el cluster tenía `storico_extractions` (19 puntos
 de verificación) y `storico_extractions_prod` (1 punto) — `storico_extractions_dev` **no existía**.
 
+**Re-medido el 2026-09-30: hoy existen las tres.** `storico_extractions_prod` 1 punto,
+`storico_extractions_dev` **1** punto (apareció: el `.env` de esta máquina ya tenía la variable puesta),
+y `storico_extractions` 19 puntos. Consecuencia que hay que leer sin eufemismos: **dev y prod comparten
+cluster**, y lo único que los separa es el nombre de colección; la colección legado de 19 puntos existe
+porque el default del adaptador (`qdrant_adapter.py:39`) es `storico_extractions` y esa fue la época en
+que el `.env` no declaraba colección. "Una colección por entorno" es separación lógica, no física. El
+hallazgo y su pendiente de diseño están en `prod.todo.md`.
+
 ### Variables de entorno requeridas
 
 Ver `.env.example` y `prod.todo.md` para la lista completa. En producción el contrato vive en
@@ -196,6 +204,39 @@ usa `%(here)s`, así que el comando funciona desde cualquier directorio; la imag
   invariante está pinneado en `backend/tests/test_unit/test_deploy_workflow_contract.py`.
 - Los deploys están **serializados** (`concurrency` en el workflow): dos a la vez competirían por el
   swap y por la migración.
+
+### Una revisión que se niega a correr sobre datos: `0028` (bloqueo **D-a-3**, 2026-09-30)
+
+El punto anterior asume que toda migración puede aplicarse a la base de producción. `0028` —el
+versionado de extracciones del slice (a) de 0.9.0, todavía en el **PR #30, sin mergear**— está escrita
+para **negarse**: lee `SELECT count(*) FROM extractions` y `FROM tasks` antes de tocar el esquema y
+lanza `RuntimeError` si alguna de las dos tiene una sola fila. Es la decisión D11 del diseño: no se
+hace backfill.
+
+Consecuencia directa sobre el mecanismo de esta sección: como `deploy-backend.yml` corre
+`alembic upgrade head` en **todo** despliegue, y producción tiene filas reales, **mergear esa rama a
+`main` deja la API abajo**. No es un fallo del workflow — es exactamente la política de "antes abajo que
+servir con un esquema que no coincide" de la que habla el bloque de arriba — pero tampoco es un
+despliegue.
+
+**Medido en la base de producción el 2026-09-30, en lectura y solo con `count(*)`:**
+`alembic_version = 0027`, **17** filas en `extractions` (11 `failed`, 6 `completed`, span
+2026-08-03 → 2026-09-24) y **42** en `tasks`, todos en `backlog`. Hasta este día la prueba citada era la
+colección de **Qdrant** `storico_extractions_prod`, que es otra tienda: la guarda lee Postgres. La
+conclusión no cambió, pero ahora la sostiene el dato de la columna que la guarda consulta.
+
+**Decidido el 2026-09-30: ventana de purga** (camino 1 de tres), **y ejecutada el mismo día ~04:28 UTC.**
+El runbook paso a paso y la evidencia de la ejecución están en `prod.todo.md`, ítem *"Bloqueo de
+despliegue"*. El `TRUNCATE` de las once tablas del esquema de negocio y el vaciado de las tres colecciones
+de Qdrant ocurrieron detrás de un interlock que comparó cada conteo con el inventario commiteado y se
+negó a borrar ante cualquier diferencia. Verificado después desde un proceso aparte: once tablas en 0,
+tres colecciones en 0 puntos, `alembic_version` todavía `0027`, `GET /api/v1/health` → `ok`. **El merge no
+se ejecutó: es decisión del owner, y hasta que aterrice no se puede correr ni una extracción en
+producción**, porque una sola fila devuelve el bloqueo que acabamos de pagar con datos.
+
+La regla general que sale de acá, para cualquier revisión futura con esta forma: **una migración que se
+niega ante datos existentes necesita su plan de datos escrito en `prod.todo.md` antes de llegar a
+`main`.** El gate de readiness no protege de esto: con la migración abortada, el job muere antes.
 
 ### Artefactos de build del frontend
 

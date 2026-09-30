@@ -23,6 +23,12 @@ class Extraction:
     user_story_id: UUID
     model_used: str
     raw_response: str
+    # Required from 0028 on: a row cannot be born with a provider nobody configured, and
+    # NOT NULL cannot tell an empty string apart from a real value — an empty string is a
+    # lie the database would accept. Required puts the failure at the type, at the
+    # earliest possible moment.
+    provider: str
+    temperature: float
     status: ExtractionStatus = field(default=ExtractionStatus.PENDING)
     user_story_status: UserStoryStatus = field(default=UserStoryStatus.PENDING_EXTRACTION)
     error_info: str | None = field(default=None)
@@ -37,3 +43,9 @@ class Extraction:
     # completion time that changed on each read, and the deliberate decision not to backfill would
     # be silently undone.
     completed_at: datetime | None = None
+    # Optional because ``None`` means "not yet minted" and "never rendered" — both honest
+    # answers: the number is minted inside the row's own INSERT (only
+    # ``create_next_version`` may set it), and the rendered prompt is written between
+    # render and generate, before any provider is contacted.
+    version_number: int | None = None
+    prompt_rendered: str | None = None

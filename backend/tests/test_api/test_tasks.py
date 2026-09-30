@@ -12,24 +12,28 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from storico.domain.entities import Task, User, UserStory
+from storico.domain.entities import User, UserStory
+from storico.domain.entities.task import TaskStatus
 from storico.infrastructure.database.repositories import (
     SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
 )
+from tests._helpers import seed_task
 
 
 class TestCreateTask:
     """POST /api/v1/tasks/"""
 
     async def test_create_task(self, authed_client, seed_workspace):
-        """POST with valid data returns 201 and a TaskResponse body.
+        """POST /api/v1/tasks/ can no longer create a row: it answers the refusal.
 
-        The story is seeded rather than a bare ``uuid4()`` so the created task is
-        addressable by the read routes, and because POST walks the same
-        ``story → project → workspace`` chain as the read routes and requires
-        membership before it persists.
+        Revision ``0028`` made ``tasks.extraction_id`` ``NOT NULL`` — every task must
+        belong to the run that extracted it — and a manually created task has no
+        extraction, so the INSERT is refused and the repository's ``RepositoryError``
+        reaches ``repository_error_handler`` as a 500 ``REPOSITORY_ERROR``. Accepted
+        for slice (a) because (a) is not deployed and slice (b) retires this route;
+        the pin keeps the retirement from hiding a silent shape change.
         """
         story_id = (await seed_workspace()).story_id
         payload = {
@@ -40,22 +44,17 @@ class TestCreateTask:
             "priority": "high",
         }
         response = await authed_client.post("/api/v1/tasks/", json=payload)
-        assert response.status_code == 201
-
-        data = response.json()
-        assert data["title"] == "Implement login"
-        assert data["description"] == "Build the login form"
-        assert data["status"] == "backlog"
-        assert data["priority"] == "high"
-        assert data["user_story_id"] == str(story_id)
-        assert data["labels"] == []
-        assert data["dependencies"] == []
-        assert "id" in data
-        assert "created_at" in data
-        assert "updated_at" in data
+        assert response.status_code == 500
+        assert response.json()["error_code"] == "REPOSITORY_ERROR"
 
     async def test_create_task_with_labels(self, authed_client, seed_workspace):
-        """POST with labels and dependencies returns them in the response."""
+        """POST /api/v1/tasks/ refuses the row for the same NOT NULL reason.
+
+        ``tasks.extraction_id`` is ``NOT NULL`` from ``0028`` and a manual creation
+        cannot satisfy it; the route answers 500 ``REPOSITORY_ERROR`` through
+        ``repository_error_handler``. Accepted for slice (a) because (a) is not
+        deployed and slice (b) retires the route.
+        """
         story_id = (await seed_workspace()).story_id
         payload = {
             "user_story_id": str(story_id),
@@ -65,11 +64,8 @@ class TestCreateTask:
             "dependencies": ["US-001"],
         }
         response = await authed_client.post("/api/v1/tasks/", json=payload)
-        assert response.status_code == 201
-
-        data = response.json()
-        assert data["labels"] == ["backend", "api"]
-        assert data["dependencies"] == ["US-001"]
+        assert response.status_code == 500
+        assert response.json()["error_code"] == "REPOSITORY_ERROR"
 
     async def test_create_task_is_forbidden_for_a_non_member(
         self, authed_client, db_session: AsyncSession, seed_workspace
@@ -142,11 +138,16 @@ class TestCreateTask:
         assert response.status_code == 404
         assert response.json()["error_code"] == "ENTITY_NOT_FOUND"
 
-    async def test_create_task_still_succeeds_for_a_member(self, authed_client, seed_workspace):
-        """POST into one's own workspace still returns 201 and reads back.
+    async def test_a_member_post_answers_the_refusal_too_and_persists_nothing(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A member's POST gets the refusal, not a 403 — and nothing persists.
 
-        The positive pin for the new authorization check: rejecting non-members
-        must not disturb the member path or make the created task unreadable.
+        The positive pin for the membership check, re-pointed when ``0028`` made the
+        creation route unable to persist: the distinction between "not a member" (403,
+        checked before persistence) and "a member the schema refuses" (500
+        ``REPOSITORY_ERROR``) must survive the refusal. Accepted for slice (a) because
+        (a) is not deployed and slice (b) retires the route.
         """
         story = await seed_workspace()
 
@@ -154,33 +155,29 @@ class TestCreateTask:
             "/api/v1/tasks/",
             json={"user_story_id": str(story.story_id), "title": "Member task"},
         )
-        assert response.status_code == 201
-        assert response.json()["title"] == "Member task"
+        assert response.status_code == 500
+        assert response.json()["error_code"] == "REPOSITORY_ERROR"
 
         listed = await authed_client.get(f"/api/v1/tasks/?user_story_id={story.story_id}")
         assert listed.status_code == 200
-        assert listed.json()["total"] == 1
-        assert listed.json()["items"][0]["title"] == "Member task"
+        assert listed.json()["total"] == 0
 
 
 class TestListTasks:
     """GET /api/v1/tasks/"""
 
-    async def test_list_tasks(self, authed_client, seed_workspace):
-        """POST one task against a seeded story, GET returns it in the items list.
+    async def test_list_tasks(self, authed_client, db_session: AsyncSession, seed_workspace):
+        """Seed one task against a seeded story, GET returns it in the items list.
 
         The "no filter" branch folds the caller's memberships into a single statement that
         joins tasks to their story and project, so the task only comes back when the whole
         chain exists. The fold itself is asserted in ``test_unfiltered_list_queries.py``.
+        Seeded through the repository: the creation route cannot persist since ``0028``
+        made ``tasks.extraction_id`` ``NOT NULL`` (the refusal is pinned in
+        ``TestCreateTask``; slice (b) retires the route).
         """
         story_id = (await seed_workspace()).story_id
-        await authed_client.post(
-            "/api/v1/tasks/",
-            json={
-                "user_story_id": str(story_id),
-                "title": "Task one",
-            },
-        )
+        await seed_task(db_session, story_id, "Task one")
 
         response = await authed_client.get("/api/v1/tasks/")
         assert response.status_code == 200
@@ -205,24 +202,14 @@ class TestListTasks:
         assert response.json()["items"] == []
         assert response.json()["total"] == 0
 
-    async def test_list_tasks_by_story(self, authed_client, seed_workspace):
+    async def test_list_tasks_by_story(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
         """GET ?user_story_id= filters tasks by user story."""
         story_a, story_b = (await seed_workspace(stories=2)).story_ids
 
-        await authed_client.post(
-            "/api/v1/tasks/",
-            json={
-                "user_story_id": str(story_a),
-                "title": "Story A task",
-            },
-        )
-        await authed_client.post(
-            "/api/v1/tasks/",
-            json={
-                "user_story_id": str(story_b),
-                "title": "Story B task",
-            },
-        )
+        await seed_task(db_session, story_a, "Story A task")
+        await seed_task(db_session, story_b, "Story B task")
 
         response = await authed_client.get(f"/api/v1/tasks/?user_story_id={story_b}")
         assert response.status_code == 200
@@ -257,12 +244,9 @@ class TestListTasksPagination:
                 raw_text="As a user, I want the paged feature so that value",
             )
         )
-        repo = SQLAlchemyTaskRepository(db_session)
         titles = [f"task {day}" for day in range(1, count + 1)]
         for day, title in enumerate(titles, start=1):
-            await repo.save(
-                Task(user_story_id=story.id, title=title, created_at=datetime(2026, 1, day))
-            )
+            await seed_task(db_session, story.id, title, created_at=datetime(2026, 1, day))
         return seeded.workspace_id, story.id, titles
 
     async def test_no_filter_returns_the_full_total(
@@ -290,10 +274,9 @@ class TestListTasksPagination:
                 raw_text="As a user, I want the second feature so that value",
             )
         )
-        task_repo = SQLAlchemyTaskRepository(db_session)
-        await task_repo.save(Task(user_story_id=story_a.id, title="task 1"))
-        await task_repo.save(Task(user_story_id=story_a.id, title="task 2"))
-        await task_repo.save(Task(user_story_id=story_b.id, title="task 3"))
+        await seed_task(db_session, story_a.id, "task 1")
+        await seed_task(db_session, story_a.id, "task 2")
+        await seed_task(db_session, story_b.id, "task 3")
 
         response = await authed_client.get("/api/v1/tasks/?page=1&size=2")
 
@@ -333,10 +316,9 @@ class TestListTasksPagination:
                 raw_text="As a user, I want the second feature so that value",
             )
         )
-        task_repo = SQLAlchemyTaskRepository(db_session)
-        await task_repo.save(Task(user_story_id=story_a.id, title="task 1"))
-        await task_repo.save(Task(user_story_id=story_a.id, title="task 2"))
-        await task_repo.save(Task(user_story_id=story_b.id, title="task 3"))
+        await seed_task(db_session, story_a.id, "task 1")
+        await seed_task(db_session, story_a.id, "task 2")
+        await seed_task(db_session, story_b.id, "task 3")
 
         response = await authed_client.get("/api/v1/tasks/?page=9&size=2")
 
@@ -418,21 +400,14 @@ class TestListTasksPagination:
 class TestGetTask:
     """GET /api/v1/tasks/{task_id}"""
 
-    async def test_get_task(self, authed_client, seed_workspace):
-        """POST then GET by id returns the task."""
+    async def test_get_task(self, authed_client, db_session: AsyncSession, seed_workspace):
+        """Seed a task then GET by id returns it."""
         story_id = (await seed_workspace()).story_id
-        create_resp = await authed_client.post(
-            "/api/v1/tasks/",
-            json={
-                "user_story_id": str(story_id),
-                "title": "Target task",
-            },
-        )
-        task_id = create_resp.json()["id"]
+        task = await seed_task(db_session, story_id, "Target task")
 
-        response = await authed_client.get(f"/api/v1/tasks/{task_id}")
+        response = await authed_client.get(f"/api/v1/tasks/{task.id}")
         assert response.status_code == 200
-        assert response.json()["id"] == task_id
+        assert response.json()["id"] == str(task.id)
         assert response.json()["title"] == "Target task"
 
     async def test_get_task_not_found(self, authed_client):
@@ -446,29 +421,28 @@ class TestGetTask:
 class TestUpdateTask:
     """PUT /api/v1/tasks/{task_id}"""
 
-    async def test_update_task(self, authed_client, seed_workspace):
-        """POST then PUT updates the task fields.
+    async def test_update_task(self, authed_client, db_session: AsyncSession, seed_workspace):
+        """Seed a task then PUT updates the task fields.
 
         The task starts in ``todo`` because the Kanban state machine only allows
         ``todo → in_progress``: a task created in ``backlog`` cannot legally reach
         ``in_progress`` in one step, and that rejection is a separate contract from
-        the field updates this test is about.
+        the field updates this test is about. Seeded through the repository: the
+        creation route cannot persist since ``0028`` made ``tasks.extraction_id``
+        ``NOT NULL``.
         """
         story_id = (await seed_workspace()).story_id
-        create_resp = await authed_client.post(
-            "/api/v1/tasks/",
-            json={
-                "user_story_id": str(story_id),
-                "title": "Before",
-                "description": "Old desc",
-                "status": "todo",
-                "priority": "low",
-            },
+        task = await seed_task(
+            db_session,
+            story_id,
+            "Before",
+            description="Old desc",
+            status=TaskStatus.TODO,
+            priority="low",
         )
-        task_id = create_resp.json()["id"]
 
         response = await authed_client.put(
-            f"/api/v1/tasks/{task_id}",
+            f"/api/v1/tasks/{task.id}",
             json={
                 "title": "After",
                 "description": "New desc",
@@ -483,9 +457,11 @@ class TestUpdateTask:
         assert data["description"] == "New desc"
         assert data["status"] == "in_progress"
         assert data["priority"] == "high"
-        assert data["id"] == task_id
+        assert data["id"] == str(task.id)
 
-    async def test_update_task_rejects_invalid_transition(self, authed_client, seed_workspace):
+    async def test_update_task_rejects_invalid_transition(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
         """PUT with a forbidden Kanban move returns the canonical 400 payload.
 
         ``todo -> done`` skips ``in_progress`` and ``review``, so the state machine
@@ -497,18 +473,10 @@ class TestUpdateTask:
         wire format without failing this test.
         """
         story_id = (await seed_workspace()).story_id
-        create_resp = await authed_client.post(
-            "/api/v1/tasks/",
-            json={
-                "user_story_id": str(story_id),
-                "title": "Cannot skip review",
-                "status": "todo",
-            },
-        )
-        task_id = create_resp.json()["id"]
+        task = await seed_task(db_session, story_id, "Cannot skip review", status=TaskStatus.TODO)
 
         response = await authed_client.put(
-            f"/api/v1/tasks/{task_id}",
+            f"/api/v1/tasks/{task.id}",
             json={"status": "done"},
         )
 
@@ -530,25 +498,19 @@ class TestUpdateTask:
         }
 
         # The rejected write must not have reached persistence.
-        fetched = await authed_client.get(f"/api/v1/tasks/{task_id}")
+        fetched = await authed_client.get(f"/api/v1/tasks/{task.id}")
         assert fetched.json()["status"] == "todo"
 
-    async def test_update_task_labels(self, authed_client, seed_workspace):
-        """POST with labels, PUT with different labels, verify updated."""
+    async def test_update_task_labels(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """Seed a task with labels, PUT with different labels, verify updated."""
         story_id = (await seed_workspace()).story_id
-        create_resp = await authed_client.post(
-            "/api/v1/tasks/",
-            json={
-                "user_story_id": str(story_id),
-                "title": "Labeled task",
-                "labels": ["backend", "database"],
-            },
-        )
-        task_id = create_resp.json()["id"]
+        task = await seed_task(db_session, story_id, "Labeled task", labels=["backend", "database"])
 
         # Update labels
         response = await authed_client.put(
-            f"/api/v1/tasks/{task_id}",
+            f"/api/v1/tasks/{task.id}",
             json={"labels": ["frontend", "ui"]},
         )
         assert response.status_code == 200
@@ -558,23 +520,16 @@ class TestUpdateTask:
 class TestDeleteTask:
     """DELETE /api/v1/tasks/{task_id}"""
 
-    async def test_delete_task(self, authed_client, seed_workspace):
-        """POST then DELETE returns 204."""
+    async def test_delete_task(self, authed_client, db_session: AsyncSession, seed_workspace):
+        """Seed a task then DELETE returns 204."""
         story_id = (await seed_workspace()).story_id
-        create_resp = await authed_client.post(
-            "/api/v1/tasks/",
-            json={
-                "user_story_id": str(story_id),
-                "title": "To delete",
-            },
-        )
-        task_id = create_resp.json()["id"]
+        task = await seed_task(db_session, story_id, "To delete")
 
-        response = await authed_client.delete(f"/api/v1/tasks/{task_id}")
+        response = await authed_client.delete(f"/api/v1/tasks/{task.id}")
         assert response.status_code == 204
 
         # Verify it's gone
-        get_resp = await authed_client.get(f"/api/v1/tasks/{task_id}")
+        get_resp = await authed_client.get(f"/api/v1/tasks/{task.id}")
         assert get_resp.status_code == 404
 
     async def test_delete_task_not_found(self, authed_client):

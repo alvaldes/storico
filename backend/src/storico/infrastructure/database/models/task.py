@@ -23,6 +23,12 @@ class TaskModel(Base):
     user_story_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("user_stories.id", ondelete="CASCADE"), nullable=False
     )
+    # Every task extracted by a run belongs to that run (revision 0028). The manual
+    # ``POST /api/v1/tasks/`` route cannot satisfy this and answers 500 until slice (b)
+    # retires it.
+    extraction_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("extractions.id", ondelete="CASCADE"), nullable=False
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[TaskStatus] = mapped_column(
@@ -48,6 +54,7 @@ class TaskModel(Base):
     __table_args__ = (
         Index("ix_tasks_user_story_id", "user_story_id"),
         Index("idx_tasks_status", "status"),
+        Index("ix_tasks_extraction_id", "extraction_id"),
     )
 
     user_story: Mapped["UserStoryModel"] = relationship(  # noqa: F821, UP037

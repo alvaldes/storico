@@ -21,14 +21,14 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from storico.domain.entities import Extraction, Project, Task, UserStory
+from storico.domain.entities import Project, UserStory
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserStoryRepository,
 )
-from tests._helpers import create_workspace
+from tests._helpers import create_workspace, seed_extraction, seed_task
 
 
 @pytest_asyncio.fixture
@@ -95,9 +95,9 @@ async def test_tasks_span_the_requested_workspaces_only(db_session: AsyncSession
     beta, beta_story = await chain("Beta")
     _, gamma_story = await chain("Gamma")
 
-    await repo.save(Task(user_story_id=alpha_story.id, title="Alpha task"))
-    await repo.save(Task(user_story_id=beta_story.id, title="Beta task"))
-    await repo.save(Task(user_story_id=gamma_story.id, title="Gamma task"))
+    await seed_task(db_session, alpha_story.id, "Alpha task")
+    await seed_task(db_session, beta_story.id, "Beta task")
+    await seed_task(db_session, gamma_story.id, "Gamma task")
 
     found, total = await repo.list_page(workspace_ids=[alpha.id, beta.id], limit=10, offset=0)
 
@@ -121,13 +121,9 @@ async def test_extractions_span_the_requested_workspaces_only(
     beta, beta_story = await chain("Beta")
     _, gamma_story = await chain("Gamma")
 
-    for story, model in ((alpha_story, "alpha-model"), (beta_story, "beta-model")):
-        await repo.save(
-            Extraction(user_story_id=story.id, model_used=model, raw_response="1. summary: s")
-        )
-    await repo.save(
-        Extraction(user_story_id=gamma_story.id, model_used="gamma-model", raw_response="x")
-    )
+    await seed_extraction(db_session, alpha_story.id, model_used="alpha-model")
+    await seed_extraction(db_session, beta_story.id, model_used="beta-model")
+    await seed_extraction(db_session, gamma_story.id, model_used="gamma-model")
 
     found, total = await repo.list_page(workspace_ids=[alpha.id, beta.id], limit=10, offset=0)
 
