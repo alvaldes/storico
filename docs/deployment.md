@@ -225,14 +225,29 @@ despliegue.
 colección de **Qdrant** `storico_extractions_prod`, que es otra tienda: la guarda lee Postgres. La
 conclusión no cambió, pero ahora la sostiene el dato de la columna que la guarda consulta.
 
-**Decidido el 2026-09-30: ventana de purga** (camino 1 de tres), **y ejecutada el mismo día ~04:28 UTC.**
-El runbook paso a paso y la evidencia de la ejecución están en `prod.todo.md`, ítem *"Bloqueo de
-despliegue"*. El `TRUNCATE` de las once tablas del esquema de negocio y el vaciado de las tres colecciones
-de Qdrant ocurrieron detrás de un interlock que comparó cada conteo con el inventario commiteado y se
-negó a borrar ante cualquier diferencia. Verificado después desde un proceso aparte: once tablas en 0,
-tres colecciones en 0 puntos, `alembic_version` todavía `0027`, `GET /api/v1/health` → `ok`. **El merge no
-se ejecutó: es decisión del owner, y hasta que aterrice no se puede correr ni una extracción en
-producción**, porque una sola fila devuelve el bloqueo que acabamos de pagar con datos.
+**Decidido y EJECUTADO el 2026-09-30: ventana de purga, merge y deploy.** El runbook, el inventario y la
+verificación paso a paso están en `prod.todo.md`, ítem *"Bloqueo de despliegue"*. Resumen de lo real:
+
+1. **Purga** (~04:28 UTC) detrás de un interlock que negó a ejecutar el `TRUNCATE` si los once conteos,
+   `alembic_version` y los tres conteos de Qdrant no coincidían con el inventario commiteado. Una
+   transacción `RESTART IDENTITY CASCADE` sobre las once tablas del esquema de negocio, `points/delete`
+   en las tres colecciones. Verificado desde un proceso aparte: todo en 0, `alembic_version` aún `0027`.
+2. **Merge** de PR #30 a `main` (`1dcc716`), con **merge commit** y no squash: la convención de `main` son
+   merge commits (`#24`-`#29`), y squashar habría colapsado los doce work-unit commits que son la unidad
+   revisable de esta rama.
+3. **Deploy** `run 36675276096` → `success` en 2m1s. Como `0028` corrió sobre bases vacías, la guarda no
+   disparó.
+4. **Verificación en el Neon de producción, en lectura:** `alembic_version = 0028`, `task_invalidations`
+   existe, `fk_task_invalidations_revoked_by_users` con `ON DELETE RESTRICT` (la corrección de la task 4.4,
+   que CI había probado en su Postgres pero nunca en éste), `uq_extractions_story_version`,
+   `uq_task_invalidations_active_task`, `tasks.extraction_id NOT NULL`, once tablas en 0, y
+   `/api/v1/health` → `ok`.
+
+**El efecto secundario que ninguna migración avisa:** con `workspace_llm_configs` vacío,
+`resolve_llm_config` (`api/routes/workspace_settings.py:121-129`) cae a `provider = "ollama"` y al host de
+Ollama, que no existe en producción. La app queda viva pero **incapaz de extraer hasta que se re-creé el
+config en Configuración**; las dos `api_key` que había se perdieron a propósito y eran sus únicas copias.
+Un plan de purga tiene que nombrar también esto, no sólo las tablas.
 
 La regla general que sale de acá, para cualquier revisión futura con esta forma: **una migración que se
 niega ante datos existentes necesita su plan de datos escrito en `prod.todo.md` antes de llegar a

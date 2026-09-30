@@ -71,11 +71,11 @@ Prerrequisitos que, si faltan, rompen algo en silencio o fallan recién en produ
 Este archivo lo mantiene quien despliega. Si un ítem se cierra, se marca acá y se deja el detalle en
 el documento que le corresponda — no se abre una segunda lista.
 
-## Bloqueo de despliegue (**D-a-3**): la purga se ejecutó; queda el merge
+## Bloqueo de despliegue (**D-a-3**): **CERRADO** — purga, merge y deploy verificados el 2026-09-30
 
 **Descubierto el 2026-09-30, al cerrar el slice (a) de versionado de extracciones (PR #30). Ningún
-otro archivo de este repo lo decía. La purga se ejecutó el mismo día 2026-09-30 ~04:28 UTC; lo que
-queda es el merge, que es decisión del owner.**
+otro archivo de este repo lo decía. Cerrado el mismo día: purga ~04:28 UTC, merge `1dcc716`, deploy
+`run 36675276096` success.**
 
 `0028_extraction_versioning` lee `SELECT count(*) FROM extractions` y `SELECT count(*) FROM tasks`
 antes de tocar el esquema, y **lanza `RuntimeError` si alguna de las dos tablas tiene una fila**
@@ -173,9 +173,28 @@ merge aplique `0028`**. No lo probé porque probarlo es escribir, y escribir aho
 dispara `deploy-backend.yml`, `alembic upgrade head` corre `0028` sobre bases vacías y pasa la guarda.
 Después: `alembic_version` = `0028`, `task_invalidations` existe, once tablas en 0, tres colecciones en 0.
 
-🔲 **Pendiente posterior, y es de uso:** re-cargar la clave de AI Studio y la de nan.builders en
-Configuración (se perdieron a propósito, ver arriba), y crear workspace/proyecto/historia de nuevo. El
-primer login ya crea workspace personal + rol admin solo.
+~~⚠️ **No correr extracciones en producción hasta el merge.**~~ **Hecho: el merge entró (`1dcc716`) y el
+deploy aplicó `0028`.** La restricción dejó de tener efecto en el momento en que la guarda dejó de estar
+en el camino: `0028` ya corrió, así que una extracción nueva ya no recrea el bloqueo. Lo que sí sigue
+bloqueando es la credencial, abajo.
+
+🔲 **Pendiente posterior, y es de uso — ahora con un detalle que no era obvio: la app no tiene cómo
+extraer hasta que alguien cree un config.** Re-cargar la clave de AI Studio y la de nan.builders en
+Configuración. No es un capricho: `resolve_llm_config` (`api/routes/workspace_settings.py:121-129`)
+cuando el workspace **no tiene fila de config** devuelve `provider = "ollama"` con
+`base_url = settings.ollama_host`, y en producción Ollama no existe (`health/services` → `ollama:
+not reachable`, scope optional). O sea que el default tras la purga es **un proveedor inalcanzable**: la
+primera extracción falla por configuración, no por código. Crear el config (`gemini` + `gemini-2.5-flash`
++ la clave de AI Studio) es el paso que destraba la app. El proveedor `Nan` se recrea con su nombre,
+`api.nan.builders` y su clave. Y hace falta loguearse de nuevo: no hay ni `users` ni workspaces.
+
+✅ **Cierre verificado (2026-09-30, post-deploy, lectura):** `alembic_version = 0028`,
+`task_invalidations` existe con `fk_task_invalidations_revoked_by_users ... ON DELETE RESTRICT` — la
+task 4.4 y la opción A del owner, ahora probada en el Postgres de producción y no sólo en el de CI —,
+`uq_extractions_story_version`, `uq_task_invalidations_active_task` (parcial, `WHERE revoked_at IS
+NULL`), `ck_task_invalidations_revoke_pair` y `ck_task_invalidations_reason_not_blank` presentes,
+`tasks.extraction_id` `NOT NULL`, once tablas todavía en 0, y `/api/v1/health` → `ok` (`database ok`,
+`schema ok`, versión `0.8.0`: **no se bumpeó, eso sigue siendo decisión del owner**).
 
 🔲 **No hace falta tocar la VM ni el `.env`:** `STORICO_ENCRYPTION_KEY` sigue ahí y ahora no tiene
 ningún ciphertext que desencriptar; `STORICO_GOOGLE_API_KEY` sí sigue sirviendo, para el embedding.

@@ -604,14 +604,23 @@ declare the unreconstructable values; or hold the PR until the thesis evaluation
 of its own. The chosen path 1 was later widened to wipe Qdrant too, and its backup step was
 replaced by a measured inventory at the owner's call.
 
-**Chosen 2026-09-30 by the owner: path 1, the purge window — and EXECUTED the same day (~04:28 UTC).**
-The runbook lives in `prod.todo.md`. The wipe happened behind an interlock that refused to run unless
-eleven table counts, `alembic_version` and three Qdrant counts matched the inventory committed at
-`9a5086c`; then one transaction truncated the eleven tables (`RESTART IDENTITY CASCADE`) and three
-`points/delete?wait=true` calls emptied all three collections. Verified from a separate process: eleven
-tables at 0, three collections at 0 points, `alembic_version` still `0027`, `task_invalidations` still
-absent, `GET /api/v1/health` → `ok`. **The merge has not been executed** — it is the owner's call, and
-until it lands nothing may run an extraction in production, because one row re-creates this blocker.
+**Chosen 2026-09-30 by the owner: path 1, the purge window — EXECUTED, MERGED and DEPLOYED the same
+day.** The runbook, the inventory and the verification live in `prod.todo.md`. Sequence: an interlock
+refused to run unless eleven table counts, `alembic_version` and three Qdrant point counts matched the
+inventory committed at `9a5086c`; one transaction truncated the eleven tables (`RESTART IDENTITY
+CASCADE`); three `points/delete?wait=true` calls emptied the three collections; verified from a separate
+process (all zero, `alembic_version` still `0027`). PR #30 then merged to `main` as a **merge commit**
+(`1dcc716`) — `main`'s convention is merge commits, and squashing would have collapsed the twelve
+work-unit commits that are this branch's reviewable unit. Deploy `run 36675276096` succeeded and applied
+`0028` over an empty pair. Production schema verified read-only: `alembic_version = 0028`,
+`task_invalidations` present with `fk_task_invalidations_revoked_by_users ... ON DELETE RESTRICT`,
+`uq_extractions_story_version`, `uq_task_invalidations_active_task`, `tasks.extraction_id NOT NULL`.
+
+**Side effect no migration warns about, and it is not in this change's scope to fix:** with
+`workspace_llm_configs` empty, `resolve_llm_config` (`api/routes/workspace_settings.py:121-129`) falls
+back to `provider = "ollama"` and the Ollama host, which production does not run. The API is healthy but
+cannot extract until someone recreates the workspace LLM config; the two stored `api_key` values were
+destroyed knowingly and were their only copies. Filed in `prod.todo.md`.
 
 **And the premise was measured, in the store the guard actually reads.** Until 2026-09-30 this section
 cited the **Qdrant** collection `storico_extractions_prod` as the proof that production holds data, but

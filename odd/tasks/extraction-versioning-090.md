@@ -117,7 +117,22 @@ on the spec's earlier verification pass, not on new commits.
   Custom providers have free-form names by design (`0021`); only reserved names are refused.
 - [ ] 15. Smaller real item that survived the correction: deleting a `custom_providers` row would leave
   the `workspace_llm_configs` rows naming it without an FK to complain — `provider` is a plain string.
-  Harmless at 1 row and 4 configs; look at it if a custom provider is ever deleted.
+  Harmless at 1 row and 4 configs; look at it if a custom provider is ever deleted. **After the purge
+  this one is moot in production** (both tables are empty); it still matters for any environment that
+  keeps data.
+- [x] 16. **Merge + deploy + production verification — DONE 2026-09-30** under the owner's "haz tú el
+  merge y todo lo que queda". PR #30 merged as merge commit `1dcc716` (repo convention; squash would
+  have collapsed the twelve work-unit commits), deploy run 36675276096 `success`, CI on `main` run
+  36675276085 `success`, and `0028` verified by reading production Neon: `alembic_version = 0028`,
+  `task_invalidations` with the revoker FK `ON DELETE RESTRICT`, both unique/partial indexes,
+  `tasks.extraction_id NOT NULL`, eleven tables still at 0, health `ok`.
+- [ ] 17. **Not done, and deliberately not done by me:** `make bump` (release is the owner's call; all
+  three manifests and `/api/v1/health` still say `0.8.0`, and `0.9.0` is planned as three slices with one
+  shipped) and `openspec archive extraction-versioning-schema` (the CLI is neither installed nor a project
+  dependency here; hand-moving the directory would apply spec deltas without the tool).
+- [ ] 18. **Operational, needs the owner's hands:** log in again, then create the workspace LLM config in
+  Configuración before any extraction — `resolve_llm_config` falls back to `provider = "ollama"` and
+  production has no Ollama. The two api_key values must come from the AI Studio and nan.builders consoles.
 - [ ] 11. Apply slice (b) `extraction-versioning-api` **after (a) merges** — it inherits **D-a-1** as a
   named requirement (re-dispatch duplicates task rows, `extraction_task.py:441`).
 - [ ] 12. Apply slice (c) `extraction-versioning-prompt`.
@@ -278,13 +293,18 @@ Written for a session that starts with nothing in context. Read in this order: t
 
 | | |
 | --- | --- |
-| PR | **#30** — <https://github.com/alvaldes/storico/pull/30> — base `main`, **OPEN, NOT MERGED**. Its body still describes `4.4` as open and cites "15 commits / 38 files": both are stale as of `7e3aa6e`, and updating it is the owner's call |
+| PR | **#30** — <https://github.com/alvaldes/storico/pull/30> — base `main`, **MERGED 2026-09-30 as merge commit `1dcc716`**. Its body was updated before the merge to record D-a-2 closed, D-a-4 opened and D-a-3 chosen-but-unexecuted with measured numbers, which is why `mergeable=CLEAN` never read as "safe to merge" |
+| Deploy | `deploy-backend.yml` run **36675276096** → `success` (2m1s) on `1dcc716`; CI on `main` run 36675276085 → `success`. `0028` verified in production Neon, read-only: see "Deployed" below |
 | Branch | `feat/extraction-versioning-schema-wu1`. **Deliberately not pinned to its own HEAD sha or commit count** — a commit cannot truthfully cite the sha it is creating. Measure at review time: `git rev-list --count main..HEAD` and `git diff --shortstat $(git merge-base main HEAD)..HEAD`. Two counts were wrong here before this note (the PR body's "15 commits / 38 files" and this table's "21 commits"), which is why the commands replaced the numbers |
 | Last measured | at `7e3aa6e`: **26** commits over `main` `1737708`, `41 files changed, 5027 insertions(+), 1001 deletions(-)` |
 | CI on `382a9c5` | **`1064 passed, 18 skipped`** (run 36658068793) — the same 15 integration cases as the earlier run, now including the renamed revoker-FK case, so `RESTRICT` is observed and not inferred |
 | Local suite | `1049 passed, 33 deselected`, 0 failed · `ruff check`/`format --check` exit 0 |
 | Open tasks in the change | **none** — 4.4 closed 2026-09-30; 1.1–1.20, 2.1–2.6, 3.1–3.9, 4.1–4.5 and 5.1–5.6 are closed |
-| Blocked on | **only the merge** — the D-a-3 wipe executed 2026-09-30 ~04:28 UTC: 11 tables at 0, 3 Qdrant collections at 0, `alembic_version` still `0027`, health `ok` |
+| Blocked on | **nothing** — D-a-3 closed end to end: interlock → wipe → merge → deploy → verification |
+| Deployed | production now runs `0028`: `alembic_version = 0028`, `task_invalidations` exists with `fk_task_invalidations_revoked_by_users ... ON DELETE RESTRICT`, `uq_extractions_story_version`, partial `uq_task_invalidations_active_task`, `ck_task_invalidations_revoke_pair`, `tasks.extraction_id NOT NULL`; eleven business tables at 0; three Qdrant collections at 0 points; `/api/v1/health` → `ok` |
+| Not bumped | version is still `0.8.0` in all three manifests and in `/api/v1/health`. **No `make bump`**: publishing a release is the owner's call, and `0.9.0` is planned as three slices with only (a) shipped |
+| Needs a human | re-create the workspace LLM config in Configuración before any extraction: `resolve_llm_config` (`api/routes/workspace_settings.py:121-129`) falls back to `provider = "ollama"` + `settings.ollama_host` when a workspace has no config row, and production has no Ollama. Also: log in again (no `users` rows), and the AI Studio / nan.builders keys must come from their consoles |
+| Archive not done | `openspec` is neither installed nor a project dependency here. `openspec/changes/extraction-versioning-schema/` stays where it is: moving it by hand would apply its spec deltas without the tool |
 | Not authorized | slice (b) `extraction-versioning-api`, slice (c) `extraction-versioning-prompt` |
 | Receipt-driven development | still **off** in this clone; no native review ran on any tranche |
 
@@ -434,9 +454,15 @@ to assert more than the code does.
    `status` question no longer applies.
    ⚠️ **Until the merge lands, nothing may run an extraction in production.** `0028`'s guard fires on
    *any* row, so a single extraction re-creates the exact blocker that was just paid for in data.
-4. **Mergear** — la decisión sigue siendo del owner. Con once tablas en cero, `deploy-backend.yml` corre
-   `alembic upgrade head`, `0028` pasa la guarda sobre bases vacías y `task_invalidations` nace. Después
-   hay que re-cargar en Configuración las claves de AI Studio y nan.builders (se perdieron a propósito).
+4. ~~**Mergear**~~ **DONE 2026-09-30, authorized by the owner ("haz tú el merge y todo lo que queda").**
+   Merged as a **merge commit** (`1dcc716`), not squash: `main`'s history is merge commits (`#24`–`#29`),
+   and squashing would have collapsed the twelve work-unit commits that are this branch's reviewable
+   unit. Deploy `run 36675276096` → `success`; CI on `main` → `success`. Verified in production read-only:
+   `alembic_version = 0028`, `task_invalidations` with the revoker FK `ON DELETE RESTRICT`,
+   `uq_extractions_story_version`, `uq_task_invalidations_active_task`, `tasks.extraction_id NOT NULL`,
+   eleven tables still at 0, health `ok`. **Deliberately not done: `make bump`** (release decision, and
+   `0.9.0` is three slices with one shipped) **and `openspec archive`** (CLI not installed; hand-moving
+   the change would apply spec deltas without the tool).
 4. Slice (b) then needs its own apply authorization, carrying **three** named requirements: **D-a-1**
    (re-dispatch duplicates task rows), **D-a-4** (the account-delete 500), and retiring
    `POST /api/v1/tasks/`, which slice (a) currently pins as a 500 refusal (`tasks.extraction_id NOT
@@ -453,8 +479,8 @@ Everything above stays true. This is what changed in the session that closed 4.4
 **Two owner decisions, both taken inside the session's question round:**
 
 - **D-a-3 → path 1, the purge window, scope chosen by the owner 2026-09-30:** **the whole business
-  schema, configs and prompts included, plus all three Qdrant collections — and no backup.** Nothing was
-  executed yet; `prod.todo.md` carries the runbook, whose backup step became a measured inventory.
+  schema, configs and prompts included, plus all three Qdrant collections — and no backup.** Executed the
+  same day, then merged and deployed; `prod.todo.md` carries the runbook and the verification.
   The chosen scope is wider than `0028` needs: `0028` only requires `tasks` and `extractions` to be empty,
   and the owner also asked for `users`, `workspaces`, `workspace_members`, `projects`, `user_stories`,
   `workspace_llm_configs`, `workspace_prompts` and `custom_providers`, i.e. 11 tables and 21 vector points.
