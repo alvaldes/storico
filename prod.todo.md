@@ -92,7 +92,7 @@ misma cosa: la guarda de `0028` cuenta las tablas **relacionales** de Neon. Cone
 | `extractions` | **17** (11 `failed`, 6 `completed`; span 2026-08-03 → 2026-09-24) |
 | `tasks` | **42**, todos en `status = backlog` |
 | `user_stories` / `projects` / `users` / `workspaces` | 6 / 3 / 3 / 4 |
-| `workspace_llm_configs` | 4, ninguna con `provider` NULL |
+| `workspace_llm_configs` | 4 — una referencia el proveedor personalizado `'Nan'`, con API key cifrada, `temperature 0.1`, `max_tokens 2048` |
 | `task_invalidations` | **la tabla no existe** (consecuencia natural de estar en `0027`) |
 
 Cada número salió de dos caminos SQL independientes que coinciden; donde no coincidían, la sonda se
@@ -208,13 +208,26 @@ la purga vectorial tiene que nombrar las tres colecciones explícitamente, no "l
 verdad, o se usa un cluster/API key distinto para dev, o se documenta que la separación es sólo de
 nombre y se controla por ahí.
 
-### Hallazgo lateral: un `provider` de producción vale literalmente `'Nan'`
+### Corrección a un "hallazgo" que no era hallazgo: el `provider = 'Nan'` es legítimo
 
-Medido de paso, y verificado por `md5()` + `length()` sin imprimir valores: una de las cuatro filas de
-`workspace_llm_configs` tiene `provider = 'Nan'`, y es el config al que caen los 2 runs con
-`model_used = qwen3.8-flash`. Alguien guardó un `NaN` stringificado. No lo detecta ningún test: la
-columna acepta cualquier string de hasta 50. Queda como pendiente propio, ajeno a `0.9.0`.
+La versión anterior de esta sección afirmaba que alguien había guardado un `NaN` stringificado, y
+abría un pendiente de validación. **Estaba mal.** Medido después, contra la tabla que define el valor:
+`custom_providers` tiene **una** fila, su `name` mide 3 caracteres y su `md5()` es idéntico al de
+`'Nan'`, y **exactamente una** fila de `workspace_llm_configs` referencia ese nombre (`provider =
+cp.name`). No hay `psql` ni Docker acá, pero sí hay lectura: la fila trae `api_key` cifrada (123
+ caracteres de ciphertext Fernet), `temperature = 0.1` y `max_tokens = 2048`.
 
-🔲 **Pendiente:** validar `provider` contra el enumerado de proveedores en la escritura de
-`workspace_llm_configs`, o decidir si `'Nan'` es un valor admisible. Detalle arriba, en el hallazgo
-lateral de D-a-3.
+O sea que `'Nan'` es un **proveedor personalizado creado por el owner** — `custom_providers` es una
+feature desde la revisión `0021`, su `name` es texto libre y lo único que se rechaza son los nombres
+reservados (`_reject_reserved_provider_name`, `routes/workspace_settings.py:264`). Es el proveedor al
+que caen los 2 runs con `model_used = qwen3.8-flash`, y eso lo explica todo: los otros 15 runs usan
+proveedores built-in.
+
+**Lección, porque es la segunda vez en dos días que acuso un dato sin leer la tabla que lo define:**
+antes de llamar defecto a un valor raro, hay que buscar dónde se crea ese valor. Un `String(50)` que
+acepta cualquier cosa no es la prueba de que nadie lo validó; puede ser que no haya nada que validar.
+
+🔲 **Pendiente real que queda, y es chiquito:** no hay evidencia de que borrar un `custom_providers`
+fila deje huérfanas las `workspace_llm_configs` que lo nombran — `provider` es un string plano, sin FK.
+Hoy no pasa nada con 1 fila y 4 configs. Si algún día se borra un proveedor personalizado, hay que
+mirar si los configs que lo nombran siguen siendo seleccionables.

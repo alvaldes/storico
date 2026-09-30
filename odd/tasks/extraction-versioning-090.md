@@ -111,8 +111,13 @@ on the spec's earlier verification pass, not on new commits.
 - [ ] 13. **D-a-4** — `DELETE /api/v1/users/me` (`api/routes/settings.py:335`) has no `IntegrityError`
   mapping, so once a revocation row can exist the refusal is an HTTP 500. Belongs to slice (b), with the
   route's first DELETE-verb test.
-- [ ] 14. **Production `workspace_llm_configs.provider = 'Nan'`** — one of four rows, md5-verified, not a
-  tool artifact. Outside 0.9.0; waiting on a decision about what should validate that column.
+- [x] 14. ~~Production `workspace_llm_configs.provider = 'Nan'`~~ — **withdrawn, it was never a defect.**
+  Measured against the table that defines the value: `custom_providers` holds one row whose `name` md5
+  equals md5('Nan'), and one `workspace_llm_configs` row references it with a real encrypted key.
+  Custom providers have free-form names by design (`0021`); only reserved names are refused.
+- [ ] 15. Smaller real item that survived the correction: deleting a `custom_providers` row would leave
+  the `workspace_llm_configs` rows naming it without an FK to complain — `provider` is a plain string.
+  Harmless at 1 row and 4 configs; look at it if a custom provider is ever deleted.
 - [ ] 11. Apply slice (b) `extraction-versioning-api` **after (a) merges** — it inherits **D-a-1** as a
   named requirement (re-dispatch duplicates task rows, `extraction_task.py:441`).
 - [ ] 12. Apply slice (c) `extraction-versioning-prompt`.
@@ -432,9 +437,9 @@ to assert more than the code does.
    `POST /api/v1/tasks/`, which slice (a) currently pins as a 500 refusal (`tasks.extraction_id NOT
    NULL`) — that pin is honest about being temporary. Slice (c) after that.
 5. Do not renumber task IDs. Slices (b) and (c) reference (a) IDs such as 2.3, 3.4 and 3.7.
-6. Side item, outside this feature: a production `workspace_llm_configs.provider` holds the literal
-   string `'Nan'` (md5-verified, not a tool artifact). Filed in `prod.todo.md`; nobody has said what
-   should validate it.
+6. Side item, closed by measurement rather than by a fix: the production `provider = 'Nan'` that an
+   earlier version of this document called a defect is a legitimate custom provider (`custom_providers`,
+   added by revision `0021`, free-form names). The correction and the lesson are in `prod.todo.md`.
 
 ## Session handoff — 2026-09-30 (b): the blocker got decided, and the measurement corrected two documents
 
@@ -467,9 +472,15 @@ turning the refusal into **HTTP 500 `{"detail": "Internal server error"}`**. No 
 Recorded as **D-a-4** and carried into slice (b) next to D-a-1: the refusal is only reachable once the
 mark endpoints exist, which is exactly when it must stop being a 500.
 
-**A production defect nobody asked for.** One of the four `workspace_llm_configs` rows holds
-`provider = 'Nan'`. It is not a tool-transcription artifact — `md5()` and `length()` both match — and it
-is the config the two `qwen3.8-flash` runs fall through to. Filed in `prod.todo.md`, outside 0.9.0.
+**"A production defect" that was not a defect, and why it is recorded anyway.** An earlier commit in
+this session filed `provider = 'Nan'` as someone saving a stringified `NaN`, because `md5()` and
+`length()` matched and the column is a plain `String(50)`. Measured against the table that **defines**
+the value, it is correct: `custom_providers` has one row named `'Nan'` — custom providers are a feature
+since revision `0021`, with free-form names and only reserved names refused
+(`routes/workspace_settings.py:264`) — and the one `workspace_llm_configs` row pointing at it carries a
+real encrypted key, `temperature 0.1`, `max_tokens 2048`. Those two runs are the `qwen3.8-flash` ones.
+The lesson is the second one of the session in the same shape: I called a value broken without reading
+where it is created. Suspicious-looking data is not evidence; the schema that accepts it is.
 
 **Method lessons, because they repeat.** (1) `prompt_config ? 'key'` measures the *key*;
 `->> 'key' IS NOT NULL` measures the *value*. Reading only the first produced the opposite answer for
