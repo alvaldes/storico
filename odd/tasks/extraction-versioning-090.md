@@ -447,9 +447,23 @@ Everything above stays true. This is what changed in the session that closed 4.4
 
 **Two owner decisions, both taken inside the session's question round:**
 
-- **D-a-3 → path 1, the purge window.** Nothing was executed. `prod.todo.md` carries the runbook; the
-  backup step was replaced by a measured inventory (the owner's call — "nothing worth saving"), and the
-  wipe now names Qdrant as well as the relational pair.
+- **D-a-3 → path 1, the purge window, scope chosen by the owner 2026-09-30:** **the whole business
+  schema, configs and prompts included, plus all three Qdrant collections — and no backup.** Nothing was
+  executed yet; `prod.todo.md` carries the runbook, whose backup step became a measured inventory.
+  The chosen scope is wider than `0028` needs: `0028` only requires `tasks` and `extractions` to be empty,
+  and the owner also asked for `users`, `workspaces`, `workspace_members`, `projects`, `user_stories`,
+  `workspace_llm_configs`, `workspace_prompts` and `custom_providers`, i.e. 11 tables and 21 vector points.
+  **One consequence I surfaced before firing it, not after:** two `workspace_llm_configs.api_key` values
+  are Fernet ciphertexts whose plaintexts match nothing on this machine (compared in memory against all
+  32 `STORICO_*` values in `.env.prod.local` and `.env`, no secret printed). Deleting them is the only
+  truly irreversible part of this wipe, because the rows must be re-typed from the nan.builders and AI
+  Studio consoles before any extraction can run again. Their non-secret settings are recorded in
+  `prod.todo.md` so the config can be rebuilt exactly: `Nan` / `qwen3.8-flash` / `api.nan.builders` /
+  0.1 / 2048, and `gemini` / `gemini-2.5-flash` / `base_url = localhost:11434` (an Ollama-shaped URL in a
+  production row, noted without concluding — the Gemini adapter may ignore it).
+  Wiping `user_stories` also dissolves the denormalized-status question the runbook used to leave open:
+  `tasks` and `extractions` are `ON DELETE CASCADE` off `user_stories.id`, so one statement empties all
+  three and no story is left claiming `extracted` over zero extractions.
 - **D-a-2 → Option A, `revoked_by` `ON DELETE RESTRICT`,** which closes task 4.4 and makes slice (a)
   **46/46**. `0028` and `models/task_invalidation.py` moved as one edit because the autogenerate drift
   gate catches a one-sided change — and that gate is `integration`-marked, so it runs in CI, not here.

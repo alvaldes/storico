@@ -145,15 +145,48 @@ Los tres caminos, ya evaluados:
 que el paso de respaldo se reemplaza por **el inventario de lo que se destruye**, medido en lectura antes
 de tocar nada. Es la única forma de que la pérdida quede registrada si alguien la pregunta después.
 
-Inventario medido el 2026-09-30, en lectura, contra la base y el cluster de producción:
+Inventario medido el 2026-09-30, en lectura, contra la base y el cluster de producción. Ampliado el
+mismo día: el owner eligió **todo el esquema de negocio, incluidas configs y prompts**, así que la lista
+ya no es "el par" sino las once tablas que tienen filas. `alembic_version` **no se toca**: tiene que
+quedar en `0027` para que el deploy siguiente aplique `0028`.
 
-| Almacén | Contenido al momento de medir |
+| Tabla | Filas | Qué se pierde |
+| --- | --- | --- |
+| `users` | 3 | las identidades (no hay passwords: es OAuth). **Vuelven solas**: el primer login crea usuario + workspace personal + rol admin + `workspace_prompt` (`api/routes/auth.py:119-126`) |
+| `user_accounts` | 3 | los vínculos OAuth: hay que volver a loguearse con Google/GitHub |
+| `workspaces` | 4 | toda la estructura de permisos |
+| `workspace_members` | 4 | los roles, incluido el admin que crea workspaces |
+| `projects` | 3 | — |
+| `user_stories` | 6 | 5 en `extracted`, 1 en `pending_extraction` |
+| `extractions` | 17 | 11 `failed`, 6 `completed`; span 2026-08-03 23:16 → 2026-09-24 20:17 UTC |
+| `tasks` | 42 | los 42 con `status = backlog`; ninguno avanzó nunca de ahí |
+| `workspace_llm_configs` | 4 | **incluye 2 `api_key` cifradas que no existen en ningún otro lugar de esta máquina** |
+| `workspace_prompts` | 3 | `few_shot_enabled=true`, `limit=3`, `threshold=0.85`, `system_prompt` de 126 caracteres |
+| `custom_providers` | 1 | el proveedor `Nan` |
+
+**Las dos claves que no se recuperan desde acá, y el owner decidió borrarlas igual.** Desencripté en
+memoria y comparé contra los 39 valores disponibles en esta máquina (los `STORICO_*` de
+`.env.prod.local` + `.env`, más el entorno del proceso): **ninguna** de las dos `api_key` de producción
+coincide con algo que exista acá. `Nan/qwen3.8-flash` (25 caracteres de plaintext) y
+`gemini/gemini-2.5-flash` (39) viven únicamente en esas dos filas. Se le mostró esto al owner como el
+único punto sin retorno de la operación, y la respuesta fue borrarlas igual. Consecuencia operativa:
+antes de extraer nada después de la purga hay que volver a sacar la clave de AI Studio y la de
+nan.builders y re-cargarlas en Configuración. Para reconstruir el config no hace falta recordar los
+números: están acá.
+
+| provider | model | host de `base_url` | `temperature` / `max_tokens` |
+| --- | --- | --- | --- |
+| `Nan` | `qwen3.8-flash` | `api.nan.builders` | 0.1 / 2048 |
+| `gemini` | `gemini-2.5-flash` | `localhost:11434` | 0.1 / 2048 |
+| `ollama` | — | — | sin clave, sin modelo |
+| `ollama` | — | — | sin clave, sin modelo |
+
+Raro, anotado sin concluir nada: el config `gemini` de producción tiene `base_url = localhost:11434`, una
+URL de Ollama local en una fila de producción. Puede ser residuo de una prueba, y puede que el adapter de
+Gemini la ignore y use `STORICO_GOOGLE_API_KEY`. No lo afirmo sin medirlo.
+
+| Almacén vectorial | Contenido al momento de medir |
 | --- | --- |
-| `alembic_version` | `0027` |
-| `extractions` | **17** — 11 `failed`, 6 `completed`; span 2026-08-03 23:16 → 2026-09-24 20:17 UTC |
-| `tasks` | **42** — los 42 con `status = backlog`; ninguno avanzó nunca de ahí |
-| `user_stories` / `projects` / `users` / `workspaces` | 6 / 3 / 3 / 4 |
-| `workspace_llm_configs` | 4 (una con `provider = 'Nan'`) |
 | Qdrant `storico_extractions_prod` | **1** punto, 768 dims |
 | Qdrant `storico_extractions_dev` | **1** punto — esta colección **no existía el 2026-09-28**: alguien escribió desde dev contra el cluster de producción |
 | Qdrant `storico_extractions` (legado) | **19** puntos |
@@ -162,33 +195,39 @@ Inventario medido el 2026-09-30, en lectura, contra la base y el cluster de prod
 1. **Inventario, no respaldo.** Correr las dos mediciones de arriba y dejar los números acá antes de la
    purga. Sin esto, la destrucción no tiene testigo. (Opción conservadora si cambia el humor: un branch
    de Neon se toma en segundos y no gasta disco local — pero el owner decidió que no hace falta.)
-2. **Purga relacional.** Mismo `DATABASE_URL` de la VM, en una sola transacción:
-   `TRUNCATE TABLE tasks; TRUNCATE TABLE extractions;` — `tasks` primero porque referencia a
-   `user_stories` igual que `extractions`, y ninguna de las dos es referenciada por nada más en `0027`
-   (`task_invalidations` todavía no existe). Confirmar contando: ambos `count(*)` deben dar **0**.
-2b. **Purga vectorial (nueva, por la misma decisión).** Borrar los puntos de las colecciones que se
-   decida limpiar. Con las tres arriba, hay dos lecturas y **el owner tiene que elegir cuál**:
-   - **Solo lo que sirve producción:** vaciar `storico_extractions_prod` (1 punto). Lo demás queda.
-   - **Slate limpio:** vaciar las tres (`_prod` 1, `_dev` 1, la legado 19). Es lo que implica "limpiar
-     Qdrant", y deja el few-shot sin un solo ejemplo hasta que haya runs nuevos.
-   Mecanismo: `DELETE /collections/{name}/points` con `"filter": {}` (o `?wait=true`), o
-   `client.delete(collection_name, points_selector=... )`. Verificado en esta máquina: la clave de
-   `.env.prod.local` **lee** los conteos; si es una clave de sólo lectura, el borrado falla con 403 y
-   hay que usar la clave del cluster.
-3. **Estado desnormalizado (decisión propia, no obvia).** `user_stories.status` sigue diciendo
-   `extracted` / `failed_extraction` sobre historias que se quedaron sin ninguna extracción, y
-   `extraction_repository` reescribe ese campo en cada run. Si se quiere coherencia, el mismo
-   `TRUNCATE` va acompañado de `UPDATE user_stories SET status = 'pending_extraction'`. Dejarlo como
-   está también es una opción: la app muestra la historia sin tareas. Elegir y anotar acá.
+2. **Purga relacional — las once tablas de arriba, en una sola transacción, con `user_stories` adentro.
+   Este es el alcance que eligió el owner, y es más destructivo de lo que `0028` necesita.**
+   `TRUNCATE TABLE users, user_accounts, workspaces, workspace_members, projects, user_stories,
+   extractions, tasks, workspace_llm_configs, workspace_prompts, custom_providers RESTART IDENTITY
+   CASCADE;` — el `CASCADE` es lo que hace que una sola sentencia alcance para todo: los FK de
+   `tasks` y `extractions` hacia `user_stories` son `ON DELETE CASCADE` (medido en `models/task.py:24`
+   y `models/extraction.py:37`), y borrar `user_stories` se lleva los 42 tasks y las 17 extracciones por
+   arrastre. Confirmar contando: **las once tablas en 0 y `alembic_version` todavía `0027`.**
+   Con `user_stories` adentro, el paso 3 desaparece: no quedan historias que mientan sobre su estado.
+2b. **Purga vectorial — las tres colecciones, decisión del owner.** Vaciar `storico_extractions_prod`
+   (1), `storico_extractions_dev` (1) y `storico_extractions` (19): 21 puntos fuera. Elegido "slate
+   limpio", no sólo lo de producción: las otras dos son justamente la contaminación entre entornos que
+   se documentó más abajo.
+   Mecanismo: `POST /collections/{name}/points/delete` con `"filter": {}` y `?wait=true`.
+   **Medido acá: la clave de `.env.prod.local` es de lectura** (`/collections` responde, y el `count(*)`
+   de Postgres también); si el borrado da 403 hay que usar la clave de admin del cluster.
+3. **El estado desnormalizado ya no es una decisión.** Con `user_stories` en la purga, no queda ninguna
+   historia cuyo `status` diga `extracted` sobre cero extracciones. Si algún día se purga sólo el par,
+   este punto vuelve: `user_stories.status` lo reescribe `extraction_repository` en cada run, y habría
+   que decidir `UPDATE user_stories SET status = 'pending_extraction'` o convivir con la mentira.
 4. **Mergear.** Recién con el par vacío: el merge a `main` dispara `deploy-backend.yml`, que corre
    `alembic upgrade head` y `0028` pasa la guarda. El orden es **purgar y después mergear**, nunca al
    revés: mergear primero deja el deploy fallando en cada push hasta que alguien purgue.
-5. **Comprobación.** `alembic_version` = `0028`, `task_invalidations` existe, y los puntos de Qdrant
-   (`storico_extractions_prod`: 1 punto, `storico_extractions`: 19 — medidos el 2026-09-28, no hoy)
-   siguen ahí y siguen sirviendo few-shot: la purga relacional no los toca.
+   El owner dejó explícitamente el merge afuera de esta autorización.
+5. **Comprobación después del merge.** `alembic_version` = `0028`, `task_invalidations` existe, las once
+   tablas siguen en 0, y las tres colecciones siguen en 0 puntos — **no"siguen ahí con sus puntos":
+   esa frase de la versión anterior de este runbook era falsa con el alcance nuevo.** El few-shot no
+   tiene de dónde sacar ejemplos hasta que haya runs nuevos, y `few_shot_enabled` va a quedar en `true`
+   sobre una base vacía: no rompe, devuelve vacío, pero hay que saberlo.
 
-Lo que **no** hace este runbook: no borra `user_stories`, ni `projects`, ni `users`, ni —salvo que se
-decida lo contrario en el paso 2b— las colecciones de Qdrant. Y no re-escribe la historia de la feature:
+Lo que **no** hace este runbook: no toca `alembic_version`, no re-escribe la historia de la feature, y no
+borra el `.env` de la VM — `STORICO_ENCRYPTION_KEY` sigue siendo la única forma de desencriptar claves
+que ya no existen, y `STORICO_GOOGLE_API_KEY` sigue ahí para el embedding.
 los 17 runs quedan registrados solo en el inventario de arriba.
 
 ### Hallazgo del inventario: dev escribe contra el cluster de producción
@@ -217,17 +256,18 @@ abría un pendiente de validación. **Estaba mal.** Medido después, contra la t
 cp.name`). No hay `psql` ni Docker acá, pero sí hay lectura: la fila trae `api_key` cifrada (123
  caracteres de ciphertext Fernet), `temperature = 0.1` y `max_tokens = 2048`.
 
-O sea que `'Nan'` es un **proveedor personalizado creado por el owner** — `custom_providers` es una
+O sea que `'Nan'` es un **proveedor personalizado creado a propósito** — `custom_providers` es una
 feature desde la revisión `0021`, su `name` es texto libre y lo único que se rechaza son los nombres
-reservados (`_reject_reserved_provider_name`, `routes/workspace_settings.py:264`). Es el proveedor al
-que caen los 2 runs con `model_used = qwen3.8-flash`, y eso lo explica todo: los otros 15 runs usan
-proveedores built-in.
+reservados (`_reject_reserved_provider_name`, `api/routes/workspace_settings.py:264`). Es el proveedor al
+que caen los 2 runs con `model_used = qwen3.8-flash`, y su `base_url` apunta a `api.nan.builders`: una
+gateway propia sirviendo un modelo que no es de ningún built-in. Eso lo explica todo; los otros 15 runs
+usan proveedores built-in.
 
-**Lección, porque es la segunda vez en dos días que acuso un dato sin leer la tabla que lo define:**
-antes de llamar defecto a un valor raro, hay que buscar dónde se crea ese valor. Un `String(50)` que
-acepta cualquier cosa no es la prueba de que nadie lo validó; puede ser que no haya nada que validar.
+**Lección, porque es la segunda vez en dos días que acuso un dato de producción sin leer la tabla que lo
+define** (la primera fue "la temperatura es recuperable", que salió de medir la existencia de la clave
+JSON y no su valor). Un `String(50)` que acepta cualquier cosa no es prueba de que nadie lo validó:
+puede ser que no haya nada que validar.
 
-🔲 **Pendiente real que queda, y es chiquito:** no hay evidencia de que borrar un `custom_providers`
-fila deje huérfanas las `workspace_llm_configs` que lo nombran — `provider` es un string plano, sin FK.
-Hoy no pasa nada con 1 fila y 4 configs. Si algún día se borra un proveedor personalizado, hay que
-mirar si los configs que lo nombran siguen siendo seleccionables.
+🔲 **Lo único real que queda acá, y es chico:** `workspace_llm_configs.provider` es un string plano, sin
+FK a `custom_providers`. Borrar una fila de `custom_providers` deja configs nombrándola sin que nada
+proteste. Hoy no pasa nada con 1 proveedor y 4 configs; hay que mirarlo el día que se borre uno.
