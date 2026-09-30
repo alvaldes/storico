@@ -221,6 +221,11 @@ The backend (`127.0.0.1:8000`) and the frontend (`:4321`) are still up from the 
 local `.env` points at `storico_extractions_dev`, and the single point that run wrote is real data in
 the real cluster.
 
+> **[Stale as of 2026-09-30, and it is stale on purpose — this is a historical record.]** Dev was
+> purged and upgraded the next day: `alembic_version` is now **`0028`** and the twelve business tables
+> are at **0**. The backend/frontend left running here are gone with the reboot, and so is every row
+> this paragraph describes. Current procedure and evidence: `odd/tasks/dev-reset-0028.md`.
+
 ## Delivery — three pull requests, and why the bump comes last
 
 The batch is three logical units, and `CONTRIBUTING.md:189` asks for one logical change per pull

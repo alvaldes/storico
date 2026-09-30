@@ -63,13 +63,42 @@ python -m pip install -e ".[dev]"
 python -m pytest -v
 ```
 
+### La base de datos de desarrollo (Supabase)
+
+Dev corre contra un proyecto de **Supabase** (`aws-0-us-east-1.pooler.supabase.com:5432`, Postgres 17.6),
+no contra Neon. Esa es la única separación física que hay entre entornos: **el clúster de Qdrant es
+compartido** y lo que separa un entorno del otro es sólo el nombre de la colección, como se documenta más
+abajo.
+
+Estado medido el **2026-09-30**, después del reset de `odd/tasks/dev-reset-0028.md`: `alembic_version =
+0028`, las **doce** tablas de negocio en **0** filas. Antes de ese reset estaba en `0027` con 422 filas
+reales — 38 `extractions`, 230 `tasks`, 76 `user_stories`, 3 `users`, 12 `workspace_llm_configs` — y por eso
+hizo falta la purga: `0028` **se niega** a correr sobre `extractions`/`tasks` con filas (D11, ver la sección
+de producción más abajo). El mismo bloqueo que frenó a producción frenó a dev, y el remedio fue el mismo
+orden: **primero purgar, después migrar.**
+
+Tres cosas que hay que saber para usar dev hoy:
+
+1. **No hay config de LLM.** `workspace_llm_configs` está vacío, así que `resolve_llm_config`
+   (`api/routes/workspace_settings.py:121-129`) cae a `provider = "ollama"`. Para extraer hace falta una de las
+dos: prender Ollama en `localhost:11434`, o crear un config con clave real en Configuración.
+2. **Conviene prender Ollama de todos modos.** El default de `STORICO_EMBEDDING_PROVIDER` es `ollama`
+   (`nomic-embed-text`, 768 dims) y el `.env` de dev no lo pisa: sin Ollama, el paso de RAG no tiene
+   dónde embeber, con datos o sin datos.
+3. **El primer login no alcanza para volver a un proveedor propio.** Crea usuario, workspace, membresía
+   `admin` y `workspace_prompts` (`api/routes/auth.py:119-126`), pero **no** toca `workspace_llm_configs`
+   ni `custom_providers`: un proveedor como `NaN` se re-crea a mano.
+
+El andamiaje que ejecutó el reset vive fuera del repo, en `~/storico-ops/` (`dev_purge_0028.py` con tres
+guardas y dry-run por defecto, `dev_verify_0028.py` read-only); el procedimiento y la evidencia, acá.
+
 ## Producción
 
 ### Stack actual
 
 - **Frontend**: Astro SSR en Vercel
 - **Backend**: FastAPI en un contenedor Docker sobre una VM de Oracle. El host no se escribe acá: el workflow lo toma del secret `DEPLOY_HOST`.
-- **Base de datos**: PostgreSQL en Neon. **Dev y prod no comparten base:** dev corre local contra Supabase.
+- **Base de datos**: PostgreSQL en Neon. **Dev y prod no comparten base:** dev corre contra Supabase (ver "La base de datos de desarrollo" arriba).
 - **Vector store**: **Qdrant Cloud**, un solo cluster, usado por dev y por prod. Cada entorno escribe en **su propia colección** (ver abajo).
 - **Embeddings**: **globales, no por workspace**. Dev usa Ollama local (`nomic-embed-text`); producción usa **Google `gemini-embedding-001`**, porque la VM no tiene Ollama y el modelo de chat no puede embeber.
 - **LLM de extracción**: lo configura cada workspace (Ollama, OpenAI, Anthropic, Gemini o un proveedor propio compatible con OpenAI).
