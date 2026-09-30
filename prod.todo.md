@@ -70,3 +70,38 @@ Prerrequisitos que, si faltan, rompen algo en silencio o fallan recién en produ
 
 Este archivo lo mantiene quien despliega. Si un ítem se cierra, se marca acá y se deja el detalle en
 el documento que le corresponda — no se abre una segunda lista.
+
+## Bloqueo de despliegue: la migración `0028` no corre sobre la base de producción
+
+**Descubierto el 2026-09-30, al cerrar el slice (a) de versionado de extracciones (PR #30). Ningún
+otro archivo de este repo lo decía.**
+
+`0028_extraction_versioning` lee `SELECT count(*) FROM extractions` y `SELECT count(*) FROM tasks`
+antes de tocar el esquema, y **lanza `RuntimeError` si alguna de las dos tablas tiene una fila**
+(decisión D11: no se hace backfill). `.github/workflows/deploy-backend.yml:101` ejecuta
+`alembic upgrade head` en la ventana de mantenimiento de **todo** despliegue. Producción tiene datos
+reales: la colección `storico_extractions_prod` existe y fue medida el 2026-09-28 (AGENTS.md, ADR-005).
+
+Consecuencia exacta: **mergear `main` con `0028` dentro deja la API abajo a propósito.** El `docker stop`
+ya ocurrió, la migración falla, y el `docker run` no llega — que es el comportamiento diseñado del
+workflow (un fallo deja la API abajo antes que servir contra un esquema que no coincide), pero no es
+un despliegue: es una caída.
+
+`0028` es correcta como código; lo que falta es la decisión operativa, y es del owner. Tres caminos,
+no incompatibles pero sí distintos:
+
+1. **Ventana de purga.** Borrar los datos relacionales de `extractions`/`tasks` en Neon (con respaldo
+   previo) antes de mergear, y dejar que `0028` corra sobre el par vacío. Es lo que el propio mensaje
+   de la guarda indica. Costo: se pierde el historial de extracciones de producción, y con él la
+   coherencia de los puntos ya guardados en `storico_extractions_prod`.
+2. **Revisión de backfill aparte.** Escribir una `0029` que asigne `version_number = 1` a cada
+   extracción existente, fije `provider`/`temperature` desde `prompt_config` donde sea recuperable, y
+   vincule `tasks.extraction_id` por `user_story_id`. Choca de frente con D11: `temperature` y
+   `provider` **no** son reconstruibles para las filas viejas, así que el backfill tendría que填报
+   un valor y decir cuál. Requiere decidir qué se afirma de esos datos históricos.
+3. **No mergear todavía.** Dejar el PR abierto y que el slice (a) viva en la rama hasta que la
+   evaluación de la tesis tenga datos propios que purgar sin costo. Es el camino que el plan de slices
+   ya asumía al decir que (a) no está desplegado.
+
+Ninguno se ejecutó. Antes de mergear hace falta elegir uno y escribirlo acá; después, el merge es una
+decisión ordinaria de `main`.
