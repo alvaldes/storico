@@ -97,7 +97,7 @@ no incompatibles pero sí distintos:
 2. **Revisión de backfill aparte.** Escribir una `0029` que asigne `version_number = 1` a cada
    extracción existente, fije `provider`/`temperature` desde `prompt_config` donde sea recuperable, y
    vincule `tasks.extraction_id` por `user_story_id`. Choca de frente con D11: `temperature` y
-   `provider` **no** son reconstruibles para las filas viejas, así que el backfill tendría que填报
+   `provider` **no** son reconstruibles para las filas viejas, así que el backfill tendría que inventar
    un valor y decir cuál. Requiere decidir qué se afirma de esos datos históricos.
 3. **No mergear todavía.** Dejar el PR abierto y que el slice (a) viva en la rama hasta que la
    evaluación de la tesis tenga datos propios que purgar sin costo. Es el camino que el plan de slices
