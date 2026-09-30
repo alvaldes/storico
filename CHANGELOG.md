@@ -1,3 +1,39 @@
+## v0.9.0 (2026-09-30)
+
+### Feat
+
+- **extraction**: snapshot the prompt at the moment it is rendered
+- **extraction**: give every run a version and its tasks a parent
+
+### Fix
+
+- **openspec**: repair the sibling-change references my archive broke
+- **extraction**: restrict the revoking user's FK so the revoke audit survives intact
+- **test**: autocommit the private-database DDL and read ids before the rollback
+- **test**: give the downgrade round-trip its own database
+- **frontend**: paint /status before the health probe answers
+- **api**: lift error_code out of detail at the last six nested sites
+- **api**: code the remaining route raises and translate them
+- **api**: code the access-control raises and translate them
+- **i18n**: translate API error headlines by error_code
+- **api**: let a raise site emit a top-level error_code, and code the 422
+- **api**: emit one canonical error_code in the error envelope
+- **frontend**: stop showing the backend's English as the task save error
+- **frontend**: localize the task editor's validation messages
+- **i18n**: drop status from the editable task fields
+- **i18n**: stop promising task deletion in the FAQ and privacy copy
+- **stories**: name the import retry button apart from its submit
+
+### Refactor
+
+- **extraction**: remove save() so the repository has no whole-row writer
+- **extraction**: delete the dead extraction path and its wrapper
+- **extraction**: write terminal states through the mark methods
+
+### Perf
+
+- **api**: run the health probes concurrently
+
 ## v0.8.0 (2026-09-26)
 
 ### Feat
