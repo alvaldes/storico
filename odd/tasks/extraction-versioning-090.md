@@ -802,3 +802,88 @@ Two things about the fix are worth keeping, because both were wrong the first ti
 3. **`openspec validate` has still never run** — the manual archive of slice (a) keeps its declared gap.
 4. **Production cannot extract** until the owner re-creates the LLM config; his call, not a task of mine.
 5. **Qdrant dev writes against the production cluster** — design debt, unassigned.
+
+## Slice (b) WU2 — session 2026-09-30 (b2): the field matrix, stacked on WU1
+
+**Base decision.** WU1 is `OPEN` as PR #31 and the owner has not merged it. "sigamos" was read as
+*continue implementing*, never as *merge*: merging deploys. So WU2 branches from WU1's head
+(`feat/extraction-versioning-api-wu2` off `5290954`) and its PR targets the WU1 branch —
+`feature-branch-chain`, the same move this repo already made when #27 became #28 and got re-targeted to
+`main`. When #31 merges, the WU2 PR re-targets to `main`; nothing is rewritten and WU1 stays decidable on
+its own.
+
+**Gates.** Fresh native status before the run: `next: apply`, `apply: ready`, **8/77**, `blockedReasons: []`.
+Preflight unchanged for the session (`auto` / `openspec` / `ask-on-risk` / 400). WU2 is one of the two units
+the owner accepted over budget on 2026-09-28, so this run carries **`size:exception`** for WU2 and for no
+other unit: forecast ≈420–520 lines, and it is atomic because the schema shrink and the client have to land
+together or every editor save 422s.
+
+**The seam the plan left implicit, resolved before any writer met it.** `design.md:625` defines `frozen` as
+"a prop the page computes from the selector's `is_current`" — and the selector is **WU3**. In WU2 the page has
+no such read, and `TaskResponse` carries no `extraction_id` (WU3 adds the response scalars). Two ways to carry
+that: default the prop to `false` and let no caller set it, or require it and pass `false` explicitly at the
+call site with WU3 named in the comment. Chosen: **required prop, explicit `false`**, because a defaulted prop
+nobody sets is how a real product rule becomes dead code that nobody deletes. Consequence, stated rather than
+buried: between WU2 and WU3 the client is permissive about dependency edits on non-current versions and the
+**server is the authority** — such an edit answers 409 `TASK_VERSION_FROZEN`, which is exactly why task 2.8's
+locale copy belongs in this unit and not in WU3. WU3 closes the loop by filtering reads to the current version
+and computing `frozen` for real.
+
+### Tranches (one commit at the end, because the unit is atomic)
+
+| Tranche | Tasks | Surfaces |
+| --- | --- | --- |
+| T1 — backend matrix | 2.1 RED, 2.2–2.4 GREEN, 2.5 TRIANGULATE | `api/schemas/task.py`, `api/routes/tasks.py`, `api/error_codes.py`, `tests/test_api/test_tasks.py` |
+| T2a — frontend RED | 2.6, the frozen edge of 2.9 | `lib/__tests__/tasks-api.test.ts`, `components/react/__tests__/TaskEditor.test.tsx` |
+| T2b — editor + client | 2.7, 2.9 | `lib/tasks-api.ts`, `components/react/TaskEditor.tsx`, `components/react/StoryDetail.tsx` |
+| T3 — locale mirror | 2.8 | `i18n/en.json`, `i18n/es.json`, `lib/__tests__/error-codes.test.ts` |
+| Parent | 2.10, 2.11 REFACTOR reruns, full suites, the single WU2 commit | — |
+
+Runners per unit: `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py -m "not integration"`
+and `cd frontend && pnpm test src/components/react/__tests__/TaskEditor.test.tsx src/lib/__tests__/tasks-api.test.ts`.
+
+- [x] b2-1. T1 backend matrix green (2.1–2.5).
+- [x] b2-2. T2a frontend RED cases land (2.6).
+- [x] b2-3. T2b editor + client GREEN (2.7, 2.9).
+- [x] b2-4. T3 locale mirror and registry count 38 → 39 (2.8).
+- [x] b2-5. REFACTOR reruns 2.10/2.11 + full backend and frontend suites, measured by the parent.
+- [ ] b2-6. One WU2 commit (atomic by design), PR stacked on the WU1 branch.
+- [ ] b2-7. `tasks.md` + `apply-progress.md` + this handoff reconciled; the `frozen` seam recorded where the
+  next reader will find it (PR body and `apply-progress.md`, not only here).
+
+### What the tranches actually found, because the plan got four premises wrong
+
+1. **T1's guard cost what the design said it would cost — and the design contradicted itself.**
+   `design.md:152` sketches the `find_current_version` lookup **unconditionally**, while its Tradeoff
+   paragraph prices it as "one extra statement **before a dependency write**, against a pooler where a
+   statement is ~2s" and its Why paragraph names the save that must stay fast: the board's
+   `{"status": …}`. Unconditional makes the most common write in the product pay ~2s for a verdict it never
+   reads. Implemented presence-guarded (T1b), behaviourally identical, with a **call-count** case that fails
+   if anyone re-widens it. Not a re-decision of D5/D21 — the placement detail that the design's own cost
+   sentence already chose.
+2. **Task 2.7 asks to remove a `priority` control that does not exist.** The editor never had one; T2a found
+   it and T2b declared it. The case `no priority control at all (D21)` is a **regression guard**, not new
+   behaviour, and `priority` stays in `TaskResponse` and the JSON export as designed.
+3. **T2b opened a type hole to keep tests compiling, and the parent closed it (T2c).**
+   `TaskUpdateFields` grew `& Record<string, unknown>` so a stale test literal and the store's
+   `Partial<Task>` forward would typecheck. Its effect: `updateTask(id, { title: 'x' })` compiles, the key is
+   dropped at runtime, and nobody hears anything — the exact lie WU2 exists to kill, moved from the wire to
+   the type system. Strict type restored; the narrowing lives as an explicit presence-preserving pick in
+   `taskStore.ts`; the case that must pass a forbidden literal does it through a test-local cast, so breaking
+   the contract is a deliberate, greppable act instead of an accident waiting to happen.
+4. **Task 2.8's "both locale counts 43 → 44" is stale arithmetic.** The per-locale expectation is **derived**
+   (`EXPECTED_REGISTRY_COUNT + ROUTE_ERROR_CODES.length`), so one constant moves. The plan's sentence would
+   have invited a second fake constant.
+
+Two smaller things worth keeping: T2a caught its own frozen case **passing for the wrong reason** (the
+fixture task already had its only sibling as a dependency, so the select was disabled anyway) and reworked it
+before accepting the RED — a test that passes vacuously pins nothing. And `title_required` was deleted from
+both locales after grepping it to zero references: copy for a validation that can no longer fire is a UI lie.
+
+### The number the accepted exception was priced against
+
+**WU2 is 918 changed lines**: 210 production + 708 tests, against the ≈420–520 forecast the owner accepted
+`size:exception` with. Surfaced before publishing, not after. The unit is still atomic and the tests are the
+reason the contract is observable, so the honest options are a widened exception or keeping it as one over-
+large review — decided below, not assumed here.
+
