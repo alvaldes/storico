@@ -26,6 +26,8 @@ from storico.api.errors import (
     parse_error_handler,
     repository_error_handler,
     request_validation_error_handler,
+    vector_store_error_handler,
+    version_allocation_conflict_handler,
 )
 from storico.api.routes import (
     auth,
@@ -58,7 +60,11 @@ from storico.domain.entities import (
     ParseError,
     RepositoryError,
 )
-from storico.domain.entities.exceptions import CipherError
+from storico.domain.entities.exceptions import (
+    CipherError,
+    VectorStoreError,
+    VersionAllocationConflictError,
+)
 from storico.infrastructure.database.base import dispose_engine, get_engine
 
 logger = logging.getLogger(__name__)
@@ -150,10 +156,18 @@ def create_app() -> FastAPI:
     app.add_exception_handler(EntityNotFound, entity_not_found_handler)
     app.add_exception_handler(DuplicateEntity, duplicate_entity_handler)
     app.add_exception_handler(RepositoryError, repository_error_handler)
+    # Registered for its own class so the MRO resolves the subclass here, not at
+    # the RepositoryError registration above: an exhausted version allocation is
+    # a client-visible 409 conflict, never the generic relational 500.
+    app.add_exception_handler(VersionAllocationConflictError, version_allocation_conflict_handler)
     app.add_exception_handler(LLMConnectionError, llm_connection_error_handler)
     app.add_exception_handler(LLMModelNotFoundError, llm_model_not_found_handler)
     app.add_exception_handler(LLMResponseError, llm_response_error_handler)
     app.add_exception_handler(ParseError, parse_error_handler)
+    # Deliberately outside the RepositoryError tree: a vector-store outage is a
+    # down dependency (503), not a relational failure, so it is registered for
+    # its own class and never answered by repository_error_handler.
+    app.add_exception_handler(VectorStoreError, vector_store_error_handler)
 
     # Workspace exception handlers
     app.add_exception_handler(InsufficientRole, insufficient_role_handler)

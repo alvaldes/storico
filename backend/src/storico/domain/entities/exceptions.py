@@ -45,7 +45,14 @@ class VersionAllocationConflictError(RepositoryError):
     Every attempt lost the race against a concurrent run on the same story. A distinct
     type — not a bare ``RepositoryError`` — is what the API slice needs to map the failure
     to its own HTTP status instead of leaving it silent inside the generic 500.
+
+    Carries the story whose allocation was exhausted when the caller knows it, so the
+    API handler can still compose a useful ``detail`` when the message is silent.
     """
+
+    def __init__(self, message: str, user_story_id: UUID | None = None) -> None:
+        self.user_story_id = user_story_id
+        super().__init__(message)
 
 
 class LLMError(Exception):
@@ -94,6 +101,23 @@ class PromptTemplateNotFound(LLMError):
     def __init__(self, template_name: str) -> None:
         self.template_name = template_name
         super().__init__(f"Prompt template '{template_name}' not found")
+
+
+class VectorStoreError(Exception):
+    """Raised when the vector store cannot service a destructive operation.
+
+    Deliberately outside the ``RepositoryError`` tree: a vector-store failure is not a
+    relational failure, and it must not be swallowed by the repository error handler.
+    Its caller is destructive (story deletion cleanup), so the outage has to surface
+    as its own retryable condition instead of a generic internal error.
+    """
+
+    def __init__(self, message: str = "Vector store operation failed") -> None:
+        self.message = message
+        super().__init__(self.message)
+
+    def __str__(self) -> str:
+        return self.message
 
 
 class NotWorkspaceMember(RepositoryError):

@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
 
@@ -15,10 +16,11 @@ from storico.api.error_codes import (
     NOT_A_WORKSPACE_MEMBER,
     OWNER_ACCESS_REQUIRED,
     WORKSPACE_NOT_FOUND,
+    WORKSPACE_OWNER_OR_ADMIN_REQUIRED,
 )
 from storico.api.errors import ApiError
 from storico.config.settings import Settings, get_settings
-from storico.domain.entities import EntityNotFound, User, UserStory
+from storico.domain.entities import EntityNotFound, Task, User, UserStory
 from storico.domain.entities.workspace import Workspace
 from storico.domain.entities.workspace_member import WorkspaceRole
 from storico.domain.ports import CipherPort, EmbeddingPort, UserRepository, VectorStorePort
@@ -28,6 +30,7 @@ from storico.infrastructure.cache.user_cache import get_cached_user, set_cached_
 from storico.infrastructure.crypto import FernetCipher
 from storico.infrastructure.database.repositories import (
     SQLAlchemyProjectRepository,
+    SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
     SQLAlchemyWorkspaceLLMConfigRepository,
@@ -277,7 +280,36 @@ async def require_owner(
     return workspace
 
 
-async def require_story_workspace_access(
+@dataclass(frozen=True, slots=True)
+class StoryAccess:
+    """Everything the story access walk resolves, carried for downstream callers.
+
+    ``workspace_id`` and ``role`` are what the owner-or-admin gate needs: the
+    gated wrappers fetch the ``Workspace`` row themselves, only to read
+    ``owner_id``, so the read paths keep paying exactly the same three
+    statements as before this type existed.
+    """
+
+    story: UserStory
+    workspace_id: UUID
+    role: WorkspaceRole
+
+
+@dataclass(frozen=True, slots=True)
+class TaskAccess:
+    """Task-shaped counterpart of :class:`StoryAccess`.
+
+    Carries the resolved task plus the workspace identity and the caller's
+    role, so ``_validate_task_workspace_access`` and the gated marks endpoints
+    share one walk instead of two.
+    """
+
+    task: Task
+    workspace_id: UUID
+    role: WorkspaceRole
+
+
+async def resolve_story_access(
     story_id: UUID,
     current_user: User,
     *,
@@ -285,7 +317,7 @@ async def require_story_workspace_access(
     project_repo: SQLAlchemyProjectRepository,
     member_repo: SQLAlchemyWorkspaceMemberRepository,
     reported_as: tuple[str, UUID] | None = None,
-) -> UserStory:
+) -> StoryAccess:
     """Resolve a story's workspace and require the caller to be a member of it.
 
     The story -> project -> workspace walk that every task, story and extraction route
@@ -310,4 +342,169 @@ async def require_story_workspace_access(
             error_code=NOT_A_WORKSPACE_MEMBER,
             detail="Not a member of this workspace",
         )
-    return story
+    return StoryAccess(story=story, workspace_id=project.workspace_id, role=member.role)
+
+
+async def require_story_workspace_access(
+    story_id: UUID,
+    current_user: User,
+    *,
+    story_repo: SQLAlchemyUserStoryRepository,
+    project_repo: SQLAlchemyProjectRepository,
+    member_repo: SQLAlchemyWorkspaceMemberRepository,
+    reported_as: tuple[str, UUID] | None = None,
+) -> UserStory:
+    """Resolve a story's workspace and require the caller to be a member of it.
+
+    Thin caller of :func:`resolve_story_access` kept for every existing route:
+    the refusals live in the shared walk, unchanged.
+    """
+    access = await resolve_story_access(
+        story_id,
+        current_user,
+        story_repo=story_repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
+        reported_as=reported_as,
+    )
+    return access.story
+
+
+async def resolve_task_access(
+    task_id: UUID,
+    current_user: User,
+    *,
+    task_repo: SQLAlchemyTaskRepository,
+    story_repo: SQLAlchemyUserStoryRepository,
+    project_repo: SQLAlchemyProjectRepository,
+    member_repo: SQLAlchemyWorkspaceMemberRepository,
+) -> TaskAccess:
+    """Resolve a task's workspace and require the caller to be a member of it.
+
+    The task walk: a leading ``task_repo.find_by_id`` — reported as a miss of
+    the route's own head entity (``"Task", task_id``) — followed by the same
+    story walk, also reported as that entity, so a missing story, project or
+    membership never discloses more than a missing task would.
+
+    Raises ``EntityNotFound`` (404) for a missing task, story or project and
+    ``ApiError`` (403) for a missing membership.
+    """
+    task = await task_repo.find_by_id(task_id)
+    if task is None:
+        raise EntityNotFound("Task", str(task_id))
+
+    # Delegate the rest of the walk so a missing story, project or membership is
+    # still reported as a miss of this route's own head entity ("Task").
+    access = await resolve_story_access(
+        task.user_story_id,
+        current_user,
+        story_repo=story_repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
+        reported_as=("Task", task_id),
+    )
+    return TaskAccess(task=task, workspace_id=access.workspace_id, role=access.role)
+
+
+def _is_owner_or_admin(workspace: Workspace, role: WorkspaceRole, user: User) -> bool:
+    """The D13 gate rule: the workspace owner, or a member with role ``ADMIN``.
+
+    There is no ``OWNER`` role: ownership is ``workspace.owner_id == user.id``
+    and an owner may hold either role in the member table, so the rule is a
+    disjunction over a data fact and a role — not a role check alone.
+    """
+    return role == WorkspaceRole.ADMIN or workspace.owner_id == user.id
+
+
+async def require_owner_or_admin(
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
+    current_user: User = Depends(get_current_user),
+) -> tuple[Workspace, WorkspaceRole]:
+    """Require the current user to be the workspace owner or an admin.
+
+    Sibling of ``require_admin``/``require_owner``, which it does not replace:
+    those keep their own codes and their narrower conjunction. Must be chained
+    after ``get_workspace_for_user``, whose membership refusal fires first — a
+    non-member still gets 403 ``NOT_A_WORKSPACE_MEMBER``, never the gate code.
+    Raises 403 ``WORKSPACE_OWNER_OR_ADMIN_REQUIRED`` only for a member who is
+    neither the owner nor an ``ADMIN``.
+    """
+    workspace, role = ctx
+    if not _is_owner_or_admin(workspace, role, current_user):
+        raise ApiError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            error_code=WORKSPACE_OWNER_OR_ADMIN_REQUIRED,
+            detail="Workspace owner or admin access required",
+        )
+    return ctx
+
+
+async def require_story_owner_or_admin(
+    story_id: UUID,
+    current_user: User,
+    *,
+    story_repo: SQLAlchemyUserStoryRepository,
+    project_repo: SQLAlchemyProjectRepository,
+    member_repo: SQLAlchemyWorkspaceMemberRepository,
+    ws_repo: SQLAlchemyWorkspaceRepository,
+    reported_as: tuple[str, UUID] | None = None,
+) -> UserStory:
+    """Gate a story-scoped version mutation to the owner or an admin (D13).
+
+    Walks the shared story access first, so every membership refusal keeps its
+    exact today shape — 404 ``EntityNotFound`` reported as the caller's head
+    entity, 403 ``NOT_A_WORKSPACE_MEMBER`` for a non-member — and only a
+    member who is neither the owner nor an ``ADMIN`` gets 403
+    ``WORKSPACE_OWNER_OR_ADMIN_REQUIRED``. Fetches the workspace row only here,
+    to read ``owner_id``.
+    """
+    access = await resolve_story_access(
+        story_id,
+        current_user,
+        story_repo=story_repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
+        reported_as=reported_as,
+    )
+    workspace = await ws_repo.find_by_id(access.workspace_id)
+    if workspace is None or not _is_owner_or_admin(workspace, access.role, current_user):
+        raise ApiError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            error_code=WORKSPACE_OWNER_OR_ADMIN_REQUIRED,
+            detail="Workspace owner or admin access required",
+        )
+    return access.story
+
+
+async def require_task_owner_or_admin(
+    task_id: UUID,
+    current_user: User,
+    *,
+    task_repo: SQLAlchemyTaskRepository,
+    story_repo: SQLAlchemyUserStoryRepository,
+    project_repo: SQLAlchemyProjectRepository,
+    member_repo: SQLAlchemyWorkspaceMemberRepository,
+    ws_repo: SQLAlchemyWorkspaceRepository,
+) -> Task:
+    """Gate a task-scoped version mutation to the owner or an admin (D13).
+
+    Same posture as :func:`require_story_owner_or_admin` over the task walk:
+    the membership refusals fire first and keep their codes, and the gate
+    refusal is reserved for a member who is neither the owner nor an ``ADMIN``.
+    """
+    access = await resolve_task_access(
+        task_id,
+        current_user,
+        task_repo=task_repo,
+        story_repo=story_repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
+    )
+    workspace = await ws_repo.find_by_id(access.workspace_id)
+    if workspace is None or not _is_owner_or_admin(workspace, access.role, current_user):
+        raise ApiError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            error_code=WORKSPACE_OWNER_OR_ADMIN_REQUIRED,
+            detail="Workspace owner or admin access required",
+        )
+    return access.task

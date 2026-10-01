@@ -50,11 +50,14 @@ function extractRegistryNames(source: string): string[] {
  * list them.
  *
  * Count note: that is 5 distinct codes over 6 sites — `IMPORT_FILE_TOO_LARGE`
- * covers two raise sites — so the map holds 39 + 5 = 44 keys (WU3a added the
- * five access-control codes and WU3b the fifteen route codes to the registry
- * and to this map, each in one commit; WU1 added the two 410-retirement
- * codes; WU2 added TASK_VERSION_FROZEN, the frozen-version dependencies
- * refusal).
+ * covers two raise sites — so the map holds `EXPECTED_REGISTRY_COUNT` + 5 keys.
+ * Stated as the rule rather than a total on purpose: the assertion below derives
+ * that number, so any literal here goes stale the next time the registry grows —
+ * and it already did three times (WU1's two 410-retirement codes, WU2's
+ * `TASK_VERSION_FROZEN`, W4-T2's version-allocation / vector-store / gate codes).
+ * The history, in case the numbers matter later: WU3a added the five
+ * access-control codes and WU3b the fifteen route codes to the registry and to
+ * this map, each in one commit.
  */
 const ROUTE_ERROR_CODES = [
   'INVALID_STATE_TRANSITION',
@@ -64,7 +67,7 @@ const ROUTE_ERROR_CODES = [
   'IMPORT_VALIDATION_FAILED',
 ] as const;
 
-const EXPECTED_REGISTRY_COUNT = 39;
+const EXPECTED_REGISTRY_COUNT = 42;
 
 /**
  * The one code emitted through a named constant rather than a literal or a

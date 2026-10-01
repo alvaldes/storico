@@ -25,6 +25,8 @@ from storico.api.error_codes import (
     PARSE_ERROR,
     REPOSITORY_ERROR,
     REQUEST_VALIDATION_FAILED,
+    VECTOR_STORE_UNAVAILABLE,
+    VERSION_ALLOCATION_CONFLICT,
 )
 from storico.domain.entities import (
     CannotRemoveOwnerError,
@@ -43,6 +45,8 @@ from storico.domain.entities.exceptions import (
     CipherError,
     CredentialUndecryptable,
     EncryptionKeyMissing,
+    VectorStoreError,
+    VersionAllocationConflictError,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,6 +68,8 @@ __all__ = [
     "parse_error_handler",
     "repository_error_handler",
     "request_validation_error_handler",
+    "vector_store_error_handler",
+    "version_allocation_conflict_handler",
 ]
 
 
@@ -319,5 +325,53 @@ async def cipher_error_handler(
         content={
             "detail": str(exc),
             "error_code": error_code,
+        },
+    )
+
+
+# ── Versioning and vector-store exception handlers ───────────────
+
+
+async def version_allocation_conflict_handler(
+    request: Request,
+    exc: VersionAllocationConflictError,
+) -> JSONResponse:
+    """Maps ``VersionAllocationConflictError`` to a 409 JSON response.
+
+    Every bounded allocation attempt lost the race against a concurrent run on
+    the same story: the run never started, so there is nothing to poll and the
+    client may retry. ``detail`` is the exception's own message; when that is
+    silent, it is composed from the exception's own ``user_story_id`` so the
+    response never goes out empty.
+    """
+    detail = str(exc)
+    if not detail.strip() and exc.user_story_id is not None:
+        detail = f"Could not allocate a version number for story '{exc.user_story_id}'"
+    if not detail.strip():
+        detail = "Could not allocate a version number for this story"
+    return JSONResponse(
+        status_code=409,
+        content={"detail": detail, "error_code": VERSION_ALLOCATION_CONFLICT},
+    )
+
+
+async def vector_store_error_handler(
+    request: Request,
+    exc: VectorStoreError,
+) -> JSONResponse:
+    """Maps ``VectorStoreError`` to a 503 JSON response.
+
+    ``503`` and not an internal error: the vector store is a down dependency,
+    the same posture ``llm_connection_error_handler`` takes — the caller did
+    nothing wrong and a retry may succeed. ``VectorStoreError`` is deliberately
+    outside the ``RepositoryError`` tree, so this handler is what answers it;
+    the repository error handler never sees it.
+    """
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Vector store unavailable",
+            "error_code": VECTOR_STORE_UNAVAILABLE,
+            "message": str(exc),
         },
     )

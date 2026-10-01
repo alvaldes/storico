@@ -82,6 +82,16 @@ class _RecordingVectorStore(VectorStorePort):
         self.stored.append(kwargs)
         return True
 
+    async def delete_by_story(
+        self,
+        *,
+        workspace_id: UUID,  # noqa: ARG002
+        user_story_id: str,  # noqa: ARG002
+    ) -> None:
+        # Mechanical placeholder so this fake satisfies the port's new abstract
+        # method; task 4.3 / W4-T7 replaces it with a fake that records deletes.
+        return None
+
 
 def _make_the_vector_store_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     """Turn the RAG dependency off before the background task builds it.
@@ -1125,12 +1135,16 @@ class TestVersioningTriangulation:
     async def test_an_exhausted_allocation_is_not_silent(
         self, async_client, db_session, seed_workspace, monkeypatch
     ) -> None:
-        """A lost race on every attempt surfaces as an error, never as a half-started run.
+        """A lost race on every attempt surfaces as an explicit conflict, never silently.
 
-        ``VersionAllocationConflictError`` reaches the generic ``repository_error_handler`` and
-        answers 500 ``REPOSITORY_ERROR`` **today**, and this case pins exactly that: slice (b) owns
-        the final status code and will move it, which is why the assertion names the code and not a
-        promise. The alternative — a 202 with no row to poll — is the silent failure this prevents.
+        An exhausted version allocation answers 409 ``VERSION_ALLOCATION_CONFLICT``: every
+        bounded attempt lost the race, so the run never started — there is no extraction to
+        poll and the caller may retry. The handler was registered for
+        ``VersionAllocationConflictError`` itself (task 4.7), so the MRO resolves the
+        subclass here instead of falling through to ``repository_error_handler``'s generic
+        500 ``REPOSITORY_ERROR``. Task 4.2 owns the remaining edges of this contract: the
+        "never 202" refusal, that no extraction row is written, and the ``MEMBER`` gate
+        refusal that precedes it.
         """
         from storico.domain.entities.exceptions import VersionAllocationConflictError
 
@@ -1151,8 +1165,8 @@ class TestVersioningTriangulation:
             headers=_auth_headers(str(user.id)),
         )
 
-        assert response.status_code == 500
-        assert response.json()["error_code"] == "REPOSITORY_ERROR"
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "VERSION_ALLOCATION_CONFLICT"
 
 
 # ── Tasks 3.2 / 3.8 — versioning on the live runner path ────────────────────

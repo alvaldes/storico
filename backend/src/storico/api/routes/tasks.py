@@ -11,6 +11,7 @@ from storico.api.dependencies import (
     get_current_user,
     get_repository,
     require_story_workspace_access,
+    resolve_task_access,
 )
 from storico.api.error_codes import (
     NOT_A_WORKSPACE_MEMBER,
@@ -26,7 +27,7 @@ from storico.application.services.task_service import (
     InvalidStateTransition,
     TaskService,
 )
-from storico.domain.entities import EntityNotFound, Task, User
+from storico.domain.entities import Task, User
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
@@ -75,23 +76,19 @@ async def _validate_task_workspace_access(
 ) -> Task:
     """Find a task and verify the user has access to its workspace.
 
-    Returns the task if access is granted. Raises 404 or 403 otherwise.
+    Thin caller of ``resolve_task_access``: the walk and its refusals live in
+    ``api/dependencies.py``, unchanged. Returns the task if access is granted.
+    Raises 404 or 403 otherwise.
     """
-    task = await task_repo.find_by_id(task_id)
-    if task is None:
-        raise EntityNotFound("Task", str(task_id))
-
-    # Delegate the rest of the walk so a missing story, project or membership is
-    # still reported as a miss of this route's own head entity ("Task").
-    await require_story_workspace_access(
-        task.user_story_id,
+    access = await resolve_task_access(
+        task_id,
         current_user,
+        task_repo=task_repo,
         story_repo=story_repo,
         project_repo=project_repo,
         member_repo=member_repo,
-        reported_as=("Task", task_id),
     )
-    return task
+    return access.task
 
 
 @router.api_route(
