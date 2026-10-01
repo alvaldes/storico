@@ -31,6 +31,7 @@ class TaskRepository(ABC):
         workspace_id: UUID | None = None,
         user_story_id: UUID | None = None,
         workspace_ids: list[UUID] | None = None,
+        extraction_id: UUID | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[Task], int]:
@@ -47,12 +48,33 @@ class TaskRepository(ABC):
         The total rides on the rows' own statement as ``count(*) OVER ()``,
         so no separate ``SELECT COUNT(*)`` is issued on the normal path, and
         results are ordered by ``created_at DESC, id DESC`` in SQL.
+
+        Current-version predicate (derived, never stored): the story scope
+        filters to the highest-numbered ``completed`` version of the story, so
+        both the page and the ``total`` count current tasks only. The
+        workspace and ``workspace_ids`` scopes keep a task only while no
+        higher-numbered ``completed`` version of its story exists. Passing
+        ``extraction_id`` alongside ``user_story_id`` bypasses the predicate
+        and reads exactly that version — the version selector's per-version
+        read; ``extraction_id`` without ``user_story_id`` raises
+        ``ValueError``.
         """
         ...
 
     @abstractmethod
     async def list_by_workspace(self, workspace_id: UUID) -> list[Task]:
         """Return all tasks belonging to a workspace."""
+        ...
+
+    @abstractmethod
+    async def list_current_by_workspace(self, workspace_id: UUID) -> list[Task]:
+        """Return the workspace's current-version tasks, unpaginated.
+
+        The export's read: a task is returned only while no higher-numbered
+        ``completed`` version of its story exists — the same current-version
+        predicate the workspace scope of ``list_page`` carries, without the
+        page window.
+        """
         ...
 
     @abstractmethod

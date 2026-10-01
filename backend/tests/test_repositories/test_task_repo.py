@@ -9,6 +9,7 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from storico.domain.entities import Project, Task, UserStory
+from storico.domain.entities.extraction import ExtractionStatus
 from storico.infrastructure.database.repositories import (
     SQLAlchemyProjectRepository,
     SQLAlchemyTaskRepository,
@@ -150,9 +151,13 @@ async def test_list_page_by_story_excludes_another_storys_tasks(
     mine = await _seed_story(db_session, workspace_id, "Mine")
     other = await _seed_story(db_session, workspace_id, "Other")
 
-    await _seed_task(db_session, mine.id, "mine-1")
-    await _seed_task(db_session, mine.id, "mine-2")
-    await _seed_task(db_session, other.id, "other-1")
+    # Reads answer the current version only (D-a-5 item 2), so each story's
+    # tasks hang off one completed version to be visible at all.
+    mine_v = await seed_extraction(db_session, mine.id, status=ExtractionStatus.COMPLETED)
+    other_v = await seed_extraction(db_session, other.id, status=ExtractionStatus.COMPLETED)
+    await _seed_task(db_session, mine.id, "mine-1", extraction=mine_v)
+    await _seed_task(db_session, mine.id, "mine-2", extraction=mine_v)
+    await _seed_task(db_session, other.id, "other-1", extraction=other_v)
 
     page, total = await repo.list_page(user_story_id=mine.id, limit=10, offset=0)
 
@@ -184,8 +189,14 @@ async def test_list_page_mid_page_carries_the_full_total(
     """
     repo = SQLAlchemyTaskRepository(db_session)
     story = await _seed_story(db_session, workspace_id, "Paged")
+    # One completed version carries all three tasks: reads answer the current
+    # version only (D-a-5 item 2), and three separate versions would leave only
+    # the highest one visible.
+    version = await seed_extraction(db_session, story.id, status=ExtractionStatus.COMPLETED)
     for day, title in ((1, "oldest"), (2, "middle"), (3, "newest")):
-        await _seed_task(db_session, story.id, title, created_at=datetime(2026, 1, day))
+        await _seed_task(
+            db_session, story.id, title, extraction=version, created_at=datetime(2026, 1, day)
+        )
 
     page1, total1 = await repo.list_page(user_story_id=story.id, limit=2, offset=0)
     page2, total2 = await repo.list_page(user_story_id=story.id, limit=2, offset=2)
@@ -206,8 +217,10 @@ async def test_list_page_past_the_end_returns_empty_page_and_real_total(
     """
     repo = SQLAlchemyTaskRepository(db_session)
     story = await _seed_story(db_session, workspace_id, "Paged")
+    # One completed version carries all three tasks (see the mid-page test).
+    version = await seed_extraction(db_session, story.id, status=ExtractionStatus.COMPLETED)
     for title in ("s1", "s2", "s3"):
-        await _seed_task(db_session, story.id, title)
+        await _seed_task(db_session, story.id, title, extraction=version)
 
     page, total = await repo.list_page(user_story_id=story.id, limit=2, offset=4)
 
@@ -230,8 +243,11 @@ async def test_list_page_by_workspace_returns_only_that_workspaces_tasks(
     beta_ws = await create_workspace(db_session, name="Beta", slug="beta-task-list-page")
     alpha_story = await _seed_story(db_session, alpha_ws.id, "Alpha project")
     beta_story = await _seed_story(db_session, beta_ws.id, "Beta project")
-    await _seed_task(db_session, alpha_story.id, "alpha-task")
-    await _seed_task(db_session, beta_story.id, "beta-task")
+    # One completed version per story so the tasks are visible to the read.
+    alpha_v = await seed_extraction(db_session, alpha_story.id, status=ExtractionStatus.COMPLETED)
+    beta_v = await seed_extraction(db_session, beta_story.id, status=ExtractionStatus.COMPLETED)
+    await _seed_task(db_session, alpha_story.id, "alpha-task", extraction=alpha_v)
+    await _seed_task(db_session, beta_story.id, "beta-task", extraction=beta_v)
 
     page, total = await repo.list_page(workspace_id=alpha_ws.id, limit=10, offset=0)
 
@@ -354,3 +370,144 @@ async def test_list_all(db_session: AsyncSession, story_id: UUID) -> None:
 
     tasks = await repo.list()
     assert len(tasks) == 2
+
+
+class TestCurrentVersionPredicate:
+    """D-a-5 item 2: reads answer the story's current version only.
+
+    Currency is derived — ``status == completed`` plus the highest
+    ``version_number`` — never stored (slice (a)'s decision), so every case
+    seeds two completed versions and pins which one the read answers. The
+    predicate must live on the same ``scope`` clause the page statement and
+    its fallback ``count_stmt`` share, or ``total`` keeps counting superseded
+    rows: a page of 4 that reports 12 is the failure mode these tests exist
+    to prevent.
+    """
+
+    @staticmethod
+    async def _seed_two_completed_versions(
+        db_session: AsyncSession, story: UserStory
+    ) -> tuple[Task, Task]:
+        """Seed v1 and v2, both completed, four tasks each; return (v1, v2).
+
+        ``seed_extraction`` mints ``version_number`` sequentially per story
+        through the birth path, so the second call is strictly the higher
+        version — the current one, once both are completed.
+        """
+        v1 = await seed_extraction(db_session, story.id, status=ExtractionStatus.COMPLETED)
+        for i in range(4):
+            await _seed_task(db_session, story.id, f"v1-{i}", extraction=v1)
+        v2 = await seed_extraction(db_session, story.id, status=ExtractionStatus.COMPLETED)
+        for i in range(4):
+            await _seed_task(db_session, story.id, f"v2-{i}", extraction=v2)
+        return v1, v2
+
+    @pytest.mark.asyncio
+    async def test_story_scope_returns_only_the_current_versions_tasks(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """Story scope with v1 and v2 both completed: only v2's 4 tasks, total 4."""
+        repo = SQLAlchemyTaskRepository(db_session)
+        story = await _seed_story(db_session, workspace_id, "Versioned")
+        v1, _v2 = await self._seed_two_completed_versions(db_session, story)
+
+        page, total = await repo.list_page(user_story_id=story.id, limit=10, offset=0)
+
+        assert total == 4
+        assert len(page) == 4
+        assert all(t.extraction_id != v1.id for t in page)
+        assert {t.title for t in page} == {f"v2-{i}" for i in range(4)}
+
+    @pytest.mark.asyncio
+    async def test_page_past_the_end_carries_the_filtered_total(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """A page past the end reports the filtered total, not the raw row count.
+
+        This is the fallback ``count_stmt`` path in ``fetch_page`` — the one
+        statement that would keep counting superseded rows if the predicate
+        were attached to the page statement but not to the shared ``scope``.
+        """
+        repo = SQLAlchemyTaskRepository(db_session)
+        story = await _seed_story(db_session, workspace_id, "Past the end")
+        await self._seed_two_completed_versions(db_session, story)
+
+        page, total = await repo.list_page(user_story_id=story.id, limit=2, offset=10)
+
+        assert page == []
+        assert total == 4
+
+    @pytest.mark.asyncio
+    async def test_workspace_scope_returns_only_current_tasks(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """Workspace scope: superseded versions contribute nothing, total == len(items).
+
+        The workspace arm cannot use the story's scalar subquery (it has no
+        single story), so it carries the NOT EXISTS form: a task survives only
+        when no higher-numbered completed version of its story exists.
+        """
+        repo = SQLAlchemyTaskRepository(db_session)
+        superseded = await _seed_story(db_session, workspace_id, "Superseded")
+        await self._seed_two_completed_versions(db_session, superseded)
+        plain = await _seed_story(db_session, workspace_id, "Plain")
+        plain_v = await seed_extraction(db_session, plain.id, status=ExtractionStatus.COMPLETED)
+        await _seed_task(db_session, plain.id, "plain-task", extraction=plain_v)
+
+        page, total = await repo.list_page(workspace_id=workspace_id, limit=10, offset=0)
+
+        assert total == len(page) == 5
+        assert {t.title for t in page} == {f"v2-{i}" for i in range(4)} | {"plain-task"}
+
+    @pytest.mark.asyncio
+    async def test_workspace_ids_scope_is_filtered_too(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """The unfiltered ``workspace_ids`` scope applies the same predicate."""
+        repo = SQLAlchemyTaskRepository(db_session)
+        superseded = await _seed_story(db_session, workspace_id, "Superseded")
+        await self._seed_two_completed_versions(db_session, superseded)
+
+        page, total = await repo.list_page(workspace_ids=[workspace_id], limit=10, offset=0)
+
+        assert total == len(page) == 4
+        assert {t.title for t in page} == {f"v2-{i}" for i in range(4)}
+
+    @pytest.mark.asyncio
+    async def test_explicit_extraction_id_reads_exactly_that_version(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """An explicit ``extraction_id`` bypasses the currency predicate.
+
+        Reading v1 on purpose must return v1's tasks, not nothing: the
+        version selector's per-version read depends on this arm existing.
+        """
+        repo = SQLAlchemyTaskRepository(db_session)
+        story = await _seed_story(db_session, workspace_id, "Explicit version")
+        v1, v2 = await self._seed_two_completed_versions(db_session, story)
+
+        page, total = await repo.list_page(
+            user_story_id=story.id, extraction_id=v1.id, limit=10, offset=0
+        )
+
+        assert total == 4
+        assert {t.title for t in page} == {f"v1-{i}" for i in range(4)}
+        assert all(t.extraction_id == v1.id for t in page)
+        assert all(t.extraction_id != v2.id for t in page)
+
+    @pytest.mark.asyncio
+    async def test_list_current_by_workspace_returns_only_current_tasks(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """``list_current_by_workspace`` carries the predicate unpaginated (the export read)."""
+        repo = SQLAlchemyTaskRepository(db_session)
+        superseded = await _seed_story(db_session, workspace_id, "Superseded")
+        await self._seed_two_completed_versions(db_session, superseded)
+        plain = await _seed_story(db_session, workspace_id, "Plain")
+        plain_v = await seed_extraction(db_session, plain.id, status=ExtractionStatus.COMPLETED)
+        await _seed_task(db_session, plain.id, "plain-task", extraction=plain_v)
+
+        tasks = await repo.list_current_by_workspace(workspace_id)
+
+        assert len(tasks) == 5
+        assert {t.title for t in tasks} == {f"v2-{i}" for i in range(4)} | {"plain-task"}

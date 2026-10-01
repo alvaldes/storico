@@ -24,12 +24,15 @@ from storico.api.schemas.story import (
     StoryImportDuplicateItem,
     StoryImportErrorItem,
     StoryImportResponse,
+    StoryVersionResponse,
     UpdateUserStoryRequest,
     UserStoryResponse,
 )
 from storico.domain.entities import EntityNotFound, User, UserStory, Workspace, WorkspaceRole
+from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.services.story_import import ImportRow, validate_import
 from storico.infrastructure.database.repositories import (
+    SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
     SQLAlchemyUserStoryRepository,
 )
@@ -64,6 +67,11 @@ ProjectRepoDep = Annotated[
 MemberRepoDep = Annotated[
     SQLAlchemyWorkspaceMemberRepository,
     Depends(get_repository(SQLAlchemyWorkspaceMemberRepository)),
+]
+
+ExtractionRepoDep = Annotated[
+    SQLAlchemyExtractionRepository,
+    Depends(get_repository(SQLAlchemyExtractionRepository)),
 ]
 
 
@@ -240,6 +248,61 @@ async def get_story(
         created_at=story.created_at,
         status=story.status,
     )
+
+
+@router.get("/{story_id}/versions")
+async def list_story_versions(
+    story_id: UUID,
+    current_user: User = Depends(get_current_user),
+    repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
+) -> list[StoryVersionResponse]:
+    """List every version of a user story, newest first, for the version selector.
+
+    The user must be a member of the workspace that owns the story's project —
+    the unchanged ``require_story_workspace_access`` walk, so a missing story is
+    404 and a non-member is 403 ``NOT_A_WORKSPACE_MEMBER``, exactly the posture
+    ``GET /{story_id}`` has; nothing about the workspace leaks into either body.
+
+    The response is a **bare unpaginated array**: the list is the selector's
+    pagination *input*, not a paginated resource, so the paginator's window must
+    never truncate it. ``pending`` and ``failed`` runs are part of the history
+    the user must see and are never filtered out. The two booleans are derived
+    here, never stored: ``is_current`` marks the first ``completed`` entry of
+    the ``version_number DESC`` list (a story with no completed run has no
+    current entry — the legal frozen state), and ``has_output`` is
+    ``status == completed``.
+    """
+    await require_story_workspace_access(
+        story_id,
+        current_user,
+        story_repo=repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
+    )
+    versions = await extraction_repo.list_versions(story_id)
+    current_id = next(
+        (v.id for v in versions if v.status == ExtractionStatus.COMPLETED),
+        None,
+    )
+    return [
+        StoryVersionResponse(
+            id=v.id,
+            version_number=v.version_number,
+            status=v.status,
+            model_used=v.model_used,
+            provider=v.provider,
+            temperature=v.temperature,
+            created_at=v.created_at,
+            completed_at=v.completed_at,
+            error_info=v.error_info,
+            is_current=v.id == current_id,
+            has_output=v.status == ExtractionStatus.COMPLETED,
+        )
+        for v in versions
+    ]
 
 
 @router.put("/{story_id}")

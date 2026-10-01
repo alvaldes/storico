@@ -6,17 +6,19 @@ The chain comes from the shared ``seed_workspace`` factory; only the foreign
 owner, which is a user rather than part of the chain, is built locally.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import User, UserStory
+from storico.domain.entities.extraction import ExtractionStatus
 from storico.infrastructure.database.repositories import (
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
 )
+from tests._helpers import seed_extraction
 
 RAW_TEXT = "As a user, I want to log in so that I can access my account"
 
@@ -471,3 +473,225 @@ class TestStoryMembership:
         assert response.status_code == 401
         assert body["error_code"] == "AUTH_TOKEN_INVALID"
         assert body["detail"] == "Invalid or missing authentication token"
+
+
+class TestStoryVersionsEndpoint:
+    """GET /api/v1/stories/{story_id}/versions — the version selector's read.
+
+    WU3 task 3.9's own GREEN proof: the bare unpaginated array ordered
+    ``version_number DESC`` with the two derived decorators — ``is_current`` is
+    the first ``completed`` entry of the ordered list (never merely the highest
+    entry), ``has_output`` is ``status == completed``. The triangulation edges
+    (25 versions in one payload, the 404/403 posture, the failed entry's full
+    field disclosure) belong to task 3.10 and are deliberately not here.
+    """
+
+    async def _create_story(self, authed_client, seeded) -> str:
+        """Create one story through the API and return its id as a string."""
+        response = await authed_client.post(
+            "/api/v1/stories/",
+            json={
+                "project_id": str(seeded.project_id),
+                "actor": "user",
+                "feature": "log in",
+                "benefit": "access my account",
+                "raw_text": RAW_TEXT,
+            },
+        )
+        assert response.status_code == 201
+        return response.json()["id"]
+
+    async def test_lists_every_version_newest_first_and_derives_the_flags(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """Three versions (v1/v2 completed, v3 pending) come back newest first,
+        with exactly v2 marked current and the selector's exact field set."""
+        seeded = await seed_workspace(stories=0)
+        story_id = await self._create_story(authed_client, seeded)
+        await seed_extraction(
+            db_session,
+            UUID(story_id),
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        await seed_extraction(
+            db_session,
+            UUID(story_id),
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        await seed_extraction(db_session, UUID(story_id))  # pending
+
+        response = await authed_client.get(f"/api/v1/stories/{story_id}/versions")
+
+        assert response.status_code == 200
+        data = response.json()
+        # A bare array, not a pagination envelope: the list is the selector's
+        # input and must arrive whole.
+        assert isinstance(data, list)
+        assert [entry["version_number"] for entry in data] == [3, 2, 1]
+        # ``is_current`` is the first completed entry of the DESC list — v2, not
+        # v3 (the highest-numbered entry, but pending) and not both completed ones.
+        current = [entry for entry in data if entry["is_current"]]
+        assert [entry["version_number"] for entry in current] == [2]
+        assert [entry["has_output"] for entry in data] == [False, True, True]
+        for entry in data:
+            assert set(entry.keys()) == {
+                "id",
+                "version_number",
+                "status",
+                "model_used",
+                "provider",
+                "temperature",
+                "created_at",
+                "completed_at",
+                "error_info",
+                "is_current",
+                "has_output",
+            }
+        assert data[0]["status"] == "pending"
+        assert data[0]["completed_at"] is None
+        assert data[1]["completed_at"] is not None
+
+    async def test_a_story_with_no_completed_version_has_no_current_entry(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A story whose only run failed answers 200 with the array and no
+        ``is_current`` anywhere — the legal state the frozen semantics already
+        treat as frozen. The failed entry's field disclosure is task 3.10's edge.
+        """
+        seeded = await seed_workspace(stories=0)
+        story_id = await self._create_story(authed_client, seeded)
+        await seed_extraction(
+            db_session,
+            UUID(story_id),
+            status=ExtractionStatus.FAILED,
+            error_info="model unreachable",
+        )
+
+        response = await authed_client.get(f"/api/v1/stories/{story_id}/versions")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 1
+        assert data[0]["is_current"] is False
+        assert data[0]["has_output"] is False
+
+    async def test_three_completed_versions_mark_exactly_the_highest_current(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """v1, v2 and v3 all completed: exactly v3 — the highest-numbered
+        completed run — is current, and every completed entry has output."""
+        seeded = await seed_workspace(stories=0)
+        story_id = await self._create_story(authed_client, seeded)
+        for _ in range(3):
+            await seed_extraction(
+                db_session,
+                UUID(story_id),
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+
+        response = await authed_client.get(f"/api/v1/stories/{story_id}/versions")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert [entry["version_number"] for entry in data] == [3, 2, 1]
+        current = [entry for entry in data if entry["is_current"]]
+        assert [entry["version_number"] for entry in current] == [3]
+        assert [entry["has_output"] for entry in data] == [True, True, True]
+
+    async def test_twenty_five_versions_arrive_in_one_untruncated_payload(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """25 versions come back in one payload — the unbounded proof at the HTTP edge.
+
+        ``list_versions`` is deliberately unpaginated: a 20-row window would
+        silently drop five entries of this exact story's history. The assertion
+        counts the whole ordered list and derives both flags across all of it
+        (v25 pending, v1-v24 completed), so truncation could not hide behind a
+        passing ``is_current`` either.
+        """
+        seeded = await seed_workspace(stories=0)
+        story_id = await self._create_story(authed_client, seeded)
+        for number in range(1, 26):
+            if number < 25:
+                await seed_extraction(
+                    db_session,
+                    UUID(story_id),
+                    status=ExtractionStatus.COMPLETED,
+                    completed_at=datetime.now(UTC),
+                )
+            else:
+                await seed_extraction(db_session, UUID(story_id))  # pending
+
+        response = await authed_client.get(f"/api/v1/stories/{story_id}/versions")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 25
+        assert [entry["version_number"] for entry in data] == list(range(25, 0, -1))
+        current = [entry for entry in data if entry["is_current"]]
+        assert [entry["version_number"] for entry in current] == [24]
+        assert [entry["has_output"] for entry in data] == [False] + [True] * 24
+
+    async def test_a_missing_story_is_404_and_a_non_member_is_403(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The versions read refuses exactly like GET /{story_id}: a missing
+        story is 404 and a non-member is 403 — never a silent empty 200."""
+        missing = await authed_client.get(f"/api/v1/stories/{uuid4()}/versions")
+
+        assert missing.status_code == 404
+        assert missing.json()["error_code"] == "ENTITY_NOT_FOUND"
+
+        other = await SQLAlchemyUserRepository(db_session).save(
+            User(email="other-versions-owner@test.com", name="Other Versions Owner")
+        )
+        foreign = await seed_workspace(user=other, stories=0)
+        foreign_story = await SQLAlchemyUserStoryRepository(db_session).save(
+            UserStory(
+                project_id=foreign.project_id,
+                actor="user",
+                feature="read my versions",
+                benefit="see the history",
+                raw_text=RAW_TEXT,
+            )
+        )
+
+        forbidden = await authed_client.get(f"/api/v1/stories/{foreign_story.id}/versions")
+
+        assert forbidden.status_code == 403
+        assert forbidden.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
+        assert forbidden.json()["detail"] == FORBIDDEN_NOT_A_MEMBER
+
+    async def test_a_failed_version_discloses_its_run_metadata_and_has_no_output(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A failed version is surfaced honestly: the run's status, error,
+        model, provider and temperature all arrive, and ``has_output`` is false."""
+        seeded = await seed_workspace(stories=0)
+        story_id = await self._create_story(authed_client, seeded)
+        await seed_extraction(
+            db_session,
+            UUID(story_id),
+            status=ExtractionStatus.FAILED,
+            error_info="model unreachable",
+            model_used="mistral",
+            provider="ollama",
+            temperature=0.2,
+        )
+
+        response = await authed_client.get(f"/api/v1/stories/{story_id}/versions")
+
+        assert response.status_code == 200
+        entry = response.json()[0]
+        assert entry["status"] == "failed"
+        assert entry["error_info"] == "model unreachable"
+        assert entry["model_used"] == "mistral"
+        assert entry["provider"] == "ollama"
+        assert entry["temperature"] == 0.2
+        assert entry["has_output"] is False
+        assert entry["is_current"] is False

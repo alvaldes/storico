@@ -5,14 +5,21 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, exists, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from storico.domain.entities import EntityNotFound, RepositoryError, Task
+from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.task import TaskStatus
 from storico.domain.ports import TaskRepository
-from storico.infrastructure.database.models import ProjectModel, TaskModel, UserStoryModel
+from storico.infrastructure.database.models import (
+    ExtractionModel,
+    ProjectModel,
+    TaskModel,
+    UserStoryModel,
+)
 from storico.infrastructure.database.pagination import fetch_page, with_total
 
 
@@ -42,12 +49,39 @@ class SQLAlchemyTaskRepository(TaskRepository):
         result = await self._session.get(TaskModel, task_id)
         return self._to_domain(result) if result else None
 
+    @staticmethod
+    def _current_version_only(scope):
+        """Join the current-version predicate to an existing scope clause.
+
+        The "no higher-numbered completed version of this story" form, served
+        by ``uq_extractions_story_version`` and needing no ``MAX``. It is
+        joined to the same ``scope`` the page statement and its fallback
+        count share, so both halves of a read answer one question and the
+        total cannot keep counting superseded rows. Currency is derived —
+        ``status == completed`` plus the highest ``version_number`` — never
+        stored (slice (a)'s decision: no flag, no trigger, no matview).
+        """
+        current = aliased(ExtractionModel)
+        return and_(
+            scope,
+            TaskModel.extraction_id == current.id,
+            current.status == ExtractionStatus.COMPLETED,
+            ~exists(
+                select(1).where(
+                    ExtractionModel.user_story_id == current.user_story_id,
+                    ExtractionModel.status == ExtractionStatus.COMPLETED,
+                    ExtractionModel.version_number > current.version_number,
+                )
+            ),
+        )
+
     async def list_page(
         self,
         *,
         workspace_id: UUID | None = None,
         user_story_id: UUID | None = None,
         workspace_ids: list[UUID] | None = None,
+        extraction_id: UUID | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[Task], int]:
@@ -73,6 +107,16 @@ class SQLAlchemyTaskRepository(TaskRepository):
         are mutually exclusive, and a plain ``if``/``elif`` chain would let a
         caller pass two and silently get one of them -- a wrong answer that looks
         like a right one, which is the exact failure mode this change removes.
+
+        Reads answer the story's current version only (D-a-5 item 2): the
+        story scope pins ``extraction_id`` to the highest-numbered
+        ``completed`` run, the workspace and ``workspace_ids`` scopes drop any
+        task whose story has a higher-numbered ``completed`` run. Both
+        predicates are joined to the ``scope`` clause below, so the page and
+        its ``total`` — the window count and the past-the-end fallback count
+        alike — are filtered together. An explicit ``extraction_id`` (story
+        scope only; anything else raises ``ValueError``) bypasses the
+        predicate and reads exactly that version.
         """
         scopes = [
             value for value in (workspace_ids, user_story_id, workspace_id) if value is not None
@@ -82,11 +126,16 @@ class SQLAlchemyTaskRepository(TaskRepository):
                 "list_page requires exactly one of workspace_id, user_story_id or workspace_ids; "
                 f"got {len(scopes)}"
             )
+        if extraction_id is not None and user_story_id is None:
+            raise ValueError(
+                "extraction_id requires user_story_id: reading a named version "
+                "is a story-scoped question"
+            )
 
         if workspace_ids is not None:
             if not workspace_ids:
                 return [], 0
-            scope = ProjectModel.workspace_id.in_(workspace_ids)
+            scope = self._current_version_only(ProjectModel.workspace_id.in_(workspace_ids))
             stmt = select(TaskModel).join(UserStoryModel).join(ProjectModel).where(scope)
             count_stmt = (
                 select(func.count())
@@ -98,11 +147,31 @@ class SQLAlchemyTaskRepository(TaskRepository):
         elif user_story_id is not None:
             # No join: tasks carry their own ``user_story_id`` foreign key.
             scope = TaskModel.user_story_id == user_story_id
+            if extraction_id is not None:
+                # Reading a named version on purpose: no currency predicate, or
+                # the selector could never show a superseded version's tasks.
+                scope = and_(scope, TaskModel.extraction_id == extraction_id)
+            else:
+                # The current version only. An empty subquery yields NULL and
+                # matches no row, so a story with no completed run reads no
+                # tasks — the honest answer to "what is the current output?".
+                scope = and_(
+                    scope,
+                    TaskModel.extraction_id
+                    == select(ExtractionModel.id)
+                    .where(
+                        ExtractionModel.user_story_id == user_story_id,
+                        ExtractionModel.status == ExtractionStatus.COMPLETED,
+                    )
+                    .order_by(ExtractionModel.version_number.desc())
+                    .limit(1)
+                    .scalar_subquery(),
+                )
             stmt = select(TaskModel).where(scope)
             count_stmt = select(func.count()).select_from(TaskModel).where(scope)
         elif workspace_id is not None:
             # Tasks have no workspace column: walk ``task → story → project``.
-            scope = ProjectModel.workspace_id == workspace_id
+            scope = self._current_version_only(ProjectModel.workspace_id == workspace_id)
             stmt = select(TaskModel).join(UserStoryModel).join(ProjectModel).where(scope)
             count_stmt = (
                 select(func.count())
@@ -128,6 +197,22 @@ class SQLAlchemyTaskRepository(TaskRepository):
             .join(UserStoryModel)
             .join(ProjectModel)
             .where(ProjectModel.workspace_id == workspace_id)
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_domain(row) for row in result.scalars()]
+
+    async def list_current_by_workspace(self, workspace_id: UUID) -> list[Task]:
+        """The export's read: current-version tasks, unpaginated.
+
+        Same ``NOT EXISTS`` predicate as the workspace scope of ``list_page``,
+        without the page window — the export serializes the whole workspace,
+        so the filter rides the serializing statement itself.
+        """
+        stmt = (
+            select(TaskModel)
+            .join(UserStoryModel)
+            .join(ProjectModel)
+            .where(self._current_version_only(ProjectModel.workspace_id == workspace_id))
         )
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]

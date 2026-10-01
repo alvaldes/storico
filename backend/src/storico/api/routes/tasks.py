@@ -14,6 +14,7 @@ from storico.api.dependencies import (
 )
 from storico.api.error_codes import (
     NOT_A_WORKSPACE_MEMBER,
+    REQUEST_VALIDATION_FAILED,
     TASK_CREATION_ENDPOINT_REMOVED,
     TASK_DELETE_ENDPOINT_REMOVED,
     TASK_VERSION_FROZEN,
@@ -132,16 +133,28 @@ async def list_tasks(
     story_repo: StoryRepoDep = None,  # type: ignore[assignment]
     project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
     member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
     user_story_id: UUID | None = None,
     workspace_id: UUID | None = None,
+    extraction_id: UUID | None = None,
 ) -> PaginatedResponse[TaskResponse]:
     """List tasks with optional filters and pagination.
 
     Filters:
     - ``user_story_id``: filter by user story (requires workspace membership).
+      By default only the story's current version (the highest-numbered
+      ``completed`` run) is answered; passing ``extraction_id`` reads exactly
+      that version instead, so a superseded version's tasks stay addressable.
+      A version that does not belong to the requested story — or does not
+      exist — is refused with 422 ``REQUEST_VALIDATION_FAILED``.
     - ``workspace_id``: filter by workspace (requires workspace membership).
 
-    If neither filter is provided, returns tasks from all workspaces
+    ``extraction_id`` is a story-scoped question: supplying it without
+    ``user_story_id`` is refused with 422 before any repository call (the
+    repository's own ``ValueError`` for that shape is an internal invariant,
+    not an HTTP contract).
+
+    If neither scope filter is provided, returns tasks from all workspaces
     the current user is a member of.
 
     The page and its total come from one statement in the database —
@@ -150,6 +163,18 @@ async def list_tasks(
     which makes the paging deterministic.
     """
     offset = (params.page - 1) * params.size
+    # The shape refusal is the route's own answer and comes before every
+    # branch: the repository raises ``ValueError`` for this same combination,
+    # and letting that escape would surface as a 500 instead of a coded 422.
+    if extraction_id is not None and user_story_id is None:
+        raise ApiError(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            error_code=REQUEST_VALIDATION_FAILED,
+            detail=(
+                "extraction_id requires user_story_id: reading a named version "
+                "is a story-scoped question."
+            ),
+        )
     # Validate workspace access
     if workspace_id is not None:
         # Validate user is a member of the specified workspace
@@ -172,8 +197,23 @@ async def list_tasks(
             project_repo=project_repo,
             member_repo=member_repo,
         )
+        if extraction_id is not None:
+            # A named version is only honored when it belongs to the requested
+            # story: a foreign or nonexistent id is a caller mistake, refused
+            # with 422 — the same code FastAPI's own body validation uses —
+            # rather than a 404 that would hint at which version ids exist.
+            version = await extraction_repo.find_by_id(extraction_id)
+            if version is None or version.user_story_id != user_story_id:
+                raise ApiError(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    error_code=REQUEST_VALIDATION_FAILED,
+                    detail=("extraction_id does not name a version of the requested user story."),
+                )
         page, total = await repo.list_page(
-            user_story_id=user_story_id, limit=params.size, offset=offset
+            user_story_id=user_story_id,
+            extraction_id=extraction_id,
+            limit=params.size,
+            offset=offset,
         )
     else:
         # No filter provided: return tasks from all workspaces the user is a member of

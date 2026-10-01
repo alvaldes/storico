@@ -218,6 +218,32 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
         model = result.scalar_one_or_none()
         return self._to_domain(model) if model else None
 
+    async def list_versions(self, user_story_id: UUID) -> list[Extraction]:
+        """Every version of the story, ordered ``version_number DESC``, newest first.
+
+        Deliberately unbounded: the version list is the pagination *input* for the
+        version selector, not a paginated resource, and the paginator's 20/100 window
+        would truncate a long history silently — exactly the failure this read exists
+        to avoid. A story's version count is bounded by hand-run extractions, so no
+        window is applied here, and a ``pending`` or ``failed`` run is part of the
+        history the user must see, never filtered out.
+
+        Agreement with ``find_current_version``: "current" is derived here as the
+        first ``completed`` entry of this ordered list and there as a ``LIMIT 1``
+        query; both mean "highest-numbered completed version", and the repository
+        test pinning one against the other for a three-version story is what keeps
+        them in step. Do not unify them by making ``find_current_version`` load this
+        list and filter in Python: it sits on the hot path of every task write (the
+        frozen check) and must stay a ``LIMIT 1`` query.
+        """
+        stmt = (
+            select(ExtractionModel)
+            .where(ExtractionModel.user_story_id == user_story_id)
+            .order_by(ExtractionModel.version_number.desc())
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_domain(model) for model in result.scalars()]
+
     async def list_page(
         self,
         *,

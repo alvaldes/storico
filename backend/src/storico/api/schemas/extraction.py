@@ -49,6 +49,12 @@ class ExtractionResponse(BaseModel):
     confidence_score: float | None = None
     created_at: datetime
     completed_at: datetime | None = None
+    # The three versioning scalars (0028), required on the contract so every
+    # construction site passes what the row actually carries. ``version_number``
+    # is ``None`` only on the pre-0028 shape — a response can legitimately carry it.
+    version_number: int | None
+    provider: str
+    temperature: float
     tasks: list[TaskSchema] = []
 
 
@@ -68,3 +74,9 @@ class ExtractResponse(BaseModel):
     status: ExtractionStatus
     user_story_id: UUID
     message: str
+    # The same three versioning scalars as ``ExtractionResponse``: the 202 body
+    # answers "which version was minted, at what provider and temperature" so the
+    # client can address the run before its first poll.
+    version_number: int | None
+    provider: str
+    temperature: float

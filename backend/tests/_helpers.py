@@ -13,11 +13,12 @@ Slug inline because ``python-slugify`` is not a project dependency
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from storico.domain.entities.extraction import Extraction
+from storico.domain.entities.extraction import Extraction, ExtractionStatus
 from storico.domain.entities.task import Task
 from storico.domain.entities.workspace import Workspace
 from storico.infrastructure.database.repositories import (
@@ -118,6 +119,17 @@ async def seed_task(
     ``kwargs`` (``status``, ``created_at``, ``labels``, ...) pass through to the entity.
     """
     if extraction is None:
-        extraction = await seed_extraction(session, story_id)
+        # A task is the output of a run that completed, so a task seed with no
+        # explicit extraction mints a COMPLETED one: reads answer the story's
+        # current version only (D-a-5 item 2), and a task hanging off a pending
+        # run would be invisible to every version-aware read. Tests that need a
+        # pending or failed run mint it explicitly through ``seed_extraction``
+        # and pass it in — the default of ``seed_extraction`` stays untouched.
+        extraction = await seed_extraction(
+            session,
+            story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
     task = Task(user_story_id=story_id, extraction_id=extraction.id, title=title, **kwargs)  # type: ignore[arg-type]
     return await TaskRepository(session).save(task)
