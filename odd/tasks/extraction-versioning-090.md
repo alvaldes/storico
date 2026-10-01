@@ -1130,3 +1130,58 @@ extract with PR A (task 4.6), story delete with PR B (with 4.13), mark/unmark wi
 expect a checkbox to be tickable at the point the plan puts it, and the earlier warning W4-T1 left —
 "the four wrappers are unwired dead code until 4.6/4.13/5.9" — was this same defect, one tranche before
 it bit.
+
+## RESUME POINT — end of session 2026-09-30 (b5). WU4 half-committed, nothing pushed
+
+**Where things stand, physically.** Everything from this session is committed on
+`feat/extraction-versioning-api-wu4`; the working tree is clean except the two files that are not mine
+(`backend/.gitignore`, `.claude/skills/` — untracked, leave them). **Nothing from WU4 has been pushed and
+no WU4 PR exists yet.**
+
+| Local commit | Contains | Status |
+| --- | --- | --- |
+| `d93349f` | gate primitives + error vocabulary + frontend mirror (**PR A**) | committed, **not** independently CI-proven |
+| `155b975` | migration `0029` + `story_deletions` + `delete_with_record` + `delete_by_story` (**PR B**) | committed, depends on A |
+| `4d4b8d2` | the ODD record of the split and the measurement trap | docs |
+
+Measured at this head: backend **1120 passed / 33 deselected**, ruff check and format clean (259 files).
+WU4 progress in the plan: Phase 4 has **4.1, 4.4, 4.5, 4.7, 4.8, 4.9, 4.10, 4.11, 4.12, 4.14** checked;
+**4.2, 4.3, 4.6, 4.13, 4.15, 4.16, 4.17, 4.18 are open**. Slice (b) overall: **41/77**.
+
+**Open PRs from earlier units, all green, none merged:** #31 (WU1) → #32 (WU2) → #33 (WU3). The chain is
+three deep and WU4 will make it five unless the owner merges. Production is still at `0028` and still
+**cannot extract**: the LLM config must be recreated in Configuración (D-a-6).
+
+### What to do tomorrow, in order
+
+1. **Confirm the split commits still stand.** `git log --oneline -4` on `feat/extraction-versioning-api-wu4`
+   and `git status --porcelain`. Then decide, at the seam of `d93349f`: PR A branches from WU3's head
+   (`4404d4b`) and carries `d93349f`; PR B branches from A and carries `155b975`. If the owner would rather
+   not split after all, the two commits squash cleanly.
+2. **Task 4.6 + the extract half of 4.2 (this is PR A's remaining work).** `routes/extraction.py`:
+   `Depends(get_workspace_for_user)` → `Depends(require_owner_or_admin)`. The `version_number` on the 202
+   body is **already done** by W3-T4 (`routes/extraction.py:277`) — premise #1, do not re-add it. Then the
+   `MEMBER` → 403 `WORKSPACE_OWNER_OR_ADMIN_REQUIRED` RED on extract, with no data changed.
+3. **Tasks 4.13, 4.3(stories half), 4.15 (PR B's remaining work).** `StoryDeletionService` ordering:
+   snapshot `list_versions` → build the record with the destroyed numbers → `delete_by_story` **only if a
+   store is configured** → `delete_with_record`. Then `DELETE /api/v1/stories/{story_id}` with
+   `require_story_owner_or_admin`. Replace the two `delete_by_story` **no-op stubs** (left deliberately in
+   `test_api/test_extraction.py` and `test_services/test_extraction_service.py` by W4-T6) with the
+   recording fake that 4.3 needs — that recording behaviour is 4.3's RED, it was not pre-built.
+4. **4.2 is not completable in WU4 — premise #5.** Its letter asks for the gate 403 on extract, **mark,
+   unmark** and story delete. Mark/unmark endpoints arrive in WU5 (5.9 wires the wrapper) and story delete
+   arrives with 4.13. So 4.2 lands in three units. Check it only for what exists, and record the split in
+   `tasks.md` the way the WU3 exception was recorded — dated, attributed, with the original text kept.
+5. **4.16/4.17 and CI.** Write them; they will **skip locally** (no Docker) but **CI does run them** —
+   measured: CI's 18 skips are exactly 16 Qdrant + 2 Ollama, so the testcontainers cases (record-survives-
+   cascade, `0029`-reaches-head, drift-empty) genuinely execute there. That is premise #3 and it is the
+   difference between "unverified" and "verified somewhere".
+6. **Deploy risk if any of this reaches `main`:** the window runs `alembic upgrade head` and `0029` applies
+   there. `0029` is additive with no data guard, so it is safe on an empty `0028` database — but the D-a-3
+   rule still holds for anything with this shape: **a migration that refuses existing data needs its data
+   plan in `prod.todo.md` before it reaches `main`.**
+
+**Numbers the next session should not re-derive:** CI on #33 is `1104 passed, 18 skipped`; WU3 shipped
+1,244 lines (331 production / 913 tests) as a single PR under an owner-ratified exception restated against
+the measurement; WU4's accepted band is 1,300–1,700 and the split into two PRs was the owner's answer to
+projecting past it.
