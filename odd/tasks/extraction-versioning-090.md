@@ -841,12 +841,13 @@ its own items.
 
 Runner: `cd backend && conda run -n storico python -m pytest <target> -m "not integration"`.
 
-- [ ] b3-1. W3-T1: current-version predicate in the task repository, filtered `total` proven.
-- [ ] b3-2. W3-T2: `list_versions` unbounded, `find_current_version` agrees with it.
-- [ ] b3-3. W3-T3: `extraction_id` read arm + refusals, export on the filtered statement.
-- [ ] b3-4. W3-T4: `GET /stories/{id}/versions` with the unchanged access walk, bare array.
-- [ ] b3-5. W3-T5: version scalars on the extraction responses.
-- [ ] b3-6. 3.12 REFACTOR + full backend suite and ruff, measured by the parent.
+- [x] b3-1. W3-T1: current-version predicate in the task repository, filtered `total` proven.
+- [x] b3-2. W3-T2: `list_versions` unbounded, `find_current_version` agrees with it.
+- [x] b3-3. W3-T3: `extraction_id` read arm + refusals, export on the filtered statement.
+- [x] b3-4. W3-T4: `GET /stories/{id}/versions` with the unchanged access walk, bare array.
+- [x] b3-5. W3-T5: the 3.10 triangulation across the three read surfaces (the response scalars named
+      here were actually delivered by W3-T4, which took both halves of task 3.8).
+- [x] b3-6. 3.12 REFACTOR + full backend suite and ruff, measured by the parent.
 - [x] b3-7. One WU3 commit + PR under the accepted exception, with the production/test split stated.
 - [x] b3-8. `tasks.md` + `apply-progress.md` + this handoff reconciled.
 
@@ -1012,11 +1013,7 @@ predicate+`extraction_id`+export 900 — a chain, not siblings, because the sele
 `list_versions`), and put to the owner as a real choice. **The owner ratified one PR of 1,244**, so
 the accepted number in this file and in `tasks.md` is now the measured one, not the forecast.
 
-- [x] b3-1. W3-T1 (491 focused, 11 fixtures reconciled by realism)
-- [x] b3-2. W3-T2 (`list_versions` unbounded, agreement with `find_current_version` pinned by id)
-- [x] b3-3. W3-T3 (`extraction_id` 422s before any repository call, export on the filtered statement)
-- [x] b3-4. W3-T4 (`GET /stories/{id}/versions`, bare array, unchanged 404/403 walk; companion edits disclosed)
-- [x] b3-5. W3-T5 (3.10 triangulation: 25-version payload measured as 25 entries ordered `[25..1]`; 3.12 confirmed)
-- [x] b3-6. Gates measured by the parent: 1089 backend, ruff clean, frontend 615, tsc clean
-- [x] b3-7. One WU3 commit + PR under the ratified exception, with the production/test split stated
-- [x] b3-8. `tasks.md` + `apply-progress.md` + this handoff reconciled
+- Closed: b3-1 … b3-6 above, each with the gate number recorded in the table; b3-7 and b3-8 are the
+  last two items of that same list, completed with the ratified 1,244-line single PR (#33) and this
+  reconciled handoff. (These ids were briefly duplicated here as a second checklist with contradictory
+  state; the plan section is the single owner of b3 ids.)
