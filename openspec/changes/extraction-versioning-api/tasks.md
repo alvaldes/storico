@@ -38,6 +38,9 @@ size:exception: not accepted
 Delivery strategy: ask-on-risk — RESOLVED
 Chain strategy: chained PRs, one PR per work unit, with the splittable units cut on their named axis
 size:exception: accepted for WU2 and WU4 of this slice, and for no other unit
+  — AMENDED 2026-09-30: the owner explicitly accepted size:exception for WU3 as well,
+    so WU3 ships as ONE PR over the budget instead of the two-PR chain named below.
+    WU5 and WU6 keep the two-PR split; nothing else is inferred.
 ```
 
 - **WU2 (≈420–520) and WU4 (≈1,300–1,700) ship as single PRs over the 400-line budget** under the
@@ -53,6 +56,17 @@ size:exception: accepted for WU2 and WU4 of this slice, and for no other unit
   then the editor recut + confirmations + D16 notice + i18n. Each half must be independently green
   before the next starts; if a half still crosses 400 in practice, that is reported and decided, not
   absorbed by this exception.
+  > **[Amended 2026-09-30, WU3 only — owner decision, kept here rather than rewritten]** WU3 shipped
+  > as a single PR under an explicitly accepted `size:exception` (≈600–750 lines forecast, backend
+  > only). The two-PR split for WU3 is superseded by that decision; the sentence above stays as the
+  > planning record. WU5 and WU6 are unchanged.
+  > **[Ratified 2026-09-30, after measurement]** WU3's code+tests diff measured **1,244 changed lines**
+  > (870+/30− production+test files) — **331 lines of production code and 913 of tests** — against the
+  > ≈600–750 forecast the exception was granted on. The owner was shown the measured number, the
+  > production/test split, and the alternative two-PR chain (≈900 + ≈344, chained because the selector
+  > depends on `list_versions`), and **ratified the single PR at 1,244**. The forecast is superseded by
+  > the measurement; this exception is for this unit's measured size, and is still not a policy for
+  > WU5/WU6.
 - **WU1 (≈260–340) fits the budget** and ships whole.
 - Chain order stays as the Per-Work-Unit Estimate table defines it: each unit starts from the previous
   unit's green head, and this slice starts from slice (a)'s green head.
@@ -325,51 +339,51 @@ Commit: `feat(api): read only the current version and expose the version selecto
 Runner: `cd backend && conda run -n storico python -m pytest` (unit layer, `-m "not integration"`).
 Backend only; the frontend consumers of these reads are Phase 6.
 
-- [ ] 3.1 RED — `backend/tests/test_repositories/test_task_repo.py`: the failing current-version
+- [x] 3.1 RED — `backend/tests/test_repositories/test_task_repo.py`: the failing current-version
       cases — story scope with v1 and v2 both `completed` returns only v2's 4 tasks and a `total` of
       4; a page falling past the end still carries the filtered total (the fallback `count_stmt`
       path); workspace scope with a superseded earlier version returns only current tasks with
       `total == len(items)`; the `workspace_ids` scope is filtered too; an explicit `extraction_id`
       reads exactly that version with no currency predicate. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_repositories/test_task_repo.py -m "not integration"`.
-- [ ] 3.2 RED — `backend/tests/test_repositories/test_extraction_repo.py`: `list_versions(story_id)`
+- [x] 3.2 RED — `backend/tests/test_repositories/test_extraction_repo.py`: `list_versions(story_id)`
       returns every version ordered `version_number DESC` with no page window, and
       `find_current_version` equals the first `completed` entry of that list for a three-version
       story. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_repositories/test_extraction_repo.py -m "not integration"`.
-- [ ] 3.3 GREEN — `backend/src/storico/domain/ports/task_repository.py`: `list_page(...)` gains the
+- [x] 3.3 GREEN — `backend/src/storico/domain/ports/task_repository.py`: `list_page(...)` gains the
       optional `extraction_id: UUID | None` and documents the current-version predicate; add
       `list_current_by_workspace(workspace_id) -> list[Task]`.
-- [ ] 3.4 GREEN — `backend/src/storico/infrastructure/database/repositories/task_repository.py`: add
+- [x] 3.4 GREEN — `backend/src/storico/infrastructure/database/repositories/task_repository.py`: add
       the correlated highest-`completed` subquery to the story scope, the `extraction_id` arm, and
       the `NOT EXISTS` predicate to the workspace and `workspace_ids` scopes — all joined to the
       existing `scope` variable so `stmt` and `count_stmt` share it — plus
       `list_current_by_workspace`.
-- [ ] 3.5 GREEN — `backend/src/storico/domain/ports/extraction_repository.py` and
+- [x] 3.5 GREEN — `backend/src/storico/domain/ports/extraction_repository.py` and
       `backend/src/storico/infrastructure/database/repositories/extraction_repository.py`: add
       `list_versions(user_story_id) -> list[Extraction]` ordered `version_number DESC`, deliberately
       unbounded, with the docstring stating why the paginator's window must not truncate it.
-- [ ] 3.6 GREEN — `backend/src/storico/api/routes/tasks.py`: `list_tasks` gains
+- [x] 3.6 GREEN — `backend/src/storico/api/routes/tasks.py`: `list_tasks` gains
       `extraction_id: UUID | None`; with `user_story_id` + `extraction_id` it resolves the version
       through the extraction repository, refuses a version that does not belong to that story with
       422 `REQUEST_VALIDATION_FAILED`, and passes `extraction_id` into `list_page`;
       `extraction_id` without `user_story_id` is 422; the workspace, story and unfiltered branches
       keep their existing membership refusals.
-- [ ] 3.7 GREEN — `backend/src/storico/api/routes/export.py`: `export_tasks` serializes
+- [x] 3.7 GREEN — `backend/src/storico/api/routes/export.py`: `export_tasks` serializes
       `repo.list_current_by_workspace(workspace.id)` instead of `list_by_workspace`, so the filter
       rides the serializing statement.
-- [ ] 3.8 GREEN — `backend/src/storico/api/schemas/story.py`: add `StoryVersionResponse` with `id`,
+- [x] 3.8 GREEN — `backend/src/storico/api/schemas/story.py`: add `StoryVersionResponse` with `id`,
       `version_number`, `status`, `model_used`, `provider`, `temperature`, `created_at`,
       `completed_at`, `error_info`, `is_current` and `has_output`;
       `backend/src/storico/api/schemas/extraction.py`: add `version_number: int | None`,
       `provider: str` and `temperature: float` to `ExtractionResponse` and `ExtractResponse`.
-- [ ] 3.9 GREEN — `backend/src/storico/api/routes/stories.py`: add `GET /{story_id}/versions` using
+- [x] 3.9 GREEN — `backend/src/storico/api/routes/stories.py`: add `GET /{story_id}/versions` using
       the **unchanged** `require_story_workspace_access` walk (404 for a missing story, 403
       `NOT_A_WORKSPACE_MEMBER` for a non-member — the same posture `GET /{story_id}` has today, with
       no membership-hiding flag), `extraction_repo.list_versions(story_id)`, `is_current` = the first
       `completed` entry of the ordered list, `has_output` = `status == completed`, returned as a bare
       unpaginated array.
-- [ ] 3.10 TRIANGULATE — `backend/tests/test_api/test_tasks.py` (`extraction_id` from another story
+- [x] 3.10 TRIANGULATE — `backend/tests/test_api/test_tasks.py` (`extraction_id` from another story
       is 422 `REQUEST_VALIDATION_FAILED` and returns no task of story B; `extraction_id` without
       `user_story_id` is 422; a story whose only run is `failed` reads 200 `[]`),
       `backend/tests/test_api/test_stories.py` (three completed versions mark exactly v3
@@ -379,11 +393,11 @@ Backend only; the frontend consumers of these reads are Phase 6.
       `has_output=false`), and `backend/tests/test_api/test_unfiltered_list_queries.py` (the
       no-parameter `GET /api/v1/tasks/` shows no superseded tasks). Prove with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py tests/test_api/test_stories.py tests/test_api/test_unfiltered_list_queries.py -m "not integration"`.
-- [ ] 3.11 TRIANGULATE (cross-cutting) — `backend/tests/test_api/test_export.py`: the JSON and
+- [x] 3.11 TRIANGULATE (cross-cutting) — `backend/tests/test_api/test_export.py`: the JSON and
       Markdown exports of a story whose v1 and v2 are both `completed` contain exactly v2's 4 tasks,
       and a story whose only run is `failed` contributes nothing while the file stays valid. Prove
       with `cd backend && conda run -n storico python -m pytest tests/test_api/test_export.py -m "not integration"`.
-- [ ] 3.12 REFACTOR — `backend/src/storico/infrastructure/database/repositories/task_repository.py`:
+- [x] 3.12 REFACTOR — `backend/src/storico/infrastructure/database/repositories/task_repository.py`:
       confirm `list_by_workspace` still serves its remaining callers, that no read path filters in
       Python, and that the page and its `total` still come from one statement; then
       rerun `cd backend && conda run -n storico python -m pytest tests/test_api tests/test_repositories -m "not integration"`.

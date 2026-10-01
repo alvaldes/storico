@@ -803,6 +803,53 @@ Two things about the fix are worth keeping, because both were wrong the first ti
 4. **Production cannot extract** until the owner re-creates the LLM config; his call, not a task of mine.
 5. **Qdrant dev writes against the production cluster** — design debt, unassigned.
 
+## Slice (b) WU3 — session 2026-09-30 (b3): the reads, one PR over budget by owner decision
+
+**What the owner decided.** Asked with the three real options on the table — split into the two PRs the plan
+names, run as one PR under a new `size:exception`, or merge #31/#32 first — the owner chose **one PR with a new
+`size:exception` for WU3**. That acceptance is written into `tasks.md` itself: the `text` block line is amended
+in place with its date and scope, and the "WU3, WU5 and WU6 do NOT carry the exception" bullet keeps its
+original wording with a quoted `[Amended 2026-09-30, WU3 only]` note under it. WU5 and WU6 are **unchanged**; an
+exception granted for one unit is not a policy for the slice.
+
+**Gates.** Fresh native status: `nextRecommended: apply`, `apply: ready`, **19/77**, `blockedReasons: []`.
+Branch `feat/extraction-versioning-api-wu3` stacked on WU2's head `ad93979`. Preflight unchanged (`auto` /
+`openspec` / `ask-on-risk` / 400), STRICT TDD active.
+
+**Why WU3 is the one that matters for the thesis evaluation.** It closes **D-a-5 item 2**: today
+`task_repository.list_by_story` / `list_by_workspace` and `routes/export.py` have no current-version predicate,
+so two `completed` runs on one story show **both runs' task sets** in the board, story detail and export. It also
+closes the `frozen` seam WU2 left: the selector read arrives, so the page can compute `is_current` for real
+instead of passing `false`.
+
+**The correctness rule this unit turns on** (from design settlement 5, and the reason a Python post-filter is
+not an option): the current-version predicate must be joined to the **same `scope` variable** the page and its
+fallback `count_stmt` share. Filter in Python after pagination and `total` keeps counting superseded rows: the
+board truncates silently while the counter lies, and the past-the-end page returns a total that does not match
+its own items.
+
+### Tranches (backend only — Phase 6 owns the frontend consumers)
+
+| Tranche | Tasks | Surfaces |
+| --- | --- | --- |
+| W3-T1 task repository | 3.1 RED, 3.3+3.4 GREEN, 3.12 | `domain/ports/task_repository.py`, `infrastructure/database/repositories/task_repository.py`, `tests/test_repositories/test_task_repo.py` |
+| W3-T2 version reads | 3.2 RED, 3.5 GREEN | `domain/ports/extraction_repository.py`, `infrastructure/database/repositories/extraction_repository.py`, `tests/test_repositories/test_extraction_repo.py` |
+| W3-T3 routes + export | 3.6, 3.7, 3.11 | `api/routes/tasks.py`, `api/routes/export.py`, `tests/test_api/test_tasks.py`, `tests/test_api/test_export.py` |
+| W3-T4 selector | 3.8 (`StoryVersionResponse`), 3.9, stories half of 3.10 | `api/schemas/story.py`, `api/routes/stories.py`, `tests/test_api/test_stories.py` |
+| W3-T5 scalars | 3.8 (extraction scalars), rest of 3.10 | `api/schemas/extraction.py`, `tests/test_api/test_unfiltered_list_queries.py` + whatever pins `ExtractionResponse` |
+| Parent | 3.12 REFACTOR rerun, full suites, one WU3 commit | — |
+
+Runner: `cd backend && conda run -n storico python -m pytest <target> -m "not integration"`.
+
+- [ ] b3-1. W3-T1: current-version predicate in the task repository, filtered `total` proven.
+- [ ] b3-2. W3-T2: `list_versions` unbounded, `find_current_version` agrees with it.
+- [ ] b3-3. W3-T3: `extraction_id` read arm + refusals, export on the filtered statement.
+- [ ] b3-4. W3-T4: `GET /stories/{id}/versions` with the unchanged access walk, bare array.
+- [ ] b3-5. W3-T5: version scalars on the extraction responses.
+- [ ] b3-6. 3.12 REFACTOR + full backend suite and ruff, measured by the parent.
+- [ ] b3-7. One WU3 commit + PR under the accepted exception, with the production/test split stated.
+- [ ] b3-8. `tasks.md` + `apply-progress.md` + this handoff reconciled.
+
 ## Slice (b) WU2 — session 2026-09-30 (b2): the field matrix, stacked on WU1
 
 **Base decision.** WU1 is `OPEN` as PR #31 and the owner has not merged it. "sigamos" was read as
@@ -905,3 +952,71 @@ both locales after grepping it to zero references: copy for a validation that ca
 reason the contract is observable, so the honest options are a widened exception or keeping it as one over-
 large review — decided below, not assumed here.
 
+
+### WU3 execution log (b3) — five tranches, one dead writer resumed, one forecast that was wrong
+
+**Tranches actually run**, each verified by the parent before the next started:
+
+| Tranche | Tasks | Measured gate after it |
+| --- | --- | --- |
+| W3-T1 | 3.1, 3.3, 3.4 | `tests/test_api tests/test_repositories` **491 passed** |
+| W3-T2 | 3.2, 3.5 | full unit suite **1074 passed, 33 deselected** |
+| W3-T3 | 3.6, 3.7, 3.11 | full unit suite **1082 passed** (= 1074 + 8 new cases) |
+| W3-T4 | 3.8, 3.9 | full unit suite **1084 passed** (= 1082 + 2) |
+| W3-T5 | 3.10, 3.12 | full unit suite **1089 passed** (= 1084 + 5); ruff check + format clean; frontend **615**, `tsc --noEmit` exit 0 (run anyway: W3-T4 widened responses the frontend consumes) |
+
+**A writer died mid-run and was resumed, not relaunched.** W3-T1 errored at turn 35 with
+`assistant reported an error` — after implementing the predicate, not before. Reading the task log
+(`~/.pi/agent/gentle-agents/tasks/<id>.json`) showed the real state: it had finished the work, run
+ruff, and was writing its report when the provider failed. `subagent_continue` on the same session
+kept 35 turns of context that a fresh launch would have had to rediscover. The failure mode to
+remember: **`Subagent execution failed` with no detail is not "nothing happened"** — check the
+worktree and the log before re-dispatching, or you pay for the same work twice and lose the child's
+diagnosis.
+
+**The 11 red tests were a fixture lie, not a regression.** After W3-T1, `tests/test_api` +
+`tests/test_repositories` read 11 failed / 480 passed. Cause: `seed_task` minted its own extraction
+through `seed_extraction`, which defaults `status = PENDING` (`domain/entities/extraction.py:32`), so
+tasks were born attached to runs that no current-version read can see. The child refused to edit
+files outside its declared surfaces and reported instead; that restraint was correct and the parent
+then authorized the reconciliation explicitly. Fix: one place — `seed_task` now mints a `COMPLETED`
+extraction — with `seed_extraction`'s default **left alone** because tests that deliberately want a
+pending/failed run mint it themselves. **Zero assertions were removed** (`git diff | grep '^-' |
+grep -c assert` = 0 on both affected test files): the suite went green by making fixtures describe a
+state the domain actually allows, not by weakening what's checked.
+
+**Two premises of mine were wrong and the children caught both.**
+1. I told W3-T2 "W3-T1 left the suite at 1080". That number was never measured — it was my
+   projection. Reality: 1066 (WU2 head) + 6 (T1) + 2 (T2) = **1074**. The child disputed it instead of
+   absorbing it, which is the behaviour I want, and `apply-progress.md` now records that the bad
+   number was the parent's. **A parent quotes a number it ran, or says "unmeasured."**
+2. I told W3-T4 that `ExtractionResponse` "builds from the entity, so adding fields is enough".
+   All four extraction reads hand-build the schema (`routes/extraction.py:268/:304`,
+   `routes/extractions.py:143/:182`), so widening it with required fields forced companion edits at
+   every construction site — one of them (`routes/extractions.py`) outside the declared surfaces. The
+   child ran the suite between the schema widening and the route edits, got a real 17-failure RED,
+   and used it as the proof that the companions were **forced, not stylistic**. Required
+   non-defaulted Pydantic fields are a mechanical companion detector; the OpenAPI surface was then
+   verified live (11 properties on `StoryVersionResponse`, three scalars required on both widened
+   schemas).
+
+**3.12 left deliberate dead code, and it is an owner decision, not a cleanup.** After the export
+swap, `TaskRepository.list_by_workspace` has **zero production callers** (grep-verified; the
+`list_by_workspace` still live in `export.py:120` belongs to the **story** repo). 3.12's letter says
+report and leave in place, so it stays. Deleting a public repository method is not a refactor an
+agent takes silently.
+
+**The workload was 1,244 lines, not the 600–750 the exception was granted on.** Production 331,
+tests 913. Measured before committing, surfaced with the plan's own split (selector+scalars 344,
+predicate+`extraction_id`+export 900 — a chain, not siblings, because the selector needs
+`list_versions`), and put to the owner as a real choice. **The owner ratified one PR of 1,244**, so
+the accepted number in this file and in `tasks.md` is now the measured one, not the forecast.
+
+- [x] b3-1. W3-T1 (491 focused, 11 fixtures reconciled by realism)
+- [x] b3-2. W3-T2 (`list_versions` unbounded, agreement with `find_current_version` pinned by id)
+- [x] b3-3. W3-T3 (`extraction_id` 422s before any repository call, export on the filtered statement)
+- [x] b3-4. W3-T4 (`GET /stories/{id}/versions`, bare array, unchanged 404/403 walk; companion edits disclosed)
+- [x] b3-5. W3-T5 (3.10 triangulation: 25-version payload measured as 25 entries ordered `[25..1]`; 3.12 confirmed)
+- [x] b3-6. Gates measured by the parent: 1089 backend, ruff clean, frontend 615, tsc clean
+- [ ] b3-7. One WU3 commit + PR under the ratified exception, with the production/test split stated
+- [ ] b3-8. `tasks.md` + `apply-progress.md` + this handoff reconciled

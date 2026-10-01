@@ -871,3 +871,667 @@ plan itself records ("the budget constrains how work is sliced, never the code")
 
 Writers' own intermediate tallies (~399 at T1, ~509 after T2b) were per-tranche and
 excluded the frontend test volume; the 918 above is the unit total at close.
+
+---
+
+# Apply Progress — WU3 tranche W3-T1 (tasks 3.1, 3.3, 3.4: the current-version predicate) — 2026-09-30, branch `feat/extraction-versioning-api-wu3`
+
+Closes D-a-5 item 2 at the repository layer: reads filter to the story's current version. WU1/WU2
+progress above is preserved verbatim. One session interruption occurred after implementation but
+before this report; the work tree was verified intact on resume (ports +22, repository +89/−4,
+tests +164/−7) and the gate re-measured before closing.
+
+## Structured status consumed
+
+`gentle-ai.sdd-status` v2 for `extraction-versioning-api`: `nextRecommended: apply`, `applyState:
+ready`, `taskProgress` 19/77 at start, `blockedReasons: []`, `actionContext` mode `repo-local`,
+workspaceRoot and `allowedEditRoots` `["/Users/alvaldes/Developer/storico"]`. All edits stayed
+inside the parent-authorized surfaces (the three tranche files plus the fixture-reconciliation
+files explicitly authorized on resume: `tests/_helpers.py`, `tests/test_api/test_tasks.py`,
+`tests/test_api/test_unfiltered_list_queries.py`) and the two SDD artifacts. Review Workload Gate:
+WU3 ships as ONE PR under the owner's `size:exception` accepted 2026-09-30 for WU3 only (recorded
+in `tasks.md`); WU5/WU6 keep their split.
+
+## Completed tasks (persisted checkboxes updated in tasks.md)
+
+- [x] 3.1 RED — new `TestCurrentVersionPredicate` in
+      `backend/tests/test_repositories/test_task_repo.py`, six cases: story scope with v1+v2 both
+      `completed` → only v2's 4 tasks and `total == 4`; a page past the end (`limit=2, offset=10`)
+      → `([], 4)` — the filtered total via the fallback `count_stmt` path; workspace scope with a
+      superseded story plus a plain story → 5 current tasks with `total == len(items)`;
+      `workspace_ids` scope filtered too; explicit `extraction_id` reads exactly v1's 4 tasks (no
+      currency predicate, so the selector can show a superseded version); and
+      `list_current_by_workspace` (the export read) carries the predicate unpaginated.
+- [x] 3.3 GREEN — `domain/ports/task_repository.py`: `list_page` gains
+      `extraction_id: UUID | None = None` (defaulted, so existing callers keep compiling — routes
+      wire it in 3.6), the docstring states the current-version predicate contract, and
+      `list_current_by_workspace(workspace_id) -> list[Task]` is added to the port.
+- [x] 3.4 GREEN — `infrastructure/database/repositories/task_repository.py`: all three predicate
+      shapes implemented and **joined to the existing `scope` clause**, so `stmt` and `count_stmt`
+      share one filtered question (details below) — plus `list_current_by_workspace`.
+
+## Where the predicate is attached, per scope (the `scope`/`count_stmt` plumbing)
+
+`list_page` builds one `scope` expression and applies the same object to `stmt` and to
+`count_stmt`; `fetch_page` runs `count_stmt` only when a page falls past the end. Every predicate
+below is composed **into `scope` before either statement is built**, so the window count
+(`count(*) OVER ()`), the past-the-end fallback count, and the page rows are filtered together —
+a page of 4 can never report 12.
+
+| Scope | Predicate shape | Attachment point |
+| --- | --- | --- |
+| Story, no `extraction_id` | correlated scalar subquery: `extraction_id == select(ExtractionModel.id).where(user_story_id, status == COMPLETED).order_by(version_number.desc()).limit(1).scalar_subquery()` (the highest `completed` run; an empty subquery is NULL and matches nothing, so a story with no completed run reads no tasks) | `scope = and_(scope, subquery)` inside the `user_story_id` branch of `list_page`, before `stmt`/`count_stmt` are built |
+| Story + explicit `extraction_id` | `scope = and_(scope, TaskModel.extraction_id == extraction_id)` — no currency predicate by design (reading a named version is the point) | same branch, same point |
+| Workspace / `workspace_ids` | `NOT EXISTS` form via the new `_current_version_only(scope)` helper: `extraction_id == e.id AND e.status == completed AND NOT EXISTS(higher-numbered completed version of e.user_story_id)` — needs no `MAX`, served by `uq_extractions_story_version` | the helper wraps the base scope clause (`ProjectModel.workspace_id == …` / `.in_(…)`) before `stmt`/`count_stmt` are built; the same helper composes the clause for `list_current_by_workspace` |
+
+Currency stays derived (`status = 'completed'` plus highest `version_number`) — no stored flag, no
+trigger, no matview, no new column, per slice (a)'s decision. `extraction_id` without
+`user_story_id` raises `ValueError` (the route-level 422 is task 3.6's job).
+
+## TDD Cycle Evidence
+
+| Cycle | Test(s) | Command | Result |
+| --- | --- | --- | --- |
+| RED (3.1) | the six `TestCurrentVersionPredicate` cases | `conda run -n storico python -m pytest tests/test_repositories/test_task_repo.py -m "not integration"` | **6 failed, 15 passed** (pre-existing cases in the file unaffected at RED) |
+| GREEN (3.3+3.4) | whole focused file | same command | **21 passed** |
+| Wider gate (first run) | `tests/test_api tests/test_repositories` | `conda run -n storico python -m pytest tests/test_api tests/test_repositories -m "not integration"` | **11 failed, 480 passed** — all eleven the pending-extraction fallout diagnosed below, none a predicate defect |
+| Fixture reconciliation | helper + three call sites (authorized on resume) | same wider gate | **491 passed, 0 failed** |
+| Lint | ruff check + format on all touched files | `conda run -n storico python -m ruff check src tests && conda run -n storico python -m ruff format --check src tests` | **All checks passed; 253 files already formatted** (the format gate the interrupted run left pending is now closed) |
+
+## Fixture reconciliation (what changed and why `seed_extraction`'s default did not)
+
+The 11 fallout cases all seeded tasks hanging off a **pending** extraction — a state the domain
+does not really allow a task to be read from, since a task is the output of a completed run. No
+assertion was weakened or deleted; every fix seeds realism:
+
+1. **`tests/_helpers.py` — `seed_task`**: when it mints its own extraction (`extraction is None`
+   branch) it now mints it `status=COMPLETED` with `completed_at`. This closed 3 of the 11 in one
+   place (`test_list_tasks`, `test_list_tasks_by_story`,
+   `test_tasks_span_the_requested_workspaces_only`). **`seed_extraction`'s default is untouched** —
+   tests that need a pending/failed run on purpose mint it explicitly, and changing the default
+   would have moved the ground under tests that assert on non-terminal runs.
+2. **`tests/test_api/test_tasks.py`** (call sites the helper alone cannot reach, because N tasks on
+   one story each minting their own version would leave only the highest visible):
+   `_seed_tasks` mints **one** completed version before the loop and attaches every task to it; the
+   two inline pagination tests (`?page=1&size=2` totals) mint one completed version per story
+   (`version_a`, `version_b`).
+3. **`tests/test_api/test_unfiltered_list_queries.py`**: its `_seed` seeds its own extraction and
+   passes it to `seed_task`, so that call site completes the extraction (`status=COMPLETED` +
+   `completed_at`); the pinned row counts (one task, one extraction per workspace) are unchanged.
+
+## Files changed (this tranche)
+
+- `backend/src/storico/domain/ports/task_repository.py` (+22/−0) — `extraction_id` param +
+  predicate contract docstring + `list_current_by_workspace`.
+- `backend/src/storico/infrastructure/database/repositories/task_repository.py` (+89/−4) —
+  `_current_version_only` helper, three scope arms, `list_current_by_workspace`.
+- `backend/tests/test_repositories/test_task_repo.py` (+164/−7) — the six RED cases; four
+  pre-existing `list_page` tests in the file re-anchored onto a completed version (disclosed; each
+  keeps its original assertions — totals, paging arithmetic, scope exclusion — and only the seeding
+  gained realism).
+- `backend/tests/_helpers.py` (+14/−2) — the helper fix above.
+- `backend/tests/test_api/test_tasks.py` (+46/−8) — call-site realism fixes above.
+- `backend/tests/test_api/test_unfiltered_list_queries.py` (+12/−1) — call-site realism fix above.
+
+Tranche total ≈ 347 changed lines (including the authorized reconciliation files), inside the WU3
+single-PR exception. Not committed, not staged, branch not switched.
+
+## Deviations / disclosed judgment calls
+
+1. **Four pre-existing tests in `test_task_repo.py` re-anchored** (`test_list_page_by_story_…`,
+   `test_list_page_mid_page_…`, `test_list_page_past_the_end_…`,
+   `test_list_page_by_workspace_…`): each pinned list_page mechanics over tasks that the new
+   predicate makes invisible (pending extractions). Their assertions are byte-identical; only the
+   seeding attaches tasks to a completed version. Reported, not quiet.
+2. **`extraction_id` without `user_story_id` raises `ValueError` in the repository** (port
+   docstring states it); the route-level 422 `REQUEST_VALIDATION_FAILED` is task 3.6's surface.
+3. `list_by_story` and `list_by_workspace` (unpaginated) remain unfiltered — per the design, the
+   unpaginated workspace read is superseded by `list_current_by_workspace` at the route (task 3.7),
+   and task 3.12 confirms `list_by_workspace`'s remaining callers.
+
+## Known fallout — closed under explicit authorization (11 cases)
+
+All eleven were "task seeded on a pending extraction, then read through a version-aware list":
+`test_tasks.py` `TestListTasks::test_list_tasks`, `::test_list_tasks_by_story` and seven
+`TestListTasksPagination` cases (totals of 2–3 read as 0–1); `test_unfiltered_list_queries[tasks]`
+(total 0 vs 3); `test_list_by_workspaces.py::test_tasks_span_the_requested_workspaces_only`
+(total 0 vs 2). The SQL itself was already correct on the first gate run (HTTP 200s, statement
+counts intact) — the fixtures described an impossible state. Closed by the reconciliation above;
+the wider gate is green.
+
+## Remaining unchecked tasks (exact lines from tasks.md)
+
+- [ ] 3.2 RED — `backend/tests/test_repositories/test_extraction_repo.py`: `list_versions(story_id)`
+- [ ] 3.5–3.12 — the selector read, route wiring, schemas, export filter, triangulation and refactor
+      (Phase 3's other eight tasks).
+
+(Plus Phases 4–7. Phase 3 has 3.1, 3.3, 3.4 checked — nothing else.)
+
+## Risks
+
+- None new in the repository. `find_by_id` (single-task reads) is deliberately unfiltered — the
+  frozen-check and the editor read individual tasks by id, and gating those is the API layer's job.
+- The statement-shape guards (`test_unfiltered_list_queries.py`, `test_list_page_pins_the_order_
+  rule_in_sql`) still pass: the predicate rides the existing statement, no statement was added.
+- The export route still reads the unfiltered `list_by_workspace` until task 3.7 swaps it to
+  `list_current_by_workspace` — the predicate exists but is not yet reachable over HTTP for
+  exports.
+
+---
+
+## W3-T2 — `list_versions` at the extraction repository (tasks 3.2, 3.5) — 2026-09-30
+
+Strict TDD, one cycle. The section above (W3-T1) is preserved verbatim; its "Remaining unchecked
+tasks" list is superseded by this section for 3.2 only.
+
+### Completed tasks (persisted checkbox evidence)
+
+- 3.2 RED and 3.5 GREEN are checked in `tasks.md`; no other line was touched.
+- Re-read after checking: lines 342 and 355 carry `- [x]`; every other Phase 3 line is still `- [ ]`.
+
+### TDD Cycle Evidence
+
+| Cycle | Task | Command | Result |
+|-------|------|---------|--------|
+| RED | 3.2 | `cd backend && conda run -n storico python -m pytest tests/test_repositories/test_extraction_repo.py -m "not integration"` | **2 failed, 24 passed** — both new cases fail with `AttributeError: 'SQLAlchemyExtractionRepository' object has no attribute 'list_versions'` |
+| GREEN | 3.5 | same focused command | **26 passed** |
+| GREEN (wider) | 3.5 | `cd backend && conda run -n storico python -m pytest tests/test_repositories -m "not integration"` | **128 passed** |
+| GREEN (full unit suite) | — | `cd backend && conda run -n storico python -m pytest -m "not integration"` | **1074 passed, 33 deselected** (40.09s) |
+| REFACTOR | — | `conda run -n storico python -m ruff check src tests` and `python -m ruff format --check src tests` | **All checks passed; 253 files already formatted** |
+
+No production code existed before the RED run (strict TDD order held). TRIANGULATE for this slice is
+task 3.10/3.11 (API layer), not this tranche; no separate triangulation was due here.
+
+### What was implemented
+
+- `list_versions(user_story_id) -> list[Extraction]` on the port
+  (`domain/ports/extraction_repository.py`) and the adapter
+  (`infrastructure/database/repositories/extraction_repository.py`): one `select(ExtractionModel)`
+  filtered by `user_story_id`, ordered `version_number DESC` in SQL, mapped through the existing
+  `self._to_domain`, deliberately with no `limit`/`offset` parameters and no `fetch_page` call. No
+  new imports were required in either file.
+- Two tests in `tests/test_repositories/test_extraction_repo.py`, in the file's existing
+  versioning-section seeding style (`_versioned` + `create_next_version` + targeted marks, and the
+  statement-capture listener pattern of `test_list_page_pins_the_order_rule_in_sql`):
+  1. `test_list_versions_returns_every_version_newest_first_with_no_page_window` — four versions on
+     one story (v1/v2 completed, v3 failed, v4 pending) plus one completed version on a second
+     story; asserts all four come back ordered 4→3→2→1 with the pending and failed runs present,
+     the other story's run absent, and — on the statement the database received — exactly one
+     query, `ORDER BY extractions.version_number DESC`, and **no `LIMIT` at all**.
+  2. `test_find_current_version_agrees_with_list_versions_first_completed` — three versions
+     (completed, failed, completed); asserts `find_current_version`'s id and `version_number`
+     equal the first `completed` entry of `list_versions` (v3).
+
+### Docstring wording choice for "why unbounded"
+
+Both docstrings say (port and adapter, same sentence family): *"Deliberately unbounded: the version
+list is the pagination *input* for the version selector, not a paginated resource, and the
+paginator's 20/100 window would truncate a long history silently — exactly the failure this read
+exists to avoid. A story's version count is bounded by hand-run extractions, so no window is
+applied here, and a `pending` or `failed` run is part of the history the user must see, never
+filtered out."* The "pagination *input*, not a paginated resource" phrasing is the design
+settlement's own framing (design.md, selector decision); the "20/100 window" names the concrete
+numbers the paginator would have imposed.
+
+### How agreement was pinned while `find_current_version` stays a `LIMIT 1` query
+
+- The pin is test 2 above: for a three-version story, `find_current_version` must return the same
+  row (id equality, not just number equality) as the first `completed` entry of `list_versions`.
+  Both docstrings state what that guarantees: the board asks `find_current_version` on every task
+  write (the frozen check) and the selector derives `is_current` from the list; if the two ever
+  diverged, the board and the selector would disagree about which version is live.
+- `find_current_version` was **not touched** — its statement is still the `LIMIT 1` highest-
+  completed query from slice (a). The docstrings of the new method explicitly forbid the
+  "unification" of loading the list and filtering in Python, on the hot-path ground recorded in the
+  parent prompt. No production code paths were changed beyond the one added method.
+
+### Full-suite number and the delta against the parent's quoted 1080
+
+- Measured by the parent after this tranche: **1074 passed, 33 deselected** (re-run to confirm, and
+  matching the child's own run and `--collect-only` recount).
+- **Resolved by the parent: the 1080 was never a measurement.** It was a projection the parent wrote
+  into the W3-T2 prompt without running the suite first, and the child was right to dispute it rather
+  than absorb it. The arithmetic that does reproduce reality: WU2's green head measured **1066**, W3-T1
+  added **6** test functions and W3-T2 added **2** — 1066 + 6 + 2 = **1074**, exactly what the worktree
+  reports. There is no unexplained delta anywhere in this unit.
+- My tranche adds exactly 2 tests, so the pre-existing count in the current worktree is 1072.
+- The gap predates W3-T2 and is inside W3-T1's uncommitted work: the whole uncommitted tests/ diff
+  adds exactly 8 test functions over HEAD (6 from W3-T1, 2 from W3-T2), and
+  `git diff tests/ | grep '^-'` over `test_extraction_repo.py` shows **zero** removed test
+  functions or assertions. I removed nothing and weakened nothing.
+  > Rule this closes: a parent quotes a number it ran, or says "unmeasured". A child that finds a
+  > quoted baseline irreproducible should do exactly what happened here — measure collection twice and
+  > report — not assume its own work broke something.
+
+### Deviations from the letter of the task (disclosed, none silent)
+
+1. `test_the_port_exposes_no_delete_and_no_whole_row_writer` pins the port's exact abstract-method
+   set, so task 3.5's sanctioned addition of `list_versions` required adding the name to that pinned
+   set (and one docstring sentence recording it as the design's sanctioned widening, not a silent
+   one). This is a surface pin tracking a sanctioned surface change, not a weakened assertion; the
+   `delete`/`save` prohibitions in the same test are untouched and still pass.
+2. The parent's assignment described seeding via "the file's existing seeding style"; the
+   versioning section's style (`create_next_version` + marks) was used rather than the paging
+   section's `_seed_extraction` helper, because `list_versions` is a versioning read and that is the
+   section that already seeds pending/failed/completed states.
+
+### Remaining unchecked tasks (exact next lines from tasks.md)
+
+- [ ] 3.6 GREEN — `backend/src/storico/api/routes/tasks.py`: `extraction_id` parameter on `list_tasks`
+- [ ] 3.7 GREEN — `backend/src/storico/api/routes/export.py`: export serializes `list_current_by_workspace`
+- [ ] 3.8 GREEN — `StoryVersionResponse` + the three response scalars
+- (then 3.9, 3.10, 3.11, 3.12; Phases 4–7 unchanged)
+
+### Workload / PR boundary
+
+WU3 ships as ONE PR under the owner-accepted `size:exception` (2026-09-30, recorded in tasks.md).
+This tranche's authored diff: ~+145 lines across the three allowed files (2 tests ≈ +124 with
+docstrings, port method ≈ +22, adapter method ≈ +26, minus shared context) — within the tranche
+estimate; the PR boundary stays WU3-whole per the accepted exception.
+
+---
+
+# Apply Progress — WU3 tranche W3-T3 (tasks 3.6, 3.7, and the 3.11 export cases) — 2026-09-30, branch `feat/extraction-versioning-api-wu3`
+
+Wires the `extraction_id` read into `GET /api/v1/tasks/` and moves the export onto the filtered
+statement. W3-T1 (task repository current-version predicate) and W3-T2 (`list_versions`) remain in
+the worktree uncommitted and untouched; every earlier section above is preserved verbatim.
+
+## Structured status consumed
+
+`gentle-ai.sdd-status` v2 for `extraction-versioning-api` from the parent: `nextRecommended: apply`,
+`applyState: ready`, `blockedReasons: []`, `taskProgress` 24/77, `actionContext` mode `repo-local`,
+workspaceRoot and `allowedEditRoots` `["/Users/alvaldes/Developer/storico"]`. Delivery path already
+resolved: **`size:exception` explicitly accepted by the owner on 2026-09-30 for WU3 only** (one PR
+over budget, recorded in tasks.md). All edits stayed inside the four allowed files plus the two SDD
+artifacts.
+
+## Completed tasks (persisted checkboxes updated in tasks.md as each closed)
+
+- [x] 3.6 GREEN — `routes/tasks.py`: `list_tasks` gains `extraction_id: UUID | None` and the
+      `ExtractionRepoDep`. The shape refusal (`extraction_id` without `user_story_id`) is raised at
+      the **top of the handler, before every branch** — see ordering below. The story branch, after
+      the unchanged `require_story_workspace_access` walk, resolves
+      `extraction_repo.find_by_id(extraction_id)` and refuses `None` or a foreign
+      (`version.user_story_id != user_story_id`) with 422 `REQUEST_VALIDATION_FAILED`, then passes
+      `extraction_id` into `list_page`. The workspace and unfiltered branches keep their existing
+      membership refusals byte-for-byte: WU1's 410 handlers, WU2's presence-guarded frozen check,
+      and the state machine are untouched.
+- [x] 3.7 GREEN — `routes/export.py`: `export_tasks` serializes
+      `repo.list_current_by_workspace(workspace.id)` instead of `list_by_workspace`, so the
+      current-version predicate rides the serializing statement; docstring states the filter.
+- [x] 3.11 TRIANGULATE — `tests/test_api/test_export.py`: new `TestExportCurrentVersionFilter` —
+      JSON and Markdown exports of a story whose v1 (2 tasks) and v2 (4 tasks) are both `completed`
+      contain exactly v2's 4 tasks and no v1 title; a story whose only run is `failed` (with a task
+      seeded on the failed version, so the assertion proves the filter and not mere absence)
+      contributes nothing in both formats while the file stays valid (JSON parses; Markdown keeps
+      `# Tasks Export` and the healthy story's section).
+
+## The 422-before-repository ordering (the seam the parent flagged)
+
+The refusal for `extraction_id` without `user_story_id` sits at the top of `list_tasks`, before the
+workspace/story/unfiltered branch dispatch and therefore before any repository call — including the
+`member_repo` walk. The proof is structural: `task_repository.list_page` raises `ValueError` for
+that same shape, and a `ValueError` escaping to the framework falls to the generic 500 handler; a
+422 carrying `REQUEST_VALIDATION_FAILED` on **both** the workspace branch (`?workspace_id=…&extraction_id=…`)
+and the unfiltered branch (`?extraction_id=…`) can only come from the route's own guard. Pinned by
+`test_extraction_id_without_user_story_id_refuses_before_the_repository`.
+
+The story-branch 422 for a foreign/nonexistent version fires **after** the membership walk (the
+design's ordering: membership → `find_by_id(X)` → refuse → `list_page`), and its body discloses
+nothing about the foreign story (asserted: neither its id nor a task title appears in the response).
+
+## RED evidence (real counts)
+
+| Cycle | Test(s) | Command | Result |
+| --- | --- | --- | --- |
+| RED (3.10 partial + 3.11) | the 5 new `TestListTasksVersionReads` cases + 3 new `TestExportCurrentVersionFilter` cases | `conda run -n storico python -m pytest tests/test_api/test_tasks.py::TestListTasksVersionReads tests/test_api/test_export.py::TestExportCurrentVersionFilter -m "not integration"` | **7 failed, 1 passed** — the foreign-refusal, unknown-refusal, 422-before-repository and superseded-version cases fail against the unwired route; the failed-only-story read already passes because W3-T1's repository predicate rides through `list_page` (route-level triangulation guard, not a new behaviour); all 3 export cases fail with the unfiltered `list_by_workspace` |
+| GREEN (3.6 + 3.7) | both focused files | `conda run -n storico python -m pytest tests/test_api/test_tasks.py tests/test_api/test_export.py -m "not integration"` | **4 failed, 54 passed** → after the fixture reconciliation below, **58 passed** |
+| Wider gate | `tests/test_api` | `conda run -n storico python -m pytest tests/test_api -m "not integration"` | **373 passed** (365 at W3-T2 close + 8 new = 373 ✓) |
+| Full suite | everything | `conda run -n storico python -m pytest -m "not integration"` | **1082 passed, 33 deselected** — the parent's 1074 + exactly the 8 new cases |
+| Lint | `ruff check` + `ruff format --check` | `conda run -n storico python -m ruff check src tests && … format --check src tests` | **All checks passed; 253 files already formatted** (two files reformatted by `ruff format` before the gate passed) |
+
+## What still calls the unfiltered `list_by_workspace`
+
+In `routes/export.py`, exactly one `list_by_workspace` call remains after 3.7:
+`story_repo.list_by_workspace(workspace.id)` in the Markdown branch. That is the **story**
+repository's own method, fetching the stories whose `raw_text` becomes the section headers — not the
+task read, and not the unfiltered task statement this task retires. It was left as-is rather than
+silently swapped. `task_repository.list_by_workspace` itself still serves its remaining callers
+(3.12's confirmation belongs to W3-T4).
+
+## Deviations from design / task letter
+
+1. **Four pre-existing `TestExportTasks` cases reconciled (reported by name, intent preserved).**
+   `test_export_json`, `test_export_markdown`, `test_export_json_tasks_have_all_fields` and
+   `test_export_markdown_labels_and_deps` seeded their tasks on an extraction minted with
+   `seed_extraction(db_session, story_id)` and no `status` — i.e. a **pending** run. Under the
+   unfiltered export that was invisible; under the current-version export those tasks are
+   correctly absent, so all four failed for fixture reasons, not contract reasons. The fixture now
+   mints a `completed` extraction (`status=ExtractionStatus.COMPLETED, completed_at=…`) in
+   `_create_tasks` and in `test_export_markdown_labels_and_deps`, with a comment naming the
+   reconciliation. Each case still proves what it was written to prove: content-type, filename
+   header, JSON field shape, Markdown section rendering, dependency resolution to titles. This is
+   the same fixture reconciliation pattern W3-T1 applied to `test_tasks.py`; no assertion was
+   weakened or deleted.
+2. **The route's shape refusal precedes the membership walk.** The design's Data Flow names the
+   ordering for the story branch only (membership → version resolution); for
+   `extraction_id`-without-`user_story_id` it is silent. Raising the 422 at the top of the handler
+   (before branch dispatch) is the only placement that guarantees no repository call ever sees the
+   invalid shape on **any** branch, including `workspace_id`. A malformed query answering 422
+   discloses nothing about any workspace, so the non-member case is unaffected in information terms.
+
+## Files changed (this tranche; diff vs HEAD, which also carries W3-T1's uncommitted fixture work in test_tasks.py)
+
+- `backend/src/storico/api/routes/tasks.py` (+44/−6 vs HEAD, all this tranche) — the parameter, the
+  shape guard, the version resolution and refusal, the `extraction_id` pass-through, docstring.
+- `backend/src/storico/api/routes/export.py` (+5/−2) — the filtered read + docstring sentence.
+- `backend/tests/test_api/test_tasks.py` (+182/−8 vs HEAD, of which this tranche ≈ +160: the
+  `TestListTasksVersionReads` class, 5 cases; the remainder is W3-T1's uncommitted fixture
+  reconciliation, untouched)
+- `backend/tests/test_api/test_export.py` (+142/−3) — `TestExportCurrentVersionFilter`, 3 cases,
+  plus the two fixture reconciliations above and the `seed_task`/`datetime`/`ExtractionStatus`
+  imports they need.
+
+Tranche authored total ≈ 355 changed lines. Within the owner-accepted WU3 `size:exception` (one PR
+over the 400-line budget); not generalized to WU5/WU6.
+
+## Workload / PR boundary
+
+WU3 ships as ONE PR under the accepted `size:exception`. Remaining WU3 work: 3.8, 3.9, 3.10's
+`test_stories.py`/`test_unfiltered_list_queries.py` halves (W3-T4/T5), 3.12 refactor rerun.
+
+## Remaining unchecked tasks (exact lines from tasks.md; 3.10 confirmed still unchecked)
+
+- [ ] 3.8 GREEN — `backend/src/storico/api/schemas/story.py`: add `StoryVersionResponse` with `id`,
+- [ ] 3.9 GREEN — `backend/src/storico/api/routes/stories.py`: add `GET /{story_id}/versions` using
+- [ ] 3.10 TRIANGULATE — `backend/tests/test_api/test_tasks.py` (`extraction_id` from another story
+- [ ] 3.12 REFACTOR — `backend/src/storico/infrastructure/database/repositories/task_repository.py`:
+
+(3.10's tasks.py half landed with this tranche; its stories/unfiltered halves stay with W3-T4/T5,
+so the checkbox stays unchecked as instructed. Phases 4–7 unchanged.)
+
+## Risks
+
+- The shape 422 fires before membership validation, so a non-member sending
+  `?extraction_id=…` gets 422 rather than 403 — a deliberate ordering choice
+  (see deviations), disclosed rather than absorbed.
+- `list_tasks` now resolves the version with one `find_by_id` statement only when `extraction_id`
+  is supplied; the default story read pays no extra statement (the current-version predicate lives
+  in the repository's own query).
+
+---
+
+# Apply Progress — WU3 tranche W3-T4 (tasks 3.8, 3.9: the selector response schema and the `GET /stories/{id}/versions` read) — 2026-09-30, branch `feat/extraction-versioning-api-wu3`
+
+The version-selector read the frontend consumes in Phase 6. W3-T1 (task-repo current-version
+predicate), W3-T2 (`list_versions`) and W3-T3 (`extraction_id` read + export filter) remain in the
+worktree uncommitted and untouched; every earlier section above is preserved verbatim. Task 3.10
+and 3.12 stay unchecked as instructed.
+
+## Structured status consumed
+
+`gentle-ai.sdd-status` v2 for `extraction-versioning-api` from the parent: `nextRecommended: apply`,
+`applyState: ready`, `blockedReasons: []`, `taskProgress` 27/77, `actionContext` mode `repo-local`,
+workspaceRoot and `allowedEditRoots` `["/Users/alvaldes/Developer/storico"]`. Delivery path already
+resolved: **`size:exception` explicitly accepted by the owner on 2026-09-30 for WU3 only** (one PR
+over the 400-line budget, recorded in tasks.md). All edits stayed inside the allowed surfaces plus
+the companion edits disclosed below; no frontend file, no repository/port file, no error-code file
+and no i18n file was touched.
+
+## Completed tasks (persisted checkboxes updated in tasks.md as each closed)
+
+- [x] 3.8 GREEN — `api/schemas/story.py`: new `StoryVersionResponse` with **exactly** `id`,
+      `version_number`, `status` (ExtractionStatus), `model_used`, `provider`, `temperature`,
+      `created_at`, `completed_at` (nullable), `error_info` (nullable, default `None`),
+      `is_current`, `has_output` — `from_attributes=True` like the other response schemas.
+      `api/schemas/extraction.py`: `ExtractionResponse` **and** `ExtractResponse` gain
+      `version_number: int | None`, `provider: str`, `temperature: float` — all three **required
+      keys** on the contract (`version_number` nullable; `None` only on the pre-0028 shape), so
+      every construction site must pass what the row actually carries.
+- [x] 3.9 GREEN — `api/routes/stories.py`: `GET /{story_id}/versions` added. The unchanged
+      `require_story_workspace_access` walk runs first (404 missing story / 403
+      `NOT_A_WORKSPACE_MEMBER`, no membership-hiding flag, never a silent empty 200), then
+      `extraction_repo.list_versions(story_id)` (the W3-T2 unbounded `version_number DESC` read),
+      and each entry is decorated with the two derived booleans: `is_current` = the entry is the
+      first `completed` element of the ordered list (implemented as `v.id == current_id` where
+      `current_id` is that first completed entry's id — equivalent because ids are unique per
+      version), `has_output` = `status == completed`. A story with no completed version yields a
+      200 array with **no** `is_current` entry — the legal frozen state. Returned as a bare
+      unpaginated array (`-> list[StoryVersionResponse]`), never a `PaginatedResponse` — wrapping
+      it would be the truncation W3-T2's docstring forbids. The route declares its own
+      `ExtractionRepoDep = Annotated[...]` next to the file's existing `StoryRepoDep`/
+      `ProjectRepoDep`/`MemberRepoDep`, per the repo's per-module dependency convention. Existing
+      routes were not reordered (`/{story_id}` matches one segment; `/{story_id}/versions` cannot
+      be shadowed).
+
+## TDD Cycle Evidence (strict TDD)
+
+| Cycle | Test(s) | Command | Result |
+| --- | --- | --- | --- |
+| RED (3.9's own proof) | 2 new `TestStoryVersionsEndpoint` cases in `tests/test_api/test_stories.py` | `conda run -n storico python -m pytest tests/test_api/test_stories.py -m "not integration"` | **2 failed, 21 passed** — both fail 404, the route does not exist |
+| Companion-forcing proof | existing extraction + contract files, schemas widened but routes not yet passing the scalars | `conda run -n storico python -m pytest tests/test_api/test_extraction.py tests/contract/test_api_schemas.py -m "not integration"` | **17 failed, 58 passed** — the required scalars make every hand-built `ExtractionResponse(...)`/`ExtractResponse(...)` site raise (ValidationError → 500). This is the mechanical proof the companion edits were forced |
+| GREEN (3.8 + 3.9 + companions) | stories + extraction + contract files | `conda run -n storico python -m pytest tests/test_api/test_stories.py tests/test_api/test_extraction.py tests/contract/test_api_schemas.py -m "not integration"` | **98 passed** |
+| Wider gate | `tests/test_api tests/contract tests/test_repositories` | `conda run -n storico python -m pytest tests/test_api tests/contract tests/test_repositories -m "not integration"` | **547 passed** |
+| Full suite | everything | `conda run -n storico python -m pytest -m "not integration"` | **1084 passed, 33 deselected** — the parent's 1082 + exactly the 2 new test functions; no other delta |
+| Lint | ruff | `conda run -n storico python -m ruff check src tests && … format --check src tests` | **All checks passed; 253 files already formatted** |
+
+The two 3.9-proof cases (kept deliberately inside 3.9's own GREEN proof; 3.10's stories
+triangulation edges stay for the next tranche):
+
+1. `test_lists_every_version_newest_first_and_derives_the_flags` — v1/v2 completed, v3 pending:
+   bare array ordered `[3, 2, 1]`; exactly v2 is `is_current` (the first *completed* entry — the
+   case distinguishes that rule from "the highest entry", since v3 is highest but pending);
+   `has_output` `[False, True, True]`; every entry carries the exact 11-key set; the pending entry
+   has `completed_at: null`.
+2. `test_a_story_with_no_completed_version_has_no_current_entry` — a story whose only run failed:
+   200 single-entry array, `is_current` false, `has_output` false. (The failed entry's full field
+   disclosure — `status`, `error_info`, `model_used`, `provider`, `temperature` — is 3.10's edge,
+   not asserted here.)
+
+## The OpenAPI surface the new route adds
+
+`GET /api/v1/stories/{story_id}/versions`, one method, 200 response
+`{"type": "array", "items": {"$ref": "#/components/schemas/StoryVersionResponse"}}`. Verified
+against the live `app.openapi()`: `StoryVersionResponse` carries exactly the 11 properties above,
+with `required: [id, version_number, status, model_used, provider, temperature, created_at,
+completed_at, is_current, has_output]` (`error_info` nullable with default). The widening is also
+visible on the existing 202 and extraction reads: `ExtractResponse` and `ExtractionResponse`
+declare `version_number` (`anyOf [integer, null]`), `provider` (string) and `temperature`
+(number), all three in each schema's `required` list.
+
+## The `routes/extraction.py` companion edit, and the three beyond it (disclosed, none silent)
+
+Task 3.8's sanctioned companion: `ExtractResponse(...)` is constructed literally at
+`routes/extraction.py:268`, so widening that schema forced the call site to pass the three values.
+It now passes `version_number=pending.version_number` (the number `create_next_version` minted and
+returned — the entity is its only source), `provider=provider` and
+`temperature=resolved_temperature` — exactly what the just-created extraction has, with the
+background run handed the same resolved values. The handler was not restructured.
+
+**Three further companion edits were mechanically forced and are disclosed as the tranche's
+deviation.** The parent's premise that "`ExtractionResponse` uses `from_attributes=True`, so
+adding the fields is enough for the reads that build it from the entity" does not hold for this
+repo: `from_attributes` is set on the schema but all four reads build it **by hand**, and the
+required scalars made them raise. Measured RED: 17 existing tests failed on the widened schema
+alone (table above). The sites, each passing the entity's own values, nothing else changed:
+
+- `routes/extraction.py:304` (`extraction_status`) — `version_number`/`provider`/`temperature`
+  from the loaded extraction.
+- `routes/extractions.py:143` (the `list_extractions` comprehension) and `:182`
+  (`get_extraction`) — same three values from each entity `e`. **This file is outside the
+  tranche's declared surfaces**; the edit is six lines of added kwargs across two construction
+  sites, entailed by the sanctioned widening exactly the way WU1's `schemas/__init__.py`
+  companion was. Without it the extraction list/read routes 500 and slice verification 7.1 cannot
+  go green.
+
+`tests/contract/test_api_schemas.py` was **not** touched: nothing there pins exact field sets or
+required-ness for these two schemas (only per-field presence and annotations), so no pin blocked
+the widening and no pin was updated. `schemas/__init__.py` needs no change (it exports the
+module, not the classes) — confirmed, not assumed.
+
+## Files changed (this tranche; diff vs HEAD — none of these files carry earlier-tranche edits)
+
+- `backend/src/storico/api/schemas/story.py` (+27/−0) — `StoryVersionResponse` + import.
+- `backend/src/storico/api/schemas/extraction.py` (+12/−0) — the three scalars on both schemas,
+  with the contract note.
+- `backend/src/storico/api/routes/stories.py` (+63/−0) — `ExtractionRepoDep`, the route, import.
+- `backend/src/storico/api/routes/extraction.py` (+10/−0) — sanctioned `ExtractResponse`
+  companion at `:268` + the forced `extraction_status` companion.
+- `backend/src/storico/api/routes/extractions.py` (+6/−0) — forced companions at `:143`/`:182`
+  (outside the declared surfaces; disclosed above).
+- `backend/tests/test_api/test_stories.py` (+107/−1) — `TestStoryVersionsEndpoint`, 2 cases, plus
+  the imports they need (`UTC`, `ExtractionStatus`, `seed_extraction`).
+
+Tranche total: 225+/1− = 226 changed lines. Within the owner-accepted WU3 `size:exception` (one PR
+over the 400-line budget); not generalized to WU5/WU6. Not committed, not staged, branch not
+switched. The pre-existing `odd/tasks/extraction-versioning-090.md` modification and the
+untracked `backend/.gitignore` / `.claude/skills/` were not touched.
+
+## Remaining unchecked tasks (exact lines from tasks.md; 3.10 and 3.12 confirmed unchecked)
+
+- [ ] 3.10 TRIANGULATE — `backend/tests/test_api/test_tasks.py` (`extraction_id` from another story
+- [ ] 3.12 REFACTOR — `backend/src/storico/infrastructure/database/repositories/task_repository.py`:
+
+(3.10's `test_tasks.py`/`test_stories.py`/`test_unfiltered_list_queries.py` triangulation and
+3.12's repository confirmation are the next tranche's work; Phases 4–7 unchanged. taskProgress is
+now 29/77.)
+
+## Workload / PR boundary
+
+WU3 ships as ONE PR under the accepted `size:exception`. Remaining WU3 work: 3.10's stories and
+unfiltered halves, 3.12's refactor rerun. Suggested commit message (tasks.md): `feat(api): read
+only the current version and expose the version selector`.
+
+## Risks
+
+- The extraction reads (`GET /api/v1/extractions…`, the 202 body) now always carry the three
+  scalars; a client asserting an exact key set would see new keys. No such pin exists in the repo
+  (grep-verified) and the frontend reads these responses additively.
+- `is_current` is derived per request from the ordered list; the agreement with
+  `find_current_version` (the frozen check's authority) is pinned at the repository layer by
+  W3-T2's `test_find_current_version_agrees_with_list_versions_first_completed`.
+- `GET /{story_id}/versions` answers the router's plain 404 shape for a missing story
+  (`EntityNotFound` handler), same as `GET /{story_id}` today — 3.10 pins the posture explicitly.
+
+---
+
+# Apply Progress — WU3 tranche W3-T5 (tasks 3.10, 3.12: the read surfaces pinned against each other) — 2026-09-30, branch `feat/extraction-versioning-api-wu3`
+
+The last code tranche of WU3. W3-T1 (predicate), W3-T2 (`list_versions`), W3-T3 (`extraction_id`
+read + export filter) and W3-T4 (selector schema + route) remain in the worktree uncommitted and
+untouched; every earlier section above is preserved verbatim. Task 3.10's `test_tasks.py` half
+landed with W3-T3 (its RED run) — this tranche inventoried it rather than duplicating it.
+
+## Structured status consumed
+
+`gentle-ai.sdd-status` v2 for `extraction-versioning-api` from the parent: `nextRecommended:
+apply`, `applyState: ready`, `blockedReasons: []`, `taskProgress` 29/77 at start,
+`actionContext` mode `repo-local`, workspaceRoot and `allowedEditRoots`
+`["/Users/alvaldes/Developer/storico"]`. Delivery path already resolved: **`size:exception`
+explicitly accepted by the owner on 2026-09-30 for WU3 only** (one PR over the 400-line budget,
+recorded in tasks.md). All edits stayed inside the two allowed test files plus the two SDD
+artifacts; `task_repository.py` was read and confirmed but **not edited** (see 3.12 below).
+
+## The bullet → test-function inventory (3.10)
+
+Filled only the gaps; nothing was duplicated. **No `test_tasks.py` edit was needed this tranche** —
+W3-T3 had already covered all three of its bullets:
+
+| File | Bullet | Evidence (test function) | Covered by |
+| --- | --- | --- | --- |
+| `test_tasks.py` | foreign `extraction_id` → 422 `REQUEST_VALIDATION_FAILED`, no task of story B | `TestListTasksVersionReads::test_a_foreign_extraction_id_refuses_and_leaks_nothing` | W3-T3 (pre-existing) |
+| `test_tasks.py` | `extraction_id` without `user_story_id` → 422 | `TestListTasksVersionReads::test_extraction_id_without_user_story_id_refuses_before_the_repository` (workspace + unfiltered branches both pinned) | W3-T3 (pre-existing) |
+| `test_tasks.py` | story whose only run is `failed` → 200 `[]` | `TestListTasksVersionReads::test_a_story_whose_only_run_is_failed_reads_an_empty_page` (seeds a task on the failed version, so it proves the predicate, not absence) | W3-T3 (pre-existing) |
+| `test_stories.py` | three `completed` versions mark exactly v3 `is_current` | `TestStoryVersionsEndpoint::test_three_completed_versions_mark_exactly_the_highest_current` — **added (W3-T5)** | W3-T5 |
+| `test_stories.py` | v2 `completed` + v3 `pending` marks v2 `is_current` | `TestStoryVersionsEndpoint::test_lists_every_version_newest_first_and_derives_the_flags` (asserts exactly `[2]`, against v3 being the highest entry) | W3-T4 (pre-existing) |
+| `test_stories.py` | 25 versions arrive in one payload | `TestStoryVersionsEndpoint::test_twenty_five_versions_arrive_in_one_untruncated_payload` — **added (W3-T5)**; measured result below | W3-T5 |
+| `test_stories.py` | missing story → 404, non-member → 403, never a silent empty 200 | `TestStoryVersionsEndpoint::test_a_missing_story_is_404_and_a_non_member_is_403` — **added (W3-T5)**; foreign story seeded through `SQLAlchemyUserStoryRepository` in a workspace `authed_user` does not belong to, so the walk is exercised for real | W3-T5 |
+| `test_stories.py` | `failed` version carries `status`, `error_info`, `model_used`, `provider`, `temperature`, `has_output=false` | `TestStoryVersionsEndpoint::test_a_failed_version_discloses_its_run_metadata_and_has_no_output` — **added (W3-T5)** (W3-T4's failed case asserted only the two booleans) | W3-T5 |
+| `test_unfiltered_list_queries.py` | no-parameter `GET /api/v1/tasks/` shows no superseded tasks; `total` agrees with the rows | `test_the_unfiltered_task_list_shows_no_superseded_tasks` — **added (W3-T5)** | W3-T5 |
+
+No existing test was edited, weakened or deleted; the four W3-T5 story cases and one unfiltered
+case are pure additions (all pre-existing assertions intact).
+
+## The 25-version payload result, stated as a count
+
+`test_twenty_five_versions_arrive_in_one_untruncated_payload` seeds 25 versions on one story
+(v1–v24 `completed`, v25 `pending`) and asserts the HTTP response is **25 entries** in one bare
+array, ordered `[25, 24, …, 1]`, with exactly v24 marked `is_current` and
+`has_output == [False] + [True] * 24`. A 20-row window would have returned 20 entries and dropped
+five — the count assertion is the unbounded proof at the HTTP edge, and the flag derivation across
+all 25 entries stops truncation from hiding behind a passing `is_current`.
+
+## 3.12 REFACTOR — the three confirmations, each with how it was measured
+
+A **pure confirmation: `task_repository.py` was not edited** (no defect found — no Python-side
+filter, no `total` off the shared scope), and no new repository test was needed.
+
+1. **`list_by_workspace` still serves its remaining callers — measured: it has zero.** Grep over
+   `src/` and `tests/` for the *task* repository's `list_by_workspace`: the only `src/` hits are
+   `routes/tasks.py:223` (a comment about the retired per-workspace loop) and
+   `routes/export.py:120` — which is the **story** repository's own `list_by_workspace` (the
+   Markdown section headers, not the task read; `story_repo`, a different port). No route, service
+   or test calls `SQLAlchemyTaskRepository.list_by_workspace` (`task_service.py:89` calls
+   `list_by_story`). Since 3.7 moved the export to `list_current_by_workspace`, the method is
+   uncalled. **Per the task letter it is left in place** — deleting an unused public repository
+   method is an owner decision, not this tranche's cleanup.
+2. **No read path filters in Python — measured by reading every read path.**
+   `task_repository.py`: the story scope is a correlated scalar subquery in SQL; the workspace and
+   `workspace_ids` scopes are the `_current_version_only` `NOT EXISTS` clause in SQL; an explicit
+   `extraction_id` is a SQL equality arm; `fetch_page`/`with_total` page and count in SQL;
+   `_to_domain` maps rows and filters nothing. `routes/tasks.py` `list_tasks`: the only
+   Python-side logic is the empty-`workspace_ids` early return (no statement issued) and the shape
+   refusals — no row filtering. `routes/export.py`: the Python loops in `_markdown` group and
+   render the already-filtered result set (serialization, not selection); the JSON path
+   serializes `list_current_by_workspace`'s output directly. Confirmed by the passing
+   statement-shape guards: `test_unfiltered_list_reads_its_table_once` (exactly one statement per
+   table) and `test_list_page_pins_the_order_rule_in_sql`.
+3. **The page and its `total` come from one statement — measured in code and by tests.**
+   `with_total(stmt)` appends `count(*) OVER ()` to the page statement itself, whose `WHERE` is the
+   same `scope` object the fallback `count_stmt` shares (both are built from one composed scope per
+   branch, verified in `list_page`'s three arms); `fetch_page` executes the page statement once and
+   reads the total off `rows[0][-1]`, running `count_stmt` only on the past-the-end fallback.
+   Behavioral evidence: W3-T1's past-the-end case (`limit=2, offset=10` → `([], 4)` — the
+   *filtered* total via the fallback path) and `test_unfiltered_list_reads_its_table_once`.
+
+## TDD Cycle Evidence (strict TDD)
+
+| Cycle | Test(s) | Command | Result |
+| --- | --- | --- | --- |
+| TRIANGULATE (3.10) | the 5 new cases + all pre-existing version reads | `conda run -n storico python -m pytest tests/test_api/test_tasks.py tests/test_api/test_stories.py tests/test_api/test_unfiltered_list_queries.py -m "not integration"` | **81 passed** — the triangulation cases pin already-implemented behavior across the three files at once; no RED was due (the implementation landed in W3-T1–T4 with their own RED proofs) |
+| Wider gate | `tests/test_api tests/test_repositories` | same modules, `-m "not integration"` | **508 passed** — W3-T1's 491 + W3-T2's 2 + W3-T3's 8 + W3-T4's 2 + this tranche's 5 = 508 ✓ |
+| Full suite | everything | `conda run -n storico python -m pytest -m "not integration"` | **1089 passed, 33 deselected** — the parent's 1084 + exactly the 5 new test functions of this tranche; no other delta |
+| Lint | `ruff check` + `ruff format --check` | `conda run -n storico python -m ruff check src tests && … format --check src tests` | **All checks passed; 253 files already formatted** |
+
+## Files changed (this tranche)
+
+- `backend/tests/test_api/test_stories.py` (+96/−0) — 4 cases in `TestStoryVersionsEndpoint` (the
+  three-completed, 25-version, 404/403-posture and failed-disclosure edges), reusing the class's
+  `_create_story` helper and the file's existing foreign-workspace seeding pattern.
+- `backend/tests/test_api/test_unfiltered_list_queries.py` (+45/−0) —
+  `test_the_unfiltered_task_list_shows_no_superseded_tasks` (two completed versions on one story
+  inside the multi-workspace fold; older version's titles absent, `total == len(items) == 4`).
+- `backend/src/storico/infrastructure/database/repositories/task_repository.py` — **not edited**;
+  3.12 was a confirmation with no defect found.
+
+Tranche total ≈ 141 added lines. Within the owner-accepted WU3 `size:exception` (one PR over the
+400-line budget; not generalizable to WU5/WU6). Not committed, not staged, branch not switched.
+
+## Phase 3 — CLOSED
+
+All twelve Phase 3 tasks (3.1–3.12) are `- [x]` in `tasks.md`; re-read confirmed 31/77 checked,
+nothing outside Phase 3 moved by this tranche. Suggested commit message (tasks.md): `feat(api):
+read only the current version and expose the version selector`.
+
+## Remaining unchecked tasks (exact next lines from tasks.md)
+
+- [ ] 4.1 RED — `backend/tests/test_unit/test_workspace_gate.py` **New** (path free): the truth table
+- (Phase 4: 4.1–4.18; Phase 5: 5.1–5.13; Phase 6: 6.x; Phase 7 — all unchecked.)
+
+## Risks
+
+- None new. The 422-before-membership ordering for `extraction_id` without `user_story_id` was
+  disclosed in W3-T3 and stands; the 403/404 posture of the versions read is now explicitly pinned.
+- `list_by_workspace` (task repo) is now dead code kept deliberately; the archive pass should
+  surface the owner decision to whoever closes the slice.
