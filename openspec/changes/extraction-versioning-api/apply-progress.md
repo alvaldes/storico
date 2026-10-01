@@ -1535,3 +1535,39 @@ read only the current version and expose the version selector`.
   disclosed in W3-T3 and stands; the 403/404 posture of the versions read is now explicitly pinned.
 - `list_by_workspace` (task repo) is now dead code kept deliberately; the archive pass should
   surface the owner decision to whoever closes the slice.
+
+---
+
+## Parent close-out of WU3 (delivery, CI numbers, ratified size)
+
+Parent-run verification, not child-reported:
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Full unit suite | `pytest -m "not integration"` | **1089 passed, 33 deselected** |
+| Read-path gate | `pytest tests/test_api tests/test_repositories -m "not integration"` | **508 passed** |
+| Lint / format | `ruff check src tests` · `ruff format --check src tests` | clean · 253 files already formatted |
+| Frontend (untouched by WU3) | `pnpm test` · `pnpm exec tsc --noEmit` | **615 passed** · exit 0 |
+| CI backend (Postgres) | run `36804148960` | **1104 passed, 18 skipped** |
+| CI frontend | same run | **615 passed**, Astro build ok |
+| Vercel | same run | pass |
+
+**The CI delta is the Postgres proof.** 1104 − 1089 = **15 cases that cannot run on this machine**
+(no Docker, no `psql`), the same 15 WU2 ran. The correlated subquery, the `NOT EXISTS` predicate and
+the `uq_extractions_story_version` index assumption are only genuinely exercised there, so the local
+SQLite suite is not the evidence that the filter is correct against the real planner — CI is.
+
+**Commits.** `6b0f519` `feat(api): read only the current version and expose the version selector`
+(18 files, 1213+/31−) and `ffa7157` `docs(odd): record WU3's five tranches, the resumed writer and
+the wrong forecast`. Pushed to `origin/feat/extraction-versioning-api-wu3`; **PR #33** opened against
+`feat/extraction-versioning-api-wu2` (base, because #32 is unmerged), all checks green.
+
+**Size ratified against measurement, not forecast.** 1,244 code+test lines (331 production / 913
+tests) against the ≈600–750 the exception was granted on. The owner was given the measured number,
+the production/test split and the plan's own two-PR chain alternative (≈900 + ≈344, chained because
+the selector needs `list_versions`), and ratified the single PR. Recorded in `tasks.md`'s delivery
+section as a `[Ratified 2026-09-30, after measurement]` note.
+
+**Standalone finding recorded for the next units.** `git diff | grep '^-' | grep -c assert` returned
+**0** on `test_tasks.py`, `test_export.py`, `test_task_repo.py` and `test_stories.py` — the fastest
+proof available that a fixture-heavy unit went green without loosening a single check.

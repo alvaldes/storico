@@ -847,8 +847,8 @@ Runner: `cd backend && conda run -n storico python -m pytest <target> -m "not in
 - [ ] b3-4. W3-T4: `GET /stories/{id}/versions` with the unchanged access walk, bare array.
 - [ ] b3-5. W3-T5: version scalars on the extraction responses.
 - [ ] b3-6. 3.12 REFACTOR + full backend suite and ruff, measured by the parent.
-- [ ] b3-7. One WU3 commit + PR under the accepted exception, with the production/test split stated.
-- [ ] b3-8. `tasks.md` + `apply-progress.md` + this handoff reconciled.
+- [x] b3-7. One WU3 commit + PR under the accepted exception, with the production/test split stated.
+- [x] b3-8. `tasks.md` + `apply-progress.md` + this handoff reconciled.
 
 ## Slice (b) WU2 — session 2026-09-30 (b2): the field matrix, stacked on WU1
 
@@ -1018,5 +1018,5 @@ the accepted number in this file and in `tasks.md` is now the measured one, not 
 - [x] b3-4. W3-T4 (`GET /stories/{id}/versions`, bare array, unchanged 404/403 walk; companion edits disclosed)
 - [x] b3-5. W3-T5 (3.10 triangulation: 25-version payload measured as 25 entries ordered `[25..1]`; 3.12 confirmed)
 - [x] b3-6. Gates measured by the parent: 1089 backend, ruff clean, frontend 615, tsc clean
-- [ ] b3-7. One WU3 commit + PR under the ratified exception, with the production/test split stated
-- [ ] b3-8. `tasks.md` + `apply-progress.md` + this handoff reconciled
+- [x] b3-7. One WU3 commit + PR under the ratified exception, with the production/test split stated
+- [x] b3-8. `tasks.md` + `apply-progress.md` + this handoff reconciled
