@@ -1074,6 +1074,15 @@ the production/dev purge to `0028` does not block it.
 codes without locale entries). That is disclosed, not hidden, and W4-T3 closes it — the same pattern
 WU1 used with its backend/frontend tranches.
 
+> **[Order amended before dispatching, 2026-09-30 — premise #4]** The table above keeps the plan's
+> numbering, but W4-T2 runs **first**. Task 4.5's gate raises
+> `WORKSPACE_OWNER_OR_ADMIN_REQUIRED`, and that code is created by task 4.7 — so dispatching 4.5
+> before 4.7 would force the writer to either invent an error code outside its declared surfaces or
+> stub one that the later tranche then has to reconcile. The plan's sequence has a real
+> dependency-in-the-wrong-direction here, not a stylistic preference. Execution order:
+> **W4-T2 → W4-T3 → W4-T1 → W4-T4 → …** so the error vocabulary exists before the gate needs it, and
+> the frontend mirror goes green before anything else can widen the registry again.
+
 **Runner:** `cd backend && conda run -n storico python -m pytest <target> -m "not integration"`.
 **Frontend:** `cd frontend && pnpm test` / `pnpm exec tsc --noEmit`.
 
@@ -1089,3 +1098,35 @@ WU1 used with its backend/frontend tranches.
 - [ ] b4-10. 4.18 REFACTOR + full suites + ruff, measured by the parent.
 - [ ] b4-11. One WU4 commit + PR, size restated against the measurement.
 - [ ] b4-12. `tasks.md` + `apply-progress.md` + this handoff reconciled.
+
+### WU4 splits into two chained PRs (owner decision, 2026-09-30) — and premise #5 that forced the timing
+
+**What the owner decided.** WU4's accepted band was ≈1,300–1,700 lines. Measured at the W4-T6 close it was
+already **1,332** with eight tasks unwritten, projecting **1,900–2,280**. Rather than ratify a widened
+exception (what WU3 did), the owner chose to **cut WU4 in two chained PRs on the seam the code already
+had**: gate + error vocabulary + mirror, versus migration `0029` + audit record + delete + vector cleanup.
+The cost named and accepted: the open-PR chain grows from four to five. The benefit named: **reverting the
+deletion must not revert the authorization tier**, and a human reads a destructive migration in its own
+sitting.
+
+**Measured halves, not estimated** (`git diff --numstat` after `git add -N`): gate side **627**, deletion
+side **891**, i.e. ≈830 and ≈1,100 once their unwritten tests land. Both still above 400; neither is a
+"small PR", and the split is about *separation of concerns per sitting*, not about hitting a number.
+
+**A measurement trap the parent hit and must hand on.** `git diff --numstat` **silently excludes untracked
+files**, and W4-T4 shipped four brand-new files (`story_deletions` model, entity, revision `0029`, its test).
+My first cumulative read was **903**; the true number was **1,332** — a 429-line hole, entirely made of new
+files. The fix is `git add -N <paths>` (intent-to-add) before measuring, and `git reset` right after, because
+leaving intent-to-add entries in the index means a later plain `git commit` can commit **empty blobs** for
+those paths. Sub-agent tranche totals that were summed from `git diff` alone understate any tranche that
+creates files, which is most of WU4: the W4-T4 report's "389 changed lines" and my own earlier arithmetic
+need re-derivation at close-out from the real head-to-head diff, not from tranche anecdotes.
+
+**Premise #5 — task 4.2 cannot be completed in Phase 4, in either of the two PRs.** 4.2's letter requires
+the `MEMBER`-gets-403 gate case on **extract, mark, unmark and story delete**. Reality: `mark`/`unmark`
+endpoints do not exist until Phase 5 (WU5, task 5.9 wires `require_task_owner_or_admin`), and `DELETE
+/stories/{id}` does not exist until task 4.13. So 4.2's four cases land in **three different units**:
+extract with PR A (task 4.6), story delete with PR B (with 4.13), mark/unmark with WU5. Nobody should
+expect a checkbox to be tickable at the point the plan puts it, and the earlier warning W4-T1 left —
+"the four wrappers are unwired dead code until 4.6/4.13/5.9" — was this same defect, one tranche before
+it bit.
