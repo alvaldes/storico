@@ -4,6 +4,7 @@ from storico.infrastructure.database.models.base import Base
 from storico.infrastructure.database.models.custom_provider import CustomProviderModel
 from storico.infrastructure.database.models.extraction import ExtractionModel
 from storico.infrastructure.database.models.project import ProjectModel
+from storico.infrastructure.database.models.story_deletion import StoryDeletionModel
 from storico.infrastructure.database.models.task import TaskModel
 from storico.infrastructure.database.models.task_invalidation import TaskInvalidationModel
 from storico.infrastructure.database.models.user import UserModel
@@ -32,6 +33,7 @@ __all__ = [
     "UserStoryModel",
     "TaskModel",
     "TaskInvalidationModel",
+    "StoryDeletionModel",
     "ExtractionModel",
     "WorkspaceModel",
     "WorkspaceMemberModel",

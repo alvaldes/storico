@@ -10,8 +10,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import EntityNotFound, RepositoryError, UserStory, UserStoryStatus
+from storico.domain.entities.story_deletion import StoryDeletion
 from storico.domain.ports import UserStoryRepository
-from storico.infrastructure.database.models import ProjectModel, UserStoryModel
+from storico.infrastructure.database.models import ProjectModel, StoryDeletionModel, UserStoryModel
 from storico.infrastructure.database.pagination import fetch_page, with_total
 
 
@@ -122,6 +123,33 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
         if result.rowcount == 0:
             raise EntityNotFound("UserStory", str(user_story_id))
 
+    async def delete_with_record(self, user_story_id: UUID, record: StoryDeletion) -> None:
+        """Delete the story and write its deletion record in one transaction.
+
+        The rowcount check gates the commit, deliberately unlike ``delete``
+        above, which commits *before* checking and therefore persists a
+        no-op delete. Here a delete that matched no row rolls back, raises
+        ``EntityNotFound`` and never reaches a commit — so nothing can be
+        persisted on that path. On a matched row, the record INSERT and the
+        DELETE share one commit: a failure on the insert rolls the delete
+        back, and a story cannot vanish without leaving its audit record.
+
+        The record carries the story identity as values with no foreign key
+        to ``stories``, which is why the pair can share one transaction in
+        either order; the transaction is still the atomicity guarantee.
+        """
+        try:
+            stmt = delete(UserStoryModel).where(UserStoryModel.id == user_story_id)
+            result = await self._session.execute(stmt)
+            if result.rowcount == 0:
+                await self._session.rollback()
+                raise EntityNotFound("UserStory", str(user_story_id))
+            self._session.add(StoryDeletionModel(**self._to_record_kwargs(record)))
+            await self._session.commit()
+        except SQLAlchemyError as e:
+            await self._session.rollback()
+            raise RepositoryError("Database error deleting user story") from e
+
     async def find_by_parts(
         self, project_id: UUID, actor: str, feature: str, benefit: str
     ) -> UserStory | None:
@@ -179,6 +207,21 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
             updated_at=model.updated_at,
             status=UserStoryStatus(model.status),
         )
+
+    @staticmethod
+    def _to_record_kwargs(record: StoryDeletion) -> dict:
+        return {
+            "id": record.id,
+            "story_id": record.story_id,
+            "project_id": record.project_id,
+            "workspace_id": record.workspace_id,
+            "actor": record.actor,
+            "feature": record.feature,
+            "benefit": record.benefit,
+            "version_numbers": list(record.version_numbers),
+            "deleted_by": record.deleted_by,
+            "deleted_at": record.deleted_at,
+        }
 
     @staticmethod
     def _to_orm_kwargs(user_story: UserStory) -> dict:

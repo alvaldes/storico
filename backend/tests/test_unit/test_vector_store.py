@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from storico.domain.entities.exceptions import VectorStoreError
 from storico.domain.ports import VectorStorePort
 from storico.infrastructure.vector.qdrant_adapter import QdrantAdapter
 
@@ -666,3 +667,140 @@ class TestQdrantAdapter:
         results = await adapter.search_similar(text="test", workspace_id=self.workspace_id)
         assert len(results) == 1
         assert results[0].similarity_score == 0.0
+
+    # ── delete_by_story — destructive cleanup (raises, unlike store/search) ──
+    #
+    # These cases exercise the adapter against a fake AsyncQdrantClient, so they
+    # prove the calls the adapter ISSUES (filter shape, wait=True, error mapping) —
+    # not that a real Qdrant actually drops the points. The real round trip is
+    # proven where a Docker daemon exists (task 4.16 / CI); a fake-client green
+    # here must never be read as "the collection really lost its points".
+
+    @pytest.mark.asyncio
+    async def test_delete_by_story_filters_on_both_payload_keys_as_strings(self) -> None:
+        """The delete filter carries both workspace_id and user_story_id, string-typed.
+
+        ``store_extraction`` writes ``workspace_id`` as ``str(workspace_id)`` and
+        ``user_story_id`` as a plain string, so the filter must carry the exact
+        same string-typed values: a type mismatch would match nothing, delete no
+        points, and still look like success. A filter missing either key would
+        silently over-delete (other stories' points in the workspace) or
+        under-delete (orphan points of the deleted story).
+        """
+        port = _make_embedding_port(dimensions=3)
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+
+        mock_client = AsyncMock()
+        adapter._client = mock_client
+
+        await adapter.delete_by_story(
+            workspace_id=self.workspace_id,
+            user_story_id="story-456",
+        )
+
+        mock_client.delete.assert_called_once()
+        call_kwargs = mock_client.delete.call_args[1]
+        assert call_kwargs["collection_name"] == self.collection
+
+        selector = call_kwargs["points_selector"]
+        conditions = selector.filter.must
+        by_key = {c.key: c.match.value for c in conditions}
+        assert set(by_key) == {"workspace_id", "user_story_id"}
+        assert by_key["workspace_id"] == str(self.workspace_id)
+        assert isinstance(by_key["workspace_id"], str)
+        assert by_key["user_story_id"] == "story-456"
+        assert isinstance(by_key["user_story_id"], str)
+
+    @pytest.mark.asyncio
+    async def test_delete_by_story_waits_for_the_delete_to_apply(self) -> None:
+        """The delete is sent with wait=True, not fire-and-forget.
+
+        The caller (story deletion) must not proceed to the relational delete
+        believing the points are gone: ``wait=True`` is what makes "no points
+        remain retrievable" true when the response returns rather than
+        eventually. Asserted on the actual call kwargs, not assumed.
+        """
+        port = _make_embedding_port(dimensions=3)
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+
+        mock_client = AsyncMock()
+        adapter._client = mock_client
+
+        await adapter.delete_by_story(
+            workspace_id=self.workspace_id,
+            user_story_id="story-456",
+        )
+
+        call_kwargs = mock_client.delete.call_args[1]
+        assert call_kwargs["wait"] is True
+
+    @pytest.mark.asyncio
+    async def test_delete_by_story_driver_failure_raises_vector_store_error(self) -> None:
+        """A Qdrant failure surfaces as VectorStoreError, not a swallow.
+
+        This deliberately breaks the file's own convention: ``store_extraction``
+        returns ``False`` on the same failure, but a destructive operation must
+        not proceed on an unverified cleanup — a delete that was believed to
+        happen but didn't leaves orphan points answering future similarity
+        searches for a story that no longer exists. Asserting the exact type also
+        proves the raw driver error is not allowed to escape unwrapped.
+        """
+        port = _make_embedding_port(dimensions=3)
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+
+        mock_client = AsyncMock()
+        mock_client.delete.side_effect = RuntimeError("Qdrant down")
+        adapter._client = mock_client
+
+        with pytest.raises(VectorStoreError, match="Qdrant down"):
+            await adapter.delete_by_story(
+                workspace_id=self.workspace_id,
+                user_story_id="story-456",
+            )
+
+    @pytest.mark.asyncio
+    async def test_delete_by_story_client_unavailable_raises(self) -> None:
+        """An unavailable client raises instead of returning quietly.
+
+        "No vector store configured" and "a vector store that cannot be reached"
+        are different outcomes. The service (W4-T7) skips this call entirely when
+        there is no store at all — a legitimate completion, since no points exist
+        to clean. Here a store IS configured but its lazy init fails (the
+        constructor's connection attempt raises, so ``_get_client`` returns
+        ``None``), and that path must raise: the destructive path must not
+        continue on an unverified cleanup.
+        """
+        port = _make_embedding_port(dimensions=3)
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+        # Force a fresh lazy init so the client is actually built (and fails) below.
+        adapter._client = None
+
+        with patch(
+            "storico.infrastructure.vector.qdrant_adapter.AsyncQdrantClient",
+            side_effect=RuntimeError("connection refused"),
+        ):
+            with pytest.raises(VectorStoreError, match="unavailable"):
+                await adapter.delete_by_story(
+                    workspace_id=self.workspace_id,
+                    user_story_id="story-456",
+                )

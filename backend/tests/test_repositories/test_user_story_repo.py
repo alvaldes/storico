@@ -1,14 +1,16 @@
 """Tests for SQLAlchemyUserStoryRepository."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import event
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from storico.domain.entities import Project, RepositoryError, UserStory
+from storico.domain.entities import EntityNotFound, Project, RepositoryError, UserStory
+from storico.domain.entities.story_deletion import StoryDeletion
+from storico.infrastructure.database.models import StoryDeletionModel
 from storico.infrastructure.database.repositories import (
     SQLAlchemyProjectRepository,
     SQLAlchemyUserStoryRepository,
@@ -478,3 +480,195 @@ async def test_save_many_commits_once_for_three_rows(
 
     assert one_row_count == 1, one_row_count
     assert three_row_count == one_row_count, (three_row_count, one_row_count)
+
+
+def _deletion_record(story: UserStory, workspace_id: UUID, **overrides) -> StoryDeletion:
+    """Build the audit record ``delete_with_record`` persists for ``story``."""
+    kwargs = dict(
+        story_id=story.id,
+        project_id=story.project_id,
+        workspace_id=workspace_id,
+        actor=story.actor,
+        feature=story.feature,
+        benefit=story.benefit,
+        version_numbers=[1],
+    )
+    kwargs.update(overrides)
+    return StoryDeletion(**kwargs)
+
+
+async def _deletion_rows(db_session: AsyncSession) -> list[StoryDeletionModel]:
+    """Read every story_deletions row through a fresh statement."""
+    result = await db_session.execute(select(StoryDeletionModel))
+    return list(result.scalars().all())
+
+
+@pytest.mark.asyncio
+async def test_delete_with_record_deletes_and_records_in_one_commit(
+    db_session: AsyncSession, test_engine: AsyncEngine, workspace_id: UUID
+) -> None:
+    """One call removes the story and writes its record inside one transaction.
+
+    The point of ``delete_with_record`` is the pairing: there is never a
+    deletion without its record and never a record without its deletion. Two
+    separate commits could produce either orphan, so the transaction boundary
+    is asserted, not assumed: connection-level ``commit`` events are counted
+    on the real engine (same listener technique as the statement capture the
+    ``save_many`` tests use), and the statement list must hold exactly the
+    DELETE and the INSERT — nothing that would imply a second commit.
+    """
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    project = await _seed_project(db_session, workspace_id, "One commit delete")
+    story = _story(project.id, "doomed-story")
+    await repo.save(story)
+
+    commits: list[str] = []
+    statements: list[str] = []
+
+    def record_commit(*_args) -> None:
+        commits.append("commit")
+
+    def record_statement(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    event.listen(test_engine.sync_engine, "commit", record_commit)
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record_statement)
+    try:
+        await repo.delete_with_record(story.id, _deletion_record(story, workspace_id))
+    finally:
+        event.remove(test_engine.sync_engine, "commit", record_commit)
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record_statement)
+
+    assert await repo.find_by_id(story.id) is None
+    rows = await _deletion_rows(db_session)
+    assert len(rows) == 1, rows
+    assert commits == ["commit"], commits
+    kinds = [statement.split()[0].upper() for statement in statements]
+    assert kinds == ["DELETE", "INSERT"], statements
+
+
+@pytest.mark.asyncio
+async def test_delete_with_record_unknown_story_raises_and_writes_nothing(
+    db_session: AsyncSession, test_engine: AsyncEngine, workspace_id: UUID
+) -> None:
+    """A no-row delete raises EntityNotFound, commits nothing, inserts no record.
+
+    The rowcount check has to gate the commit: if the method committed first
+    and checked after (the ordering the legacy ``delete`` has), a no-op delete
+    would still persist whatever the session held. On SQLite this is proven
+    with commit-event counting and the empty story_deletions table; the
+    Postgres cascade behaviour of a real story deletion is task 4.16's
+    concern (integration, Docker), not this unit case's.
+    """
+    repo = SQLAlchemyUserStoryRepository(db_session)
+
+    commits: list[str] = []
+
+    def record_commit(*_args) -> None:
+        commits.append("commit")
+
+    event.listen(test_engine.sync_engine, "commit", record_commit)
+    try:
+        with pytest.raises(EntityNotFound):
+            await repo.delete_with_record(
+                uuid4(), _deletion_record(_story(uuid4(), "ghost"), workspace_id)
+            )
+    finally:
+        event.remove(test_engine.sync_engine, "commit", record_commit)
+
+    assert commits == [], commits
+    assert await _deletion_rows(db_session) == []
+
+
+@pytest.mark.asyncio
+async def test_delete_with_record_insert_failure_rolls_back_the_delete(
+    db_session: AsyncSession, test_engine: AsyncEngine, workspace_id: UUID
+) -> None:
+    """A failing record insert leaves the story standing — the rollback is the method.
+
+    The lever is the record's primary key, colliding with an existing audit
+    row: the DELETE succeeds, the INSERT violates the PK, and the whole
+    transaction must come back. If the story were still gone afterwards the
+    method would be two statements, not one transaction. The technique is the
+    ``save_many`` atomicity test's (primary-key collision, because sqlite
+    does not enforce foreign keys by default here). The audit row that caused
+    the collision stays, and the story keeps its row for the retry.
+    """
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    project = await _seed_project(db_session, workspace_id, "Rollback delete")
+    story = _story(project.id, "still-here")
+    await repo.save(story)
+
+    existing = _deletion_record(story, workspace_id)
+    db_session.add(
+        StoryDeletionModel(
+            **{
+                "id": existing.id,
+                "story_id": existing.story_id,
+                "project_id": existing.project_id,
+                "workspace_id": existing.workspace_id,
+                "actor": existing.actor,
+                "feature": "pre-existing-audit-row",
+                "benefit": existing.benefit,
+                "version_numbers": existing.version_numbers,
+                "deleted_by": existing.deleted_by,
+                "deleted_at": existing.deleted_at,
+            }
+        )
+    )
+    await db_session.commit()
+
+    with pytest.raises(RepositoryError):  # wraps sqlite's IntegrityError
+        await repo.delete_with_record(story.id, existing)
+
+    assert await repo.find_by_id(story.id) is not None
+    rows = await _deletion_rows(db_session)
+    assert len(rows) == 1, rows
+    assert rows[0].feature == "pre-existing-audit-row"
+
+
+@pytest.mark.asyncio
+async def test_delete_with_record_round_trips_identity_and_version_numbers(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """The record lands in story_deletions exactly as handed in.
+
+    ``version_numbers`` rides sa.JSON (the W4-T4 portability choice), the
+    story identity is the (actor, feature, benefit) trio as values, and every
+    id column round-trips. SQLite stores DATETIME naive, so the timestamp is
+    compared after re-attaching UTC — TIMESTAMPTZ precision is a Postgres
+    property this unit schema cannot prove (task 4.16's scope, with Docker).
+    """
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    project = await _seed_project(db_session, workspace_id, "Record round trip")
+    story = _story(project.id, "history-kept")
+    await repo.save(story)
+
+    deleted_by = uuid4()
+    deleted_at = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
+    record = _deletion_record(
+        story,
+        workspace_id,
+        version_numbers=[1, 2],
+        deleted_by=deleted_by,
+        id=story.id,
+        deleted_at=deleted_at,
+    )
+
+    await repo.delete_with_record(story.id, record)
+
+    rows = await _deletion_rows(db_session)
+    assert len(rows) == 1
+    saved = rows[0]
+    assert saved.id == story.id
+    assert saved.story_id == story.id
+    assert saved.project_id == project.id
+    assert saved.workspace_id == workspace_id
+    assert (saved.actor, saved.feature, saved.benefit) == (
+        story.actor,
+        story.feature,
+        story.benefit,
+    )
+    assert saved.version_numbers == [1, 2]
+    assert saved.deleted_by == deleted_by
+    assert saved.deleted_at.replace(tzinfo=UTC) == deleted_at
