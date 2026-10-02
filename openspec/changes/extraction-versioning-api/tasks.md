@@ -517,7 +517,7 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
       does not exist is 404 `EntityNotFound`, and a `MEMBER`'s 403 leaves the story, its versions,
       their tasks and their points intact. Prove with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_stories.py -m "not integration"`.
-- [ ] 4.16 TRIANGULATE (Postgres-only — run where the Docker daemon exists) —
+- [x] 4.16 TRIANGULATE (Postgres-only — run where the Docker daemon exists) —
       `backend/tests/test_integration/test_story_deletion_record.py` **New** (path free), each case
       `@pytest.mark.integration` with the `_docker_reachable()` skipif: the record survives the
       cascade because it holds no foreign key to `stories`; deleting the actor nulls `deleted_by`
@@ -525,16 +525,27 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
       `cd backend && conda run -n storico python -m pytest tests/test_integration/test_story_deletion_record.py -m integration`
       — **requires a Docker daemon (Postgres 16 via testcontainers); without one every case skips and
       the cascade stays unverified.**
-- [ ] 4.17 TRIANGULATE (Postgres-only — run where the Docker daemon exists) —
+      *(W4-T9: the three cases are written and skip locally — no Docker daemon on this machine, so
+      nothing was proven here; CI owns the verdict. Local observation:
+      `pytest tests/test_integration/test_story_deletion_record.py tests/test_integration/test_migration_chain.py -m integration -q`
+      → 5 skipped, 2 deselected.)*
+- [x] 4.17 TRIANGULATE (Postgres-only — run where the Docker daemon exists) —
       `backend/tests/test_integration/test_migration_chain.py` (existing): `0029` reaches head and the
       models ↔ migrated-schema drift set is still empty.
       `cd backend && conda run -n storico python -m pytest tests/test_integration/test_migration_chain.py -m integration`
       — same Docker requirement, same honest skip.
-- [ ] 4.18 REFACTOR — `backend/src/storico/application/services/story_deletion_service.py` and
+      *(W4-T9: confirmed by reading, no edit — neither test hardcodes a revision: head derives from
+      `ScriptDirectory.get_current_head()` and the drift ratchet compares `command.check` output
+      against an empty `frozenset()` `_KNOWN_DRIFT`, so `0029`/`story_deletions` are covered by
+      construction. Local observation: the two container tests skip (no Docker), CI owns the
+      verdict; no new `_KNOWN_DRIFT` entry was needed, so no drift was absorbed.)*
+- [x] 4.18 REFACTOR — `backend/src/storico/application/services/story_deletion_service.py` and
       `backend/src/storico/infrastructure/database/alembic/versions/0029_story_deletions.py`: confirm
       `story_deletions` is the only new table, that the delete order is cleanup-then-relational inside
       one transaction, and that `PUT /api/v1/tasks/{task_id}` was not gated; then rerun
       `cd backend && conda run -n storico python -m pytest tests/test_api tests/test_repositories tests/test_unit -m "not integration"`.
+      *(W4-T9: all four confirmations made by reading, zero production edits — see
+      `apply-progress.md`, section W4-T9. Rerun measured: **971 passed**.)*
 
 ## Phase 5: WU5 — The Invalidation Mark and the Repetition Read
 
