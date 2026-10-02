@@ -1185,3 +1185,67 @@ three deep and WU4 will make it five unless the owner merges. Production is stil
 1,244 lines (331 production / 913 tests) as a single PR under an owner-ratified exception restated against
 the measurement; WU4's accepted band is 1,300–1,700 and the split into two PRs was the owner's answer to
 projecting past it.
+
+## RESUME POINT — end of session 2026-10-02 (b6). WU4 code-complete in two local branches; nothing pushed
+
+**Where things stand, physically.** WU4's three remaining tranches landed this session and the unit is
+code-complete except for task 4.2's mark/unmark half, which belongs to WU5. Everything is committed;
+the working tree is clean except the two files that are not mine (`backend/.gitignore`,
+`.claude/skills/` — untracked, leave them). **Nothing is pushed and no WU4 PR exists.**
+
+| Branch | Commits | Which PR |
+| --- | --- | --- |
+| `feat/extraction-versioning-api-wu4a` (from WU3's head `4404d4b`) | `d93349f`, `c9f918c`, `718e52b` | **PR A** — the gate, its error vocabulary and the extract gate |
+| `feat/extraction-versioning-api-wu4b` (from A's tip) | `9c7ad48`, `8bdc149`, `a4a2ee9`, `ef962ed` | **PR B** — `0029`, the storage layer, `StoryDeletionService`, the gated delete, the Postgres proofs |
+
+The pre-split branch `feat/extraction-versioning-api-wu4` (`5b3e3d6`) is kept locally as a safety net;
+`git diff 5b3e3d6 ef962ed` is exactly the W4-T7/T8/T9 files, so nothing was lost in the rebase.
+
+Measured at `ef962ed`: unit suite **1132 passed / 36 deselected**; ruff check clean and 261 files
+formatted; the integration file **skips** (this machine has no Docker daemon). Slice (b): **48/77**.
+Phase 4: **17 of 18** — 4.2 stays unchecked on purpose.
+
+**Measured size, and the decision it forces** (full table in `apply-progress.md`,
+§`Parent close-out of WU4`): PR A **840** code+test lines (1,391 with plan artifacts), PR B **1,869**
+(2,587), WU4 **2,701** (3,970) against an accepted `size:exception` band of **1,300–1,700**. The band
+came in over, and the delivery decision says such a unit goes back on the table rather than being
+absorbed — so the first item below is a real owner decision, not a formality.
+
+**Deploy risk, for the record:** `0029` is additive with no empty-database guard, so the deploy
+window's `alembic upgrade head` applies it safely to the current production schema. The D-a-3 rule
+does not bite here.
+
+### What to do next, in order
+
+1. **Owner decision on WU4's measured size.** Either ship the two PRs as they stand with the measured
+   numbers stated in their bodies, or split B once more on the storage-vs-HTTP seam (its committed
+   storage layer + `StoryDeletionService` vs the route + its API and integration tests). Nothing else
+   blocks; the code and its evidence do not change either way.
+2. **Push and open the two PRs**, chained per this change's `feature-branch-chain` strategy: PR A
+   targets `feat/extraction-versioning-api-wu3` (PR #33's branch), PR B targets PR A's branch. Push
+   hangs under `credential-osxkeychain` in a non-GUI shell; the recipe that worked is
+   `GIT_ASKPASS=/tmp/storico_askpass.sh GIT_TERMINAL_PROMPT=0 git -c credential.helper= push …`.
+3. **Before WU5, number the two carried defects inside slice (b)** — the previous resume's item 6,
+   still pending. **D-a-4**: `DELETE /api/v1/users/me` (`api/routes/settings.py:335`) has no
+   `IntegrityError` handling, so deleting an account that revoked a mark answers 500 once a revoke
+   exists. **D-a-1**: the INSERT-only task persist loop (`infrastructure/tasks/extraction_task.py:441`)
+   duplicates task rows if a run is ever re-dispatched. Neither is among the 77 tasks.
+4. **WU5 (Phase 5, 5.1–5.13) — the invalidation mark and the repetition read.** It also closes **4.2**:
+   the 403 gate on mark/unmark is where `require_task_owner_or_admin` finally gets its caller (it is
+   committed, unit-pinned and caller-less on purpose), and 4.2's "a MEMBER still reads the board, moves
+   a card, edits `labels`, edits the story's four fields and reads versions" clause needs its API pins.
+5. **Owner decisions still open from earlier sessions:** recreate the LLM config in production
+   (D-a-6 — without it production cannot extract at all); and decide on the two pieces of dead code
+   left in place by explicit decision — `TaskRepository.list_by_workspace` (0 callers) and, new since
+   W4-T8, the story port/repository `delete` (0 production callers).
+
+**Numbers the next session should not re-derive:** WU4 = 2,701 code+test lines / 3,970 total; PR A 840,
+PR B 1,869; unit suite 1132 passed / 36 deselected / 33 → 36 deselected reconciled to 4.16's three new
+integration functions; WU3 shipped 1,244 lines under a ratified exception; CI on #33 is
+`1104 passed, 18 skipped`; the WU4 band was 1,300–1,700.
+
+**One trap this session hit and the next should keep:** the DELETE route now depends on
+`get_vector_store`, and the suite's autouse Qdrant guard fails any test that reaches the real client —
+every delete case must pin the boundary with `app.dependency_overrides[get_vector_store]`. And
+`git diff --numstat` still does not see untracked files (that is why W4's first measurement was wrong);
+measure with `git add -N` and reset immediately.

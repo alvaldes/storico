@@ -2590,3 +2590,70 @@ Phase 5 item stays `[ ]`** (13 `5.x` lines unchecked).
   one — `0029` and the model are already proven by the unit layer and the chain test.
 - `require_task_owner_or_admin` being caller-less is expected state between PR B and Phase 5, not
   dead code to clean.
+
+# Parent close-out of WU4 (session 2026-10-02) — both halves measured, and a band that came in over
+
+WU4 landed in two chained PRs on local branches. **Nothing from this session is pushed and no WU4 PR
+exists yet** — push, PR and merge are the owner's decisions.
+
+## Commit map
+
+| Branch | Commit | Contains |
+| --- | --- | --- |
+| `feat/extraction-versioning-api-wu4a` (PR A) | `d93349f` | gate primitives, error vocabulary, frontend mirror, the two fake stubs (the 2026-09-30 half) |
+| | `c9f918c` | the extract gate — task 4.6 + the extract half of 4.2 |
+| | `718e52b` | the W4-T1..T3 evidence sections moved out of the deletion commit and into the PR whose code they document |
+| `feat/extraction-versioning-api-wu4b` (PR B, based on A) | `9c7ad48` | `0029` + the `story_deletions` entity/model + `delete_with_record` + `delete_by_story` (the 2026-09-30 half, rebased onto A) |
+| | `8bdc149` | the WU4 resume point written at the 2026-09-30 close |
+| | `a4a2ee9` | `StoryDeletionService` + the gated `DELETE /api/v1/stories/{story_id}` (tasks 4.13, 4.3's API half, 4.15) |
+| | `ef962ed` | the Postgres-only record proofs (4.16) and the closing confirmations (4.17, 4.18) |
+
+The pre-split branch `feat/extraction-versioning-api-wu4` (`5b3e3d6`) is kept as a local safety net.
+Its content is fully contained in B — measured: `git diff 5b3e3d6 ef962ed` is exactly the W4-T7,
+W4-T8 and W4-T9 files, nothing else.
+
+## Measured size — and the band it exceeds
+
+| Unit | code + tests | + docs/plan | total |
+| --- | --- | --- | --- |
+| PR A (`4404d4b..718e52b`) | 840 | 551 | 1,391 |
+| PR B (`718e52b..ef962ed`) | 1,869 | 718 | 2,587 |
+| **WU4 (`4404d4b..ef962ed`)** | **2,701** | **1,269** | **3,970** |
+
+The accepted `size:exception` band for WU4 was **1,300–1,700**. The measured unit is ~1.6x the top of
+that band on code+tests alone and ~2.3x counting the plan artifacts. Splitting WU4 into two chained
+PRs was the owner's answer to the earlier projection (~830 / ~1,100); both halves came in above their
+own projection, PR B by roughly 70%.
+
+The delivery decision already recorded in `tasks.md` says a unit larger than forecast "goes back on
+the table instead of being absorbed", so this is **reported for a fresh decision, not absorbed**:
+either ship the two PRs with the measured numbers stated in their bodies, or split B once more on the
+storage-vs-HTTP seam (its committed storage layer + `StoryDeletionService` vs the route + its API and
+integration tests).
+
+## Evidence at this head (`feat/extraction-versioning-api-wu4b` @ `ef962ed`, re-run by the parent)
+
+- `cd backend && conda run -n storico python -m pytest -m "not integration" -q` → **1132 passed, 36 deselected**
+- `cd backend && conda run -n storico python -m pytest tests/test_integration/test_story_deletion_record.py -m integration -q` → **3 skipped** (no Docker daemon)
+- `cd backend && conda run -n storico python -m ruff check src tests` → clean · `ruff format --check src tests` → **261 files formatted**
+- Frontend untouched this session; the delete dialog's version count is Phase 6.
+
+**The honest split of evidence.** The unit layer is green and locally observed. Task 4.16's three
+cases and 4.17's chain cases **never ran here — they skip, and a skip is not a proof**. CI runs them
+(its 18 skips are exactly 16 Qdrant + 2 Ollama live, so the testcontainers cases execute there). The
+deselected delta 33 → 36 reconciles exactly to the three new integration functions, which is the only
+thing the local run proves about them.
+
+## Phase 4 close state
+
+17 of the 18 Phase 4 tasks are `[x]`. **4.2 stays unchecked on purpose**: its letter also asks for the
+403 gate on mark/unmark, endpoints that arrive in Phase 5, and its repetition-read clause is a Phase 5
+read. Slice (b): **48/77** (was 41/77).
+
+## Deploy risk if either branch reaches `main`
+
+`0029` is additive and carries no empty-database guard, so the deploy window's `alembic upgrade head`
+applies it to the current production schema without needing a data plan. The D-a-3 rule — *a migration
+that refuses existing data needs its plan in `prod.todo.md` before it reaches `main`* — does not bite
+here; this is the case the rule was written to distinguish. Production still cannot extract until the
+LLM config is recreated in Configuración (D-a-6), which is independent of this unit.
