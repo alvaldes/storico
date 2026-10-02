@@ -34,6 +34,22 @@ class TaskInvalidationCandidate:
     marked_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class StandingRevocation:
+    """One standing revocation attributed to a user — the account-delete read.
+
+    The account-delete pre-check must name what blocks the deletion to the
+    account's owner: the story the revoked mark sits in, the version number
+    the mark's task was built from, and the task's title. A read model like
+    ``TaskInvalidationCandidate`` — the rows are named through their join, not
+    returned as entities.
+    """
+
+    user_story_id: UUID
+    version_number: int
+    title: str
+
+
 class TaskInvalidationRepository(ABC):
     """Repository port for TaskInvalidation entities."""
 
@@ -88,5 +104,21 @@ class TaskInvalidationRepository(ABC):
         means the distinct-from predicate filters out nothing — it does *not*
         mean "exclude null extraction ids" (the column is ``NOT NULL`` anyway);
         the ``None`` shape exists for callers that have no version to exclude.
+        """
+        ...
+
+    @abstractmethod
+    async def list_standing_revocations_by_user(self, revoked_by: UUID) -> list[StandingRevocation]:
+        """The user's revocations that still stand, each with its naming context.
+
+        The join is ``task_invalidations JOIN tasks JOIN extractions``,
+        filtered by ``task_invalidations.revoked_by = :user_id`` and
+        ``task_invalidations.revoked_at IS NOT NULL``, ordered
+        ``version_number ASC, title ASC`` — oldest version first, alphabetical
+        within a version — so a refusal's entry list reads as a stable
+        checklist the user can act on top-down, independent of mark
+        timestamps. A ``revoked_by IS NULL`` row is an active mark (the
+        revoke-pair CHECK ties the two nulls together) and is attributed to
+        no one.
         """
         ...

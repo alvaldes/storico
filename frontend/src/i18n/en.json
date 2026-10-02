@@ -92,6 +92,8 @@
     "TASK_CREATION_ENDPOINT_REMOVED": "Manual task creation is gone. Tasks are only born from an extraction run; extract the story again to create tasks.",
     "TASK_DELETE_ENDPOINT_REMOVED": "Single-task deletion is gone. A task belongs to its story's version and is only deleted together with that story.",
     "TASK_VERSION_FROZEN": "Task dependencies can only be edited on the story's current version, and the version you are viewing has been superseded. Switch to the current version of the story to edit them.",
+    "TASK_ALREADY_MARKED": "This task already has an active invalidation mark. Revoke the current one before marking it again.",
+    "ACCOUNT_DELETE_BLOCKED": "Your account cannot be deleted while the revocations you made still stand. Delete the stories that hold the marked tasks, then try again.",
     "DUPLICATE_USER_STORY": "A story with the same actor, feature, and benefit already exists. Edit the existing one instead.",
     "UNSUPPORTED_EXPORT_FORMAT": "That export format is not supported. Choose JSON or Markdown and try again.",
     "CUSTOM_PROVIDER_NOT_FOUND": "That custom provider is no longer available. Refresh the page and check the provider list.",

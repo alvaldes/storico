@@ -432,7 +432,7 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
       over `_is_owner_or_admin` — the workspace owner passes, a member with role `ADMIN` passes, a
       member with role `MEMBER` fails, and no other combination passes. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_unit/test_workspace_gate.py -m "not integration"`.
-- [ ] 4.2 RED — `backend/tests/test_api/test_extraction.py`, `backend/tests/test_api/test_tasks.py`
+- [x] 4.2 RED — `backend/tests/test_api/test_extraction.py`, `backend/tests/test_api/test_tasks.py`
       and `backend/tests/test_api/test_stories.py`: the failing gate cases — a `MEMBER` gets 403
       `WORKSPACE_OWNER_OR_ADMIN_REQUIRED` on extract, mark, unmark and story delete with no data
       changed; the owner and an `ADMIN` succeed on all four; a non-member keeps the unchanged
@@ -448,6 +448,37 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
   > `feat/extraction-versioning-api-wu4`, commit `155b975`). This task stays unchecked until all
   > three halves land; the extract-half RED/GREEN evidence is recorded in `apply-progress.md`
   > (section W4-T7). The bullet above stays as the planning record.
+  > **[Amended 2026-10-02, W5-B1 — the mark/unmark half landed; the task stays unchecked on the
+  > story-file clauses]** The mark and unmark halves landed in W5-B1 (`test_tasks.py`): the `MEMBER`
+  > 403 `WORKSPACE_OWNER_OR_ADMIN_REQUIRED` on mark and on revoke (rows unchanged, witnessed by
+  > direct `task_invalidations` reads), the owner and a non-owner `ADMIN` succeeding on both, the
+  > non-member keeping `NOT_A_WORKSPACE_MEMBER`, and the member-surfaces cases that live on task
+  > routes — a `MEMBER` still reads the board, moves a card, edits `labels` and calls the repetition
+  > read. Clause accounting of what was found already pinned, by name: MEMBER-extract refusal →
+  > `test_extraction.py::TestExtractionOwnerOrAdminGate::test_a_member_who_is_neither_owner_nor_admin_is_refused`;
+  > MEMBER-story-delete refusal →
+  > `test_stories.py::TestDeleteStory::test_a_member_who_is_neither_owner_nor_admin_is_refused`;
+  > owner succeeds on extract → `test_the_owner_posts_even_when_their_member_role_is_member`, on
+  > story delete → `test_the_owner_deletes_a_story_with_versions_and_leaves_the_record`; non-owner
+  > ADMIN succeeds on extract → `test_a_non_owner_admin_member_posts`; non-member keeps
+  > `NOT_A_WORKSPACE_MEMBER` on extract → `test_a_non_member_keeps_the_not_a_workspace_member_code`
+  > and on story delete → `TestDeleteStory::test_a_non_member_keeps_the_not_a_workspace_member_code`;
+  > exhausted allocation 409, never 500/202, no row →
+  > `test_an_exhausted_allocation_is_not_silent`. **Still uncovered, and the reason the checkbox
+  > stays empty:** an `ADMIN` succeeding on the story delete, a `MEMBER` editing the story's four
+  > fields, and a `MEMBER` reading versions — all three live in `test_stories.py`, which is outside
+  > W5-B1's edit surfaces. The first unit whose surface covers `test_stories.py` should close them.
+  > **[Amended 2026-10-02, W5-B2a — the three test_stories.py clauses landed; task complete]** All
+  > three remaining clauses now have named witnesses in `test_stories.py`: an `ADMIN` succeeding on
+  > the story delete →
+  > `test_stories.py::TestDeleteStory::test_a_non_owner_admin_member_deletes_the_story` (204, story
+  > gone, exactly one record row); a `MEMBER` editing the story's four fields →
+  > `test_stories.py::TestUpdateStory::test_a_member_edits_all_four_story_fields` (PUT 200 with
+  > actor, feature, benefit and raw_text all persisted); a `MEMBER` reading versions →
+  > `test_stories.py::TestStoryVersionsEndpoint::test_a_member_reads_the_versions` (200, versions
+  > listed, current derived). With W5-B1's accounting above, every clause of the bullet has a
+  > named witness and the checkbox closes. Note: these three are coverage witnesses over behaviour
+  > WU4/W5-B1 already shipped — they were green on first run, so no RED exists for them.
 - [x] 4.3 RED — `backend/tests/test_api/test_stories.py` and
       `backend/tests/test_repositories/test_user_story_repo.py` (the file the design calls
       `test_story_repo.py`): the failing deletion cases — the owner deletes a story with v1 and v2
@@ -573,10 +604,12 @@ Runner: `cd backend && conda run -n storico python -m pytest tests/test_api/test
 The table and model already exist (slice (a)); this unit owns the entity, port, repository, validator
 and endpoints — not the DDL.
 
-- [ ] 5.1 RED — `backend/tests/test_unit/test_invalidation_request.py` **New** (path free):
+- [x] 5.1 RED — `backend/tests/test_unit/test_invalidation_request.py` **New** (path free):
       `CreateInvalidationRequest` refuses `""`, `"   "` and `"\t\n"` (Python whitespace is wider than
       the column's `CHECK`) and accepts a non-blank reason bounded by the column's 500. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_unit/test_invalidation_request.py -m "not integration"`.
+      *(W5-B1: RED observed as a collection `ImportError` — the schema did not exist; GREEN 5/5,
+      including the 500-char accept and the 501-char refusal.)*
 - [x] 5.2 RED — `backend/tests/test_unit/test_task_title_normalizer.py` **New** (path free):
       `normalize_task_title` casefolds, collapses whitespace runs to one space and strips, table-driven
       over the `casefold` cases SQL `lower` would miss. Prove RED with
@@ -588,7 +621,7 @@ and endpoints — not the DDL.
       returns only non-revoked marks of the story's other versions, each carrying its `version_number`
       and title; a same-version mark is excluded. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_repositories/test_task_invalidation.py -m "not integration"`.
-- [ ] 5.4 RED — `backend/tests/test_api/test_tasks.py`: the failing endpoint cases — a valid mark is
+- [x] 5.4 RED — `backend/tests/test_api/test_tasks.py`: the failing endpoint cases — a valid mark is
       201 with reason, actor and timestamp and exactly one row; a blank reason is 422
       `REQUEST_VALIDATION_FAILED` and writes nothing; a second active mark is 409 `TASK_ALREADY_MARKED`
       with the live reason in the `detail` and still one row; marking a frozen version is 409
@@ -600,6 +633,9 @@ and endpoints — not the DDL.
       returns the match, `{"matches": []}` for no match / the task's own version / another story / a
       revoked mark, and creates, updates and revokes nothing. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py -m "not integration"`.
+      *(W5-B1: RED observed 23 failed / 49 passed — every new case red, every pre-existing case
+      green; every refusal witnessed by a direct `task_invalidations` row read, not the status code
+      alone.)*
 - [x] 5.5 GREEN — `backend/src/storico/domain/entities/task_invalidation.py` **New** (path free): the
       frozen, slotted `TaskInvalidation`;
       `backend/src/storico/domain/ports/task_invalidation_repository.py` **New** (path free): the port
@@ -613,29 +649,54 @@ and endpoints — not the DDL.
       `version_number DESC, marked_at DESC`.
 - [x] 5.7 GREEN — `backend/src/storico/domain/services/task_title_normalizer.py` **New** (path free):
       `normalize_task_title(text)` = casefold + whitespace-run collapse + strip.
-- [ ] 5.8 GREEN — `backend/src/storico/api/schemas/task.py`: `CreateInvalidationRequest` with the
+- [x] 5.8 GREEN — `backend/src/storico/api/schemas/task.py`: `CreateInvalidationRequest` with the
       blank-reason `field_validator` and the 500 bound, `InvalidationResponse`, `RepetitionMatch` and
       `RepetitionResponse`.
-- [ ] 5.9 GREEN — `backend/src/storico/api/routes/tasks.py`: add `POST /{task_id}/invalidations`
+- [x] 5.9 GREEN — `backend/src/storico/api/routes/tasks.py`: add `POST /{task_id}/invalidations`
       (201), `GET /{task_id}/invalidations`, `DELETE /{task_id}/invalidations/current` (204) and
       `GET /{task_id}/invalidations/repetition`. Gate create and revoke with
       `require_task_owner_or_admin`; keep the two reads membership-only; reuse the frozen check from
       2.3; use `find_active_by_task` for the 409 and the 404; resolve the task's title server-side and
       match in Python with `normalize_task_title` over the candidate read — no fuzzy or vector
       comparison, and no write or propagation.
-- [ ] 5.10 GREEN — `backend/src/storico/api/error_codes.py`: add `TASK_ALREADY_MARKED`.
-- [ ] 5.11 TRIANGULATE — `backend/tests/test_api/test_tasks.py`: the pinned edges — a blank reason
+      *(W5-B1: the frozen check was reused by extracting `_frozen_version_state(task, extraction_repo)`
+      — the D21 predicate only; `update_task` keeps its own wording and its 409 `detail` is
+      byte-identical, its frozen cases untouched.)*
+- [x] 5.10 GREEN — `backend/src/storico/api/error_codes.py`: add `TASK_ALREADY_MARKED`.
+- [x] 5.11 TRIANGULATE — `backend/tests/test_api/test_tasks.py`: the pinned edges — a blank reason
       persists nothing for `""`, `"   "` and `"\t\n"`; a frozen version refuses both the mark and the
       revoke and leaves the row unchanged; the repetition read writes nothing and a one-character
       title difference yields no match with no similarity call. Prove with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py -m "not integration"`.
-- [ ] 5.12 GREEN (frontend mirror) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`:
+      *(W5-B1: all edges green in the same run — the blank shapes are a parametrized case, the
+      no-write witnesses are direct row reads, and the no-similarity claim is a monkeypatch on
+      `QdrantAdapter.search_similar` that fails the test if invoked.)*
+- [x] 5.12 GREEN (frontend mirror) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`:
       `TASK_ALREADY_MARKED` in `errorCodes` with neutral international Spanish;
       `frontend/src/lib/__tests__/error-codes.test.ts`: `EXPECTED_REGISTRY_COUNT` `42` → `43` and both
       locale counts `47` → `48`. Prove with `cd frontend && pnpm test`.
-- [ ] 5.13 REFACTOR — rerun
+  > **[Amended 2026-10-02, W5 — two codes, and the count is derived]** WU5's mark work added **two**
+  > registry entries, not one: `TASK_ALREADY_MARKED` and, from D-a-4's decided contract,
+  > `ACCOUNT_DELETE_BLOCKED`. `EXPECTED_REGISTRY_COUNT` therefore went `42` → `44` and the locale
+  > tables hold **49** keys each — derived, never edited (`EXPECTED_REGISTRY_COUNT +
+  > ROUTE_ERROR_CODES.length`, the rule the file's own comment states). Third time this plan's locale
+  > arithmetic has been stale; the rule is the thing to read, not the total.
+  >
+  > The delivery note above says the map "must move in the same unit that adds each registry entry or
+  > the mirror test leaves the suite red", and the tranche split broke exactly that: the two backend
+  > commits went in with the backend suite green and the **frontend suite red** (615 → 613 passing,
+  > caught by re-running `pnpm test` in this session). Both mirror moves were then **folded into the
+  > commits that added their codes** (`16a70a7` for `TASK_ALREADY_MARKED`, `ba71497` for
+  > `ACCOUNT_DELETE_BLOCKED`), so every commit on the branch leaves both suites green — verified by
+  > running `pnpm test` on the intermediate commit as well as the head.
+- [x] 5.13 REFACTOR — rerun
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py tests/test_repositories/test_task_invalidation.py tests/test_unit -m "not integration"`.
-- [ ] 5.14 GREEN (D-a-4, tasked 2026-10-02) — the account-delete contract.
+  > **[Closed 2026-10-02]** Run at the branch head with the full battery beside it: the unit layer,
+  > ruff check and ruff format, and both frontend suites. WU5's own claims re-checked in the same pass:
+  > the D16 read has no fuzzy or vector path (a monkeypatched `search_similar` fails the test if one
+  > ever appears), the two mutations are gated and the three reads are member-reachable, and
+  > `update_task`'s frozen-version wording is byte-identical to what it was before this unit.
+- [x] 5.14 GREEN (D-a-4, tasked 2026-10-02) — the account-delete contract.
       `backend/src/storico/api/routes/settings.py`: `DELETE /api/v1/users/me` currently calls
       `UserRepository.delete`, a bare `delete(UserModel)` with no `IntegrityError` handling, so the
       refusal raised by `fk_task_invalidations_revoked_by_users` (`ON DELETE RESTRICT`) escapes to the
@@ -646,6 +707,18 @@ and endpoints — not the DDL.
       account are both left intact, and the success path keeps cascading as its docstring promises.
       Prove with `cd backend && conda run -n storico python -m pytest tests/test_api/test_user_settings.py -m "not integration"`.
       If the chosen option needs a new error code, 5.12's frontend mirror moves in the same unit.
+      *(W5-B2a, 2026-10-02: the owner chose the designed 409 — code `ACCOUNT_DELETE_BLOCKED`, produced
+      by a pre-check over the new port read `list_standing_revocations_by_user`; the 409 `detail`
+      carries a readable sentence, the count and one entry per blocking mark (story id, version
+      number, task title), and nothing is deleted when it fires. The route's first DELETE-verb tests
+      live in `backend/tests/test_api/test_account_deletion.py`, a NEW file rather than appending to
+      `test_user_settings.py`, because that file's docstring scopes it to the settings endpoints and
+      the account-delete verb is a different contract. Residual, named in the route docstring: a
+      revoke landing between the pre-check and the delete still surfaces as the raw integrity
+      refusal — translating it belongs to `UserRepository.delete`, outside this unit's surfaces by
+      design. Extending the port moved its surface pin
+      `test_unit/test_task_invalidation_port.py` from five methods to six — owner-authorized as
+      option 1 on 2026-10-02.)*
 - [x] 5.15 DECISION (D-a-1, tasked 2026-10-02) — record D-a-1 as an **explicit non-goal** of this
       slice, with the measurement instead of an assertion: the single production caller of
       `run_background_extraction` (`api/routes/extraction.py:264`) runs once per extraction the route

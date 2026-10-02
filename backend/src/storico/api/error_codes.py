@@ -9,6 +9,7 @@ frontend translation (WU5) keys on these exact strings.
 """
 
 __all__ = [
+    "ACCOUNT_DELETE_BLOCKED",
     "ADMIN_ACCESS_REQUIRED",
     "AUTH_TOKEN_INVALID",
     "CANNOT_REMOVE_OWNER",
@@ -42,6 +43,7 @@ __all__ = [
     "REPOSITORY_ERROR",
     "REQUEST_VALIDATION_FAILED",
     "STORY_NOT_IN_WORKSPACE",
+    "TASK_ALREADY_MARKED",
     "TASK_CREATION_ENDPOINT_REMOVED",
     "TASK_DELETE_ENDPOINT_REMOVED",
     "TASK_VERSION_FROZEN",
@@ -145,6 +147,12 @@ TASK_DELETE_ENDPOINT_REMOVED = "TASK_DELETE_ENDPOINT_REMOVED"
 # D5/D21 of extraction-versioning).
 TASK_VERSION_FROZEN = "TASK_VERSION_FROZEN"
 
+# ``tasks.py`` POST /{task_id}/invalidations: the task already holds an active
+# mark — the refusal is resolved through ``find_active_by_task`` before the
+# write, and the detail carries the live mark's reason; the partial unique
+# index is only the lost-race backstop, not the contract.
+TASK_ALREADY_MARKED = "TASK_ALREADY_MARKED"
+
 # ``stories.py`` POST: actor + feature + benefit already exist in the project.
 DUPLICATE_USER_STORY = "DUPLICATE_USER_STORY"
 
@@ -171,6 +179,15 @@ PROVIDER_NAME_RESERVED = "PROVIDER_NAME_RESERVED"
 # ``workspace_settings.py`` probe: the provider could not be reached to list
 # its models (wrong API key or Base URL, or the provider is down).
 PROVIDER_MODELS_UNREACHABLE = "PROVIDER_MODELS_UNREACHABLE"
+
+# ``settings.py`` DELETE /api/v1/users/me: the account holds standing
+# invalidation revocations and ``fk_task_invalidations_revoked_by_users``
+# (``ON DELETE RESTRICT``) would refuse the delete as a raw integrity error —
+# a 500 today. The pre-check over the invalidation port's standing-revocation
+# read answers first with this designed 409, and its ``detail`` carries the
+# count and one entry per blocking mark (story id, version number, task
+# title); nothing is deleted when it fires.
+ACCOUNT_DELETE_BLOCKED = "ACCOUNT_DELETE_BLOCKED"
 
 # ── Framework-level handlers ─────────────────────────────────────
 

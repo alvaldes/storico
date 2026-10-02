@@ -92,6 +92,8 @@
     "TASK_CREATION_ENDPOINT_REMOVED": "La creación manual de tareas ya no existe. Las tareas nacen solo de una extracción; extrae la historia de nuevo para crear tareas.",
     "TASK_DELETE_ENDPOINT_REMOVED": "La eliminación de tareas individuales ya no existe. Una tarea pertenece a la versión de su historia y solo se elimina junto con esa historia.",
     "TASK_VERSION_FROZEN": "Las dependencias de una tarea solo se pueden editar en la versión actual de la historia, y la versión que estás viendo ya fue reemplazada. Cambia a la versión actual de la historia para editarlas.",
+    "TASK_ALREADY_MARKED": "Esta tarea ya tiene una marca de invalidación activa. Revoca la actual antes de marcarla de nuevo.",
+    "ACCOUNT_DELETE_BLOCKED": "No puedes eliminar tu cuenta mientras sigan vigentes las revocaciones que hiciste. Elimina las historias que contienen las tareas marcadas y vuelve a intentarlo.",
     "DUPLICATE_USER_STORY": "Ya existe una historia con el mismo actor, funcionalidad y beneficio. Edita la historia existente.",
     "UNSUPPORTED_EXPORT_FORMAT": "Ese formato de exportación no está disponible. Elige JSON o Markdown e inténtalo de nuevo.",
     "CUSTOM_PROVIDER_NOT_FOUND": "Ese proveedor personalizado ya no está disponible. Actualiza la página y revisa la lista.",

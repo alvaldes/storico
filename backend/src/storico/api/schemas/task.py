@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from storico.domain.entities.task import TaskStatus
 
@@ -23,6 +23,68 @@ class UpdateTaskRequest(BaseModel):
     status: TaskStatus | None = None
     labels: list[str] | None = None
     dependencies: list[str] | None = None
+
+
+class CreateInvalidationRequest(BaseModel):
+    """Request body for the invalidation mark.
+
+    The reason rule is the Pydantic validator, not the database ``CHECK``:
+    Python whitespace is wider than ``length(trim(reason)) > 0`` — a
+    ``"\t\n"`` reason passes the column and is still blank to a human — so the
+    blank shapes are refused here, at body validation, where they answer 422
+    ``REQUEST_VALIDATION_FAILED`` and no route or insert is ever reached.
+    The 500 bound mirrors the column's ``String(500)`` so an over-long reason
+    refuses as a 422 too, never as an ``IntegrityError`` 500.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(..., max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def reason_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("reason must not be blank")
+        return value
+
+
+class InvalidationResponse(BaseModel):
+    """One invalidation mark: the mark's fields plus its optional revoke attribution.
+
+    No ``task_id``: the route path is the task, so echoing it back would say
+    nothing the caller did not already have.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    reason: str
+    marked_by: UUID | None
+    marked_at: datetime
+    revoked_by: UUID | None
+    revoked_at: datetime | None
+
+
+class RepetitionMatch(BaseModel):
+    """One D16 match: a mark on another version whose normalized title equals the task's.
+
+    No title: the title is the matching *input*, resolved server-side from the
+    task id — it is never an output of the read.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    version_number: int
+    reason: str
+    marked_at: datetime
+
+
+class RepetitionResponse(BaseModel):
+    """The D16 read's answer — a bare list inside an envelope, so a future
+    warning field can join without breaking the client."""
+
+    matches: list[RepetitionMatch]
 
 
 class TaskResponse(BaseModel):

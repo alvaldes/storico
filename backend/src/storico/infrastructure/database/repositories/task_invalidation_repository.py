@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from storico.domain.entities import EntityNotFound, RepositoryError
 from storico.domain.entities.task_invalidation import TaskInvalidation
 from storico.domain.ports.task_invalidation_repository import (
+    StandingRevocation,
     TaskInvalidationCandidate,
     TaskInvalidationRepository,
 )
@@ -151,6 +152,39 @@ class SQLAlchemyTaskInvalidationRepository(TaskInvalidationRepository):
                 title=row.title,
                 reason=row.reason,
                 marked_at=row.marked_at,
+            )
+            for row in result
+        ]
+
+    async def list_standing_revocations_by_user(self, revoked_by: UUID) -> list[StandingRevocation]:
+        """The account-delete pre-check's read, as the port documents it.
+
+        A plain read over the same join the D16 candidate read uses, filtered
+        the other way: by the revoker instead of the story. No wrapping — the
+        statement cannot fail beyond the driver-level failures every read in
+        this file shares.
+        """
+        stmt = (
+            select(
+                TaskModel.user_story_id,
+                ExtractionModel.version_number,
+                TaskModel.title,
+            )
+            .select_from(TaskInvalidationModel)
+            .join(TaskModel, TaskModel.id == TaskInvalidationModel.task_id)
+            .join(ExtractionModel, ExtractionModel.id == TaskModel.extraction_id)
+            .where(
+                TaskInvalidationModel.revoked_by == revoked_by,
+                TaskInvalidationModel.revoked_at.is_not(None),
+            )
+            .order_by(ExtractionModel.version_number.asc(), TaskModel.title.asc())
+        )
+        result = await self._session.execute(stmt)
+        return [
+            StandingRevocation(
+                user_story_id=row.user_story_id,
+                version_number=row.version_number,
+                title=row.title,
             )
             for row in result
         ]

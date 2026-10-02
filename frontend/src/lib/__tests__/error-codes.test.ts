@@ -54,7 +54,10 @@ function extractRegistryNames(source: string): string[] {
  * Stated as the rule rather than a total on purpose: the assertion below derives
  * that number, so any literal here goes stale the next time the registry grows —
  * and it already did three times (WU1's two 410-retirement codes, WU2's
- * `TASK_VERSION_FROZEN`, W4-T2's version-allocation / vector-store / gate codes).
+ * `TASK_VERSION_FROZEN`, W4-T2's version-allocation / vector-store / gate codes) — and WU5's
+ * `TASK_ALREADY_MARKED` and `ACCOUNT_DELETE_BLOCKED`, each folded into the commit that added its
+ * registry entry, because the rule is that the map moves with the entry and a split tranche is not an
+ * excuse to leave the suite red.
  * The history, in case the numbers matter later: WU3a added the five
  * access-control codes and WU3b the fifteen route codes to the registry and to
  * this map, each in one commit.
@@ -67,7 +70,7 @@ const ROUTE_ERROR_CODES = [
   'IMPORT_VALIDATION_FAILED',
 ] as const;
 
-const EXPECTED_REGISTRY_COUNT = 42;
+const EXPECTED_REGISTRY_COUNT = 44;
 
 /**
  * The one code emitted through a named constant rather than a literal or a

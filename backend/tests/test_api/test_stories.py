@@ -376,6 +376,64 @@ class TestUpdateStory:
         assert data["feature"] == "new feature"
         assert data["benefit"] == "old benefit"  # unchanged
 
+    async def test_a_member_edits_all_four_story_fields(
+        self, authed_client, authed_user, db_session: AsyncSession, seed_workspace
+    ):
+        """A plain MEMBER edits actor, feature, benefit and raw_text in one PUT (4.2).
+
+        The story-edit surface is member-accessible by design (R14): the gate
+        belongs to version-mutating operations, not to the story's own fields.
+        The foreign-owner chain plus a MEMBER membership is what makes the
+        caller a plain member rather than the workspace's owner.
+        """
+        from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
+        from storico.infrastructure.database.repositories.workspace_member_repository import (
+            SQLAlchemyWorkspaceMemberRepository,
+        )
+
+        owner = await SQLAlchemyUserRepository(db_session).save(
+            User(email="member-edit-owner@test.com", name="Member Edit Owner")
+        )
+        seeded = await seed_workspace(user=owner, stories=0)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id,
+                user_id=authed_user.id,
+                role=WorkspaceRole.MEMBER,
+            )
+        )
+        create_resp = await authed_client.post(
+            "/api/v1/stories/",
+            json={
+                "project_id": str(seeded.project_id),
+                "actor": "user",
+                "feature": "old feature",
+                "benefit": "old benefit",
+                "raw_text": RAW_TEXT,
+            },
+        )
+        story_id = create_resp.json()["id"]
+
+        response = await authed_client.put(
+            f"/api/v1/stories/{story_id}",
+            json={
+                "actor": "editor",
+                "feature": "edited feature",
+                "benefit": "edited benefit",
+                "raw_text": "As an editor, I want an edited feature so that I get the edited benefit",
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["actor"] == "editor"
+        assert data["feature"] == "edited feature"
+        assert data["benefit"] == "edited benefit"
+        assert (
+            data["raw_text"]
+            == "As an editor, I want an edited feature so that I get the edited benefit"
+        )
+
 
 class _RecordingDeletionStore(VectorStorePort):
     """The deletion-recording fake: records every ``delete_by_story`` call."""
@@ -670,6 +728,42 @@ class TestDeleteStory:
         assert len(await _extraction_rows(db_session, seeded.story_id)) == 2
         assert len(await _task_rows(db_session, seeded.story_id)) == 2
         assert await _record_rows(db_session) == []
+
+    async def test_a_non_owner_admin_member_deletes_the_story(
+        self, app, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """A member with role ADMIN who is not the owner passes the delete gate (4.2).
+
+        The MEMBER refusal above pins the negative; the same chain with the
+        membership raised to ADMIN answers 204, leaves the story gone and
+        writes the record — the gate is the owner-or-admin rule, not
+        ownership alone.
+        """
+        from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
+        from storico.infrastructure.database.repositories.workspace_member_repository import (
+            SQLAlchemyWorkspaceMemberRepository,
+        )
+
+        app.dependency_overrides[get_vector_store] = lambda: _RecordingDeletionStore()
+        owner = await SQLAlchemyUserRepository(db_session).save(
+            User(email="admin-delete-owner@test.com", name="Admin Delete Owner")
+        )
+        seeded = await seed_workspace(user=owner, stories=1)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id,
+                user_id=authed_user.id,
+                role=WorkspaceRole.ADMIN,
+            )
+        )
+        await _seed_two_completed_versions(db_session, seeded.story_id)
+
+        response = await authed_client.delete(f"/api/v1/stories/{seeded.story_id}")
+
+        assert response.status_code == 204, response.text
+        story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
+        assert story is None
+        assert len(await _record_rows(db_session)) == 1
 
     async def test_a_repository_error_in_the_record_insert_answers_5xx(
         self,
@@ -995,3 +1089,43 @@ class TestStoryVersionsEndpoint:
         assert entry["temperature"] == 0.2
         assert entry["has_output"] is False
         assert entry["is_current"] is False
+
+    async def test_a_member_reads_the_versions(
+        self, authed_client, authed_user, db_session: AsyncSession, seed_workspace
+    ):
+        """A plain MEMBER gets 200 and the story's versions (4.2).
+
+        The versions read is member-accessible by design (R14): the 403 gate
+        above is for a non-member, not for a member who is neither owner nor
+        admin — the selector must work for the whole team.
+        """
+        from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
+        from storico.infrastructure.database.repositories.workspace_member_repository import (
+            SQLAlchemyWorkspaceMemberRepository,
+        )
+
+        owner = await SQLAlchemyUserRepository(db_session).save(
+            User(email="member-versions-owner@test.com", name="Member Versions Owner")
+        )
+        seeded = await seed_workspace(user=owner, stories=0)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id,
+                user_id=authed_user.id,
+                role=WorkspaceRole.MEMBER,
+            )
+        )
+        story_id = await self._create_story(authed_client, seeded)
+        await seed_extraction(
+            db_session,
+            UUID(story_id),
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+
+        response = await authed_client.get(f"/api/v1/stories/{story_id}/versions")
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert [entry["version_number"] for entry in data] == [1]
+        assert data[0]["is_current"] is True
