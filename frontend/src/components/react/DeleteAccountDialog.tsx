@@ -10,7 +10,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
-import { api } from '@/lib/api';
+import { api, ApiRequestError } from '@/lib/api';
+import { errorCodeHeadline } from '@/lib/error-codes';
 import { renderBoldMarkup } from '@/lib/render-bold-markup';
 import { useAuthStore } from '@/stores/authStore';
 import { useTranslations, type Locale } from '@/i18n/utils';
@@ -60,8 +61,14 @@ export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccoun
       // Redirect to home after successful deletion
       window.location.assign('/');
     } catch (err) {
-      const message = err instanceof Error ? err.message : t.settings.danger_delete_dialog_error;
-      setError(message);
+      // A designed refusal carries a stable `error_code` (e.g. the account-delete 409,
+      // `ACCOUNT_DELETE_BLOCKED`); the user gets that code's localized sentence through
+      // the error-code map, never the raw status text the HTTP layer builds from an
+      // object `detail`. Codes the frontend has not learned fall through to the raw
+      // message, and non-API errors keep the generic fallback.
+      const headline =
+        err instanceof ApiRequestError ? errorCodeHeadline(err.errorCode, locale) : undefined;
+      setError(headline ?? (err instanceof Error ? err.message : t.settings.danger_delete_dialog_error));
     } finally {
       setDeleting(false);
     }

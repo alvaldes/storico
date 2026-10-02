@@ -3439,3 +3439,128 @@ filtered-read confirmation, 6.9's StoriesList cancel edges, and 6.10's final ref
 
 `6.1`, `6.2`, `6.3`, `6.4`, `6.5`, `6.6` are `[x]`. `6.7`, `6.8` (its remaining copy), `6.9`,
 `6.10` and every Phase 7 item are `[ ]`. Confirmed by re-reading `tasks.md` after the edit.
+
+## W6-B2 — the remaining confirmations, the rest of the copy and the closing pass (tasks 6.7, 6.8, 6.9, 6.10) — 2026-10-02
+
+### Structured status consumed
+
+Branch `feat/extraction-versioning-api-wu6b`, tip `25df5ed`. Parent-verified baseline at that head:
+`pnpm test` → **661 passed (57 files)**, `tsc --noEmit` clean, `pnpm build` complete. Edit surfaces
+taken as given; none of the forbidden files (`TaskEditor.tsx`, `StoryDetail.tsx`,
+`VersionSelector.tsx`, stores, `lib/*`, pages, backend) was touched.
+
+### The 6.9 edge inventory — every edge already existed; nothing was added, nothing rewritten
+
+Each cancel/fallback clause 6.9 names is already pinned by a named case from the previous two
+tranches. Adding any of them again would have been duplication:
+
+| 6.9 clause | Existing witness (test file, case name) |
+| --- | --- |
+| Extract confirmation cancel issues zero requests | `StoryDetail.test.tsx` → "names the frozen and the new version in the extract confirmation, and cancel issues no request" (asserts `extractTasksSpy` not called; the extract confirmation lives on the story page, not in `TaskEditor`) |
+| Mark confirmation cancel issues zero requests | `TaskEditor.test.tsx` → "cancelling the mark confirmation issues no request and keeps the editor open with the edits" |
+| Unmark confirmation cancel issues zero requests | `TaskEditor.test.tsx` → "cancelling the unmark confirmation issues no request and keeps the mark active" |
+| Delete dialog cancel issues no request | `StoriesList.test.tsx` → "issues no delete request when the dialog is cancelled" (and `StoryDetail.test.tsx` pins the same dialog) |
+| Failed version-count read keeps confirm enabled with the fallback sentence | `StoriesList.test.tsx` → "keeps the confirm enabled with the fallback sentence when the version read fails" |
+
+6.9 is therefore closed as verified-existing coverage, in the spirit of its TRIANGULATE intent; the
+parent instruction ("add only what is genuinely missing and cite the existing cases by name") was
+applied literally.
+
+### 6.7 — the filtered reads at the board and the export, confirmed with new cases
+
+- `KanbanBoard.test.tsx`, new describe "current-version-only workspace reads": drives the board's
+  **real** store fetch path (the actual `fetchTasksForWorkspace` action captured before any test
+  stubs it, through the mocked `listTasksByWorkspace`). Case 1 — "renders exactly the current
+  version's cards for a story with two completed runs, and none of v1's": the read goes through
+  `listTasksByWorkspace('workspace-1')` (the endpoint that carries the backend's
+  `list_current_by_workspace` filter, WU3 3.7), all four v2 cards render, the header counts 4, and
+  none of v1's four titles appear. Case 2 — "renders no cards and no error for a story whose only
+  run failed": the read answers `[]` (completed, not failed), the board shows its distinct empty
+  state, no alert renders and the store records no error.
+- `ExportPanel.test.tsx` — "counts only the tasks the current-version workspace read returns": same
+  real-action approach; the panel reads through `listTasksByWorkspace` and counts 4, never 8.
+- **The frozen-version clause is pinned where the interaction lives, and the board cannot host it.**
+  The board renders whatever the current-version-only read returns, so a frozen version's cards are
+  unreachable there **by construction** — a drag-to-change-status on a frozen version cannot even be
+  initiated from the board, and no honest board case exists. The clause is covered by the existing
+  `TaskEditor.test.tsx` case "never blocks or warns on a status-only save of a frozen task" — the
+  editor reached through the story page's version-aware read (landed in `25df5ed`), which is the path
+  that can actually act on a frozen version. No new board case was invented.
+
+### 6.8 — the copy that was left
+
+- `landing.faq.a4` rewritten in both locales (before/after, one line each):
+  - **EN before**: claims a task's title, description, labels **or dependencies** are editable, and
+    that export gives "those same tasks".
+  - **EN after**: review the generated tasks, move them through the workflow stages, edit their
+    labels; dependencies only while a version is the story's current one (it freezes once a new
+    extraction supersedes it); no per-task deletion; export gives **the current version's** tasks.
+  - **ES before**: "edita cualquiera de ellas antes de exportar: título, descripción, etiquetas o
+    dependencias" + "esas mismas tareas".
+  - **ES after**: "revisar las tareas generadas, moverlas por las etapas del flujo de trabajo y
+    editar sus etiquetas"; dependencias solo en la versión actual; sin borrado por tarea; "las tareas
+    de la versión actual".
+  - Neutral international Spanish (`tú`: "Abre", "puedes", "te entrega"), no voseo.
+- Every other 6.8 family (selector, mark controls, confirmations, D16 notice, "no output",
+  delete-dialog) was checked key-by-key against both locales and was already present from W6-A/W6-B1
+  (`versionSelector.*`, `mark_label`/`mark_reason_label`/`mark_reason_missing`/
+  `mark_confirm_body`/`mark_confirm_accept`/`unmark_confirm_accept`/`repetition_notice`/
+  `repetition_copy`, `no_output_title`/`no_output_desc`, `extract_confirm_*`,
+  `delete_confirm_versions*`) — nothing added beyond `a4`.
+- `api-docs-copy.test.ts` ran green unmodified — both retirement handlers keep their exact paths and
+  `include_in_schema=False`; no finding.
+
+### The extra carry — the delete-account 409 rendered through the error-code map
+
+The dialog previously rendered `err.message` raw: for the backend's 409 `ACCOUNT_DELETE_BLOCKED`
+envelope (object `detail` naming the blocking marks), `buildErrorMessage` degrades to the HTTP status
+text — the user would see "Conflict", not the designed refusal. RED case added to
+`AccountPage.test.tsx` ("renders the ACCOUNT_DELETE_BLOCKED refusal through the error-code map, never
+a raw status"): it drives the page's real dialog (email + verify phrase), rejects `api.delete` with an
+`ApiRequestError(409, 'Conflict', …, { error_code: 'ACCOUNT_DELETE_BLOCKED' })`, and asserts the
+localized headline shows and "Conflict"/"409" never do. **RED observed** (`deleteSpy` assertion
+passed, localized text absent — the dialog showed the raw error). **GREEN**: `DeleteAccountDialog.tsx`
+now resolves `errorCodeHeadline(err.errorCode, locale)` for an `ApiRequestError` and falls back to the
+previous behavior for unmapped codes and non-API errors (10+/3−). One test-mock fix made on the way:
+the file's `authStore` mock ignored its selector, so the dialog read `undefined` for `user.email`;
+the mock now honors selectors (existing assertions untouched, all 5 cases in the file green).
+
+### RED/GREEN numbers and kinds
+
+- RED (behavior): the account-delete case failed against the unwired dialog — 1 failed / 4 passed in
+  `AccountPage.test.tsx`, with the missing localized refusal as the observed error.
+- GREEN: after the dialog wiring, the focused run of the four parent-named files → **50 passed (50)**.
+- The 6.7 cases are coverage witnesses over behavior already shipped by WU3's backend filter and the
+  existing store/fetch path — they passed on first run (3 of them green pre-GREEN in the same mixed
+  run that showed the RED), so no RED exists for them and none is claimed.
+- 6.9: no new tests; verified-existing coverage (inventory above). 6.8's `a4` rewrite is copy; its
+  gates are the key-parity/neutral-Spanish suites, both green.
+
+### Verification (all run at this head, after the plan edits)
+
+| Command | Result |
+| --- | --- |
+| `cd frontend && pnpm test src/components/react/__tests__/KanbanBoard.test.tsx src/components/react/__tests__/StoriesList.test.tsx src/components/react/__tests__/TaskEditor.test.tsx src/components/react/__tests__/AccountPage.test.tsx` | **50 passed (50)** |
+| `cd frontend && pnpm test` | **665 passed / 57 files** = baseline 661 + exactly the 4 new test functions (2 KanbanBoard, 1 ExportPanel, 1 AccountPage) |
+| `cd frontend && pnpm exec tsc --noEmit` | clean, exit 0 |
+| `cd frontend && pnpm build` | complete (Astro + Vercel adapter) |
+| i18n gates, named green in the full-suite run | `src/i18n/__tests__/neutral-spanish.test.ts` (which contains both the neutral-Spanish gate and the en↔es key-parity case "keeps the same keys in en.json and es.json") and `src/i18n/__tests__/no-duplicate-keys.test.ts` — also run focused: 37 passed across `neutral-spanish`, `no-duplicate-keys`, `provider-copy` and `api-docs-copy` |
+
+### Files changed (`git diff --numstat`, this tranche)
+
+| File | Lines |
+| --- | --- |
+| `DeleteAccountDialog.tsx` | 10+/3− |
+| `AccountPage.test.tsx` | 63+/6− |
+| `ExportPanel.test.tsx` | 47+/0− |
+| `KanbanBoard.test.tsx` | 112+/0− |
+| `en.json` / `es.json` | 1+/1− each (the `a4` rewrite) |
+| **Total** | **234+/11− ≈ 245 changed lines** |
+
+KanbanBoard.tsx and ExportPanel.tsx needed **zero** production edits: the current-version-only
+property lives in the read they already consume, and the cases prove it rather than change it.
+
+### Final checkbox state (re-read after the edits)
+
+`6.7`, `6.8`, `6.9`, `6.10` are `[x]`. Every Phase 7 item (`7.1`–`7.5`) remains `[ ]` — they are the
+slice's verification pass, not this unit's. Confirmed by re-reading `tasks.md` after the edit.

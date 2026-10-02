@@ -808,25 +808,25 @@ store test in this unit.
       restriction on frozen completed versions was lifted with a pinning case. storyStore gained
       `versionsByStory` + `fetchVersions`, read by StoryDetail's delete dialog and cleared by
       `reset()`. Focused suites 78/78, full suite 661, `tsc` clean, build complete.)*
-- [ ] 6.7 GREEN — `frontend/src/components/react/KanbanBoard.tsx`,
+- [x] 6.7 GREEN — `frontend/src/components/react/KanbanBoard.tsx`,
       `frontend/src/components/react/ExportPanel.tsx` and
       `frontend/src/components/react/__tests__/KanbanBoard.test.tsx`: confirm the filtered reads land
       as current-version-only cards (a story with two completed runs shows 4 cards and none from v1), a
       failed-only story contributes no cards and no error, and a status change on a frozen version is
       neither blocked nor warned.
-- [ ] 6.8 GREEN (copy) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`: the selector,
+- [x] 6.8 GREEN (copy) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`: the selector,
       mark-controls, confirmation, D16 notice, "no output" and delete-dialog copy in both locales with
       identical key sets and neutral international Spanish (`tú`, no voseo), plus the corrected
       `landing.faq.a4` that no longer promises editing `title`/`description` or per-task deletion;
       `frontend/src/i18n/__tests__/api-docs-copy.test.ts` stays green because both retirement handlers
       use exact paths and `include_in_schema=False`.
-- [ ] 6.9 TRIANGULATE (frontend) — `frontend/src/components/react/__tests__/TaskEditor.test.tsx`:
+- [x] 6.9 TRIANGULATE (frontend) — `frontend/src/components/react/__tests__/TaskEditor.test.tsx`:
       the cancel edge — the extract confirmation, the mark confirmation and the unmark confirmation
       each issue zero requests and change nothing when cancelled;
       `frontend/src/components/react/__tests__/StoriesList.test.tsx`: cancelling the delete dialog
       issues no request, and a failed version-count read keeps the confirm enabled with the fallback
       sentence. Prove with `cd frontend && pnpm test`.
-- [ ] 6.10 REFACTOR (frontend) — rerun `cd frontend && pnpm test` and confirm the i18n key-parity and
+- [x] 6.10 REFACTOR (frontend) — rerun `cd frontend && pnpm test` and confirm the i18n key-parity and
       neutral-Spanish suites are green.
 
 ## Phase 7: Slice Verification
