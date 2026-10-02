@@ -9,7 +9,9 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from storico.api.dependencies import (
     get_current_user,
     get_repository,
+    get_vector_store,
     get_workspace_for_user,
+    require_story_owner_or_admin,
     require_story_workspace_access,
 )
 from storico.api.error_codes import (
@@ -28,13 +30,16 @@ from storico.api.schemas.story import (
     UpdateUserStoryRequest,
     UserStoryResponse,
 )
+from storico.application.services.story_deletion_service import StoryDeletionService
 from storico.domain.entities import EntityNotFound, User, UserStory, Workspace, WorkspaceRole
 from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.ports.vector_store_port import VectorStorePort
 from storico.domain.services.story_import import ImportRow, validate_import
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
     SQLAlchemyUserStoryRepository,
+    SQLAlchemyWorkspaceRepository,
 )
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
@@ -72,6 +77,11 @@ MemberRepoDep = Annotated[
 ExtractionRepoDep = Annotated[
     SQLAlchemyExtractionRepository,
     Depends(get_repository(SQLAlchemyExtractionRepository)),
+]
+
+WorkspaceRepoDep = Annotated[
+    SQLAlchemyWorkspaceRepository,
+    Depends(get_repository(SQLAlchemyWorkspaceRepository)),
 ]
 
 
@@ -357,19 +367,36 @@ async def delete_story(
     repo: StoryRepoDep = None,  # type: ignore[assignment]
     project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
     member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    ws_repo: WorkspaceRepoDep = None,  # type: ignore[assignment]
+    extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
+    vector_store: VectorStorePort | None = Depends(get_vector_store),
 ) -> None:
     """Delete a user story by its ID.
 
-    The user must be a member of the workspace that owns the story's project.
+    Only the workspace owner or an ``ADMIN`` may delete: a plain ``MEMBER`` is
+    refused with 403 ``WORKSPACE_OWNER_OR_ADMIN_REQUIRED``, a non-member keeps
+    403 ``NOT_A_WORKSPACE_MEMBER``, and a missing story is 404. The deletion
+    snapshots the story's versions, removes its vector points (when a vector
+    store is configured) and then deletes the story and writes an audit record
+    of the destroyed versions in one transaction. A vector store that cannot
+    be reached answers 503 ``VECTOR_STORE_UNAVAILABLE`` and leaves the story,
+    its versions and its tasks intact for a retry.
     """
-    await require_story_workspace_access(
+    story = await require_story_owner_or_admin(
         story_id,
         current_user,
         story_repo=repo,
         project_repo=project_repo,
         member_repo=member_repo,
+        ws_repo=ws_repo,
     )
-    await repo.delete(story_id)
+    service = StoryDeletionService(
+        story_repo=repo,
+        extraction_repo=extraction_repo,
+        project_repo=project_repo,
+        vector_store=vector_store,
+    )
+    await service.delete_story(story, deleted_by=current_user.id)
 
 
 # ═══════════════════════════════════════════════════════════════════

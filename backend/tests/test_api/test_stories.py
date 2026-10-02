@@ -10,15 +10,24 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from storico.api.dependencies import get_vector_store
 from storico.domain.entities import User, UserStory
+from storico.domain.entities.exceptions import RepositoryError, VectorStoreError
 from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.ports.vector_store_port import VectorStorePort
+from storico.infrastructure.database.models import (
+    ExtractionModel,
+    StoryDeletionModel,
+    TaskModel,
+)
 from storico.infrastructure.database.repositories import (
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
 )
-from tests._helpers import seed_extraction
+from tests._helpers import seed_extraction, seed_task
 
 RAW_TEXT = "As a user, I want to log in so that I can access my account"
 
@@ -368,11 +377,120 @@ class TestUpdateStory:
         assert data["benefit"] == "old benefit"  # unchanged
 
 
-class TestDeleteStory:
-    """DELETE /api/v1/stories/{story_id}"""
+class _RecordingDeletionStore(VectorStorePort):
+    """The deletion-recording fake: records every ``delete_by_story`` call."""
 
-    async def test_delete_story(self, authed_client, seed_workspace):
+    def __init__(self) -> None:
+        self.deletions: list[dict] = []
+
+    async def search_similar(  # noqa: ARG002
+        self,
+        text: str,
+        limit: int = 3,
+        threshold: float = 0.85,
+        *,
+        workspace_id: UUID,
+    ) -> list:
+        return []
+
+    async def store_extraction(self, **kwargs: object) -> bool:  # noqa: ARG002
+        return True
+
+    async def delete_by_story(self, *, workspace_id: UUID, user_story_id: str) -> None:
+        self.deletions.append({"workspace_id": workspace_id, "user_story_id": user_story_id})
+
+
+class _RaisingVectorStore(VectorStorePort):
+    """A configured store that cannot be reached when its cleanup is asked for."""
+
+    async def search_similar(  # noqa: ARG002
+        self,
+        text: str,
+        limit: int = 3,
+        threshold: float = 0.85,
+        *,
+        workspace_id: UUID,
+    ) -> list:
+        return []
+
+    async def store_extraction(self, **kwargs: object) -> bool:  # noqa: ARG002
+        return True
+
+    async def delete_by_story(  # noqa: ARG002
+        self,
+        *,
+        workspace_id: UUID,
+        user_story_id: str,
+    ) -> None:
+        raise VectorStoreError("Qdrant unreachable")
+
+
+async def _seed_two_completed_versions(db_session: AsyncSession, story_id: UUID) -> None:
+    """Seed completed v1 and v2 through the birth path, each with one task row."""
+    v1 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime.now(UTC),
+    )
+    v2 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime.now(UTC),
+    )
+    await seed_task(db_session, story_id, "V1 task", extraction=v1)
+    await seed_task(db_session, story_id, "V2 task", extraction=v2)
+
+
+async def _enforce_sqlite_cascades(db_session: AsyncSession) -> None:
+    """Turn SQLite FK enforcement on for the shared in-memory connection.
+
+    The unit schema carries the same ``ON DELETE CASCADE`` DDL as Postgres
+    (``0014``), but SQLite only honours it with ``PRAGMA foreign_keys=ON``,
+    which the suite does not set (see the note in
+    ``test_repositories/test_custom_provider_repo.py``). The in-memory engine
+    is a StaticPool — one shared DBAPI connection per test — so a pragma set
+    here holds for the route's own session too, and the cascade witness below
+    is behavioural, not declarative. The Postgres-only suite (task 4.16)
+    re-proves it against the real engine.
+    """
+    await db_session.execute(text("PRAGMA foreign_keys=ON"))
+
+
+async def _record_rows(db_session: AsyncSession) -> list[StoryDeletionModel]:
+    """Every story_deletions row, read straight off the table."""
+    result = await db_session.execute(select(StoryDeletionModel))
+    return list(result.scalars().all())
+
+
+async def _extraction_rows(db_session: AsyncSession, story_id: UUID) -> list[ExtractionModel]:
+    """The story's extraction rows — the source rows of its vector points."""
+    result = await db_session.execute(
+        select(ExtractionModel).where(ExtractionModel.user_story_id == story_id)
+    )
+    return list(result.scalars().all())
+
+
+async def _task_rows(db_session: AsyncSession, story_id: UUID) -> list[TaskModel]:
+    """The story's task rows, read straight off the table."""
+    result = await db_session.execute(select(TaskModel).where(TaskModel.user_story_id == story_id))
+    return list(result.scalars().all())
+
+
+class TestDeleteStory:
+    """DELETE /api/v1/stories/{story_id}
+
+    The owner-or-admin gate (D13) answers every refusal before the handler
+    body; the body then runs the sanctioned ordering — snapshot, vector
+    cleanup, delete-with-record. Every case pins the vector boundary with a
+    ``get_vector_store`` dependency override: without one the route resolves a
+    real ``QdrantAdapter`` and the suite's autouse guard fails the test.
+    """
+
+    async def test_delete_story(self, app, authed_client, seed_workspace):
         """POST then DELETE returns 204."""
+        app.dependency_overrides[get_vector_store] = lambda: None
         seeded = await seed_workspace(stories=0)
         create_resp = await authed_client.post(
             "/api/v1/stories/",
@@ -393,12 +511,194 @@ class TestDeleteStory:
         get_resp = await authed_client.get(f"/api/v1/stories/{story_id}")
         assert get_resp.status_code == 404
 
-    async def test_delete_story_not_found(self, authed_client):
+    async def test_delete_story_not_found(self, app, authed_client):
         """DELETE on a non-existent UUID returns 404."""
+        app.dependency_overrides[get_vector_store] = lambda: None
         fake_id = str(uuid4())
         response = await authed_client.delete(f"/api/v1/stories/{fake_id}")
         assert response.status_code == 404
         assert response.json()["error_code"] == "ENTITY_NOT_FOUND"
+
+    async def test_the_owner_deletes_a_story_with_versions_and_leaves_the_record(
+        self, app, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """The owner deletes a story with completed v1 and v2 (spec, 4.3's letter).
+
+        The story, its extraction versions and their tasks are gone, and exactly
+        one record row survives carrying the acting user, a timestamp and the
+        destroyed version numbers ``[1, 2]`` in ascending order.
+        """
+        app.dependency_overrides[get_vector_store] = lambda: _RecordingDeletionStore()
+        seeded = await seed_workspace(stories=1)
+        await _seed_two_completed_versions(db_session, seeded.story_id)
+        await _enforce_sqlite_cascades(db_session)
+
+        response = await authed_client.delete(f"/api/v1/stories/{seeded.story_id}")
+
+        assert response.status_code == 204, response.text
+        get_resp = await authed_client.get(f"/api/v1/stories/{seeded.story_id}")
+        assert get_resp.status_code == 404
+        assert await _extraction_rows(db_session, seeded.story_id) == []
+        assert await _task_rows(db_session, seeded.story_id) == []
+
+        records = await _record_rows(db_session)
+        assert len(records) == 1
+        record = records[0]
+        assert record.story_id == seeded.story_id
+        assert record.project_id == seeded.project_id
+        assert record.workspace_id == seeded.workspace_id
+        assert record.actor == "user"
+        assert record.feature == "use seeded feature 0"
+        assert record.benefit == "the seeded chain is addressable"
+        assert record.deleted_by == authed_user.id
+        assert record.deleted_at is not None
+        assert record.version_numbers == [1, 2]
+
+    async def test_the_recording_store_receives_exactly_one_delete_by_story(
+        self, app, authed_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """The cleanup runs inside the deletion: one call, scoped to the story.
+
+        The call carries the story's workspace id and the string form of its id
+        — the same keys ``store_extraction`` writes into the point payloads.
+        """
+        store = _RecordingDeletionStore()
+        app.dependency_overrides[get_vector_store] = lambda: store
+        seeded = await seed_workspace(stories=1)
+        await _seed_two_completed_versions(db_session, seeded.story_id)
+
+        response = await authed_client.delete(f"/api/v1/stories/{seeded.story_id}")
+
+        assert response.status_code == 204, response.text
+        assert store.deletions == [
+            {"workspace_id": seeded.workspace_id, "user_story_id": str(seeded.story_id)}
+        ]
+
+    async def test_a_raising_store_aborts_with_503_and_preserves_everything(
+        self, app, authed_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """A vector-store failure aborts the whole operation with 503.
+
+        The four-part witness: the story, its versions, its tasks and the
+        vector points' source rows all still exist, and no record row was
+        written — nothing to retry against a half-deleted story.
+        """
+        app.dependency_overrides[get_vector_store] = lambda: _RaisingVectorStore()
+        seeded = await seed_workspace(stories=1)
+        await _seed_two_completed_versions(db_session, seeded.story_id)
+        await _enforce_sqlite_cascades(db_session)
+
+        response = await authed_client.delete(f"/api/v1/stories/{seeded.story_id}")
+
+        assert response.status_code == 503
+        assert response.json()["error_code"] == "VECTOR_STORE_UNAVAILABLE"
+        get_resp = await authed_client.get(f"/api/v1/stories/{seeded.story_id}")
+        assert get_resp.status_code == 200
+        assert len(await _extraction_rows(db_session, seeded.story_id)) == 2
+        assert len(await _task_rows(db_session, seeded.story_id)) == 2
+        assert await _record_rows(db_session) == []
+
+    async def test_no_vector_store_configured_still_deletes_with_a_record(
+        self, app, authed_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """``None`` means no points exist to clean: the deletion completes.
+
+        With no store configured the record is still written — the audit trail
+        does not depend on the vector store existing.
+        """
+        app.dependency_overrides[get_vector_store] = lambda: None
+        seeded = await seed_workspace(stories=1)
+        await _seed_two_completed_versions(db_session, seeded.story_id)
+
+        response = await authed_client.delete(f"/api/v1/stories/{seeded.story_id}")
+
+        assert response.status_code == 204, response.text
+        get_resp = await authed_client.get(f"/api/v1/stories/{seeded.story_id}")
+        assert get_resp.status_code == 404
+        assert len(await _record_rows(db_session)) == 1
+
+    async def test_a_non_member_keeps_the_not_a_workspace_member_code(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """A user with no membership row keeps the unchanged 403, not the gate code."""
+        owner = await SQLAlchemyUserRepository(db_session).save(
+            User(email="delete-owner@test.com", name="Delete Owner")
+        )
+        seeded = await seed_workspace(user=owner, stories=1)
+
+        response = await authed_client.delete(f"/api/v1/stories/{seeded.story_id}")
+
+        assert response.status_code == 403
+        assert response.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
+        story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
+        assert story is not None
+        assert await _record_rows(db_session) == []
+
+    async def test_a_member_who_is_neither_owner_nor_admin_is_refused(
+        self, app, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """A plain MEMBER gets 403 with the story, its versions and tasks intact.
+
+        No record row may exist either: a refusal must not leave an audit row
+        for a deletion that never happened.
+        """
+        from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
+        from storico.infrastructure.database.repositories.workspace_member_repository import (
+            SQLAlchemyWorkspaceMemberRepository,
+        )
+
+        app.dependency_overrides[get_vector_store] = lambda: _RecordingDeletionStore()
+        owner = await SQLAlchemyUserRepository(db_session).save(
+            User(email="member-refusal-owner@test.com", name="Member Refusal Owner")
+        )
+        seeded = await seed_workspace(user=owner, stories=1)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id,
+                user_id=authed_user.id,
+                role=WorkspaceRole.MEMBER,
+            )
+        )
+        await _seed_two_completed_versions(db_session, seeded.story_id)
+
+        response = await authed_client.delete(f"/api/v1/stories/{seeded.story_id}")
+
+        assert response.status_code == 403
+        assert response.json()["error_code"] == "WORKSPACE_OWNER_OR_ADMIN_REQUIRED"
+        story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
+        assert story is not None
+        assert len(await _extraction_rows(db_session, seeded.story_id)) == 2
+        assert len(await _task_rows(db_session, seeded.story_id)) == 2
+        assert await _record_rows(db_session) == []
+
+    async def test_a_repository_error_in_the_record_insert_answers_5xx(
+        self,
+        app,
+        authed_client,
+        db_session: AsyncSession,
+        seed_workspace,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A failing record insert answers 500 and leaves the story present.
+
+        The repository-level half of this case (rollback semantics) lives in
+        ``tests/test_repositories/test_user_story_repo.py``; this pins only the
+        API surface: the repository error escapes the route as a 5xx, and the
+        story survives for a retry.
+        """
+        app.dependency_overrides[get_vector_store] = lambda: None
+        seeded = await seed_workspace(stories=1)
+
+        async def _boom(self: object, user_story_id: object, record: object) -> None:  # noqa: ARG001
+            raise RepositoryError("Database error deleting user story")
+
+        monkeypatch.setattr(SQLAlchemyUserStoryRepository, "delete_with_record", _boom)
+
+        response = await authed_client.delete(f"/api/v1/stories/{seeded.story_id}")
+
+        assert response.status_code == 500
+        story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
+        assert story is not None
 
 
 async def _seed_foreign_project(db_session: AsyncSession, seed_workspace) -> UUID:

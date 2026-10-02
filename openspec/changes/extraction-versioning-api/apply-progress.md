@@ -2303,3 +2303,158 @@ replaces the stub.
 
 4.2 stays unchecked **with** its dated amendment block recording the three-way split; 4.3, 4.13,
 4.15, 4.16, 4.17 and 4.18 confirmed unchecked. Only **4.6** was marked `[x]`.
+
+---
+
+# W4-T8 — sanctioned story deletion end-to-end (tasks 4.13, the stories half of 4.3, 4.15) — 2026-09-30
+
+Branch `feat/extraction-versioning-api-wu4b` at tip `8bdc149`, PR B of the WU4 two-PR chain. PR A
+(`feat/extraction-versioning-api-wu4a`, tip `718e52b`) sits underneath as the gate + error
+vocabulary; PR B's own storage layer (entity, port, model, `0029`, adapter method) is already
+committed at `9c7ad48`. Consumed, not touched. Measured baseline at this head: **1125 passed,
+33 deselected**; ruff check clean; format 259 files. Working tree also carries two pre-existing
+untracked entries (`.claude/skills/`, `backend/.gitignore`) — preserved, untouched.
+
+## Structured status consumed
+
+Parent contract: service ordering = snapshot → record → vector cleanup → delete-with-record
+(design.md §"Decision: story deletion is snapshot → vector cleanup → delete-with-record, in one
+transaction"); gate stays in the route (`require_story_owner_or_admin`, service re-runs no
+authorization); `version_numbers` stored **ascending** by parent decision; the two stub comments
+named W4-T7/W4-T3 get closed as comment-only edits.
+
+## RED measured before any production edit (real errors)
+
+7 new test functions in `TestDeleteStory` (+ helpers + two fakes). Observed at pre-service head,
+`conda run -n storico python -m pytest tests/test_api/test_stories.py -m "not integration" -q`:
+**6 failed, 28 passed** — the seventh (`test_a_non_member_keeps_the_not_a_workspace_member_code`)
+passed at RED on purpose: it pins that the unchanged membership refusal survives the swap, so it
+is green before and after. Failure kinds, all the intended ones:
+
+- `test_the_owner_deletes_a_story_with_versions_and_leaves_the_record` — `assert [] == []` shape:
+  **no record row existed** (`len(records) == 0` vs 1); the old path deleted without a record.
+- `test_the_recording_store_receives_exactly_one_delete_by_story` — `assert [] == [{...}]`: **no
+  vector call was ever made**; the old path had no cleanup at all.
+- `test_a_raising_store_aborts_with_503_and_preserves_everything` — `assert 204 == 503`: the old
+  path had no store boundary, so nothing could fail.
+- `test_no_vector_store_configured_still_deletes_with_a_record` — `assert 0 == 1`: no record row.
+- `test_a_member_who_is_neither_owner_nor_admin_is_refused` — `assert 204 == 403`: the old gate
+  admitted any member, and the delete went through.
+- `test_a_repository_error_in_the_record_insert_answers_5xx` — `assert 204 == 500`: the route had
+  no service to propagate a repository error through.
+
+## GREEN
+
+`StoryDeletionService` new (`application/services/story_deletion_service.py`): snapshot via
+`list_versions`, frozen `StoryDeletion` built from the story's identity as values with
+`version_numbers=sorted(...)`, `delete_by_story` only when a store is configured (`None` =
+legitimate completion; a configured-but-unreachable store raises `VectorStoreError` and aborts
+before step 4), then `delete_with_record`. Workspace id resolved from
+`project_repo.find_by_id(story.project_id)` inside the service; a `None` project raises
+`EntityNotFound("UserStory", ...)` — unreachable through the gate, honest anyway.
+`routes/stories.py::delete_story` swaps the inline access check for `require_story_owner_or_admin`
+(+ new `WorkspaceRepoDep`, + `extraction_repo`, + `vector_store: VectorStorePort | None =
+Depends(get_vector_store)`), builds the service inline (`TaskService(repo)` idiom), keeps the 204.
+
+Focused file after GREEN: **34 passed** (27 pre-existing + 7 new).
+
+## The ascending-`version_numbers` decision (parent-decided, recorded here)
+
+`list_versions` reads `version_number DESC`; the record stores `sorted(...)`. Task 4.3's letter
+pins `[1, 2]` and the spec says "the destroyed version numbers 1 and 2": an audit row whose order
+flipped with a repository read order would be a needless trap, so the service normalizes. The
+owner-delete test asserts `[1, 2]` against the table.
+
+## The dependency-override trap, and how it was pinned
+
+Every DELETE-stories request now resolves `get_vector_store`; without an override the route holds
+a real `QdrantAdapter`, and the suite's autouse `_forbid_real_qdrant_clients` turns the lazy
+`AsyncQdrantClient` construction into a `pytest.fail` (a `BaseException` the adapter's `except
+Exception` cannot swallow). Pinned **in the test file** (conftest is out of bounds): each test
+requests the `app` fixture — the same instance `async_client` uses — and sets
+`app.dependency_overrides[get_vector_store] = lambda: <fake or None>`; `async_client` clears the
+overrides at teardown, so no cleanup. `get_vector_store` is imported from
+`storico.api.dependencies` so the override key is the same function object the route holds. Both
+pre-existing delete tests got the override added (boundary pinning, not assertion weakening —
+their status/row assertions are unchanged).
+
+## The cascade witness at the unit layer, done honestly
+
+SQLite honours `ON DELETE CASCADE` only with `PRAGMA foreign_keys=ON`, which the suite does not
+set (the limitation is already documented in `tests/test_repositories/test_custom_provider_repo.py`).
+The in-memory engine is a **StaticPool** — one shared DBAPI connection per test — so a helper
+(`_enforce_sqlite_cascades`) sets the pragma on the shared connection before the request, and the
+owner-delete and raising-store tests witness the cascade **behaviourally** at the unit layer: rows
+actually gone / actually intact, not just DDL inspected. Task 4.16 (Postgres-only) re-proves it
+against the real engine.
+
+## The repository-error case, split and said so
+
+Its rollback semantics stay owned by the repository layer
+(`tests/test_repositories/test_user_story_repo.py`, W4-T5 — not duplicated, per the contract). The
+API half pinned here is the surface only: monkeypatching
+`SQLAlchemyUserStoryRepository.delete_with_record` to raise `RepositoryError` answers **500** with
+the story still present. Chosen because it is cheap (one monkeypatch) and the escape-path (error
+out of the service, handler answers, no partial state at the route layer) is exactly what the
+repository test cannot see.
+
+## The four-part 503 witness (spec scenario)
+
+`test_a_raising_store_aborts_with_503_and_preserves_everything`: story still 200 via GET, both
+extraction rows still on the table (the vector points' source rows), both task rows still there,
+and **zero** `story_deletions` rows — with FK enforcement on, so "intact" is measured, not assumed.
+
+## The stub comments closed (comment-only, no behaviour)
+
+Both `_RecordingVectorStore.delete_by_story` no-ops (`tests/test_api/test_extraction.py`,
+`tests/test_services/test_extraction_service.py`) now say the fake is deliberately inert because
+the extraction path never deletes, and that the deletion-recording fake lives where the behaviour
+is exercised (`tests/test_api/test_stories.py`). No assertion touched in either file.
+
+## `delete` is now caller-less — by decision
+
+`SQLAlchemyUserStoryRepository.delete` has no caller left on this tree. Leaving it is the owner's
+decision (the port method, the implementation and its tests stay); recorded here so 4.18's
+closing refactor knows the dead code is known, not missed.
+
+## Files changed (this unit; `git diff --numstat` vs tip `8bdc149`)
+
+| File | +/− |
+| --- | --- |
+| `backend/src/storico/application/services/story_deletion_service.py` | new (102 lines) |
+| `backend/src/storico/api/routes/stories.py` | 30+/3− |
+| `backend/tests/test_api/test_stories.py` | 304+/4− |
+| `backend/tests/test_api/test_extraction.py` | 4+/2− (comment only) |
+| `backend/tests/test_services/test_extraction_service.py` | 4+/2− (comment only) |
+| `docs/api.md` | 8+ |
+| `openspec/changes/extraction-versioning-api/tasks.md` | 12+/3− |
+| `openspec/changes/extraction-versioning-api/apply-progress.md` | this section |
+
+**≈478 changed lines** including the new service file (102) and this section (155): production
+≈132 (routes 30+/3− + the new service file), tests 312+/8−, docs 8+, plan artifacts 167. The test
+bulk is the deletion suite the contract asked for; no size exception needed for the production
+surface, which is one new file and one route rewrite.
+
+## Verification (writer-run, exact commands, at this head)
+
+| Command | Result |
+| --- | --- |
+| `cd backend && conda run -n storico python -m pytest tests/test_api/test_stories.py -m "not integration" -q` | **34 passed** |
+| `cd backend && conda run -n storico python -m pytest tests/test_repositories/test_user_story_repo.py tests/test_api/test_extraction.py -m "not integration" -q` | **69 passed** |
+| `cd backend && conda run -n storico python -m pytest -m "not integration" -q` | **1132 passed, 33 deselected** (baseline 1125 + exactly the 7 new test functions) |
+| `cd backend && conda run -n storico python -m ruff check src tests` | All checks passed |
+| `cd backend && conda run -n storico python -m ruff format --check src tests` | 260 files already formatted (259 + the new service file) |
+
+## Persisted checkbox
+
+4.3 `[x]` (with its dated two-half amendment block), 4.13 `[x]`, 4.15 `[x]`. Re-read after the
+edits: 4.2 (extract half done on PR A; mark/unmark endpoints still owed), 4.16, 4.17 (Docker) and
+4.18 (closing refactor) confirmed still `[ ]`.
+
+## Risks
+
+- The unit-layer cascade witness depends on StaticPool + pragma; if the test engine's pooling
+  ever changes, `_enforce_sqlite_cascades` degrades to the pre-pragma state (the DDL is still
+  declared, and 4.16's Postgres suite is the behavioural owner). The helper's docstring says so.
+- `deleted_by` SET NULL is only provable under Postgres (SQLite ignores `ON DELETE`); task 4.16
+  owns it, unchanged from the plan.

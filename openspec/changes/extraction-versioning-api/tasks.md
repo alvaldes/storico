@@ -429,7 +429,7 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
   > `feat/extraction-versioning-api-wu4`, commit `155b975`). This task stays unchecked until all
   > three halves land; the extract-half RED/GREEN evidence is recorded in `apply-progress.md`
   > (section W4-T7). The bullet above stays as the planning record.
-- [ ] 4.3 RED — `backend/tests/test_api/test_stories.py` and
+- [x] 4.3 RED — `backend/tests/test_api/test_stories.py` and
       `backend/tests/test_repositories/test_user_story_repo.py` (the file the design calls
       `test_story_repo.py`): the failing deletion cases — the owner deletes a story with v1 and v2
       and a record carries the actor, the timestamp and `[1, 2]`; a recording fake vector store
@@ -438,6 +438,15 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
       no vector store configured the delete completes with a record and no vector call; a forced
       repository error in the record insert leaves the story present. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_stories.py tests/test_repositories/test_user_story_repo.py -m "not integration"`.
+  > **[Amended 2026-09-30, W4-T8 — two halves, two PRs]** The task's **repository-level half landed
+  > earlier** as W4-T5 (PR B commit `9c7ad48`'s storage layer: `delete_with_record` and its RED/GREEN
+  > in `tests/test_repositories/test_user_story_repo.py` — the one-commit pairing, the no-row 404
+  > path and the insert-failure rollback). The **API half lands here** (W4-T8, `test_stories.py`):
+  > the owner-delete-with-record witness, the recording/raising/absent vector store, the refusal
+  > edges and the API-level 5xx. The forced-repository-error case stays split on purpose: its
+  > rollback semantics are proven at the repository layer, and only its API surface (the escaping
+  > 5xx, story present) is re-pinned here by monkeypatching `delete_with_record` — the repository
+  > test remains the owner of the transaction behaviour. Task complete as a whole.
 - [x] 4.4 RED — `backend/tests/test_unit/test_story_deletions_migration.py` **New** (path free): pin
       `revision == "0029"` and `down_revision == "0028"` loaded by path with the
       `test_add_completed_at_migration.py` pattern, that `downgrade()` drops `story_deletions`, and
@@ -493,7 +502,7 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
       destructive; `backend/src/storico/infrastructure/vector/qdrant_adapter.py`: implement it with a
       `FilterSelector` over the existing `workspace_id` and `user_story_id` payload keys and
       `wait=True`, wrapping driver failures in `VectorStoreError`.
-- [ ] 4.13 GREEN — `backend/src/storico/application/services/story_deletion_service.py` **New**
+- [x] 4.13 GREEN — `backend/src/storico/application/services/story_deletion_service.py` **New**
       (path free): the ordering — snapshot `list_versions`, build the `StoryDeletion` with the
       destroyed version numbers, call `delete_by_story` when a vector store is configured (skipped
       when it is `None`, because no points exist to clean), then `delete_with_record`;
@@ -503,7 +512,7 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
       three new codes in `errorCodes` with neutral international Spanish;
       `frontend/src/lib/__tests__/error-codes.test.ts`: `EXPECTED_REGISTRY_COUNT` `39` → `42` and both
       locale counts `44` → `47`. Prove with `cd frontend && pnpm test`.
-- [ ] 4.15 TRIANGULATE — `backend/tests/test_api/test_stories.py`: the refusal edge on the gated
+- [x] 4.15 TRIANGULATE — `backend/tests/test_api/test_stories.py`: the refusal edge on the gated
       delete — a non-member keeps the unchanged 403 `NOT_A_WORKSPACE_MEMBER`, an addressed story that
       does not exist is 404 `EntityNotFound`, and a `MEMBER`'s 403 leaves the story, its versions,
       their tasks and their points intact. Prove with
