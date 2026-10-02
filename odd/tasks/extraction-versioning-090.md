@@ -1369,3 +1369,32 @@ environment-flag opt-ins that skip everywhere, so nothing in this slice has ever
 Qdrant or a real Ollama — and the one cross-slice dependency no test here can prove: nothing in (b) calls
 `set_has_invalid_tasks`, so until slice (c) lands 3.6–3.8 every mark excludes nothing from few-shot
 retrieval and **nothing goes red**. The only thing left is the owner's merge of the nine-PR chain.
+
+### Slice (b) merged and deployed — 2026-10-02
+
+The owner authorized the merge of the nine-PR chain on 2026-10-02 and it landed in order, each PR
+retargeted to `main` immediately before its merge (a stacked chain cannot merge into its own base, or the
+content would grow the branch instead of `main`):
+
+`#31` `7fb1384` → `#32` `3bbd784` → `#33` `9380b75` → `#34` `80ecd85` → `#35` `5579121` → `#36` `c35bf9e` →
+`#37` `22a8095` → `#38` `d4e7f54` → `#39` `fe9a16d`. **`main` = `fe9a16d`**, zero open PRs, and the nine
+branches are deleted (only the pre-split `…-wu4` safety branch and the older `chore/dev-reset-0028`
+remain locally, and neither is on the remote).
+
+**Deploys.** `deploy-backend.yml` triggers only on `backend/**`, so the frontend-only merges never
+restart the API. Seven merges qualified and the workflow's concurrency group serialized them: GitHub
+**cancelled the queued ones** as newer ones arrived, which is the documented behaviour of
+`cancel-in-progress: false` — it cancels a *pending* run, never the running one. Two deploys therefore
+ran to completion: `c35bf9e`'s, where the migration happened —
+`INFO [alembic.runtime.migration] Running upgrade 0028 -> 0029, story_deletions` — and `22a8095`'s,
+which found the schema already at head and passed the readiness gate (`Ready after 8s: container
+running, http://localhost:8000/api/v1/health/ready answered 2xx`).
+
+**Verified live, from outside:** `GET https://storico-api.163.192.150.75.sslip.io/api/v1/health` →
+`{"status":"ok","version":"0.9.0","database":{"status":"ok"},"schema":{"status":"ok"}}`; the readiness
+endpoint → **200**; and the Vercel production deployment for `fe9a16d` → **success**.
+
+**Two consequences to keep in view.** Production runs slice (b) now but **still cannot extract**: the
+workspace has no LLM configuration and `resolve_llm_config` falls back to an Ollama that does not exist
+there (**D-a-6**). And the version string still reads `0.9.0` because no `make bump` has run — the merged
+commits are `feat`s, so the release is the owner's call, never a task in a change.
