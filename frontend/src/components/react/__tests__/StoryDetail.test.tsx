@@ -1,15 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 import { StoryDetail } from '@/components/react/StoryDetail';
 import { getLLMConfigStatus } from '@/lib/llm-config-api';
+import { listVersions } from '@/lib/versioning-api';
 import { useTaskStore, type ExtractionState } from '@/stores/taskStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useStoryStore } from '@/stores/storyStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useAuthStore } from '@/stores/authStore';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import type { Project } from '@/types/project';
+import type { Task } from '@/types/task';
 import type { UserStory } from '@/types/story';
+import type { StoryVersion } from '@/types/story';
 import type { Workspace } from '@/types/workspace';
 
 // The store consumes these; the component's mount effects must settle without a backend.
@@ -33,6 +38,16 @@ vi.mock('@/lib/projects-api', () => ({
 // The configuration gate asks the API; every test states its own answer.
 vi.mock('@/lib/llm-config-api', () => ({
   getLLMConfigStatus: vi.fn(),
+}));
+
+// The version selector read: the mount effect fetches it, and every test states
+// its own answer (an empty history by default, so pre-existing cases are unaffected).
+vi.mock('@/lib/versioning-api', () => ({
+  listVersions: vi.fn(),
+  createInvalidation: vi.fn(),
+  listInvalidations: vi.fn(),
+  revokeInvalidation: vi.fn(),
+  fetchRepetition: vi.fn(),
 }));
 
 // `toast.error` is the component's only user-facing failure channel, so the test
@@ -142,6 +157,12 @@ function resetStores() {
     loading: false,
     saving: false,
   });
+  // The signed-in user: the owner-or-admin gate (`canManageVersions`) reads it.
+  // `user-1` is the fixture workspaces' owner, so the default state can manage.
+  useAuthStore.setState({ user: { id: 'user-1', email: 'u@example.com', name: 'User One' } });
+  // Default: the version read answers an empty history, which hides the
+  // selector and leaves every pre-existing case exactly as it was.
+  vi.mocked(listVersions).mockResolvedValue([]);
   // A cached project keeps the contextual-back-link effect synchronous.
   useProjectStore.setState({ projects: [project], loading: false, error: null });
   // Default: this workspace can extract. Only the gate tests move it.
@@ -317,5 +338,216 @@ describe('StoryDetail — configuration gate', () => {
     // The API's own words are the status text ("Bad Request"), which is the copy the
     // user cannot act on: reaching the config branch is what this asserts.
     expect(toast.error).not.toHaveBeenCalledWith('Bad Request');
+  });
+});
+
+/* ── Version-aware actions (0.9.0 slice b, W6-A) ── */
+
+function makeVersion(overrides: Partial<StoryVersion> = {}): StoryVersion {
+  return {
+    id: 'ext-1',
+    versionNumber: 1,
+    status: 'completed',
+    modelUsed: 'llama3.2',
+    provider: 'ollama',
+    temperature: 0.1,
+    createdAt: '2026-09-30T10:00:00Z',
+    completedAt: '2026-09-30T10:01:00Z',
+    errorInfo: null,
+    isCurrent: false,
+    hasOutput: true,
+    ...overrides,
+  };
+}
+
+const cardTask: Task = {
+  id: 'task-1',
+  storyId: STORY_ID,
+  title: 'Set up database schema',
+  description: 'Create the tables',
+  labels: [],
+  dependencies: [],
+  status: 'backlog',
+  priority: 'medium',
+  createdAt: '2026-09-30T10:01:00Z',
+  updatedAt: '2026-09-30T10:01:00Z',
+};
+
+describe('StoryDetail — version selector and version-aware actions', () => {
+  let extractTasksSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStores();
+    extractTasksSpy = vi.fn().mockResolvedValue(undefined);
+    useTaskStore.setState({ extractTasks: extractTasksSpy as never });
+  });
+
+  it('lists every version with exactly the current one marked', async () => {
+    vi.mocked(listVersions).mockResolvedValue([
+      makeVersion({ id: 'ext-3', versionNumber: 3, status: 'failed', hasOutput: false, errorInfo: 'Ollama unreachable' }),
+      makeVersion({ id: 'ext-2', versionNumber: 2, isCurrent: true }),
+      makeVersion({ id: 'ext-1', versionNumber: 1 }),
+    ]);
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    const selector = await screen.findByRole('combobox', { name: t.versionSelector.label });
+    const options = [...selector.querySelectorAll('option')];
+    expect(options).toHaveLength(3);
+    const marked = options.filter((o) => o.textContent?.includes(t.versionSelector.current));
+    expect(marked).toHaveLength(1);
+    expect(marked[0]?.textContent).toContain('2');
+  });
+
+  it('renders a localized no-output state for a failed-only story, never the empty board', async () => {
+    vi.mocked(listVersions).mockResolvedValue([
+      makeVersion({ id: 'ext-1', status: 'failed', hasOutput: false, errorInfo: 'Ollama unreachable' }),
+    ]);
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    expect(await screen.findByText(t.versionSelector.no_output_title)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        t.versionSelector.no_output_desc
+          .replace('{model}', 'llama3.2')
+          .replace('{error}', 'Ollama unreachable'),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(t.stories.detail_tasks_empty)).not.toBeInTheDocument();
+  });
+
+  it('names the frozen and the new version in the extract confirmation, and cancel issues no request', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listVersions).mockResolvedValue([
+      makeVersion({ id: 'ext-2', versionNumber: 2, isCurrent: true }),
+      makeVersion({ id: 'ext-1', versionNumber: 1 }),
+    ]);
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+    await user.click(await screen.findByRole('button', { name: t.stories.detail_extract }));
+
+    const dialog = await screen.findByRole('alertdialog');
+    const expected = t.stories.extract_confirm_body
+      .replace('{newVersion}', '3')
+      .replace('{currentVersion}', '2');
+    expect(within(dialog).getByText(expected)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: t.common.cancel }));
+
+    expect(extractTasksSpy).not.toHaveBeenCalled();
+  });
+
+  it('extracts once when the confirmation is accepted', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listVersions).mockResolvedValue([
+      makeVersion({ id: 'ext-2', versionNumber: 2, isCurrent: true }),
+      makeVersion({ id: 'ext-1', versionNumber: 1 }),
+    ]);
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+    await user.click(await screen.findByRole('button', { name: t.stories.detail_extract }));
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: t.stories.detail_extract }));
+
+    expect(extractTasksSpy).toHaveBeenCalledTimes(1);
+    expect(extractTasksSpy).toHaveBeenCalledWith(STORY_ID, 'ws-1');
+  });
+
+  it('short-circuits with a localized prompt and no request when no workspace is selected', async () => {
+    const user = userEvent.setup();
+    useWorkspaceStore.setState({ currentWorkspace: null });
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+    await user.click(await screen.findByRole('button', { name: t.stories.detail_extract }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(t.stories.select_workspace_required),
+    );
+    expect(extractTasksSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('renders the localized authorization copy for a MEMBER 403, never a raw status text', async () => {
+    setExtraction({
+      ...idleExtraction(),
+      status: 'failed',
+      error: {
+        friendlyMessage: 'Forbidden',
+        rawDetail: { error_code: 'WORKSPACE_OWNER_OR_ADMIN_REQUIRED' },
+        status: 403,
+        errorCode: 'WORKSPACE_OWNER_OR_ADMIN_REQUIRED',
+      },
+      errorCode: 'server',
+    });
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    expect(
+      await screen.findByText(t.errorCodes.WORKSPACE_OWNER_OR_ADMIN_REQUIRED),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Forbidden')).not.toBeInTheDocument();
+  });
+
+  it('hides the gated controls for a member who is neither owner nor admin', async () => {
+    useWorkspaceStore.setState({
+      currentWorkspace: { ...makeWorkspace('ws-1', 'member'), ownerId: 'owner-9' },
+    });
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    expect(await screen.findByRole('button', { name: t.stories.detail_extract })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: t.stories.mark_invalid })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: t.common.delete })).not.toBeInTheDocument();
+  });
+
+  it('opens the mark control beside the edit control on the task card, and both issue no request', async () => {
+    const user = userEvent.setup();
+    useTaskStore.setState({ tasks: { [STORY_ID]: [cardTask] } });
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    const mark = await screen.findByRole('button', { name: t.stories.mark_invalid });
+    const edit = screen.getByRole('button', { name: t.taskEditor.title });
+    // "Beside Editar": the two controls share one container on the card.
+    expect(mark.parentElement).toBe(edit.parentElement);
+
+    await user.click(mark);
+    const editor = await screen.findByRole('dialog');
+    expect(within(editor).getByText(cardTask.title)).toBeInTheDocument();
+    expect(extractTasksSpy).not.toHaveBeenCalled();
+
+    await user.click(within(editor).getByRole('button', { name: t.taskEditor.cancel }));
+    expect(extractTasksSpy).not.toHaveBeenCalled();
+  });
+
+  it('names the version count in the story-delete dialog and keeps the confirm enabled', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listVersions).mockResolvedValue([
+      makeVersion({ id: 'ext-2', versionNumber: 2, isCurrent: true }),
+      makeVersion({ id: 'ext-1', versionNumber: 1 }),
+    ]);
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+    await user.click(await screen.findByRole('button', { name: t.common.delete }));
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(
+      within(dialog).getByText(t.stories.delete_confirm_versions.replace('{count}', '2')),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: t.common.delete })).toBeEnabled();
+  });
+
+  it('keeps the delete confirm enabled with the neutral fallback sentence when the version read fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listVersions).mockRejectedValue(new Error('502 Bad Gateway'));
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+    await user.click(await screen.findByRole('button', { name: t.common.delete }));
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText(t.stories.delete_confirm_versions_unknown)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: t.common.delete })).toBeEnabled();
   });
 });

@@ -3105,3 +3105,190 @@ still owes is Phase 6 (the version-aware UI, ten tasks) and Phase 7 (the verific
 D-a-4's pre-check and the delete still surfaces as the raw integrity refusal, because translating it
 belongs to `UserRepository.delete`, outside that unit), and the two pieces of dead code left in place by
 the owner's decision (`TaskRepository.list_by_workspace`, and the story port/repository `delete`).
+
+## W6-A — the version selector, the client gate and the delete-dialog count (tasks 6.1, 6.2, 6.3, 6.5) — 2026-10-02
+
+### Structured status consumed
+
+Branch `feat/extraction-versioning-api-wu6a` at `de75076` (WU5 closed). Baseline measured by the
+parent and re-observed here: frontend **615 passed / 54 files**, `tsc --noEmit` clean. Backend not
+touched. The two pre-existing untracked paths (`backend/.gitignore`, `.claude/skills/`) were left
+exactly as found.
+
+### RED measured before any production edit (real errors)
+
+- **6.1**: `pnpm test src/lib/__tests__/workspace-role.test.ts src/lib/__tests__/versioning-api.test.ts`
+  → **2 test files failed, no tests run** — `Failed to resolve import "@/lib/workspace-role"` and
+  `Failed to resolve import "@/lib/versioning-api"`. 11 cases written (6 truth-table + 5 API-path).
+- **6.3**: same runner over `VersionSelector.test.tsx`, `StoryDetail.test.tsx`, `StoriesList.test.tsx`
+  → **12 new cases failed / 12 pre-existing passed (24 total)**. Failure kinds: 1 module-not-found
+  (`VersionSelector.tsx` did not exist), 10 behavioral (no selector rendered, no extract
+  confirmation, no version count in the delete dialog, extract still ungated for a member), and 1
+  **vacuous pass** named honestly: StoriesList's "hides the delete control from a member" passed
+  pre-GREEN because the icon button had no accessible name at all; the positive-control case
+  ("fetches the version count", which clicks that button by name) is the meaningful RED for it.
+
+### GREEN
+
+- 6.2: the two lib files → **11 passed**.
+- 6.5: the three component files → **27 passed** (12 pre-existing + 15 new).
+- Full suite: **643 passed / 57 files** — delta against the 615 baseline is exactly the **28 new
+  test functions** this tranche adds (6 + 5 + 3 + 10 + 4) and its 3 new test files. `tsc --noEmit`
+  clean; `pnpm build` complete (Astro + Vercel adapter, prerender OK).
+
+### The `canManageVersions` truth table, and where its inline copy lived
+
+| workspace | userId | result |
+| --- | --- | --- |
+| role `member`, ownerId `owner-1` | `owner-1` (the owner) | **true** |
+| role `admin`, not owner | `admin-1` | **true** |
+| role `admin`, also owner | `owner-1` | **true** |
+| role `member`, not owner | `member-1` | false |
+| `null` / `undefined` | any | false |
+| any | `undefined` / `''` | false |
+
+**Plan-premise finding, disclosed:** the design says the derivation "already exists inline in
+`MemberManagement.tsx:109-111`" and the tranche said to replace it. Measured: those lines hold the
+two **ingredients** (`isAdmin = role === 'admin'`, `isOwner = currentUser?.id === ownerId`) used
+**separately** under stricter rules — member management is admin-only (`:334`), the ownership
+section is owner-only (`:474`). The combined owner-or-admin predicate appears nowhere in the file.
+Folding `canManageVersions` in would either change behavior (an owner who also carries role `admin`
+loses `isAdmin` under the only behavior-preserving rewrite) or add a dead import. **The file was
+therefore left untouched**, and the rule's single home is `workspace-role.ts` with its truth-table
+test — the guard the design itself chose for exactly this helper.
+
+### The exact request paths the five functions hit
+
+| Function | Method + path | Body → return |
+| --- | --- | --- |
+| `listVersions(storyId)` | GET `/api/v1/stories/{storyId}/versions` | bare array → `StoryVersion[]` |
+| `createInvalidation(taskId, reason)` | POST `/api/v1/tasks/{taskId}/invalidations` | `{ reason }` → `TaskInvalidation` |
+| `listInvalidations(taskId)` | GET `/api/v1/tasks/{taskId}/invalidations` | array → `TaskInvalidation[]` |
+| `revokeInvalidation(taskId)` | DELETE `/api/v1/tasks/{taskId}/invalidations/current` | — → `void` |
+| `fetchRepetition(taskId)` | GET `/api/v1/tasks/{taskId}/invalidations/repetition` | envelope → `RepetitionResponse` |
+
+Each maps the backend's snake_case onto a camelCase type with an explicit mapper
+(`custom-providers-api.ts` convention); errors ride `api.ts`'s shared `ApiRequestError` envelope.
+
+### i18n keys added to BOTH locales (this tranche's share of 6.8)
+
+`stories.extract_confirm_title`, `stories.extract_confirm_body`,
+`stories.extract_confirm_body_first`, `stories.select_workspace_required`, `stories.mark_invalid`,
+`stories.delete_confirm_versions`, `stories.delete_confirm_versions_unknown`, and the new
+`versionSelector` family (`label`, `current`, `failed`, `no_output_title`, `no_output_desc`).
+Spanish is neutral international ("Selecciona", "congela", "se destruirán" — no voseo). The
+`errorCodes` copy the components render (`WORKSPACE_OWNER_OR_ADMIN_REQUIRED`) already existed in
+both locales from WU4/WU5 — nothing added there, and `EXPECTED_REGISTRY_COUNT` stays 44.
+**Deliberately deferred to W6-B's 6.8:** the `taskEditor` mark-controls/confirmation/D16-notice
+copy, the "Inválida" checkbox labels, and the corrected `landing.faq.a4`.
+
+### The failed-version "no output" behaviour, and the delete-dialog fallback
+
+- A version with `has_output === false` is offered **selectable** in the selector, labelled
+  `v{n} · failed · {model} · {date} · {error_info}`. When the displayed version has no output, the
+  task area renders the localized no-output panel (`no_output_title` + `no_output_desc` with model
+  and error) — never the empty-board copy. A failed-only story therefore never reads as "no tasks
+  yet". A frozen **completed** version is listed but disabled until per-version task reads land
+  with the store work (W6-B): selecting one today would display the current version's tasks under
+  a frozen label, which the component refuses to do.
+- The delete dialog names the count (`"{count} extraction versions will be destroyed with it."`).
+  `StoryDetail` reuses the selector read it already holds; `StoriesList` fetches
+  `GET /stories/{id}/versions` when the dialog opens and resets with it. On a failed read the
+  confirm stays enabled and the count line is replaced by
+  `delete_confirm_versions_unknown` — a failed metadata read never blocks the destructive action;
+  the gate, the record and the cleanup are the interlocks.
+
+### Files changed (`git diff --numstat` + new files, this tranche)
+
+| File | Lines |
+| --- | --- |
+| `StoryDetail.tsx` | 161+/16− |
+| `StoriesList.tsx` | 63+/11− |
+| `StoryDetail.test.tsx` | 232+ |
+| `StoriesList.test.tsx` | 127+/1− |
+| `en.json` / `es.json` | 14+ each |
+| `types/story.ts` / `types/task.ts` | 39+ / 45+ |
+| `tasks.md` | 4+/4− |
+| New: `workspace-role.ts`, `versioning-api.ts`, `VersionSelector.tsx` + their 3 test files | 479 |
+| **Total** | **≈1,210 changed lines** |
+
+### Deviations and judgment calls (none silent)
+
+1. **Additive shared-setup edits in `StoryDetail.test.tsx`'s `resetStores`**: an auth user
+   (`user-1`, the fixture owner) and a default `listVersions → []` mock, both required because the
+   gate now reads the auth store and the mount effect reads versions. No existing assertion was
+   weakened, deleted or restructured; the pre-existing 12 cases in the touched test files pass
+   unchanged.
+2. **StoriesList's edit/delete icon buttons gained `aria-label`s** (`t.common.edit` /
+   `t.common.delete`) — accessible-name fix that the new tests target; no existing assertion
+   referenced them.
+3. **The extract control stays reachable when NO workspace is selected** (the gate only disables
+   when a workspace exists and the user cannot manage): the no-workspace scenario's localized
+   prompt-and-no-request contract needs the click path. With a workspace, `canManageVersions`
+   drives the disabled button, the hidden mark and delete controls.
+4. **The extract confirmation's version facts come from the selector read**; if that read failed,
+   the dialog shows the first-run sentence ("creates version {n}. There is no earlier version to
+   freeze.") rather than inventing a frozen-version number. The server allocates and freezes
+   authoritatively either way.
+5. **`MemberManagement.tsx` untouched** — see the plan-premise finding above.
+
+### Remaining unchecked (re-read after the edits)
+
+6.4, 6.6, 6.7, 6.8 (remaining copy), 6.9, 6.10 and every Phase 7 item — all W6-B's or the slice
+verification's. Confirmed by reading `tasks.md` after the checkbox edits.
+
+### One clause of 6.3 this tranche could not deliver — escalated, not guessed
+
+"Marcar como inválida" opens the editor with the mark checkbox checked and the focus in the reason
+field. The checkbox and the reason field live in `TaskEditor.tsx`, which is W6-B's surface, and
+`TaskEditorProps` has no seam for them — passing new props from `StoryDetail` cannot typecheck
+without editing the forbidden file. The button itself ships: rendered beside "Editar", gate-hidden
+for members, opens the same editor, zero requests on open and on cancel. The checkbox/focus
+behavior needs an owner decision (defer the clause to W6-B's editor recut, or authorize a
+props-only seam in `TaskEditor.tsx` now).
+
+### Parent decision on the two escalated items (2026-10-02, Option A — recorded, not rewritten)
+
+The section above ends with two open escalations. Both are now decided by the parent; the text
+above stays verbatim as the escalation record.
+
+**The deferred clause.** Option A accepted: the checkbox-checked + reason-field-focus half of 6.3
+is **deferred to W6-B's editor recut, where task 6.6 owns it** — the same component that grows the
+checkbox and the reason field delivers the focus behavior, and `6.3` is checked only when that
+lands. No speculative props-only seam in `TaskEditor.tsx` is invented now; a mocked pass-through
+assertion would have been weak evidence for a seam only W6-B consumes. What W6-A shipped stands
+unchanged: the "Marcar como inválida" button beside "Editar", it opens the editor, it issues zero
+requests, and it is gate-hidden for members. `tasks.md`'s `6.3` was reverted `[x]` → `[ ]` with a
+dated amendment block below its verbatim bullet (same precedent as 4.2 across WU4's split);
+6.1, 6.2 and 6.5 remain `[x]` — their letters are complete.
+
+**The `MemberManagement.tsx` deviation, now an accepted deviation.** The plan-premise finding
+above stands as measured: the combined owner-or-admin predicate never existed inline in that file
+— `MemberManagement.tsx:109-111` holds only the two ingredients (`isAdmin = role === 'admin'`,
+`isOwner = currentUser?.id === ownerId`), used **separately** under stricter rules (member
+management is admin-only at `:334`, the ownership section is owner-only at `:474`). Folding
+`canManageVersions` in would either change behavior (an owner who also carries role `admin` loses
+`isAdmin` under the only behavior-preserving rewrite) or add a dead import — so the helper's
+single home is `workspace-role.ts` with its truth-table test. **The parent accepted leaving the
+file untouched**; this is an accepted deviation from the design's "already exists inline" premise,
+not a silent fix of a plan-premise error.
+
+**Post-decision numstat (unchanged code, plan artifacts updated).** The code and test files are
+byte-identical to the GREEN state recorded above; only `tasks.md` and this file gained the
+decision text. Measured after the edits: `tasks.md` **15+/3−** (the three remaining checkbox
+flips — 6.1, 6.2, 6.5 — plus the 12-line amendment under 6.3's verbatim bullet) and
+`apply-progress.md` **186+** (the whole W6-A section, uncommitted with the tranche, plus this
+decision block). Full tranche numstat
+remains the table above plus these plan edits.
+
+### Post-decision verification (rerun after the plan edits)
+
+| Command | Result |
+| --- | --- |
+| `cd frontend && pnpm test` | **643 passed / 57 files** — delta against the 615 baseline is exactly the 28 new test functions this tranche adds and its 3 new test files; no test changed in this decision step |
+| `cd frontend && pnpm exec tsc --noEmit` | clean, exit 0 |
+
+### Final checkbox state (re-read after the edits)
+
+`6.1`, `6.2`, `6.5` are `[x]`. `6.3` (with its amendment), `6.4`, `6.6`, `6.7`, `6.8`, `6.9`,
+`6.10` and every Phase 7 item are `[ ]`. Confirmed by re-reading `tasks.md` after the edit.
