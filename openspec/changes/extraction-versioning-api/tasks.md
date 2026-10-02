@@ -409,7 +409,7 @@ Runner: `cd backend && conda run -n storico python -m pytest` (unit layer); the 
 carry their own lines. Backend only; the delete dialog's version count is Phase 6.
 Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
 
-- [ ] 4.1 RED — `backend/tests/test_unit/test_workspace_gate.py` **New** (path free): the truth table
+- [x] 4.1 RED — `backend/tests/test_unit/test_workspace_gate.py` **New** (path free): the truth table
       over `_is_owner_or_admin` — the workspace owner passes, a member with role `ADMIN` passes, a
       member with role `MEMBER` fails, and no other combination passes. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_unit/test_workspace_gate.py -m "not integration"`.
@@ -429,7 +429,7 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
   > `feat/extraction-versioning-api-wu4`, commit `155b975`). This task stays unchecked until all
   > three halves land; the extract-half RED/GREEN evidence is recorded in `apply-progress.md`
   > (section W4-T7). The bullet above stays as the planning record.
-- [ ] 4.3 RED — `backend/tests/test_api/test_stories.py` and
+- [x] 4.3 RED — `backend/tests/test_api/test_stories.py` and
       `backend/tests/test_repositories/test_user_story_repo.py` (the file the design calls
       `test_story_repo.py`): the failing deletion cases — the owner deletes a story with v1 and v2
       and a record carries the actor, the timestamp and `[1, 2]`; a recording fake vector store
@@ -438,12 +438,21 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
       no vector store configured the delete completes with a record and no vector call; a forced
       repository error in the record insert leaves the story present. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_stories.py tests/test_repositories/test_user_story_repo.py -m "not integration"`.
-- [ ] 4.4 RED — `backend/tests/test_unit/test_story_deletions_migration.py` **New** (path free): pin
+  > **[Amended 2026-09-30, W4-T8 — two halves, two PRs]** The task's **repository-level half landed
+  > earlier** as W4-T5 (PR B commit `9c7ad48`'s storage layer: `delete_with_record` and its RED/GREEN
+  > in `tests/test_repositories/test_user_story_repo.py` — the one-commit pairing, the no-row 404
+  > path and the insert-failure rollback). The **API half lands here** (W4-T8, `test_stories.py`):
+  > the owner-delete-with-record witness, the recording/raising/absent vector store, the refusal
+  > edges and the API-level 5xx. The forced-repository-error case stays split on purpose: its
+  > rollback semantics are proven at the repository layer, and only its API surface (the escaping
+  > 5xx, story present) is re-pinned here by monkeypatching `delete_with_record` — the repository
+  > test remains the owner of the transaction behaviour. Task complete as a whole.
+- [x] 4.4 RED — `backend/tests/test_unit/test_story_deletions_migration.py` **New** (path free): pin
       `revision == "0029"` and `down_revision == "0028"` loaded by path with the
       `test_add_completed_at_migration.py` pattern, that `downgrade()` drops `story_deletions`, and
       that the model declares no foreign key to `stories` or `extractions`. Prove RED without Docker
       with `cd backend && conda run -n storico python -m pytest tests/test_unit/test_story_deletions_migration.py -m "not integration"`.
-- [ ] 4.5 GREEN — `backend/src/storico/api/dependencies.py`: move the body of
+- [x] 4.5 GREEN — `backend/src/storico/api/dependencies.py`: move the body of
       `require_story_workspace_access` into `resolve_story_access(...) -> StoryAccess` with the three
       statements and the refusals byte-for-byte unchanged, keep `require_story_workspace_access` as a
       thin caller returning `.story`, add `resolve_task_access(...) -> TaskAccess` (leading
@@ -456,53 +465,59 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
 - [x] 4.6 GREEN — `backend/src/storico/api/routes/extraction.py`: replace
       `Depends(get_workspace_for_user)` with `Depends(require_owner_or_admin)` and add
       `version_number` to the 202 `ExtractResponse` from the pending version slice (a) minted.
-- [ ] 4.7 GREEN — `backend/src/storico/api/error_codes.py`: add `VERSION_ALLOCATION_CONFLICT`,
+- [x] 4.7 GREEN — `backend/src/storico/api/error_codes.py`: add `VERSION_ALLOCATION_CONFLICT`,
       `VECTOR_STORE_UNAVAILABLE` and `WORKSPACE_OWNER_OR_ADMIN_REQUIRED`;
       `backend/src/storico/api/errors.py`: add `version_allocation_conflict_handler` (409, `detail`
       from `str(exc)`, composed from the exception's own `user_story_id` if `str(exc)` is silent) and
       `vector_store_error_handler` (503), both registered in `register_exception_handlers` for their
       own classes so MRO resolves the subclass before `repository_error_handler`.
-- [ ] 4.8 GREEN — `backend/src/storico/domain/entities/exceptions.py`: add
+- [x] 4.8 GREEN — `backend/src/storico/domain/entities/exceptions.py`: add
       `VectorStoreError(Exception)` next to the `LLMError` family;
       `backend/src/storico/domain/entities/story_deletion.py` **New** (path free): the frozen
       `StoryDeletion` carrying the story identity as values, `version_numbers`, `deleted_by` and
       `deleted_at`.
-- [ ] 4.9 GREEN — `backend/src/storico/infrastructure/database/models/story_deletion.py` **New**
+- [x] 4.9 GREEN — `backend/src/storico/infrastructure/database/models/story_deletion.py` **New**
       (path free): the `story_deletions` model with no foreign key to `stories` or `extractions`,
       `version_numbers` as `sa.JSON` so it builds in the SQLite unit schema, and `deleted_by` as a
       `users.id` foreign key with `ON DELETE SET NULL`; register it in
       `backend/src/storico/infrastructure/database/models/__init__.py` (the drift gate compares
       models to the migrated schema).
-- [ ] 4.10 GREEN — `backend/src/storico/infrastructure/database/alembic/versions/0029_story_deletions.py`
+- [x] 4.10 GREEN — `backend/src/storico/infrastructure/database/alembic/versions/0029_story_deletions.py`
       **New** (path free): `revision = "0029"`, `down_revision = "0028"`, create `story_deletions`
       with its index and the actor foreign key, and a `downgrade()` that drops the table. It is
+      > **[Index resolved 2026-09-30 — owner decision]** The plan said "its index" without naming a
+      > column, and no code in slice (b) reads `story_deletions`, so the choice was a real product
+      > decision rather than an inference. The owner chose a **composite `(workspace_id,
+      > deleted_at)`**, named `ix_story_deletions_workspace_deleted_at`: the only plausible query
+      > against an audit record is "what was deleted in this workspace, newest first", and
+      > `story_id` is not a lookup anyone can perform from the UI because the story is gone.
       additive, so unlike `0028` it needs no empty-database guard.
-- [ ] 4.11 GREEN — `backend/src/storico/domain/ports/user_story_repository.py`: add
+- [x] 4.11 GREEN — `backend/src/storico/domain/ports/user_story_repository.py`: add
       `delete_with_record(user_story_id, record)`; `backend/src/storico/infrastructure/database/repositories/user_story_repository.py`:
       implement it as one transaction — the story `DELETE`, the record `INSERT`, one `commit` — that
       rolls back and raises `EntityNotFound` when the delete matched no row.
-- [ ] 4.12 GREEN — `backend/src/storico/domain/ports/vector_store_port.py`: add
+- [x] 4.12 GREEN — `backend/src/storico/domain/ports/vector_store_port.py`: add
       `delete_by_story(*, workspace_id, user_story_id)` whose docstring states that, unlike
       `search_similar`/`store_extraction`, it raises `VectorStoreError` because its caller is
       destructive; `backend/src/storico/infrastructure/vector/qdrant_adapter.py`: implement it with a
       `FilterSelector` over the existing `workspace_id` and `user_story_id` payload keys and
       `wait=True`, wrapping driver failures in `VectorStoreError`.
-- [ ] 4.13 GREEN — `backend/src/storico/application/services/story_deletion_service.py` **New**
+- [x] 4.13 GREEN — `backend/src/storico/application/services/story_deletion_service.py` **New**
       (path free): the ordering — snapshot `list_versions`, build the `StoryDeletion` with the
       destroyed version numbers, call `delete_by_story` when a vector store is configured (skipped
       when it is `None`, because no points exist to clean), then `delete_with_record`;
       `backend/src/storico/api/routes/stories.py`: `DELETE /{story_id}` uses
       `require_story_owner_or_admin` and calls the service.
-- [ ] 4.14 GREEN (frontend mirror) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`: the
+- [x] 4.14 GREEN (frontend mirror) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`: the
       three new codes in `errorCodes` with neutral international Spanish;
       `frontend/src/lib/__tests__/error-codes.test.ts`: `EXPECTED_REGISTRY_COUNT` `39` → `42` and both
       locale counts `44` → `47`. Prove with `cd frontend && pnpm test`.
-- [ ] 4.15 TRIANGULATE — `backend/tests/test_api/test_stories.py`: the refusal edge on the gated
+- [x] 4.15 TRIANGULATE — `backend/tests/test_api/test_stories.py`: the refusal edge on the gated
       delete — a non-member keeps the unchanged 403 `NOT_A_WORKSPACE_MEMBER`, an addressed story that
       does not exist is 404 `EntityNotFound`, and a `MEMBER`'s 403 leaves the story, its versions,
       their tasks and their points intact. Prove with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_stories.py -m "not integration"`.
-- [ ] 4.16 TRIANGULATE (Postgres-only — run where the Docker daemon exists) —
+- [x] 4.16 TRIANGULATE (Postgres-only — run where the Docker daemon exists) —
       `backend/tests/test_integration/test_story_deletion_record.py` **New** (path free), each case
       `@pytest.mark.integration` with the `_docker_reachable()` skipif: the record survives the
       cascade because it holds no foreign key to `stories`; deleting the actor nulls `deleted_by`
@@ -510,16 +525,27 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
       `cd backend && conda run -n storico python -m pytest tests/test_integration/test_story_deletion_record.py -m integration`
       — **requires a Docker daemon (Postgres 16 via testcontainers); without one every case skips and
       the cascade stays unverified.**
-- [ ] 4.17 TRIANGULATE (Postgres-only — run where the Docker daemon exists) —
+      *(W4-T9: the three cases are written and skip locally — no Docker daemon on this machine, so
+      nothing was proven here; CI owns the verdict. Local observation:
+      `pytest tests/test_integration/test_story_deletion_record.py tests/test_integration/test_migration_chain.py -m integration -q`
+      → 5 skipped, 2 deselected.)*
+- [x] 4.17 TRIANGULATE (Postgres-only — run where the Docker daemon exists) —
       `backend/tests/test_integration/test_migration_chain.py` (existing): `0029` reaches head and the
       models ↔ migrated-schema drift set is still empty.
       `cd backend && conda run -n storico python -m pytest tests/test_integration/test_migration_chain.py -m integration`
       — same Docker requirement, same honest skip.
-- [ ] 4.18 REFACTOR — `backend/src/storico/application/services/story_deletion_service.py` and
+      *(W4-T9: confirmed by reading, no edit — neither test hardcodes a revision: head derives from
+      `ScriptDirectory.get_current_head()` and the drift ratchet compares `command.check` output
+      against an empty `frozenset()` `_KNOWN_DRIFT`, so `0029`/`story_deletions` are covered by
+      construction. Local observation: the two container tests skip (no Docker), CI owns the
+      verdict; no new `_KNOWN_DRIFT` entry was needed, so no drift was absorbed.)*
+- [x] 4.18 REFACTOR — `backend/src/storico/application/services/story_deletion_service.py` and
       `backend/src/storico/infrastructure/database/alembic/versions/0029_story_deletions.py`: confirm
       `story_deletions` is the only new table, that the delete order is cleanup-then-relational inside
       one transaction, and that `PUT /api/v1/tasks/{task_id}` was not gated; then rerun
       `cd backend && conda run -n storico python -m pytest tests/test_api tests/test_repositories tests/test_unit -m "not integration"`.
+      *(W4-T9: all four confirmations made by reading, zero production edits — see
+      `apply-progress.md`, section W4-T9. Rerun measured: **971 passed**.)*
 
 ## Phase 5: WU5 — The Invalidation Mark and the Repetition Read
 

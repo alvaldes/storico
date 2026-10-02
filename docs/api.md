@@ -71,6 +71,14 @@ como degradado.
 | PUT | `/api/v1/stories/{id}` | Actualizar story |
 | DELETE | `/api/v1/stories/{id}` | Eliminar story |
 
+Solo el dueño del workspace o un usuario con rol `ADMIN` puede eliminar una story; un `MEMBER`
+recibe `403 WORKSPACE_OWNER_OR_ADMIN_REQUIRED`. La eliminación es una sola operación: si hay un
+vector store configurado, primero quita de él los puntos de la story; después borra la story y
+escribe, en una misma transacción, un registro de auditoría con los números de versión que
+destruyó. Si el vector store no responde, la operación se aborta con
+`503 VECTOR_STORE_UNAVAILABLE` y la story, sus versiones y sus tareas quedan intactas para
+reintentar.
+
 ### Import de user stories (scoped a workspace)
 
 | Método | Path | Descripción |

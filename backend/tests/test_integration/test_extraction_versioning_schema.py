@@ -469,7 +469,13 @@ async def test_downgrade_to_0027_and_back_round_trips_on_a_private_database(
     pg_url: str,
     throwaway_encryption_key: None,
 ) -> None:
-    """``0028`` can be taken back off an empty database and re-applied cleanly.
+    """The head can be taken back to ``0027`` and re-applied cleanly.
+
+    Written for ``0028`` and deliberately **head-agnostic**: the case upgrades to whatever the
+    packaged scripts declare head to be, drops to ``0027`` and re-applies, so every revision
+    stacked on top of ``0028`` joins the round trip for free. Pinning the literal head was the
+    first thing CI caught when ``0029`` landed — and only CI can see this file at all, because it
+    needs a Docker daemon.
 
     This is the rollback boundary the unit layer cannot see at all: SQLite refuses to alter a
     constraint, so the ``downgrade()`` body has never executed anywhere before CI runs this case.
@@ -483,8 +489,12 @@ async def test_downgrade_to_0027_and_back_round_trips_on_a_private_database(
     """
     async with _roundtrip_database(pg_url) as roundtrip_url:
         config = _alembic_config(roundtrip_url)
-        declared_head = ScriptDirectory.from_config(config).get_current_head()
-        assert declared_head == "0028", f"the packaged scripts declare head {declared_head}"
+        scripts = ScriptDirectory.from_config(config)
+        declared_head = scripts.get_current_head()
+        assert declared_head is not None, "the packaged scripts declare no head at all"
+        assert "0028" in {rev.revision for rev in scripts.walk_revisions()}, (
+            "0028 left the chain; this case's premise is a schema that has 0028 in it"
+        )
 
         # A private database starts empty, so head has to be reached before it can be dropped.
         await asyncio.to_thread(command.upgrade, config, "head")
@@ -549,7 +559,7 @@ async def test_downgrade_to_0027_and_back_round_trips_on_a_private_database(
         assert {"version_number", "provider", "temperature", "prompt_rendered"} <= set(restored), (
             "the re-applied 0028 did not restore its columns"
         )
-        assert back == ["0028"], f"the chain recorded {back} after re-applying head"
+        assert back == [declared_head], f"the chain recorded {back} after re-applying head"
 
 
 # ── 1.19 — the real collision, provoked rather than simulated ────────────────────

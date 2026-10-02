@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from uuid import UUID
 
+from storico.domain.entities.story_deletion import StoryDeletion
 from storico.domain.entities.user_story import UserStory
 
 
@@ -59,6 +60,23 @@ class UserStoryRepository(ABC):
     @abstractmethod
     async def delete(self, user_story_id: UUID) -> None:
         """Delete a user story by its unique identifier."""
+        ...
+
+    @abstractmethod
+    async def delete_with_record(self, user_story_id: UUID, record: StoryDeletion) -> None:
+        """Delete the story and write its deletion record in one transaction.
+
+        The atomic sibling of ``delete``: the story row is removed and the
+        audit record of what was destroyed is inserted inside a single
+        transaction, so there is never a deletion without its record and
+        never a record without its deletion. Two separate commits could
+        produce either orphan — and a record for a story that still exists is
+        a lie a human would later read as history.
+
+        If the delete matches no row, nothing is inserted, no commit is made
+        and ``EntityNotFound`` is raised. If the record insert fails, the
+        delete rolls back and ``RepositoryError`` is raised.
+        """
         ...
 
     @abstractmethod

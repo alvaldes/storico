@@ -1130,3 +1130,150 @@ extract with PR A (task 4.6), story delete with PR B (with 4.13), mark/unmark wi
 expect a checkbox to be tickable at the point the plan puts it, and the earlier warning W4-T1 left —
 "the four wrappers are unwired dead code until 4.6/4.13/5.9" — was this same defect, one tranche before
 it bit.
+
+## RESUME POINT — end of session 2026-09-30 (b5). WU4 half-committed, nothing pushed
+
+**Where things stand, physically.** Everything from this session is committed on
+`feat/extraction-versioning-api-wu4`; the working tree is clean except the two files that are not mine
+(`backend/.gitignore`, `.claude/skills/` — untracked, leave them). **Nothing from WU4 has been pushed and
+no WU4 PR exists yet.**
+
+| Local commit | Contains | Status |
+| --- | --- | --- |
+| `d93349f` | gate primitives + error vocabulary + frontend mirror (**PR A**) | committed, **not** independently CI-proven |
+| `155b975` | migration `0029` + `story_deletions` + `delete_with_record` + `delete_by_story` (**PR B**) | committed, depends on A |
+| `4d4b8d2` | the ODD record of the split and the measurement trap | docs |
+
+Measured at this head: backend **1120 passed / 33 deselected**, ruff check and format clean (259 files).
+WU4 progress in the plan: Phase 4 has **4.1, 4.4, 4.5, 4.7, 4.8, 4.9, 4.10, 4.11, 4.12, 4.14** checked;
+**4.2, 4.3, 4.6, 4.13, 4.15, 4.16, 4.17, 4.18 are open**. Slice (b) overall: **41/77**.
+
+**Open PRs from earlier units, all green, none merged:** #31 (WU1) → #32 (WU2) → #33 (WU3). The chain is
+three deep and WU4 will make it five unless the owner merges. Production is still at `0028` and still
+**cannot extract**: the LLM config must be recreated in Configuración (D-a-6).
+
+### What to do tomorrow, in order
+
+1. **Confirm the split commits still stand.** `git log --oneline -4` on `feat/extraction-versioning-api-wu4`
+   and `git status --porcelain`. Then decide, at the seam of `d93349f`: PR A branches from WU3's head
+   (`4404d4b`) and carries `d93349f`; PR B branches from A and carries `155b975`. If the owner would rather
+   not split after all, the two commits squash cleanly.
+2. **Task 4.6 + the extract half of 4.2 (this is PR A's remaining work).** `routes/extraction.py`:
+   `Depends(get_workspace_for_user)` → `Depends(require_owner_or_admin)`. The `version_number` on the 202
+   body is **already done** by W3-T4 (`routes/extraction.py:277`) — premise #1, do not re-add it. Then the
+   `MEMBER` → 403 `WORKSPACE_OWNER_OR_ADMIN_REQUIRED` RED on extract, with no data changed.
+3. **Tasks 4.13, 4.3(stories half), 4.15 (PR B's remaining work).** `StoryDeletionService` ordering:
+   snapshot `list_versions` → build the record with the destroyed numbers → `delete_by_story` **only if a
+   store is configured** → `delete_with_record`. Then `DELETE /api/v1/stories/{story_id}` with
+   `require_story_owner_or_admin`. Replace the two `delete_by_story` **no-op stubs** (left deliberately in
+   `test_api/test_extraction.py` and `test_services/test_extraction_service.py` by W4-T6) with the
+   recording fake that 4.3 needs — that recording behaviour is 4.3's RED, it was not pre-built.
+4. **4.2 is not completable in WU4 — premise #5.** Its letter asks for the gate 403 on extract, **mark,
+   unmark** and story delete. Mark/unmark endpoints arrive in WU5 (5.9 wires the wrapper) and story delete
+   arrives with 4.13. So 4.2 lands in three units. Check it only for what exists, and record the split in
+   `tasks.md` the way the WU3 exception was recorded — dated, attributed, with the original text kept.
+5. **4.16/4.17 and CI.** Write them; they will **skip locally** (no Docker) but **CI does run them** —
+   measured: CI's 18 skips are exactly 16 Qdrant + 2 Ollama, so the testcontainers cases (record-survives-
+   cascade, `0029`-reaches-head, drift-empty) genuinely execute there. That is premise #3 and it is the
+   difference between "unverified" and "verified somewhere".
+6. **Deploy risk if any of this reaches `main`:** the window runs `alembic upgrade head` and `0029` applies
+   there. `0029` is additive with no data guard, so it is safe on an empty `0028` database — but the D-a-3
+   rule still holds for anything with this shape: **a migration that refuses existing data needs its data
+   plan in `prod.todo.md` before it reaches `main`.**
+
+**Numbers the next session should not re-derive:** CI on #33 is `1104 passed, 18 skipped`; WU3 shipped
+1,244 lines (331 production / 913 tests) as a single PR under an owner-ratified exception restated against
+the measurement; WU4's accepted band is 1,300–1,700 and the split into two PRs was the owner's answer to
+projecting past it.
+
+## RESUME POINT — end of session 2026-10-02 (b6). WU4 code-complete in two local branches; nothing pushed
+
+**Where things stand, physically.** WU4's three remaining tranches landed this session and the unit is
+code-complete except for task 4.2's mark/unmark half, which belongs to WU5. Everything is committed;
+the working tree is clean except the two files that are not mine (`backend/.gitignore`,
+`.claude/skills/` — untracked, leave them). **Nothing is pushed and no WU4 PR exists.**
+
+| Branch | Commits | Which PR |
+| --- | --- | --- |
+| `feat/extraction-versioning-api-wu4a` (from WU3's head `4404d4b`) | `d93349f`, `c9f918c`, `718e52b` | **PR A** — the gate, its error vocabulary and the extract gate |
+| `feat/extraction-versioning-api-wu4b` (from A's tip) | `9c7ad48`, `8bdc149`, `a4a2ee9`, `ef962ed` | **PR B** — `0029`, the storage layer, `StoryDeletionService`, the gated delete, the Postgres proofs |
+
+The pre-split branch `feat/extraction-versioning-api-wu4` (`5b3e3d6`) is kept locally as a safety net;
+`git diff 5b3e3d6 ef962ed` is exactly the W4-T7/T8/T9 files, so nothing was lost in the rebase.
+
+Measured at `ef962ed`: unit suite **1132 passed / 36 deselected**; ruff check clean and 261 files
+formatted; the integration file **skips** (this machine has no Docker daemon). Slice (b): **48/77**.
+Phase 4: **17 of 18** — 4.2 stays unchecked on purpose.
+
+**Measured size, and the decision it forces** (full table in `apply-progress.md`,
+§`Parent close-out of WU4`): PR A **840** code+test lines (1,391 with plan artifacts), PR B **1,869**
+(2,587), WU4 **2,701** (3,970) against an accepted `size:exception` band of **1,300–1,700**. The band
+came in over, and the delivery decision says such a unit goes back on the table rather than being
+absorbed — so the first item below is a real owner decision, not a formality.
+
+**Deploy risk, for the record:** `0029` is additive with no empty-database guard, so the deploy
+window's `alembic upgrade head` applies it safely to the current production schema. The D-a-3 rule
+does not bite here.
+
+### What to do next, in order
+
+1. **Owner decision on WU4's measured size.** Either ship the two PRs as they stand with the measured
+   numbers stated in their bodies, or split B once more on the storage-vs-HTTP seam (its committed
+   storage layer + `StoryDeletionService` vs the route + its API and integration tests). Nothing else
+   blocks; the code and its evidence do not change either way.
+2. **Push and open the two PRs**, chained per this change's `feature-branch-chain` strategy: PR A
+   targets `feat/extraction-versioning-api-wu3` (PR #33's branch), PR B targets PR A's branch. Push
+   hangs under `credential-osxkeychain` in a non-GUI shell; the recipe that worked is
+   `GIT_ASKPASS=/tmp/storico_askpass.sh GIT_TERMINAL_PROMPT=0 git -c credential.helper= push …`.
+3. **Before WU5, number the two carried defects inside slice (b)** — the previous resume's item 6,
+   still pending. **D-a-4**: `DELETE /api/v1/users/me` (`api/routes/settings.py:335`) has no
+   `IntegrityError` handling, so deleting an account that revoked a mark answers 500 once a revoke
+   exists. **D-a-1**: the INSERT-only task persist loop (`infrastructure/tasks/extraction_task.py:441`)
+   duplicates task rows if a run is ever re-dispatched. Neither is among the 77 tasks.
+4. **WU5 (Phase 5, 5.1–5.13) — the invalidation mark and the repetition read.** It also closes **4.2**:
+   the 403 gate on mark/unmark is where `require_task_owner_or_admin` finally gets its caller (it is
+   committed, unit-pinned and caller-less on purpose), and 4.2's "a MEMBER still reads the board, moves
+   a card, edits `labels`, edits the story's four fields and reads versions" clause needs its API pins.
+5. **Owner decisions still open from earlier sessions:** recreate the LLM config in production
+   (D-a-6 — without it production cannot extract at all); and decide on the two pieces of dead code
+   left in place by explicit decision — `TaskRepository.list_by_workspace` (0 callers) and, new since
+   W4-T8, the story port/repository `delete` (0 production callers).
+
+**Numbers the next session should not re-derive:** WU4 = 2,701 code+test lines / 3,970 total; PR A 840,
+PR B 1,869; unit suite 1132 passed / 36 deselected / 33 → 36 deselected reconciled to 4.16's three new
+integration functions; WU3 shipped 1,244 lines under a ratified exception; CI on #33 is
+`1104 passed, 18 skipped`; the WU4 band was 1,300–1,700.
+
+**One trap this session hit and the next should keep:** the DELETE route now depends on
+`get_vector_store`, and the suite's autouse Qdrant guard fails any test that reaches the real client —
+every delete case must pin the boundary with `app.dependency_overrides[get_vector_store]`. And
+`git diff --numstat` still does not see untracked files (that is why W4's first measurement was wrong);
+measure with `git add -N` and reset immediately.
+
+### Addendum, same session (2026-10-02) — pushed, PRs opened, CI green, and the one thing CI caught
+
+The owner resolved the two open items above in this same session: **ship the two PRs as they are, with
+the measured numbers stated**, and **push and open them**. Both happened.
+
+- **PR #34** — `feat/extraction-versioning-api-wu4a` → `feat/extraction-versioning-api-wu3` — open, **green**
+  (backend, frontend and Vercel).
+- **PR #35** — `feat/extraction-versioning-api-wu4b` → `feat/extraction-versioning-api-wu4a` — open,
+  **green** on head `45e0ccf`, with the measured sizes and the evidence split stated in the body.
+- The chain is now five deep: #31 → #32 → #33 → #34 → #35, none merged.
+
+**CI's first look at WU4 caught something no local run could.** The branch had never been pushed, and
+the first push turned the backend job red on a *slice (a)* integration test:
+`test_downgrade_to_0027_and_back_round_trips_on_a_private_database` pinned `declared_head == "0028"`,
+which stopped being true the moment `0029` existed. That file needs a Docker daemon, so neither the
+local suite nor any earlier WU4 session could see it. Fixed in `034cebd` by making both pins
+head-agnostic (the precondition now asserts a head exists *and* that `0028` is still in the walked
+chain; the post-re-apply assertion compares against the declared head) instead of bumping the literal,
+which would go stale at the next migration. Then the Postgres half **ran for real**: CI reports
+**`1150 passed, 18 skipped`**, which reconciles exactly with the local `1132 passed, 36 deselected`
+(18 cases run on the testcontainers runner, 18 skip everywhere). Tasks 4.16 and 4.17 are therefore
+verified, not merely CI-owned.
+
+**Consequence for the next session:** everything in this file's items 1 and 2 above is done, and the
+deploy question is answered (`0029` is additive — the window applies it with no data plan). What is
+left is item 3 onward: number **D-a-4** and **D-a-1** inside slice (b), then **WU5** (Phase 5), which
+also closes 4.2 and gives `require_task_owner_or_admin` its caller.

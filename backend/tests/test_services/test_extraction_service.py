@@ -408,8 +408,10 @@ class _RecordingVectorStore(VectorStorePort):
         workspace_id: UUID,  # noqa: ARG002
         user_story_id: str,  # noqa: ARG002
     ) -> None:
-        # Mechanical placeholder so this fake satisfies the port's new abstract
-        # method; task 4.3 / W4-T7 replaces it with a fake that records deletes.
+        # Deliberately inert: the extraction path never deletes vector points,
+        # so this fake has nothing to record. The deletion-recording fake that
+        # exercises ``delete_by_story`` lives where the deletion behaviour is
+        # tested (tests/test_api/test_stories.py).
         return None
 
 

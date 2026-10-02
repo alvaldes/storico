@@ -1916,6 +1916,316 @@ Phase 4 minus 4.1/4.5/4.7/4.14: 4.2, 4.3, 4.4, 4.6, 4.8, 4.9, 4.10, 4.11, 4.12, 
 
 ---
 
+# Apply Progress — WU4 tranche W4-T4 (tasks 4.4, 4.8 entity-half, 4.9, 4.10: the `story_deletions` storage layer) — 2026-09-30, branch `feat/extraction-versioning-api-wu4`
+
+W4-T2/T3/T1 sections above are preserved verbatim. This tranche creates the audit table `0029`
+builds, the model that registers it in Alembic metadata, and the domain entity the deletion
+service will snapshot. No repository, port, service, route or frontend file was touched.
+
+## Structured status consumed
+
+`gentle-ai.sdd-status` v2 for `extraction-versioning-api` from the parent: `nextRecommended: apply`,
+`applyState: ready`, `blockedReasons: []`, `taskProgress` 35/77, `actionContext` mode `repo-local`,
+workspaceRoot and `allowedEditRoots` `["/Users/alvaldes/Developer/storico"]`. Delivery path already
+resolved (`size:exception` accepted for WU4, owner 2026-09-28). All edits stayed inside the five
+allowed surfaces plus the two SDD artifacts. Task 4.8's exception half (`VectorStoreError`) was
+re-read before starting and confirmed present at `domain/entities/exceptions.py:106` exactly as
+W4-T2 left it — not re-added.
+
+## RED measured before any production edit (real errors)
+
+`conda run -n storico python -m pytest tests/test_unit/test_story_deletions_migration.py -m "not integration"`
+→ **7 failed in 0.21s**:
+- `test_the_revision_follows_0028` (and the four `upgrade`/`downgrade` cases) —
+  `FileNotFoundError: [Errno 2] No such file or directory: '.../alembic/versions/0029_story_deletions.py'`
+  raised by `exec_module` in the by-path loader (the `test_add_completed_at_migration.py` pattern).
+- `test_the_model_declares_no_foreign_key_to_stories_or_extractions` and
+  `test_the_model_builds_in_the_sqlite_unit_schema` —
+  `ModuleNotFoundError: No module named 'storico.infrastructure.database.models.story_deletion'`.
+
+That is the honest RED: the file that must exist does not. GREEN on the same command: **7 passed**.
+
+## TDD Cycle Evidence (strict TDD)
+
+| Cycle | Test(s) | Command | Result |
+| --- | --- | --- | --- |
+| RED (4.4, before any production edit) | new migration/model test file | `conda run -n storico python -m pytest tests/test_unit/test_story_deletions_migration.py -m "not integration"` | **7 failed** (FileNotFoundError on the revision, ModuleNotFoundError on the model) |
+| GREEN (4.8/4.9/4.10) | same file after the three new modules + registration | same command | **7 passed** |
+| Regression | `tests/test_unit` | `pytest tests/test_unit -m "not integration"` | **443 passed** (436 at W4-T1 close + 7 new = 443 ✓) |
+| Regression | `tests/test_api tests/test_repositories tests/test_unit` | `pytest tests/test_api tests/test_repositories tests/test_unit -m "not integration"` | **951 passed** |
+| Regression | whole suite | `pytest -m "not integration"` | **1112 passed, 33 deselected** — parent's head measurement 1105; delta = **+7**, exactly the 7 new test functions in `test_story_deletions_migration.py` (added 7, removed 0) |
+| Lint/format | `ruff check` / `ruff format --check src tests` | canonical §0 commands | **All checks passed; 259 files already formatted** (one I001 import-order fix in the new model file) |
+
+## The table as shipped (`design.md:486-505`, not improved)
+
+`story_deletions`: `id` pk (uuid7 default) · `story_id`/`project_id`/`workspace_id` `Uuid` NOT NULL ·
+`actor`/`feature`/`benefit` `Text` NOT NULL (the trio the app already treats as a story's identity) ·
+`version_numbers` `sa.JSON` NOT NULL · `deleted_by` `Uuid` NULL, the table's **only** FK,
+`users.id ON DELETE SET NULL` (`projects.created_by` convention, `0014`) · `deleted_at`
+`DateTime(timezone=True)` NOT NULL. No FK to `stories`, `projects` or `extractions` — anywhere.
+
+**Where the absence of the story/extraction FK is pinned (two layers):**
+1. **Model**: `test_the_model_declares_no_foreign_key_to_stories_or_extractions` asserts the model's
+   complete FK target set is **exactly `{"users.id"}`** — not merely "does not contain stories", so
+   a future FK to *any* table other than `users` fails it — with an explicit
+   `startswith(("stories.", "extractions.", "projects."))` guard for a readable failure message.
+2. **Migration**: `test_upgrade_declares_only_the_actor_foreign_key` reflects the real created table
+   and asserts `len(foreign_keys) == 1` with `referred_table == "users"`, constrained/referred
+   columns `deleted_by`/`id`, and `options.ondelete == "SET NULL"` (SQLAlchemy 2.0 nests `ondelete`
+   under `options`; the first draft asserted the flat key and failed — test-side, fixed in RED→GREEN).
+
+## The index and its owner rationale (verbatim from tasks.md 4.10)
+
+`ix_story_deletions_workspace_deleted_at` over **`(workspace_id, deleted_at)`**, in both the model's
+`__table_args__` and the migration, order preserved and pinned by reflection
+(`index["column_names"] == ["workspace_id", "deleted_at"]`). Rationale kept in code: the only
+plausible query against an audit record is "what was deleted in this workspace, newest first";
+`story_id` is not a lookup the UI can perform because the story is gone.
+
+## Why `0029` needs no empty-database guard (stated in the revision's docstring)
+
+`0028` reshaped `extractions`/`tasks` in ways no backfill could reconstruct (D11) and had to refuse
+populated tables. `0029` creates a **brand-new empty table**: additive and safe on a database of any
+population — no existing row to migrate, nothing to backfill. The docstring says this explicitly and
+names the failure mode of copying the guard ("do not 'fix' the absence: it would refuse the deploy
+for no reason"). `downgrade()` is a plain index+table drop; its audit-trail loss is the design's own
+recorded rollback price.
+
+## Honest SQLite limits (stated in the tests, not oversold)
+
+- `ON DELETE SET NULL` **behaviour** (an account deletion nulls `deleted_by` while the record stays)
+  is NOT proven locally: SQLite does not enforce FKs by default, so a local assertion would pass for
+  the wrong reason. The local test pins the **declaration** only (reflected `ondelete == "SET NULL"`)
+  with a comment naming task 4.16 and CI/Docker as the behaviour's owner.
+- The models ↔ migrated-schema drift gate (4.17) needs the same Docker/Postgres; registration in
+  `models/__init__.py` (import **and** `__all__`, per the file's own docstring) is what keeps that
+  future gate meaningful.
+- SQLite returns DATETIME values naive; the round-trip test compares after `replace(tzinfo=UTC)` and
+  its comment notes TIMESTAMPTZ is a Postgres property this suite cannot prove.
+
+`test_the_model_builds_in_the_sqlite_unit_schema` proves the portability choice directly:
+`Base.metadata.create_all(engine)` + a full insert/select round trip of the model, including a JSON
+`version_numbers == [1, 2]` and a `NULL` `deleted_by` — the write path the deletion service will use.
+
+## Files changed (this tranche — 389 changed lines)
+
+- `backend/tests/test_unit/test_story_deletions_migration.py` **New** (220 lines; 7 cases)
+- `backend/src/storico/domain/entities/story_deletion.py` **New** (35) — frozen, slotted, story
+  identity as values; no SQLAlchemy, no infrastructure coercion
+- `backend/src/storico/infrastructure/database/models/story_deletion.py` **New** (58) — the reasons
+  for `sa.JSON`-over-ARRAY, the FK asymmetry, and the index rationale all live as comments
+- `backend/src/storico/infrastructure/database/models/__init__.py` (+2/−0) — import + `__all__`
+- `backend/src/storico/infrastructure/database/alembic/versions/0029_story_deletions.py` **New**
+  (74) — `revision = "0029"`, `down_revision = "0028"`, `op.f()` names per the `0028` house style
+
+Tranche size ≈389 lines (348 new + 2 registration + artifact lines). WU4's `size:exception` stands;
+WU4 cumulative so far ≈287 (W4-T2) + 10 (W4-T3) + 298 (W4-T1) + 389 (this tranche) ≈ 984 of the
+≈1,300–1,700 forecast. Restatement against the final measurement at WU4 close-out, per the WU3 rule.
+
+Not committed, not staged, branch not switched. Pre-existing `odd/tasks/extraction-versioning-090.md`
+modification, untracked `backend/.gitignore` / `.claude/skills/` untouched.
+
+## Persisted checkbox
+
+`tasks.md` 4.4, 4.8, 4.9 and 4.10 marked `[x]` immediately after their proof. Re-read before
+returning: 4.1/4.5/4.7/4.14 stay checked from earlier tranches; **4.2, 4.3, 4.6, 4.11, 4.12, 4.13,
+4.15, 4.16, 4.17, 4.18 confirmed unchecked**. Checked total 39; taskProgress moves to 39/77.
+
+## Remaining unchecked tasks (Phase 4)
+
+4.2, 4.3 (gate + deletion RED), 4.6 (extract route gate), 4.11 (`delete_with_record`), 4.12 (vector
+port), 4.13 (the service + route), 4.15, 4.16, 4.17, 4.18. Next per the parent's plan: W4-T5
+(4.11 + the repository half), which consumes this tranche's model and entity.
+
+## Risks
+
+- The drift gate (4.17) and the SET NULL behaviour (4.16) stay unproven until Docker/CI — the
+  registration and the reflected DDL are the strongest local evidence available, and the tests say
+  so instead of claiming coverage.
+- `version_numbers` as `sa.JSON` cannot be queried relationally (design Tradeoff paragraph) — an
+  accepted cost, restated here so nobody "fixes" it to an ARRAY and breaks the SQLite unit schema.
+- None new otherwise: additive-only change, suite delta fully accounted, lint/format clean.
+
+## W4-T5 — `delete_with_record`: one-transaction story delete and audit record (task 4.11 + the repository half of 4.3) — 2026-09-30
+
+## Structured status consumed
+
+Native `gentle-ai.sdd-status` v2 from the parent: change `extraction-versioning-api`,
+`nextRecommended: apply`, `applyState: ready`, `taskProgress 39/77`, `blockedReasons: []`,
+`actionContext` mode `repo-local`, workspaceRoot/allowedEditRoots `/Users/alvaldes/Developer/storico`.
+Branch `feat/extraction-versioning-api-wu4`, carrying W4-T2/T3/T1/T4 uncommitted — none reverted.
+
+## RED measured before any production edit (real errors)
+
+`cd backend && conda run -n storico python -m pytest tests/test_repositories/test_user_story_repo.py -m "not integration"`
+→ **4 failed, 19 passed**. Every failure was `AttributeError: 'SQLAlchemyUserStoryRepository' object
+has no attribute 'delete_with_record'` — the port method did not exist yet. The four failing cases:
+
+1. `test_delete_with_record_deletes_and_records_in_one_commit`
+2. `test_delete_with_record_unknown_story_raises_and_writes_nothing`
+3. `test_delete_with_record_insert_failure_rolls_back_the_delete`
+4. `test_delete_with_record_round_trips_identity_and_version_numbers`
+
+The pre-tranche count was 19 tests in this file (confirmed by the RED run itself), so **+4 net is
+exactly the four assigned cases: 4 test functions added, 0 removed** — verified against
+`git diff tests/test_repositories/test_user_story_repo.py`, whose only `+async def` lines are those
+four (plus the `_deletion_rows` helper, not a test) and whose only `-` lines are the three replaced
+import lines (`datetime` → `datetime, UTC`; `event` → `event, func, select`... the `func` import was
+then removed by `ruff --fix` as unused; `EntityNotFound`/`StoryDeletion`/`StoryDeletionModel` added).
+No existing test was replaced, weakened or deleted; the +4 requires no rounding story.
+
+## The atomicity technique borrowed from `save_many`'s tests
+
+From `test_save_many_is_atomic_on_duplicate_primary_key` (file line ≈420): the **primary-key
+collision is the rollback lever**, because SQLite does not enforce foreign keys here — a forced
+`IntegrityError` on the record INSERT (an existing `story_deletions` row seeded with the same id the
+record carries) makes the DELETE succeed and the INSERT fail, and the assertion is that the story is
+**still present** afterwards and the colliding row survived. From
+`test_save_many_commits_once_for_three_rows` (≈443): statement/commit capture via
+`event.listen(test_engine.sync_engine, ...)` on the **real engine**, not a mock the repository would
+call once. I extended the same listener technique from `before_cursor_execute` to the
+connection-level **`commit` event** so "one transaction" is measured directly, not inferred from
+statement shapes.
+
+- One-commit proof: exactly one `commit` event during the call, and the captured statement list is
+  exactly `["DELETE", "INSERT"]` — no extra statement that would imply a second transaction boundary.
+- Rollback proof (case 3): `RepositoryError` raised, story row intact, `story_deletions` still holds
+  only the pre-existing colliding row (`feature == "pre-existing-audit-row"`).
+
+## How the no-row path proved "no commit"
+
+Case 2 attaches the same `commit` listener, calls `delete_with_record` with an unknown UUID, expects
+`EntityNotFound`, then asserts **`commits == []`** and `story_deletions` still empty. The
+implementation makes this structural, not accidental: the rowcount check **gates** the commit — on
+`rowcount == 0` the session is rolled back and `EntityNotFound` raised *before* the only `commit`
+call in the method is ever reached. This is the deliberate inversion of the legacy `delete`
+ordering: `delete` (`user_story_repository.py:118-123`) **commits first and checks rowcount after**,
+so a no-op delete still commits. I copied the flaw nowhere: in `delete_with_record` the check comes
+first. **`delete` itself was left byte-for-byte as-is** — whether its commit-before-check ordering
+should change is an owner question (recorded here, not "fixed" silently in this tranche).
+
+## SQLite-vs-Postgres limitation recorded in the test docstrings
+
+SQLite does not enforce FKs by default, so the docstrings say what each case actually proves: the
+rollback and commit-counting proofs are meaningful locally (the PK is the only constraint SQLite
+trips), while the **cascade behaviour of a real story deletion — versions, tasks and marks dying
+with the story — is task 4.16's concern (integration, Docker/Postgres, CI)**, named explicitly in
+the `unknown_story` and `round_trips` docstrings. The timestamp comparison re-attaches UTC after the
+SQLite round trip (`TIMESTAMPTZ` is a Postgres property), following W4-T4's precedent.
+
+## TDD Cycle Evidence (strict TDD)
+
+| Cycle | Task | RED | GREEN | Notes |
+|---|---|---|---|---|
+| 1 | 4.11 (+ repo half of 4.3) | 4 failed, 19 passed (`AttributeError` ×4) | 23 passed in the same file | One cycle; the four cases triangulate commit-count, no-row, rollback and round-trip independently. No REFACTOR beyond `ruff --fix` on the two new import blocks and a `ruff format` pass — no production restructuring needed. |
+
+## Files changed (this tranche; `git diff --numstat` vs HEAD, which also carries W4-T2/T3/T1/T4 uncommitted)
+
+- `backend/tests/test_repositories/test_user_story_repo.py` **+197/−3** (4 new cases + 2 helpers + imports)
+- `backend/src/storico/domain/ports/user_story_repository.py` **+18/−0** (abstract `delete_with_record` + import)
+- `backend/src/storico/infrastructure/database/repositories/user_story_repository.py` **+44/−1**
+  (implementation + `_to_record_kwargs` + imports; `delete` untouched)
+
+Tranche total **≈263 changed lines** (259+/4−). WU4 cumulative ≈ 287 (W4-T2) + 10 (W4-T3) + 298
+(W4-T1) + 389 (W4-T4) + 263 ≈ **1,247 of the ≈1,300–1,700 forecast** — `size:exception` accepted for
+WU4 stands; restatement against the final measurement at WU4 close-out, per the WU3 rule.
+
+## Verification (all numbers measured at this head)
+
+- `pytest tests/test_repositories/test_user_story_repo.py -m "not integration"` → **23 passed**
+- `pytest tests/test_repositories -m "not integration"` → **132 passed**
+- `pytest -m "not integration"` → **1116 passed, 33 deselected** (pre-tranche 1112 → +4, the four new cases; suite delta fully accounted)
+- `ruff check src tests` → All checks passed! · `ruff format --check src tests` → 259 files already formatted
+
+## Persisted checkbox
+
+`tasks.md` **4.11** marked `[x]` immediately after the proof. Re-read before returning: Phase 4
+checked = 4.1, 4.4, 4.5, 4.7, 4.8, 4.9, 4.10, 4.11, 4.14; **4.2, 4.3, 4.6, 4.12, 4.13, 4.15, 4.16,
+4.17, 4.18 confirmed unchecked** — 4.3 deliberately stays open (its `test_api/test_stories.py` half
+belongs to W4-T7). Checked total 40; taskProgress moves to 40/77.
+
+## Remaining unchecked tasks (Phase 4)
+
+4.2, 4.3 (gate + deletion RED), 4.6 (extract route gate), 4.12 (vector port), 4.13 (the service +
+route), 4.15, 4.16, 4.17, 4.18. Next per the parent's plan: W4-T6 (4.12, the vector port), which
+`delete_with_record`'s caller (the W4-T7 service) will need.
+
+## Risks
+
+- Cases 2 and 3 are honest on SQLite but the FK/cascade dimension of the invariant is unproven until
+  4.16 (Docker/CI) — stated in the docstrings, not oversold.
+- `delete`'s commit-before-check ordering remains as a known wart outside this method's scope; an
+  owner decision is recorded as needed, not made.
+- None new otherwise: the method is additive, and the port grew one abstract method with exactly
+  one concrete implementer in the repo (`SQLAlchemyUserStoryRepository` — verified by grep, no test
+  fakes subclass the port); the full unit suite is green against both edits.
+
+---
+
+## W4-T6 — task 4.12: `VectorStorePort.delete_by_story` + Qdrant adapter
+
+### TDD cycle evidence (strict TDD)
+
+| Cycle | Task | Proof |
+| --- | --- | --- |
+| RED | 4.12 | 4 new tests in `tests/test_unit/test_vector_store.py`, all failing **only** with `AttributeError: 'QdrantAdapter' object has no attribute 'delete_by_story'` (4 failed, 19 passed) — pre-existing cases untouched, none weakened |
+| GREEN | 4.12 | Port abstract method + adapter implementation; focused file **23 passed** |
+| TRIANGULATE | 4.12 | Both-payload-keys string typing and `wait=True` each pinned by their own test; driver failure and client-unavailable each pinned to raise `VectorStoreError` |
+| REFACTOR | 4.12 | None needed; implementation is the design sketch verbatim |
+
+### RED failures (real counts and kinds)
+
+- `test_delete_by_story_filters_on_both_payload_keys_as_strings` — AttributeError (method missing)
+- `test_delete_by_story_waits_for_the_delete_to_apply` — AttributeError
+- `test_delete_by_story_driver_failure_raises_vector_store_error` — AttributeError
+- `test_delete_by_story_client_unavailable_raises` — AttributeError
+- 4 failed, 19 passed; every failure the same kind (missing method), zero collateral.
+
+### Filter construction (payload keys and string types)
+
+`FilterSelector(Filter(must=[FieldCondition("workspace_id", MatchValue(str(workspace_id))), FieldCondition("user_story_id", MatchValue(user_story_id))]))` — both values **`str`**-typed, asserted with `isinstance(..., str)` in the test, because `store_extraction` writes `workspace_id` as `str(workspace_id)` and `user_story_id` as a plain string; a type mismatch would delete nothing and still look like success.
+
+### How `wait=True` was proved
+
+Asserted on the actual recorded call kwargs (`mock_client.delete.call_args[1]["wait"] is True`) in its own test — not assumed from reading the implementation.
+
+### Skip-vs-raise distinction (documented at three ends)
+
+- Port docstring: "no vector store configured" (service skips — legitimate completion) vs "a vector store that cannot be reached" (raises) stated explicitly.
+- Adapter docstring: states that "client unavailable" means `_get_client()` returned `None` — lazy init failed (connection attempt raised, no client object exists) — a *configured* store that cannot be reached, which raises; contrasts with `store_extraction`'s graceful degradation verbatim ("the caller is a destructive operation that must not proceed on an unverified cleanup" carries the design's reason).
+- `store_extraction` docstring gained the one permitted cross-reference sentence ("Note the contrast with `delete_by_story`... same client, opposite error postures, both deliberate") — no behaviour change; `search_similar` untouched.
+
+### Authorized deviation: two fake stubs (parent decision A, bounded)
+
+The new abstract method made both `_RecordingVectorStore(VectorStorePort)` fakes non-instantiable. Subclass proof (grep of `src` and `tests`): exactly three concrete subclasses — `QdrantAdapter` (implements), `tests/test_api/test_extraction.py:65` and `tests/test_services/test_extraction_service.py:382`. `tests/test_integration/test_few_shot_rag_qdrant.py:268` `_dead_adapter` returns a real `QdrantAdapter` (verified — not a third break); `test_few_shot_retrieval.py` mentions the port only in a docstring / uses a mock, which needs no implementation. So **2 is the complete set**, each fixed with a pure no-op stub + one-line comment naming task 4.3 / W4-T7 as the replacement owner; no recording, no counters, no call lists. A parent query was sent for this decision and timed out; the parent then ratified option (A) with these exact bounds. No assertions were touched anywhere.
+
+### Honest limitation: fake vs real Qdrant
+
+All new cases run against a fake `AsyncQdrantClient`; the test-module docstring states they prove the calls the adapter **issues** (filter shape, `wait=True`, error mapping), not that a real Qdrant drops the points. The real round trip is proven where a Docker daemon exists — **task 4.16 / CI**. A fake-client green here must not be read as "the collection really lost its points".
+
+### Verification (all numbers measured at this head)
+
+- `pytest tests/test_unit/test_vector_store.py -m "not integration"` → **23 passed**
+- `pytest tests/test_unit -m "not integration"` → **447 passed**
+- `pytest -m "not integration"` → **1120 passed, 33 deselected** (pre-tranche 1116 → +4 = exactly the four new test functions; the two stubs add zero tests; delta fully accounted, **backend completely green**)
+- `ruff check src tests` → All checks passed! · `ruff format --check src tests` → 259 files already formatted
+
+### Tranche line count
+
+`git diff --numstat` for the five touched files: port +29/−0, adapter +71/−1, test_vector_store +138/−0, test_services fake +10/−0, test_api fake +10/−0 (its file total shows 22/8 but 12/8 are prior tranches' already-verified 4.7 work). **Tranche total ≈ 259 changed lines.** Cumulative WU4 ≈ 1,247 + 259 ≈ **1,506** — inside the accepted 1,300–1,700 `size:exception` band.
+
+### Persisted checkbox
+
+`tasks.md` **4.12** marked `[x]` after the proof. Re-read before returning: Phase 4 checked = 4.1, 4.4, 4.5, 4.7, 4.8, 4.9, 4.10, 4.11, 4.12, 4.14; **4.2, 4.3, 4.6, 4.13, 4.15, 4.16, 4.17, 4.18 confirmed unchecked**. Checked total 41; taskProgress 41/77.
+
+### Named debt (not coverage)
+
+**2 placeholder stubs that W4-T7 replaces** with fakes that record deletes (task 4.3's half). This is debt with a name and owner, not test coverage of the delete path — the delete path's behavioural coverage lives in this tranche's four unit cases and, for the real round trip, 4.16.
+
+### Consumed status
+
+`actionContext` mode `repo-local`, workspaceRoot/allowedEditRoots `/Users/alvaldes/Developer/storico`, `nextRecommended: apply`, `applyState: ready`, `taskProgress` 40/77 → now 41/77. All edits inside allowed roots; every other forbidden surface untouched (`application/services/*`, `api/routes/stories.py`, story repo/port, `story_deletion`/`0029`, `api/*`, `tests/_helpers.py`, frontend, `design.md`/`proposal.md`, `.gitignore`, `.claude/skills/`, `odd/tasks/*`). Nothing committed, staged, pushed, or branch-switched.
+
 # Apply Progress — W4-T7 (task 4.6 GREEN + the extract half of 4.2 RED: the POST extract gate) — 2026-09-30, branch `feat/extraction-versioning-api-wu4a`
 
 ## Structured status consumed
@@ -1993,3 +2303,391 @@ replaces the stub.
 
 4.2 stays unchecked **with** its dated amendment block recording the three-way split; 4.3, 4.13,
 4.15, 4.16, 4.17 and 4.18 confirmed unchecked. Only **4.6** was marked `[x]`.
+
+---
+
+# W4-T8 — sanctioned story deletion end-to-end (tasks 4.13, the stories half of 4.3, 4.15) — 2026-09-30
+
+Branch `feat/extraction-versioning-api-wu4b` at tip `8bdc149`, PR B of the WU4 two-PR chain. PR A
+(`feat/extraction-versioning-api-wu4a`, tip `718e52b`) sits underneath as the gate + error
+vocabulary; PR B's own storage layer (entity, port, model, `0029`, adapter method) is already
+committed at `9c7ad48`. Consumed, not touched. Measured baseline at this head: **1125 passed,
+33 deselected**; ruff check clean; format 259 files. Working tree also carries two pre-existing
+untracked entries (`.claude/skills/`, `backend/.gitignore`) — preserved, untouched.
+
+## Structured status consumed
+
+Parent contract: service ordering = snapshot → record → vector cleanup → delete-with-record
+(design.md §"Decision: story deletion is snapshot → vector cleanup → delete-with-record, in one
+transaction"); gate stays in the route (`require_story_owner_or_admin`, service re-runs no
+authorization); `version_numbers` stored **ascending** by parent decision; the two stub comments
+named W4-T7/W4-T3 get closed as comment-only edits.
+
+## RED measured before any production edit (real errors)
+
+7 new test functions in `TestDeleteStory` (+ helpers + two fakes). Observed at pre-service head,
+`conda run -n storico python -m pytest tests/test_api/test_stories.py -m "not integration" -q`:
+**6 failed, 28 passed** — the seventh (`test_a_non_member_keeps_the_not_a_workspace_member_code`)
+passed at RED on purpose: it pins that the unchanged membership refusal survives the swap, so it
+is green before and after. Failure kinds, all the intended ones:
+
+- `test_the_owner_deletes_a_story_with_versions_and_leaves_the_record` — `assert [] == []` shape:
+  **no record row existed** (`len(records) == 0` vs 1); the old path deleted without a record.
+- `test_the_recording_store_receives_exactly_one_delete_by_story` — `assert [] == [{...}]`: **no
+  vector call was ever made**; the old path had no cleanup at all.
+- `test_a_raising_store_aborts_with_503_and_preserves_everything` — `assert 204 == 503`: the old
+  path had no store boundary, so nothing could fail.
+- `test_no_vector_store_configured_still_deletes_with_a_record` — `assert 0 == 1`: no record row.
+- `test_a_member_who_is_neither_owner_nor_admin_is_refused` — `assert 204 == 403`: the old gate
+  admitted any member, and the delete went through.
+- `test_a_repository_error_in_the_record_insert_answers_5xx` — `assert 204 == 500`: the route had
+  no service to propagate a repository error through.
+
+## GREEN
+
+`StoryDeletionService` new (`application/services/story_deletion_service.py`): snapshot via
+`list_versions`, frozen `StoryDeletion` built from the story's identity as values with
+`version_numbers=sorted(...)`, `delete_by_story` only when a store is configured (`None` =
+legitimate completion; a configured-but-unreachable store raises `VectorStoreError` and aborts
+before step 4), then `delete_with_record`. Workspace id resolved from
+`project_repo.find_by_id(story.project_id)` inside the service; a `None` project raises
+`EntityNotFound("UserStory", ...)` — unreachable through the gate, honest anyway.
+`routes/stories.py::delete_story` swaps the inline access check for `require_story_owner_or_admin`
+(+ new `WorkspaceRepoDep`, + `extraction_repo`, + `vector_store: VectorStorePort | None =
+Depends(get_vector_store)`), builds the service inline (`TaskService(repo)` idiom), keeps the 204.
+
+Focused file after GREEN: **34 passed** (27 pre-existing + 7 new).
+
+## The ascending-`version_numbers` decision (parent-decided, recorded here)
+
+`list_versions` reads `version_number DESC`; the record stores `sorted(...)`. Task 4.3's letter
+pins `[1, 2]` and the spec says "the destroyed version numbers 1 and 2": an audit row whose order
+flipped with a repository read order would be a needless trap, so the service normalizes. The
+owner-delete test asserts `[1, 2]` against the table.
+
+## The dependency-override trap, and how it was pinned
+
+Every DELETE-stories request now resolves `get_vector_store`; without an override the route holds
+a real `QdrantAdapter`, and the suite's autouse `_forbid_real_qdrant_clients` turns the lazy
+`AsyncQdrantClient` construction into a `pytest.fail` (a `BaseException` the adapter's `except
+Exception` cannot swallow). Pinned **in the test file** (conftest is out of bounds): each test
+requests the `app` fixture — the same instance `async_client` uses — and sets
+`app.dependency_overrides[get_vector_store] = lambda: <fake or None>`; `async_client` clears the
+overrides at teardown, so no cleanup. `get_vector_store` is imported from
+`storico.api.dependencies` so the override key is the same function object the route holds. Both
+pre-existing delete tests got the override added (boundary pinning, not assertion weakening —
+their status/row assertions are unchanged).
+
+## The cascade witness at the unit layer, done honestly
+
+SQLite honours `ON DELETE CASCADE` only with `PRAGMA foreign_keys=ON`, which the suite does not
+set (the limitation is already documented in `tests/test_repositories/test_custom_provider_repo.py`).
+The in-memory engine is a **StaticPool** — one shared DBAPI connection per test — so a helper
+(`_enforce_sqlite_cascades`) sets the pragma on the shared connection before the request, and the
+owner-delete and raising-store tests witness the cascade **behaviourally** at the unit layer: rows
+actually gone / actually intact, not just DDL inspected. Task 4.16 (Postgres-only) re-proves it
+against the real engine.
+
+## The repository-error case, split and said so
+
+Its rollback semantics stay owned by the repository layer
+(`tests/test_repositories/test_user_story_repo.py`, W4-T5 — not duplicated, per the contract). The
+API half pinned here is the surface only: monkeypatching
+`SQLAlchemyUserStoryRepository.delete_with_record` to raise `RepositoryError` answers **500** with
+the story still present. Chosen because it is cheap (one monkeypatch) and the escape-path (error
+out of the service, handler answers, no partial state at the route layer) is exactly what the
+repository test cannot see.
+
+## The four-part 503 witness (spec scenario)
+
+`test_a_raising_store_aborts_with_503_and_preserves_everything`: story still 200 via GET, both
+extraction rows still on the table (the vector points' source rows), both task rows still there,
+and **zero** `story_deletions` rows — with FK enforcement on, so "intact" is measured, not assumed.
+
+## The stub comments closed (comment-only, no behaviour)
+
+Both `_RecordingVectorStore.delete_by_story` no-ops (`tests/test_api/test_extraction.py`,
+`tests/test_services/test_extraction_service.py`) now say the fake is deliberately inert because
+the extraction path never deletes, and that the deletion-recording fake lives where the behaviour
+is exercised (`tests/test_api/test_stories.py`). No assertion touched in either file.
+
+## `delete` is now caller-less — by decision
+
+`SQLAlchemyUserStoryRepository.delete` has no caller left on this tree. Leaving it is the owner's
+decision (the port method, the implementation and its tests stay); recorded here so 4.18's
+closing refactor knows the dead code is known, not missed.
+
+## Files changed (this unit; `git diff --numstat` vs tip `8bdc149`)
+
+| File | +/− |
+| --- | --- |
+| `backend/src/storico/application/services/story_deletion_service.py` | new (102 lines) |
+| `backend/src/storico/api/routes/stories.py` | 30+/3− |
+| `backend/tests/test_api/test_stories.py` | 304+/4− |
+| `backend/tests/test_api/test_extraction.py` | 4+/2− (comment only) |
+| `backend/tests/test_services/test_extraction_service.py` | 4+/2− (comment only) |
+| `docs/api.md` | 8+ |
+| `openspec/changes/extraction-versioning-api/tasks.md` | 12+/3− |
+| `openspec/changes/extraction-versioning-api/apply-progress.md` | this section |
+
+**≈478 changed lines** including the new service file (102) and this section (155): production
+≈132 (routes 30+/3− + the new service file), tests 312+/8−, docs 8+, plan artifacts 167. The test
+bulk is the deletion suite the contract asked for; no size exception needed for the production
+surface, which is one new file and one route rewrite.
+
+## Verification (writer-run, exact commands, at this head)
+
+| Command | Result |
+| --- | --- |
+| `cd backend && conda run -n storico python -m pytest tests/test_api/test_stories.py -m "not integration" -q` | **34 passed** |
+| `cd backend && conda run -n storico python -m pytest tests/test_repositories/test_user_story_repo.py tests/test_api/test_extraction.py -m "not integration" -q` | **69 passed** |
+| `cd backend && conda run -n storico python -m pytest -m "not integration" -q` | **1132 passed, 33 deselected** (baseline 1125 + exactly the 7 new test functions) |
+| `cd backend && conda run -n storico python -m ruff check src tests` | All checks passed |
+| `cd backend && conda run -n storico python -m ruff format --check src tests` | 260 files already formatted (259 + the new service file) |
+
+## Persisted checkbox
+
+4.3 `[x]` (with its dated two-half amendment block), 4.13 `[x]`, 4.15 `[x]`. Re-read after the
+edits: 4.2 (extract half done on PR A; mark/unmark endpoints still owed), 4.16, 4.17 (Docker) and
+4.18 (closing refactor) confirmed still `[ ]`.
+
+## Risks
+
+- The unit-layer cascade witness depends on StaticPool + pragma; if the test engine's pooling
+  ever changes, `_enforce_sqlite_cascades` degrades to the pre-pragma state (the DDL is still
+  declared, and 4.16's Postgres suite is the behavioural owner). The helper's docstring says so.
+- `deleted_by` SET NULL is only provable under Postgres (SQLite ignores `ON DELETE`); task 4.16
+  owns it, unchanged from the plan.
+
+## W4-T9 — tasks 4.16, 4.17, 4.18: the Postgres-only proofs (written, CI-owned) and the closing refactor — 2026-09-30
+
+### Structured status consumed
+
+Parent contract: a new Postgres-only integration file for `story_deletions` (task 4.16) modelled
+on `test_extraction_versioning_schema.py`'s harness, copy-not-share; task 4.17 confirmed by
+reading with an edit only if something is hardcoded; task 4.18 is four read-only confirmations
+plus one rerun. **This machine has no Docker daemon**, so every integration case written here
+skips locally and proves nothing here: the honest status is *unverified here, owned by CI*.
+Allowed edit surfaces: the new test file, `test_migration_chain.py` (only if 4.17 demanded it —
+it did not), `tasks.md`, this file. No production file touched.
+
+### Consumed branch and baseline facts
+
+Branch `feat/extraction-versioning-api-wu4b` at tip `a4a2ee9` (PR B of the two-PR chain; the
+sanctioned deletion — service, gated route, `delete_with_record`, `VectorStorePort.delete_by_story`,
+the model and `0029` — already on the branch, read and not changed). Parent-measured baseline:
+unit suite **1132 passed, 33 deselected**, ruff check clean, 260 files formatted. Two pre-existing
+untracked entries (`.claude/skills/`, `backend/.gitignore`) observed and left untouched.
+
+### Task 4.16 — `backend/tests/test_integration/test_story_deletion_record.py` (new, 523 lines)
+
+Harness copied from `test_extraction_versioning_schema.py` per that file's own docstring:
+`_docker_reachable()` evaluated at import time, `@pytest.mark.integration` + `pytest.mark.skipif`
+per case, Postgres 16 through testcontainers, a generated `STORICO_ENCRYPTION_KEY`, the full
+alembic chain to head via `asyncio.to_thread`, `NullPool`. The deletion itself goes through the
+**production path** (`SQLAlchemyUserStoryRepository.delete_with_record`), not a hand-rolled
+DELETE, so the one-transaction pairing is exercised against the real engine. Three cases:
+
+1. **`test_the_record_survives_the_story_cascade`** — a story with two versions and two tasks is
+   deleted through `delete_with_record`; the `story_deletions` row survives and every value is
+   asserted (story id, project id, workspace id, actor/feature/benefit, `version_numbers == [1, 2]`,
+   `deleted_by is None`), plus the story is really gone.
+2. **`test_deleting_the_actor_nulls_deleted_by_only`** — the record's only FK
+   (`fk_story_deletions_deleted_by_users`, ON DELETE SET NULL) is exercised: deleting the actor
+   user nulls `deleted_by` and every other column is compared pre/post. The docstring records the
+   **measured FK picture** that shaped the case: the deleted user is a *dedicated* actor row,
+   because `workspaces.owner_id` is `ON DELETE CASCADE` (0007) and deleting the workspace owner
+   would cascade the workspace, project and story away — a different scenario than the one pinned.
+   No second FK blocked the delete; nothing was worked around.
+3. **`test_the_story_cascade_takes_its_versions_tasks_and_marks_and_nothing_else`** — two stories
+   in the same workspace, each with a version, a task and a mark; deleting one story empties its
+   extractions, tasks and marks (the marks through the double cascade story → tasks → marks) and
+   leaves the neighbour's rows and the record intact.
+
+**Local observed status: `skipped` — 3 skipped, reason "Docker daemon unreachable". Nothing was
+proven on this machine; the cascade, the SET NULL and the record's survival are unverified here
+and owned by CI.**
+
+### Task 4.17 — confirmed by reading, no edit
+
+`tests/test_integration/test_migration_chain.py` read in full. Neither test hardcodes a revision:
+`test_the_chain_from_scratch_reaches_the_head_the_scripts_declare` derives the head from
+`ScriptDirectory.from_config(alembic_config).get_current_head()`, and
+`test_the_migrated_schema_drift_equals_the_recorded_gap` compares `command.check`'s autogenerate
+diff two-directionally against `_KNOWN_DRIFT`, which is an empty `frozenset()`. `0029` and
+`story_deletions` are therefore covered by construction; **no `_KNOWN_DRIFT` entry was needed, so
+no drift was absorbed.** Local observation: the same run as above reports the file's two container
+tests among the **5 skipped** (3 new 4.16 cases + 2 chain tests), 2 deselected (the file's two
+daemon-free pure tests still ran). CI owns the verdict.
+
+### Task 4.18 — the closing refactor: four confirmations, zero edits
+
+1. **`story_deletions` is the only new table `0029` creates.** Read `0029_story_deletions.py`:
+   `upgrade()` calls `op.create_table("story_deletions", ...)` (11 columns, the one
+   `deleted_by → users.id` FK, `pk_story_deletions`) and one `op.create_index` — and nothing else.
+   `downgrade()` drops exactly that index and that table. No other table, column or constraint.
+2. **The delete order is cleanup-then-relational, and the relational step — not the cleanup — is
+   the one transaction.** Read `story_deletion_service.py`: snapshot (`list_versions`) → build the
+   frozen `StoryDeletion` → **vector cleanup** (`delete_by_story`, only when a store is
+   configured) → **`delete_with_record`**. The vector cleanup runs *before* the relational delete
+   and is *not* inside the database transaction; the story `DELETE` and the record `INSERT` are
+   the one transaction (`delete_with_record`, read in `user_story_repository.py`: rowcount-gated,
+   rollback on no-row and on `SQLAlchemyError`). The plan's phrase "cleanup-then-relational inside
+   one transaction" is loose in exactly this way. The ordering is the one the spec requires: a
+   configured-but-unreachable store raises `VectorStoreError` out of step 3, aborting before
+   anything relational is destroyed, so the story, its versions and its tasks survive for a retry.
+3. **`PUT /api/v1/tasks/{task_id}` was not gated.** Read `routes/tasks.py`: `update_task` calls
+   `_validate_task_workspace_access`, a thin caller of `resolve_task_access` (the member-level
+   walk), never `require_task_owner_or_admin`. Observation recorded in passing:
+   `require_task_owner_or_admin` currently has no caller in `src` (defined at
+   `dependencies.py:479`); Phase 5's mark/revoke endpoints are its named consumers.
+4. **The story port/repository `delete` is caller-less, left in place by the owner's decision.**
+   Grepped the whole `src` tree: no production caller of `UserStoryRepository.delete` /
+   `SQLAlchemyUserStoryRepository.delete` remains (the only production deletion path for stories
+   is `delete_with_record` via `StoryDeletionService`; the other `.delete(` hits belong to the
+   user, project and workspace repositories). The port method, the implementation and their tests
+   stay, as decided in W4-T8.
+
+### Rerun (the command 4.18 names)
+
+`cd backend && conda run -n storico python -m pytest tests/test_api tests/test_repositories tests/test_unit -m "not integration" -q`
+→ **971 passed**, 4 warnings. Zero edits to production code, so the number is the branch's own.
+
+### Verification (writer-run, exact commands, at this head)
+
+| Command | Result |
+| --- | --- |
+| `cd backend && conda run -n storico python -m pytest tests/test_integration/test_story_deletion_record.py tests/test_integration/test_migration_chain.py -m integration -q` | **5 skipped, 2 deselected** — all skips are the Docker gate; nothing was proven locally |
+| `cd backend && conda run -n storico python -m pytest -m "not integration" -q` | **1132 passed, 36 deselected** — the passed count is exactly the 1132 baseline (no unit tests added); deselected moved 33 → 36, precisely the 3 new integration cases |
+| `cd backend && conda run -n storico python -m pytest tests/test_api tests/test_repositories tests/test_unit -m "not integration" -q` | **971 passed** |
+| `cd backend && conda run -n storico python -m ruff check src tests` | All checks passed |
+| `cd backend && conda run -n storico python -m ruff format --check src tests` | **261 files already formatted** (260 baseline + the new test file) |
+
+### Changed-line count (this unit; `git diff --numstat` + the untracked new file)
+
+| File | +/− |
+| --- | --- |
+| `backend/tests/test_integration/test_story_deletion_record.py` | new (523 lines) |
+| `openspec/changes/extraction-versioning-api/tasks.md` | 14+/3− (the three checkbox blocks with their parentheticals) |
+| `openspec/changes/extraction-versioning-api/apply-progress.md` | this section |
+
+**≈671 changed lines**, all test/plan artifacts: 523 test lines, tasks.md 14+/3− (the three
+checkbox blocks with their parentheticals), this section (+131). Zero production lines — 4.18
+confirms, it does not fix.
+
+### Persisted checkbox
+
+4.16, 4.17 and 4.18 `[x]`, each with a parenthetical naming what is proven where. Re-read after
+the edits: **4.2 stays `[ ]`** (its mark/unmark half belongs to the next work unit) and **every
+Phase 5 item stays `[ ]`** (13 `5.x` lines unchecked).
+
+### Risks
+
+- The three 4.16 cases are unverified on this machine, full stop. The likely failure modes CI
+  would surface: a fixture-ordering or identity-map slip (the sibling file's `uuid7` flush trap is
+  pre-empted but untested), or the `version_numbers` JSON round-trip differing from the asserted
+  list. CI's first integration run is the verdict; a red there is a test-file fix, not a schema
+  one — `0029` and the model are already proven by the unit layer and the chain test.
+- `require_task_owner_or_admin` being caller-less is expected state between PR B and Phase 5, not
+  dead code to clean.
+
+# Parent close-out of WU4 (session 2026-10-02) — both halves measured, and a band that came in over
+
+WU4 landed in two chained PRs on local branches. **Nothing from this session is pushed and no WU4 PR
+exists yet** — push, PR and merge are the owner's decisions.
+
+## Commit map
+
+| Branch | Commit | Contains |
+| --- | --- | --- |
+| `feat/extraction-versioning-api-wu4a` (PR A) | `d93349f` | gate primitives, error vocabulary, frontend mirror, the two fake stubs (the 2026-09-30 half) |
+| | `c9f918c` | the extract gate — task 4.6 + the extract half of 4.2 |
+| | `718e52b` | the W4-T1..T3 evidence sections moved out of the deletion commit and into the PR whose code they document |
+| `feat/extraction-versioning-api-wu4b` (PR B, based on A) | `9c7ad48` | `0029` + the `story_deletions` entity/model + `delete_with_record` + `delete_by_story` (the 2026-09-30 half, rebased onto A) |
+| | `8bdc149` | the WU4 resume point written at the 2026-09-30 close |
+| | `a4a2ee9` | `StoryDeletionService` + the gated `DELETE /api/v1/stories/{story_id}` (tasks 4.13, 4.3's API half, 4.15) |
+| | `ef962ed` | the Postgres-only record proofs (4.16) and the closing confirmations (4.17, 4.18) |
+
+The pre-split branch `feat/extraction-versioning-api-wu4` (`5b3e3d6`) is kept as a local safety net.
+Its content is fully contained in B — measured: `git diff 5b3e3d6 ef962ed` is exactly the W4-T7,
+W4-T8 and W4-T9 files, nothing else.
+
+## Measured size — and the band it exceeds
+
+| Unit | code + tests | + docs/plan | total |
+| --- | --- | --- | --- |
+| PR A (`4404d4b..718e52b`) | 840 | 551 | 1,391 |
+| PR B (`718e52b..ef962ed`) | 1,869 | 718 | 2,587 |
+| **WU4 (`4404d4b..ef962ed`)** | **2,701** | **1,269** | **3,970** |
+
+The accepted `size:exception` band for WU4 was **1,300–1,700**. The measured unit is ~1.6x the top of
+that band on code+tests alone and ~2.3x counting the plan artifacts. Splitting WU4 into two chained
+PRs was the owner's answer to the earlier projection (~830 / ~1,100); both halves came in above their
+own projection, PR B by roughly 70%.
+
+The delivery decision already recorded in `tasks.md` says a unit larger than forecast "goes back on
+the table instead of being absorbed", so this is **reported for a fresh decision, not absorbed**:
+either ship the two PRs with the measured numbers stated in their bodies, or split B once more on the
+storage-vs-HTTP seam (its committed storage layer + `StoryDeletionService` vs the route + its API and
+integration tests).
+
+## Evidence at this head (`feat/extraction-versioning-api-wu4b` @ `ef962ed`, re-run by the parent)
+
+- `cd backend && conda run -n storico python -m pytest -m "not integration" -q` → **1132 passed, 36 deselected**
+- `cd backend && conda run -n storico python -m pytest tests/test_integration/test_story_deletion_record.py -m integration -q` → **3 skipped** (no Docker daemon)
+- `cd backend && conda run -n storico python -m ruff check src tests` → clean · `ruff format --check src tests` → **261 files formatted**
+- Frontend untouched this session; the delete dialog's version count is Phase 6.
+
+**The honest split of evidence.** The unit layer is green and locally observed. Task 4.16's three
+cases and 4.17's chain cases **never ran here — they skip, and a skip is not a proof**. CI runs them
+(its 18 skips are exactly 16 Qdrant + 2 Ollama live, so the testcontainers cases execute there). The
+deselected delta 33 → 36 reconciles exactly to the three new integration functions, which is the only
+thing the local run proves about them.
+
+## Phase 4 close state
+
+17 of the 18 Phase 4 tasks are `[x]`. **4.2 stays unchecked on purpose**: its letter also asks for the
+403 gate on mark/unmark, endpoints that arrive in Phase 5, and its repetition-read clause is a Phase 5
+read. Slice (b): **48/77** (was 41/77).
+
+## Deploy risk if either branch reaches `main`
+
+`0029` is additive and carries no empty-database guard, so the deploy window's `alembic upgrade head`
+applies it to the current production schema without needing a data plan. The D-a-3 rule — *a migration
+that refuses existing data needs its plan in `prod.todo.md` before it reaches `main`* — does not bite
+here; this is the case the rule was written to distinguish. Production still cannot extract until the
+LLM config is recreated in Configuración (D-a-6), which is independent of this unit.
+
+## Parent fix after the first CI run WU4 ever had (PR B, 2026-10-02) — a stale head pin in a slice (a) test
+
+PR #35's backend job failed on
+`test_extraction_versioning_schema.py::test_downgrade_to_0027_and_back_round_trips_on_a_private_database`:
+`assert declared_head == "0028"` stopped being true the moment `0029` existed. That file is slice (a)'s
+and needs a Docker daemon, so neither this machine nor any earlier WU4 session could see it — the WU4
+commits `d93349f` and `155b975` had never been pushed, and this was their first CI run.
+
+Two stale pins, both made **head-agnostic** rather than bumped to the current literal:
+
+- the precondition now asserts that a declared head exists **and** that `0028` is still in the walked
+  chain, so the case stays meaningful for every revision stacked on it (a `0029`-era literal goes
+  stale at the next migration — the failure mode this repo has already paid for twice in the
+  error-code counts);
+- the post-re-apply assertion compares against the declared head instead of `["0028"]`.
+
+Measured locally without Docker: the packaged scripts declare `0029` and `0028` is in the chain, which
+is exactly the precondition's new premise. The round trip itself stays CI-owned.
+
+### CI verdict on PR #35 — the Postgres half ran, and it also caught the stale pin
+
+The layer this machine cannot run **executed and passed in CI** (run `37053354607`, job
+`110991906602`, head `034cebd`): **`1150 passed, 18 skipped`**. Reconcile it against the local
+`1132 passed, 36 deselected`: the 36 deselected are exactly 18 cases that run on the testcontainers
+runner and 18 that skip everywhere (16 Qdrant + 2 Ollama live). So task 4.16's three cases and task
+4.17's chain cases move from *unverified here* to **verified in CI**, and the red head this PR started
+from (`68ee3db`: `1 failed, 1149 passed, 18 skipped`) is closed by `034cebd`.
+
+It is worth recording *how* the red surfaced, because it is the argument for pushing before believing a
+local green: the failure was a slice (a) integration test that pinned `declared_head == "0028"` — an
+assertion that could only ever be checked by a machine with Docker, in a branch that had never been
+pushed. Neither the local suite nor any earlier WU4 session could see it, and no amount of local
+re-running would have.

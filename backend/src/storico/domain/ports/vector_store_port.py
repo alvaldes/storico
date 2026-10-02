@@ -76,3 +76,32 @@ class VectorStorePort(ABC):
             gracefully.
         """
         ...
+
+    @abstractmethod
+    async def delete_by_story(self, *, workspace_id: UUID, user_story_id: str) -> None:
+        """Delete every point of one story in one workspace.
+
+        Unlike ``search_similar``/``store_extraction``, this method does **not**
+        degrade silently: it raises ``VectorStoreError`` on failure. The caller
+        is a destructive operation (story deletion) that must not proceed on an
+        unverified cleanup — a lost upsert costs one future RAG example, but a
+        cleanup that was believed to happen and wasn't leaves orphan points for a
+        story that no longer exists, answering future similarity searches with
+        content whose owner was deleted.
+
+        The distinction the caller depends on: "no vector store configured" and
+        "a vector store that cannot be reached" are different outcomes. The
+        service skips this call entirely when there is no store at all — a
+        legitimate completion, since no points exist to clean. But when a store
+        is configured and its client is unavailable, or the delete itself fails,
+        this raises.
+
+        Args:
+            workspace_id: Workspace whose points are eligible for deletion.
+            user_story_id: Identifier of the deleted story; must match the
+                string form written into point payloads by ``store_extraction``.
+
+        Raises:
+            VectorStoreError: when the cleanup could not be verified.
+        """
+        ...

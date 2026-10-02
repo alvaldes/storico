@@ -9,6 +9,7 @@ from uuid import UUID
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qdrant_models
 
+from storico.domain.entities.exceptions import VectorStoreError
 from storico.domain.ports import EmbeddingPort, ExtractionExample, VectorStorePort
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,9 @@ class QdrantAdapter(VectorStorePort):
       payload index on ``workspace_id`` so filtered searches stay fast.
     - Workspace isolation: every search sends a ``workspace_id`` filter and
       every stored point carries ``workspace_id`` in its payload.
-    - Graceful degradation: empty results on failure.
+    - Graceful degradation: empty results on failure — except the destructive
+      cleanup ``delete_by_story``, which raises ``VectorStoreError`` because its
+      caller must not proceed on an unverified cleanup.
 
     Collection schema (storico_extractions):
         - vector: ``vector_size``d float array
@@ -210,6 +213,8 @@ class QdrantAdapter(VectorStorePort):
 
         Returns ``True`` only when Qdrant accepted the point; every skip or
         failure path returns ``False`` (graceful degradation, never raises).
+        Note the contrast with ``delete_by_story``, which raises on failure:
+        same client, opposite error postures, both deliberate.
         Every skip or failure is logged at ERROR with a shared field shape
         (``extraction_id``, ``collection``, ``reason``) so a lost RAG point can be
         correlated with its cause from the log alone — an empty embedding once made
@@ -281,3 +286,68 @@ class QdrantAdapter(VectorStorePort):
             return False
 
         return True
+
+    async def delete_by_story(self, *, workspace_id: UUID, user_story_id: str) -> None:
+        """Delete every point of one story in one workspace.
+
+        Unlike ``store_extraction``/``search_similar`` — which degrade gracefully
+        and never raise — this method raises ``VectorStoreError`` on failure: the
+        caller is a destructive operation (story deletion) that must not proceed
+        on an unverified cleanup. A lost upsert costs one future RAG example; a
+        cleanup that was believed to happen but didn't leaves orphan points for a
+        story that no longer exists, answering future similarity searches with
+        content whose owner was deleted.
+
+        "Client unavailable" here means ``_get_client()`` returned ``None`` —
+        lazy init failed (e.g. the connection attempt to Qdrant raised, so no
+        client object exists to issue the delete with). That is a *configured*
+        store that cannot be reached, which raises; it is distinct from "no
+        vector store configured at all", where the service skips this call
+        entirely as a legitimate completion because no points exist to clean.
+
+        The filter reuses the payload keys ``store_extraction`` already persists
+        (``workspace_id`` as ``str(workspace_id)``, ``user_story_id`` as a
+        string) so the match types are exactly the stored types — a mismatch
+        would delete nothing and still look like success. ``wait=True`` makes
+        "no points remain retrievable" true when the call returns.
+
+        Raises:
+            VectorStoreError: when the client is unavailable or the delete fails.
+        """
+        client = await self._get_client()
+        if client is None:
+            raise VectorStoreError(
+                "Qdrant client unavailable; story point cleanup cannot be verified"
+            )
+
+        try:
+            await client.delete(
+                collection_name=self._collection_name,
+                points_selector=qdrant_models.FilterSelector(
+                    filter=qdrant_models.Filter(
+                        must=[
+                            qdrant_models.FieldCondition(
+                                key="workspace_id",
+                                match=qdrant_models.MatchValue(value=str(workspace_id)),
+                            ),
+                            qdrant_models.FieldCondition(
+                                key="user_story_id",
+                                match=qdrant_models.MatchValue(value=user_story_id),
+                            ),
+                        ]
+                    )
+                ),
+                wait=True,
+            )
+        except Exception as e:
+            logger.error(
+                "Qdrant delete_by_story failed; story point cleanup not verified: %s",
+                e,
+                extra={
+                    "workspace_id": str(workspace_id),
+                    "user_story_id": user_story_id,
+                    "collection": self._collection_name,
+                    "reason": "delete_failed",
+                },
+            )
+            raise VectorStoreError(f"Qdrant delete_by_story failed: {e}") from e
