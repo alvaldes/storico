@@ -2833,3 +2833,14 @@ then 5.14 (D-a-4 contract, owner decision first).
   `domain/ports/__init__` / `domain/entities/__init__`): those two `__init__` files were not in
   this unit's allowed edit surfaces. W5-B's route work will likely want the conventional
   re-exports added there.
+
+### Parent note — W5-A's measured size, ratified by the owner on 2026-10-02
+
+W5-A measured **793 changed lines of code and tests** (plus 199 lines of plan artifacts, total 992). The
+delivery decision for WU5 says a half that still crosses the 400-line budget in practice is *reported
+and decided*, not absorbed by WU4's exception, so it was reported with two options (ship as it stands,
+or move the normalizer and its table to W5-B). **The owner chose to ship W5-A at the measured 793**, and
+that number is stated in PR #36's body so the reviewer knows what they are reading.
+
+For the record of how the two halves landed: W5-B keeps its own measurement and its own PR boundary, and
+nothing here was absorbed silently.
