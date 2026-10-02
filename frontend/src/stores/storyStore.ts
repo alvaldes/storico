@@ -1,8 +1,9 @@
 import { create } from 'zustand';
-import type { StoryImportReport, UserStory } from '@/types/story';
+import type { StoryImportReport, StoryVersion, UserStory } from '@/types/story';
 import type { CreateStoryParams, UpdateStoryParams } from '@/schemas';
 import type { ImportStoriesParams } from '@/lib/stories-api';
 import * as api from '@/lib/stories-api';
+import { listVersions } from '@/lib/versioning-api';
 import { createInflightTracker } from '@/stores/_inflight';
 import { getScopedWorkspaceId, isScopeUnchanged } from '@/lib/workspace-scope';
 
@@ -30,6 +31,14 @@ let storyRequestSeq = 0;
 
 interface StoryState {
   stories: UserStory[];
+  /**
+   * Per-story version history, keyed by story id. The delete dialog's version
+   * count reads this. A missing key is "the read has not run yet"; `null` is
+   * "the read failed" — the dialog then shows its neutral fallback sentence
+   * instead of a count, because a failed metadata read must never block the
+   * destructive action.
+   */
+  versionsByStory: Record<string, StoryVersion[] | null>;
   loading: boolean;
   saving: boolean;
 
@@ -37,6 +46,12 @@ interface StoryState {
   fetchStories: (projectId?: string, workspaceId?: string) => Promise<void>;
   /** Fetch a single story by ID. */
   fetchStory: (id: string) => Promise<void>;
+  /**
+   * Fetch the story's version history into `versionsByStory`. Never rejects:
+   * a failure records `null` for the story instead of throwing, so callers
+   * can render their fallback without a try/catch.
+   */
+  fetchVersions: (storyId: string) => Promise<void>;
   /** Create a new user story. */
   createStory: (params: CreateStoryParams) => Promise<UserStory>;
   /** Import stories from a CSV file. Returns the report so the caller can render it. */
@@ -56,6 +71,7 @@ interface StoryState {
 
 export const useStoryStore = create<StoryState>((set, get) => ({
   stories: [],
+  versionsByStory: {},
   loading: false,
   saving: false,
 
@@ -105,6 +121,22 @@ export const useStoryStore = create<StoryState>((set, get) => ({
     } catch {
       if (requestId !== storyRequestSeq) return;
       set({ loading: false });
+    }
+  },
+
+  fetchVersions: async (storyId) => {
+    try {
+      const versions = await listVersions(storyId);
+      set((state) => ({
+        versionsByStory: { ...state.versionsByStory, [storyId]: versions },
+      }));
+    } catch {
+      // The failure is the value: `null` tells the delete dialog to drop the
+      // count and show its neutral fallback sentence, and tells the story page
+      // to keep its selector hidden.
+      set((state) => ({
+        versionsByStory: { ...state.versionsByStory, [storyId]: null },
+      }));
     }
   },
 
@@ -211,6 +243,8 @@ export const useStoryStore = create<StoryState>((set, get) => ({
     // fresh, empty slice.
     storiesRequestSeq++;
     storyRequestSeq++;
-    set({ stories: [], loading: false });
+    // The version history is story-scoped data like `stories` itself: a switch
+    // must never leave the previous workspace's versions behind.
+    set({ stories: [], loading: false, versionsByStory: {} });
   },
 }));

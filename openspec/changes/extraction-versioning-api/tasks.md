@@ -744,7 +744,7 @@ store test in this unit.
       `frontend/src/lib/versioning-api.ts` **New** (path free);
       `frontend/src/types/task.ts`, `frontend/src/types/story.ts` and
       `frontend/src/types/workspace.ts`: the version and mark types.
-- [ ] 6.3 RED — `frontend/src/components/react/__tests__/VersionSelector.test.tsx` **New** (path
+- [x] 6.3 RED — `frontend/src/components/react/__tests__/VersionSelector.test.tsx` **New** (path
       free) and `frontend/src/components/react/__tests__/StoryDetail.test.tsx`: the failing cases —
       every version is listed with exactly the current one marked; a failed version is offered with
       its `error_info`, model and date and renders a localized "no output" state, never an empty
@@ -767,7 +767,17 @@ store test in this unit.
   > lands** (same precedent as 4.2, which stayed unchecked across units until its last clause did).
   > What W6-A shipped stands unchanged: the "Marcar como inválida" button beside "Editar", it opens
   > the editor, it issues zero requests, and it is gate-hidden for members.
-- [ ] 6.4 RED — `frontend/src/components/react/__tests__/TaskEditor.test.tsx` and
+  > **[Closed 2026-10-02, W6-B1 — the deferred clause landed]** The editor recut delivered the
+  > seam and the behavior: `TaskEditorProps` grows `markDefaultChecked` / `reasonAutofocus` /
+  > `activeMark`, and the story page passes them from the "Marcar como inválida" button. The
+  > integration-level case lives in `StoryDetail.test.tsx` ("opens the editor with the mark checkbox
+  > checked and the focus in the reason field, issuing no request until save"): it clicks the
+  > button, asserts the editor opens, the checkbox is checked, `document.activeElement` is the
+  > reason textarea, and that no mutating request (create/revoke/PUT/extract) runs. The one HTTP
+  > call the open path makes is the `GET …/invalidations` mark read that populates the
+  > already-marked state — the same class of read the design itself mandates for the D16 notice on
+  > open; no write happens before a confirmed save, and cancel still issues none.
+- [x] 6.4 RED — `frontend/src/components/react/__tests__/TaskEditor.test.tsx` and
       `frontend/src/stores/__tests__/taskStore.unit.test.ts`: the failing cases — the "Inválida"
       checkbox with a mandatory reason textarea, an empty reason blocking the save with no request, a
       non-empty reason persisting the mark, unchecking revoking it, both confirmation dialogs with
@@ -777,18 +787,27 @@ store test in this unit.
       `VERSION_ALLOCATION_CONFLICT` as `'version-conflict'` before the status codes and 401/403 as
       `unauthorized`. Prove RED with
       `cd frontend && pnpm test src/components/react/__tests__/TaskEditor.test.tsx src/stores/__tests__/taskStore.unit.test.ts`.
+      *(Closed 2026-10-02, W6-B1: 11 new TaskEditor cases + 4 taskStore cases; 17 of the 18 failed
+      at RED — the 403→`unauthorized` companion case passed pre-GREEN because the status branch
+      already handled 403, so it is a coverage companion to the 409 case, named rather than claimed
+      as RED. Observed RED: 17 failed / 61 passed across the four focused files.)*
 - [x] 6.5 GREEN — `frontend/src/components/react/VersionSelector.tsx` **New** (path free);
       `frontend/src/components/react/StoryDetail.tsx`: the selector wiring, the "Marcar como inválida"
       button beside "Editar", the extract confirmation naming both version numbers, the
       `MEMBER`-hidden/disabled controls via `canManageVersions`, and the delete dialog's version
       count fetched on open with a neutral fallback sentence when that read fails;
       `frontend/src/components/react/StoriesList.tsx`: the same delete-dialog version count.
-- [ ] 6.6 GREEN — `frontend/src/components/react/TaskEditor.tsx`: the "Inválida" checkbox, the
+- [x] 6.6 GREEN — `frontend/src/components/react/TaskEditor.tsx`: the "Inválida" checkbox, the
       mandatory reason textarea, the D16 notice with its copy action, the two confirmation dialogs and
       the submission sequence (mark → `POST`, unmark → `DELETE …/current`, then `PUT`) with optimistic
       update and rollback; `frontend/src/stores/taskStore.ts`: the `'version-conflict'` category and
       the version-aware extraction state; `frontend/src/stores/storyStore.ts`: the version state the
       delete dialog reads.
+      *(Closed 2026-10-02, W6-B1: the sequence is exactly the design's; the version-aware read flows
+      `fetchTasks(storyId, extractionId?)` → `listTasks` → `&extraction_id=…`, and the selector's
+      restriction on frozen completed versions was lifted with a pinning case. storyStore gained
+      `versionsByStory` + `fetchVersions`, read by StoryDetail's delete dialog and cleared by
+      `reset()`. Focused suites 78/78, full suite 661, `tsc` clean, build complete.)*
 - [ ] 6.7 GREEN — `frontend/src/components/react/KanbanBoard.tsx`,
       `frontend/src/components/react/ExportPanel.tsx` and
       `frontend/src/components/react/__tests__/KanbanBoard.test.tsx`: confirm the filtered reads land

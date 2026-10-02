@@ -19,10 +19,17 @@ function mapTaskItem(raw: RawTaskItem): Task {
   };
 }
 
-/** Fetch tasks for a specific user story. */
-export async function listTasks(storyId: string): Promise<Task[]> {
+/** Fetch tasks for a specific user story.
+ *
+ * Version-aware (W6-B1): pass `extractionId` to read exactly that version's
+ * tasks — this is how a frozen version shows its own set. Omit it and the
+ * backend applies its current-version predicate, returning the story's
+ * current tasks.
+ */
+export async function listTasks(storyId: string, extractionId?: string): Promise<Task[]> {
+  const versionQuery = extractionId ? `&extraction_id=${encodeURIComponent(extractionId)}` : '';
   const raw = await api.get<{ items: RawTaskItem[] }>(
-    `/api/v1/tasks/?user_story_id=${storyId}&page=1&size=100`,
+    `/api/v1/tasks/?user_story_id=${storyId}&page=1&size=100${versionQuery}`,
   );
   return raw.items.map(mapTaskItem);
 }

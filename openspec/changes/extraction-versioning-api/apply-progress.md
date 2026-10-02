@@ -3292,3 +3292,150 @@ remains the table above plus these plan edits.
 
 `6.1`, `6.2`, `6.5` are `[x]`. `6.3` (with its amendment), `6.4`, `6.6`, `6.7`, `6.8`, `6.9`,
 `6.10` and every Phase 7 item are `[ ]`. Confirmed by re-reading `tasks.md` after the edit.
+
+## W6-B1 — the editor recut, the mark controls, the confirmations, the version-aware read (tasks 6.4, 6.6, and 6.3's deferred clause) — 2026-10-02
+
+### Structured status consumed
+
+Branch `feat/extraction-versioning-api-wu6b` at `a985f83` (W6-A shipped). Baseline measured by the
+parent and re-observed: frontend **643 passed / 57 files**, `tsc --noEmit` clean, `pnpm build`
+complete. Backend not touched. The two pre-existing untracked paths (`backend/.gitignore`,
+`.claude/skills/`) were left exactly as found.
+
+### RED measured before any production edit (real errors)
+
+`pnpm test` over the four focused files → **17 failed / 61 passed (78 total)**: 11 new TaskEditor
+cases (no checkbox, no reason field, no mark persistence, no revoke, no confirmations, no D16
+notice, no rollback-with-edits pin), 2 StoryDetail cases (the 6.3 clause and the page-level
+extraction_id read), 1 VersionSelector case (frozen completed option disabled — the restriction
+W6-B1 lifts), 3 taskStore cases (no `'version-conflict'`, no extraction_id in the read). Failure
+kinds: module-shape failures (`TaskEditorProps` had no `activeMark`/`markDefaultChecked`/
+`reasonAutofocus`), behavioral (checkbox/textarea/notice absent, requests not issued, restriction
+active), and assertion misses (api.listTasks called without the extraction_id).
+
+**One vacuous pass named honestly:** of the 18 new test functions, the taskStore case "categorizes
+an HTTP 403 as unauthorized" passed pre-GREEN, because the status branch already handled 403 — it
+is a coverage companion to the 409 `version-conflict` case (which was a real RED), not independent
+RED evidence.
+
+### GREEN
+
+- Focused runner (`TaskEditor.test.tsx StoryDetail.test.tsx VersionSelector.test.tsx
+  taskStore.unit.test.ts`) → **78 passed (78)**: 61 pre-existing unchanged + 18 new.
+- Full suite → **661 passed / 57 files** — delta against the 643 baseline is exactly the **18 new
+  test functions** (11 + 2 + 1 + 4; verified by counting `it(`/`test(` blocks per file against
+  `HEAD`: TaskEditor 20→31, StoryDetail 17→19, VersionSelector 3→4, taskStore 20→24). The
+  key-parity, neutral-Spanish and error-code mirrors ride in the full suite and stayed green.
+- `tsc --noEmit` clean; `pnpm build` complete (Astro + Vercel adapter, prerender OK).
+
+### The submission sequence as built
+
+```
+handleSave:
+  status-transition error                        → field error, return (no request)
+  markChecked and reason.trim() === ''           → mark the reason field missing, return (NO request)
+  markChecked && !wasMarked                      → confirm dialog (cancel = no request, edits intact)
+                                                   → POST /tasks/{id}/invalidations
+  !markChecked && wasMarked                      → confirm dialog (cancel = no request, edits intact)
+                                                   → DELETE /tasks/{id}/invalidations/current
+  always                                         → PUT /tasks/{id} {status, labels[, dependencies]}
+  any failure                                    → stop the sequence, error shown, dialog open, edits intact
+```
+
+The confirmation is opened by the save (`setConfirmAction`), never by a button; only its accept
+path calls `performSave`. `wasMarked` starts from the `activeMark` prop and flips after a
+successful create/revoke, so a second save cannot re-POST into a 409. The `dependencies` key is
+omitted while frozen (unchanged from WU2) and the "Inválida" checkbox is disabled while frozen.
+
+### How the rollback keeps the dialog open with the edits
+
+The mark write is not an optimistic-store write (marks are not task fields), so the rollback story
+is the PUT's: `taskStore.updateTask` snapshots, applies optimistically, rolls back on failure and
+re-throws — the editor catches, shows `ErrorDisplay`, and never calls `onOpenChange(false)`. The
+new test pins all three: store equals the original task, the failure banner renders, and the
+user's unsaved edits (the added label chip and the typed reason) are still in the open dialog.
+
+### The D16 notice persists nothing
+
+`fetchRepetition(task.id)` runs when the editor opens; the first match renders
+`repetition_notice` ("You marked this task in v{version}: {reason}" / "Marcaste esta tarea en
+v{version}: {reason}"). Its single action sets the textarea's value client-side; the test asserts
+the field is filled and that `createInvalidation`/`updateTask` were never called by it. A
+failing repetition read degrades to no notice and never blocks the save.
+
+### What the version-aware read changed
+
+- `tasks-api.listTasks(storyId, extractionId?)` appends `&extraction_id=` only when a version is
+  named, so a plain current-version read looks byte-identical to the pre-versioning call (this
+  kept the existing poll-refresh pin `toHaveBeenCalledWith('story-2')` green without weakening it).
+- `taskStore.fetchTasks(storyId, extractionId?)` forwards it; `StoryDetail` re-fetches on
+  `selectedVersionId` change, so a frozen version shows its own tasks.
+- `storyStore` gained `versionsByStory: Record<string, StoryVersion[] | null>` + `fetchVersions`
+  (failure records `null` rather than rejecting); `StoryDetail`'s delete dialog and selector both
+  read it, and `reset()` clears it with the stories slice.
+- The version-aware read needed no file outside this tranche's surfaces — `tasks-api.ts` was an
+  allowed surface and nothing else moved.
+
+### The selector restriction lifted
+
+`VersionSelector` no longer disables a frozen completed option (`hasOutput && !isCurrent` removed),
+with the docstring rewritten to point at the store's version-aware read, and a new case pins that
+the option is enabled and that selecting it reports `ext-1` to the caller.
+
+### i18n keys added to BOTH locales (this tranche's share of 6.8)
+
+`taskEditor.mark_label`, `mark_reason_label`, `mark_reason_placeholder`, `mark_reason_missing`,
+`mark_confirm_title`, `mark_confirm_body`, `mark_confirm_accept`, `unmark_confirm_title`,
+`unmark_confirm_body`, `unmark_confirm_accept`, `repetition_notice`, `repetition_copy` — 12 keys
+per locale, identical sets (tsc's `typeof en` mirror enforces it). Spanish is neutral
+international ("Marcaste esta tarea…", "se requiere un motivo", "no podrá retirarse" — tú, no
+voseo). `repetition_notice` follows the spec's own wording ("Marcaste esta tarea en v{version}").
+
+### The 6.3 deferred clause — closed with integration-level evidence
+
+`StoryDetail.test.tsx` "opens the editor with the mark checkbox checked and the focus in the
+reason field, issuing no request until save": clicks the page's mark button, asserts the editor
+dialog opens, the checkbox is checked, `document.activeElement` is the reason textarea (awaited —
+the dialog's own first-tabbable focus runs first, and the editor's deferred focus wins it), and
+that no create/revoke/PUT/extract call happens. `6.3 [x]` was flipped only after this case
+passed. `TaskEditorProps` grew `activeMark`, `markDefaultChecked` and `reasonAutofocus` as the
+real seam; `StoryDetail` reads the task's marks (`GET …/invalidations`) when the editor opens and
+renders the editor only once that read settles, so the checkbox/reason initializers see the final
+mark state and an already-marked task opens populated.
+
+### Files changed (`git diff --numstat`, this tranche)
+
+| File | Lines |
+| --- | --- |
+| `TaskEditor.tsx` | 230+/3− |
+| `StoryDetail.tsx` | 70+/31− |
+| `VersionSelector.tsx` | 6+/10− |
+| `tasks-api.ts` | 10+/3− |
+| `taskStore.ts` | 17+/3− |
+| `storyStore.ts` | 36+/2− |
+| `en.json` / `es.json` | 12+ each |
+| `TaskEditor.test.tsx` | 381+/1− |
+| `StoryDetail.test.tsx` | 55+ |
+| `VersionSelector.test.tsx` | 16+ |
+| `taskStore.unit.test.ts` | 63+ |
+| `tasks.md` | 22+/3− |
+| **Total (code+tests, excluding plan edits)** | **908+/53− ≈ 961 changed lines** |
+
+### Deliberately left for W6-B2 (6.8's remainder) and later
+
+The corrected `landing.faq.a4`, any remaining landing copy, task 6.7's KanbanBoard/ExportPanel
+filtered-read confirmation, 6.9's StoriesList cancel edges, and 6.10's final refactor pass.
+
+### Verification (all run at this head, after the plan edits)
+
+| Command | Result |
+| --- | --- |
+| `cd frontend && pnpm test src/components/react/__tests__/TaskEditor.test.tsx src/components/react/__tests__/StoryDetail.test.tsx src/components/react/__tests__/VersionSelector.test.tsx src/stores/__tests__/taskStore.unit.test.ts` | **78 passed (78)** |
+| `cd frontend && pnpm test` | **661 passed / 57 files** (643 + exactly the 18 new tests) |
+| `cd frontend && pnpm exec tsc --noEmit` | clean, exit 0 |
+| `cd frontend && pnpm build` | complete (Astro + Vercel adapter, prerender OK) |
+
+### Final checkbox state (re-read after the edits)
+
+`6.1`, `6.2`, `6.3`, `6.4`, `6.5`, `6.6` are `[x]`. `6.7`, `6.8` (its remaining copy), `6.9`,
+`6.10` and every Phase 7 item are `[ ]`. Confirmed by re-reading `tasks.md` after the edit.

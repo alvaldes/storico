@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { StoryDetail } from '@/components/react/StoryDetail';
 import { getLLMConfigStatus } from '@/lib/llm-config-api';
 import { listVersions } from '@/lib/versioning-api';
+import * as versioningApi from '@/lib/versioning-api';
 import { useTaskStore, type ExtractionState } from '@/stores/taskStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useStoryStore } from '@/stores/storyStore';
@@ -163,6 +164,11 @@ function resetStores() {
   // Default: the version read answers an empty history, which hides the
   // selector and leaves every pre-existing case exactly as it was.
   vi.mocked(listVersions).mockResolvedValue([]);
+  // The mark-flow editor reads the task's marks on open; default to unmarked so
+  // every pre-existing case is unaffected. The editor's D16 repetition read is
+  // likewise defaulted to "no match".
+  vi.mocked(versioningApi.listInvalidations).mockResolvedValue([]);
+  vi.mocked(versioningApi.fetchRepetition).mockResolvedValue({ matches: [] });
   // A cached project keeps the contextual-back-link effect synchronous.
   useProjectStore.setState({ projects: [project], loading: false, error: null });
   // Default: this workspace can extract. Only the gate tests move it.
@@ -520,6 +526,55 @@ describe('StoryDetail — version selector and version-aware actions', () => {
 
     await user.click(within(editor).getByRole('button', { name: t.taskEditor.cancel }));
     expect(extractTasksSpy).not.toHaveBeenCalled();
+  });
+
+  it('opens the editor with the mark checkbox checked and the focus in the reason field, issuing no request until save (6.3 deferred clause)', async () => {
+    const user = userEvent.setup();
+    useTaskStore.setState({ tasks: { [STORY_ID]: [cardTask] } });
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    await user.click(await screen.findByRole('button', { name: t.stories.mark_invalid }));
+
+    const editor = await screen.findByRole('dialog');
+    const checkbox = within(editor).getByRole('checkbox', { name: t.taskEditor.mark_label });
+    expect(checkbox).toBeChecked();
+
+    const reason = within(editor).getByLabelText(t.taskEditor.mark_reason_label);
+    // The dialog's own focus handling runs first; the editor's deferred focus
+    // then lands in the reason field, ready to type.
+    await waitFor(() => expect(document.activeElement).toBe(reason));
+
+    // Nothing is applied until save: no mark write, no revoke, no PUT, no extract.
+    expect(versioningApi.createInvalidation).not.toHaveBeenCalled();
+    expect(versioningApi.revokeInvalidation).not.toHaveBeenCalled();
+    expect(extractTasksSpy).not.toHaveBeenCalled();
+  });
+
+  it('reads the selected frozen version\'s own tasks through its extraction_id', async () => {
+    const user = userEvent.setup();
+    const fetchTasksSpy = vi.fn().mockResolvedValue(undefined);
+    useTaskStore.setState({ fetchTasks: fetchTasksSpy as never, tasks: {} });
+    vi.mocked(listVersions).mockResolvedValue([
+      makeVersion({ id: 'ext-2', versionNumber: 2, isCurrent: true }),
+      makeVersion({ id: 'ext-1', versionNumber: 1 }),
+    ]);
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    // The initial read is the current version (no extraction_id)...
+    await waitFor(() => {
+      expect(fetchTasksSpy).toHaveBeenCalledWith(STORY_ID, undefined);
+    });
+
+    // ...and selecting the frozen v1 re-reads v1's own tasks.
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: t.versionSelector.label }),
+      'ext-1',
+    );
+    await waitFor(() => {
+      expect(fetchTasksSpy).toHaveBeenLastCalledWith(STORY_ID, 'ext-1');
+    });
   });
 
   it('names the version count in the story-delete dialog and keeps the confirm enabled', async () => {

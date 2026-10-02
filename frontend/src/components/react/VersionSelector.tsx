@@ -14,11 +14,11 @@ interface VersionSelectorProps {
  * The story's version selector: one entry per extraction run, the current one
  * marked, failed runs offered with their error info, model and date.
  *
- * A frozen *completed* version is listed but not selectable for now: reading a
- * specific version's tasks is the store's next step (W6-B), and selecting one
- * before that would display the current version's tasks under a frozen label —
- * a lie this component refuses to tell. Failed versions stay selectable: their
- * honest state is "no output", which the story page renders.
+ * Every version is selectable (W6-B1 lifted W6-A's restriction): the store's
+ * version-aware read re-fetches a frozen version's tasks through its
+ * extraction id, so selecting one displays that version's own tasks rather
+ * than the current version's. A failed version's honest state is "no output",
+ * which the story page renders.
  */
 export function VersionSelector({
   versions,
@@ -56,11 +56,7 @@ export function VersionSelector({
         className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {versions.map((v) => (
-          <option
-            key={v.id}
-            value={v.id}
-            disabled={v.hasOutput && !v.isCurrent}
-          >
+          <option key={v.id} value={v.id}>
             {versionLabel(v)}
           </option>
         ))}
