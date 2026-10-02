@@ -7,22 +7,77 @@ workspace — ``POST /`` included, which resolves the walk from its ``user_story
 body field before it persists anything.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import User, UserStory
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.task import TaskStatus
+from storico.domain.entities.task_invalidation import TaskInvalidation
+from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
+from storico.infrastructure.database.models import TaskInvalidationModel
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
+    SQLAlchemyTaskInvalidationRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
 )
+from storico.infrastructure.database.repositories.workspace_member_repository import (
+    SQLAlchemyWorkspaceMemberRepository,
+)
+from storico.infrastructure.vector.qdrant_adapter import QdrantAdapter
 from tests._helpers import seed_extraction, seed_task
+from tests.conftest import make_jwt_headers
+
+
+def _auth_headers(user_id: str) -> dict:
+    """JWT auth headers for a second user — mirrors conftest.make_jwt_headers."""
+    return make_jwt_headers(user_id)
+
+
+async def _create_user(db_session: AsyncSession, email: str) -> User:
+    """Persist a user to authenticate a second caller against."""
+    return await SQLAlchemyUserRepository(db_session).save(User(email=email, name="Second User"))
+
+
+async def _mark_rows(db_session: AsyncSession, task_id: UUID) -> list[TaskInvalidationModel]:
+    """Direct read of the task's ``task_invalidations`` rows — the no-write witness.
+
+    Refusals are witnessed by reading the table, not by trusting the status
+    code: a 4xx that had already written a row would pass a status-only pin.
+    """
+    result = await db_session.execute(
+        select(TaskInvalidationModel).where(TaskInvalidationModel.task_id == task_id)
+    )
+    return list(result.scalars().all())
+
+
+async def _seed_mark(
+    db_session: AsyncSession,
+    task_id: UUID,
+    marked_by: UUID,
+    *,
+    reason: str = "Duplicates the login task from v1",
+) -> TaskInvalidation:
+    """Persist an active mark through the repository, as production writes one."""
+    return await SQLAlchemyTaskInvalidationRepository(db_session).create(
+        TaskInvalidation(task_id=task_id, reason=reason, marked_by=marked_by)
+    )
+
+
+async def _seed_two_completed_versions(
+    db_session: AsyncSession, story_id: UUID
+) -> tuple[object, object]:
+    """Two completed runs: the first is frozen the moment the second completes."""
+    completed = {"status": ExtractionStatus.COMPLETED, "completed_at": datetime.now(UTC)}
+    v1 = await seed_extraction(db_session, story_id, **completed)
+    v2 = await seed_extraction(db_session, story_id, **completed)
+    return v1, v2
 
 
 class TestCreateTask:
@@ -1156,3 +1211,565 @@ class TestDeleteTask:
         response = await authed_client.delete(f"/api/v1/tasks/{task.id}/invalidations/current")
         assert response.status_code != 410
         assert b"TASK_DELETE_ENDPOINT_REMOVED" not in response.content
+
+
+class TestCreateInvalidation:
+    """POST /api/v1/tasks/{task_id}/invalidations — the mark's door (WU5 / R8).
+
+    The gate is ``require_task_owner_or_admin``: a ``MEMBER`` is refused with
+    403 ``WORKSPACE_OWNER_OR_ADMIN_REQUIRED``, a non-member keeps the unchanged
+    403 ``NOT_A_WORKSPACE_MEMBER``. Every refusal below is witnessed by a
+    direct read of ``task_invalidations``, not by the status code alone.
+    """
+
+    async def test_a_valid_mark_round_trips_with_reason_actor_and_timestamp(
+        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ):
+        """201 with the mark record; exactly one row was persisted."""
+        story_id = (await seed_workspace()).story_id
+        # A single completed run: its task sits on the story's current version.
+        task = await seed_task(db_session, story_id, "Implement login")
+
+        response = await authed_client.post(
+            f"/api/v1/tasks/{task.id}/invalidations", json={"reason": "Duplicates the export task"}
+        )
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["reason"] == "Duplicates the export task"
+        assert body["marked_by"] == str(authed_user.id)
+        assert body["marked_at"]
+        assert body["revoked_by"] is None
+        assert body["revoked_at"] is None
+        assert body["id"]
+        rows = await _mark_rows(db_session, task.id)
+        assert len(rows) == 1
+        assert str(rows[0].id) == body["id"]
+
+    @pytest.mark.parametrize("reason", ["", "   ", "\t\n"])
+    async def test_a_blank_reason_is_refused_and_persists_nothing(
+        self, authed_client, db_session: AsyncSession, seed_workspace, reason: str
+    ):
+        """All three blank shapes answer 422 REQUEST_VALIDATION_FAILED and write nothing.
+
+        ``"\\t\\n"`` is the shape only the Pydantic validator can see: Python
+        whitespace is wider than the column's ``length(trim(reason)) > 0``.
+        """
+        story_id = (await seed_workspace()).story_id
+        task = await seed_task(db_session, story_id, "Implement login")
+
+        response = await authed_client.post(
+            f"/api/v1/tasks/{task.id}/invalidations", json={"reason": reason}
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error_code"] == "REQUEST_VALIDATION_FAILED"
+        assert await _mark_rows(db_session, task.id) == []
+
+    async def test_a_second_active_mark_is_refused_with_the_live_reason_and_still_one_row(
+        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ):
+        """409 TASK_ALREADY_MARKED carries the active reason; no second row."""
+        story_id = (await seed_workspace()).story_id
+        task = await seed_task(db_session, story_id, "Implement login")
+        await _seed_mark(
+            db_session, task.id, authed_user.id, reason="Duplicates the login task from v1"
+        )
+
+        response = await authed_client.post(
+            f"/api/v1/tasks/{task.id}/invalidations", json={"reason": "A second, different reason"}
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "TASK_ALREADY_MARKED"
+        assert "Duplicates the login task from v1" in str(response.json()["detail"])
+        assert len(await _mark_rows(db_session, task.id)) == 1
+
+    async def test_marking_a_frozen_version_is_refused_with_no_row(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A task of a superseded version cannot be marked: 409 TASK_VERSION_FROZEN, no row."""
+        story_id = (await seed_workspace()).story_id
+        v1, _ = await _seed_two_completed_versions(db_session, story_id)
+        frozen_task = await seed_task(db_session, story_id, "Frozen task", extraction=v1)
+
+        response = await authed_client.post(
+            f"/api/v1/tasks/{frozen_task.id}/invalidations", json={"reason": "Too late"}
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "TASK_VERSION_FROZEN"
+        assert await _mark_rows(db_session, frozen_task.id) == []
+
+    async def test_a_member_is_refused_with_the_gate_code_and_no_row(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A MEMBER gets 403 WORKSPACE_OWNER_OR_ADMIN_REQUIRED; nothing persists."""
+        owner = await _create_user(db_session, "mark-owner@test.com")
+        member = await _create_user(db_session, "mark-member@test.com")
+        seeded = await seed_workspace(user=owner)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id, user_id=member.id, role=WorkspaceRole.MEMBER
+            )
+        )
+        task = await seed_task(db_session, seeded.story_id, "Implement login")
+
+        response = await authed_client.post(
+            f"/api/v1/tasks/{task.id}/invalidations",
+            json={"reason": "Duplicates the export task"},
+            headers=_auth_headers(str(member.id)),
+        )
+
+        assert response.status_code == 403
+        assert response.json()["error_code"] == "WORKSPACE_OWNER_OR_ADMIN_REQUIRED"
+        assert await _mark_rows(db_session, task.id) == []
+
+    async def test_a_non_owner_admin_member_marks_and_revokes(
+        self, db_session: AsyncSession, async_client, seed_workspace
+    ):
+        """A member with role ADMIN who is not the owner passes both gates (task 4.2).
+
+        The owner-success cases above carry ownership; this one carries only the
+        ADMIN role, so both disjuncts of the gate rule are witnessed at the API.
+        """
+        owner = await _create_user(db_session, "admin-gate-owner@test.com")
+        admin = await _create_user(db_session, "admin-gate-admin@test.com")
+        seeded = await seed_workspace(user=owner)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id, user_id=admin.id, role=WorkspaceRole.ADMIN
+            )
+        )
+        task = await seed_task(db_session, seeded.story_id, "Implement login")
+        headers = _auth_headers(str(admin.id))
+
+        marked = await async_client.post(
+            f"/api/v1/tasks/{task.id}/invalidations",
+            json={"reason": "Duplicates the export task"},
+            headers=headers,
+        )
+        assert marked.status_code == 201, marked.text
+
+        revoked = await async_client.delete(
+            f"/api/v1/tasks/{task.id}/invalidations/current", headers=headers
+        )
+        assert revoked.status_code == 204
+
+    async def test_a_non_member_keeps_the_not_a_workspace_member_code(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The gate never speaks before the membership walk: a non-member keeps 403 NOT_A_WORKSPACE_MEMBER."""
+        seeded = await seed_workspace(member=False)
+        task = await seed_task(db_session, seeded.story_id, "Implement login")
+
+        response = await authed_client.post(
+            f"/api/v1/tasks/{task.id}/invalidations", json={"reason": "Duplicates the export task"}
+        )
+
+        assert response.status_code == 403
+        assert response.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
+        assert await _mark_rows(db_session, task.id) == []
+
+    async def test_re_marking_after_a_revoke_writes_a_second_row_and_keeps_the_first_revoked(
+        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ):
+        """Both mark events stay readable: a new row, the first still revoked."""
+        story_id = (await seed_workspace()).story_id
+        task = await seed_task(db_session, story_id, "Implement login")
+        first = await _seed_mark(db_session, task.id, authed_user.id)
+        await authed_client.delete(f"/api/v1/tasks/{task.id}/invalidations/current")
+
+        response = await authed_client.post(
+            f"/api/v1/tasks/{task.id}/invalidations", json={"reason": "Still duplicated"}
+        )
+
+        assert response.status_code == 201, response.text
+        rows = await _mark_rows(db_session, task.id)
+        assert len(rows) == 2
+        assert str(first.id) in {str(row.id) for row in rows}
+        first_row = next(row for row in rows if row.id == first.id)
+        assert first_row.revoked_at is not None
+        assert first_row.revoked_by == authed_user.id
+
+
+class TestListInvalidations:
+    """GET /api/v1/tasks/{task_id}/invalidations — the mark history read (R9)."""
+
+    async def test_the_history_lists_the_active_mark_first_with_every_field(
+        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ):
+        """Active mark first; every row carries all six fields; a MEMBER reads it too."""
+        owner = await _create_user(db_session, "history-owner@test.com")
+        member = await _create_user(db_session, "history-member@test.com")
+        seeded = await seed_workspace(user=owner)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id, user_id=member.id, role=WorkspaceRole.MEMBER
+            )
+        )
+        task = await seed_task(db_session, seeded.story_id, "Implement login")
+        revoked_repo = SQLAlchemyTaskInvalidationRepository(db_session)
+        older = await revoked_repo.create(
+            TaskInvalidation(
+                task_id=task.id,
+                reason="older mark",
+                marked_by=owner.id,
+                marked_at=datetime.now(UTC) - timedelta(hours=1),
+            )
+        )
+        await revoked_repo.revoke(older.id, revoked_by=owner.id, revoked_at=datetime.now(UTC))
+        await _seed_mark(db_session, task.id, owner.id, reason="active mark")
+
+        response = await authed_client.get(
+            f"/api/v1/tasks/{task.id}/invalidations", headers=_auth_headers(str(member.id))
+        )
+
+        assert response.status_code == 200
+        marks = response.json()
+        assert len(marks) == 2
+        assert marks[0]["revoked_at"] is None
+        assert marks[0]["reason"] == "active mark"
+        for mark in marks:
+            assert set(mark) == {
+                "id",
+                "reason",
+                "marked_by",
+                "marked_at",
+                "revoked_by",
+                "revoked_at",
+            }
+        revoked_row = next(mark for mark in marks if mark["revoked_at"] is not None)
+        assert revoked_row["id"] == str(older.id)
+        assert revoked_row["revoked_by"] == str(owner.id)
+
+    async def test_an_unmarked_task_reads_as_empty(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A task that has never been marked answers 200 []."""
+        story_id = (await seed_workspace()).story_id
+        task = await seed_task(db_session, story_id, "Implement login")
+
+        response = await authed_client.get(f"/api/v1/tasks/{task.id}/invalidations")
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+
+class TestRevokeInvalidation:
+    """DELETE /api/v1/tasks/{task_id}/invalidations/current — revoke is an UPDATE (R10)."""
+
+    async def test_revoking_records_who_and_when_and_keeps_the_row(
+        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ):
+        """204; the same row now records the revoker, and its original fields stay."""
+        story_id = (await seed_workspace()).story_id
+        task = await seed_task(db_session, story_id, "Implement login")
+        marked_at = datetime.now(UTC) - timedelta(hours=2)
+        mark = await SQLAlchemyTaskInvalidationRepository(db_session).create(
+            TaskInvalidation(
+                task_id=task.id,
+                reason="Duplicates the export task",
+                marked_by=authed_user.id,
+                marked_at=marked_at,
+            )
+        )
+
+        response = await authed_client.delete(f"/api/v1/tasks/{task.id}/invalidations/current")
+
+        assert response.status_code == 204
+        rows = await _mark_rows(db_session, task.id)
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.id == mark.id
+        assert row.revoked_by == authed_user.id
+        assert row.revoked_at is not None
+        assert row.reason == "Duplicates the export task"
+        assert row.marked_by == authed_user.id
+        assert row.marked_at.replace(tzinfo=None) == marked_at.replace(tzinfo=None)
+
+    async def test_revoking_on_a_frozen_version_is_refused_and_the_row_stays_active(
+        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ):
+        """409 TASK_VERSION_FROZEN; the mark row is unchanged and still active."""
+        story_id = (await seed_workspace()).story_id
+        v1, _ = await _seed_two_completed_versions(db_session, story_id)
+        frozen_task = await seed_task(db_session, story_id, "Frozen task", extraction=v1)
+        await _seed_mark(db_session, frozen_task.id, authed_user.id)
+
+        response = await authed_client.delete(
+            f"/api/v1/tasks/{frozen_task.id}/invalidations/current"
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "TASK_VERSION_FROZEN"
+        rows = await _mark_rows(db_session, frozen_task.id)
+        assert len(rows) == 1
+        assert rows[0].revoked_at is None
+
+    async def test_revoking_without_an_active_mark_is_404(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """No active mark: 404, and the task's row count stays at zero."""
+        story_id = (await seed_workspace()).story_id
+        task = await seed_task(db_session, story_id, "Implement login")
+
+        response = await authed_client.delete(f"/api/v1/tasks/{task.id}/invalidations/current")
+
+        assert response.status_code == 404
+        assert await _mark_rows(db_session, task.id) == []
+
+    async def test_a_member_revocation_is_refused_and_the_row_stays_active(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A MEMBER gets the gate code on revoke too; the active mark survives untouched."""
+        owner = await _create_user(db_session, "revoke-owner@test.com")
+        member = await _create_user(db_session, "revoke-member@test.com")
+        seeded = await seed_workspace(user=owner)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id, user_id=member.id, role=WorkspaceRole.MEMBER
+            )
+        )
+        task = await seed_task(db_session, seeded.story_id, "Implement login")
+        await _seed_mark(db_session, task.id, owner.id)
+
+        response = await authed_client.delete(
+            f"/api/v1/tasks/{task.id}/invalidations/current", headers=_auth_headers(str(member.id))
+        )
+
+        assert response.status_code == 403
+        assert response.json()["error_code"] == "WORKSPACE_OWNER_OR_ADMIN_REQUIRED"
+        rows = await _mark_rows(db_session, task.id)
+        assert len(rows) == 1
+        assert rows[0].revoked_at is None
+
+
+class TestRepetitionRead:
+    """GET /api/v1/tasks/{task_id}/invalidations/repetition — the D16 read (R11).
+
+    Exact normalized-title equality only — no fuzzy, no vector, no prefix. The
+    title is resolved server-side from the task id; the read writes nothing.
+    """
+
+    async def test_a_matching_mark_from_another_version_is_offered(
+        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ):
+        """Casefold-plus-whitespace equality matches across versions."""
+        story_id = (await seed_workspace()).story_id
+        v1, v2 = await _seed_two_completed_versions(db_session, story_id)
+        marked = await seed_task(db_session, story_id, "Implement  Login Retry", extraction=v1)
+        edited = await seed_task(db_session, story_id, "Implement login retry", extraction=v2)
+        await _seed_mark(
+            db_session, marked.id, authed_user.id, reason="Already covered by the auth refactor"
+        )
+
+        response = await authed_client.get(f"/api/v1/tasks/{edited.id}/invalidations/repetition")
+
+        assert response.status_code == 200
+        matches = response.json()["matches"]
+        assert len(matches) == 1
+        assert matches[0]["version_number"] == 1
+        assert matches[0]["reason"] == "Already covered by the auth refactor"
+        assert matches[0]["marked_at"]
+
+    async def test_no_normalized_match_reads_empty(
+        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ):
+        """Nothing similar on any other version answers {"matches": []}."""
+        story_id = (await seed_workspace()).story_id
+        v1, v2 = await _seed_two_completed_versions(db_session, story_id)
+        marked = await seed_task(db_session, story_id, "Set up the database schema", extraction=v1)
+        edited = await seed_task(db_session, story_id, "Implement login retry", extraction=v2)
+        await _seed_mark(db_session, marked.id, authed_user.id)
+
+        response = await authed_client.get(f"/api/v1/tasks/{edited.id}/invalidations/repetition")
+
+        assert response.status_code == 200
+        assert response.json() == {"matches": []}
+
+    async def test_a_mark_on_the_tasks_own_version_is_not_offered(
+        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ):
+        """The same-version mark is excluded, even on an identical normalized title."""
+        story_id = (await seed_workspace()).story_id
+        v1, v2 = await _seed_two_completed_versions(db_session, story_id)
+        _ = v1
+        edited = await seed_task(db_session, story_id, "Implement login retry", extraction=v2)
+        same_version = await seed_task(
+            db_session, story_id, "Implement  Login  Retry", extraction=v2
+        )
+        await _seed_mark(db_session, same_version.id, authed_user.id)
+
+        response = await authed_client.get(f"/api/v1/tasks/{edited.id}/invalidations/repetition")
+
+        assert response.status_code == 200
+        assert response.json() == {"matches": []}
+
+    async def test_marks_from_other_stories_never_match(
+        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ):
+        """Another story's same-title mark is another story's business."""
+        seeded = await seed_workspace(stories=2)
+        other_story_id, story_id = seeded.story_ids
+        v1, v2 = await _seed_two_completed_versions(db_session, story_id)
+        edited = await seed_task(db_session, story_id, "Implement login retry", extraction=v2)
+        foreign = await seed_task(db_session, other_story_id, "Implement  Login Retry")
+        await _seed_mark(db_session, foreign.id, authed_user.id)
+        _ = v1
+
+        response = await authed_client.get(f"/api/v1/tasks/{edited.id}/invalidations/repetition")
+
+        assert response.status_code == 200
+        assert response.json() == {"matches": []}
+
+    async def test_a_revoked_mark_is_not_offered(
+        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ):
+        """A revoked mark is history, not a live warning: the read answers empty."""
+        story_id = (await seed_workspace()).story_id
+        v1, v2 = await _seed_two_completed_versions(db_session, story_id)
+        marked = await seed_task(db_session, story_id, "Implement  Login Retry", extraction=v1)
+        edited = await seed_task(db_session, story_id, "Implement login retry", extraction=v2)
+        mark = await _seed_mark(db_session, marked.id, authed_user.id)
+        await SQLAlchemyTaskInvalidationRepository(db_session).revoke(
+            mark.id, revoked_by=authed_user.id, revoked_at=datetime.now(UTC)
+        )
+
+        response = await authed_client.get(f"/api/v1/tasks/{edited.id}/invalidations/repetition")
+
+        assert response.status_code == 200
+        assert response.json() == {"matches": []}
+
+    async def test_a_one_character_difference_yields_no_match_with_no_similarity_call(
+        self,
+        authed_client,
+        authed_user: User,
+        db_session: AsyncSession,
+        seed_workspace,
+        monkeypatch,
+    ):
+        """The match is exact equality; nothing similarity-shaped may run.
+
+        Witness: ``QdrantAdapter.search_similar`` is monkeypatched to fail the
+        test if it is ever invoked — the vector read must not be reachable from
+        this endpoint (D16). A one-character title difference then answers no
+        match, and the call never happened.
+        """
+
+        def _no_similarity(*args: object, **kwargs: object) -> None:
+            pytest.fail("The repetition read computed a vector similarity (D16 forbids it)")
+
+        monkeypatch.setattr(QdrantAdapter, "search_similar", _no_similarity)
+
+        story_id = (await seed_workspace()).story_id
+        v1, v2 = await _seed_two_completed_versions(db_session, story_id)
+        marked = await seed_task(db_session, story_id, "Implement login retr", extraction=v1)
+        edited = await seed_task(db_session, story_id, "Implement login retry", extraction=v2)
+        await _seed_mark(db_session, marked.id, authed_user.id)
+
+        response = await authed_client.get(f"/api/v1/tasks/{edited.id}/invalidations/repetition")
+
+        assert response.status_code == 200
+        assert response.json() == {"matches": []}
+
+    async def test_the_repetition_read_writes_nothing(
+        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ):
+        """A matching read creates, updates and revokes nothing."""
+        story_id = (await seed_workspace()).story_id
+        v1, v2 = await _seed_two_completed_versions(db_session, story_id)
+        marked = await seed_task(db_session, story_id, "Implement  Login Retry", extraction=v1)
+        edited = await seed_task(db_session, story_id, "Implement login retry", extraction=v2)
+        before = await _seed_mark(db_session, marked.id, authed_user.id)
+        rows_before = await _mark_rows(db_session, marked.id)
+
+        response = await authed_client.get(f"/api/v1/tasks/{edited.id}/invalidations/repetition")
+
+        assert response.status_code == 200
+        assert response.json()["matches"]
+        rows_after = await _mark_rows(db_session, marked.id)
+        assert [(row.id, row.revoked_at, row.revoked_by, row.reason) for row in rows_after] == [
+            (row.id, row.revoked_at, row.revoked_by, row.reason) for row in rows_before
+        ]
+        assert rows_after[0].id == before.id
+
+    async def test_a_member_calls_the_repetition_read(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The read is membership-only: a MEMBER reads it, the gate is on the mutations."""
+        owner = await _create_user(db_session, "repetition-owner@test.com")
+        member = await _create_user(db_session, "repetition-member@test.com")
+        seeded = await seed_workspace(user=owner)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id, user_id=member.id, role=WorkspaceRole.MEMBER
+            )
+        )
+        task = await seed_task(db_session, seeded.story_id, "Implement login")
+
+        response = await authed_client.get(
+            f"/api/v1/tasks/{task.id}/invalidations/repetition",
+            headers=_auth_headers(str(member.id)),
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"matches": []}
+
+
+class TestMemberSurface:
+    """The version-mutating gate is the only gate (task 4.2, member-surfaces clause).
+
+    A workspace ``MEMBER`` — neither the owner nor an ``ADMIN`` — keeps every
+    non-gated task surface: reading the board, moving a card, editing ``labels``
+    and calling the repetition read. Only extract, mark, unmark and story
+    deletion demand the owner or an admin.
+    """
+
+    async def _seed_member_scene(
+        self, db_session: AsyncSession, seed_workspace
+    ) -> tuple[object, object, User]:
+        owner = await _create_user(db_session, "surface-owner@test.com")
+        member = await _create_user(db_session, "surface-member@test.com")
+        seeded = await seed_workspace(user=owner)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id, user_id=member.id, role=WorkspaceRole.MEMBER
+            )
+        )
+        task = await seed_task(db_session, seeded.story_id, "Implement login")
+        return seeded, task, member
+
+    async def test_a_member_still_reads_the_board(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        seeded, _, member = await self._seed_member_scene(db_session, seed_workspace)
+        response = await authed_client.get(
+            f"/api/v1/tasks/?workspace_id={seeded.workspace_id}",
+            headers=_auth_headers(str(member.id)),
+        )
+        assert response.status_code == 200
+        assert response.json()["total"] == 1
+
+    async def test_a_member_still_moves_a_card(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        _, task, member = await self._seed_member_scene(db_session, seed_workspace)
+        response = await authed_client.put(
+            f"/api/v1/tasks/{task.id}",
+            json={"status": "todo"},
+            headers=_auth_headers(str(member.id)),
+        )
+        assert response.status_code == 200
+
+    async def test_a_member_still_edits_labels(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        _, task, member = await self._seed_member_scene(db_session, seed_workspace)
+        response = await authed_client.put(
+            f"/api/v1/tasks/{task.id}",
+            json={"labels": ["backend"]},
+            headers=_auth_headers(str(member.id)),
+        )
+        assert response.status_code == 200
+        assert response.json()["labels"] == ["backend"]

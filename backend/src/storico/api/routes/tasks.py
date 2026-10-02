@@ -11,31 +11,47 @@ from storico.api.dependencies import (
     get_current_user,
     get_repository,
     require_story_workspace_access,
+    require_task_owner_or_admin,
     resolve_task_access,
 )
 from storico.api.error_codes import (
     NOT_A_WORKSPACE_MEMBER,
     REQUEST_VALIDATION_FAILED,
+    TASK_ALREADY_MARKED,
     TASK_CREATION_ENDPOINT_REMOVED,
     TASK_DELETE_ENDPOINT_REMOVED,
     TASK_VERSION_FROZEN,
 )
 from storico.api.errors import ApiError
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
-from storico.api.schemas.task import TaskResponse, UpdateTaskRequest
+from storico.api.schemas.task import (
+    CreateInvalidationRequest,
+    InvalidationResponse,
+    RepetitionMatch,
+    RepetitionResponse,
+    TaskResponse,
+    UpdateTaskRequest,
+)
 from storico.application.services.task_service import (
     InvalidStateTransition,
     TaskService,
 )
-from storico.domain.entities import Task, User
+from storico.domain.entities import EntityNotFound, Task, User
+from storico.domain.entities.extraction import Extraction
+from storico.domain.entities.task_invalidation import TaskInvalidation
+from storico.domain.services.task_title_normalizer import normalize_task_title
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
+    SQLAlchemyTaskInvalidationRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserStoryRepository,
 )
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
+)
+from storico.infrastructure.database.repositories.workspace_repository import (
+    SQLAlchemyWorkspaceRepository,
 )
 
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
@@ -65,6 +81,16 @@ ExtractionRepoDep = Annotated[
     Depends(get_repository(SQLAlchemyExtractionRepository)),
 ]
 
+InvalidationRepoDep = Annotated[
+    SQLAlchemyTaskInvalidationRepository,
+    Depends(get_repository(SQLAlchemyTaskInvalidationRepository)),
+]
+
+WorkspaceRepoDep = Annotated[
+    SQLAlchemyWorkspaceRepository,
+    Depends(get_repository(SQLAlchemyWorkspaceRepository)),
+]
+
 
 async def _validate_task_workspace_access(
     task_id: UUID,
@@ -89,6 +115,21 @@ async def _validate_task_workspace_access(
         member_repo=member_repo,
     )
     return access.task
+
+
+async def _frozen_version_state(
+    task: Task, extraction_repo: SQLAlchemyExtractionRepository
+) -> tuple[bool, Extraction | None]:
+    """D21's frozen verdict for a task, plus the current version it was judged against.
+
+    Frozen means: the story has no ``completed`` version at all, or the task
+    belongs to a superseded one. Shared by ``update_task``'s dependencies guard
+    and the invalidation mark/revoke guards; each caller keeps its own refusal
+    wording, so ``update_task``'s 409 detail stays byte-identical.
+    """
+    current = await extraction_repo.find_current_version(task.user_story_id)
+    frozen = current is None or task.extraction_id != current.id
+    return frozen, current
 
 
 @router.api_route(
@@ -314,8 +355,7 @@ async def update_task(
     # statement the D21 tradeoff prices. When the key is present the refusal
     # still precedes the state-machine check below.
     if "dependencies" in body.model_fields_set:
-        current = await extraction_repo.find_current_version(existing.user_story_id)
-        frozen = current is None or existing.extraction_id != current.id
+        frozen, current = await _frozen_version_state(existing, extraction_repo)
         if frozen:
             if current is not None:
                 reason = (
@@ -415,3 +455,202 @@ async def deprecated_delete_task(
             "its story and is only ever destroyed together with that story."
         ),
     )
+
+
+def _frozen_refusal_detail(action: str, current: Extraction | None) -> dict:
+    """The 409 body the mark and revoke guards answer with on a frozen version.
+
+    Same shape as ``update_task``'s frozen detail — a readable reason plus the
+    story's current version number — but worded for the mark, whose refusal is
+    not about editing dependencies.
+    """
+    if current is not None:
+        reason = (
+            f"The task can only be {action} while it belongs to the story's "
+            f"current version (v{current.version_number}); this task belongs to "
+            "a superseded version."
+        )
+    else:
+        reason = (
+            f"The task can only be {action} while it belongs to the story's "
+            "current version, but this story has no current version: no "
+            "completed extraction exists for it."
+        )
+    return {
+        "detail": reason,
+        "current_version": current.version_number if current else None,
+    }
+
+
+@router.post("/{task_id}/invalidations", status_code=status.HTTP_201_CREATED)
+async def create_invalidation(
+    task_id: UUID,
+    body: CreateInvalidationRequest,
+    current_user: User = Depends(get_current_user),
+    repo: TaskRepoDep = None,  # type: ignore[assignment]
+    story_repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    ws_repo: WorkspaceRepoDep = None,  # type: ignore[assignment]
+    extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
+    invalidation_repo: InvalidationRepoDep = None,  # type: ignore[assignment]
+) -> InvalidationResponse:
+    """Mark the task invalid, with a reason, as the current user.
+
+    Gated to the workspace owner or an admin. A blank reason never reaches the
+    handler — ``CreateInvalidationRequest`` refuses it at body validation with
+    422 ``REQUEST_VALIDATION_FAILED``. The refusal order is the design's: the
+    frozen check first, then the active-mark read — resolved through
+    ``find_active_by_task`` **before** any write, so a second active mark is a
+    designed 409 ``TASK_ALREADY_MARKED`` carrying the live mark's reason, and
+    the table's partial unique index stays the lost-race backstop it is, not
+    the contract. Revoking is the only way a mark stops being active.
+    """
+    task = await require_task_owner_or_admin(
+        task_id,
+        current_user,
+        task_repo=repo,
+        story_repo=story_repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
+        ws_repo=ws_repo,
+    )
+    frozen, current = await _frozen_version_state(task, extraction_repo)
+    if frozen:
+        raise ApiError(
+            status_code=status.HTTP_409_CONFLICT,
+            error_code=TASK_VERSION_FROZEN,
+            detail=_frozen_refusal_detail("marked", current),
+        )
+    active = await invalidation_repo.find_active_by_task(task_id)
+    if active is not None:
+        raise ApiError(
+            status_code=status.HTTP_409_CONFLICT,
+            error_code=TASK_ALREADY_MARKED,
+            detail=active.reason,
+        )
+    mark = await invalidation_repo.create(
+        TaskInvalidation(task_id=task_id, reason=body.reason, marked_by=current_user.id)
+    )
+    return InvalidationResponse(
+        id=mark.id,
+        reason=mark.reason,
+        marked_by=mark.marked_by,
+        marked_at=mark.marked_at,
+        revoked_by=mark.revoked_by,
+        revoked_at=mark.revoked_at,
+    )
+
+
+@router.get("/{task_id}/invalidations")
+async def list_invalidations(
+    task_id: UUID,
+    current_user: User = Depends(get_current_user),
+    repo: TaskRepoDep = None,  # type: ignore[assignment]
+    story_repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    invalidation_repo: InvalidationRepoDep = None,  # type: ignore[assignment]
+) -> list[InvalidationResponse]:
+    """The task's full mark history, active mark first.
+
+    Membership-only: every member may read the record, the gate is on the
+    mutations. Revoked rows are part of the history and carry their
+    ``revoked_by``/``revoked_at`` attribution.
+    """
+    await _validate_task_workspace_access(
+        task_id, current_user, repo, story_repo, project_repo, member_repo
+    )
+    marks = await invalidation_repo.list_by_task(task_id)
+    return [
+        InvalidationResponse(
+            id=mark.id,
+            reason=mark.reason,
+            marked_by=mark.marked_by,
+            marked_at=mark.marked_at,
+            revoked_by=mark.revoked_by,
+            revoked_at=mark.revoked_at,
+        )
+        for mark in marks
+    ]
+
+
+@router.delete("/{task_id}/invalidations/current", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_invalidation(
+    task_id: UUID,
+    current_user: User = Depends(get_current_user),
+    repo: TaskRepoDep = None,  # type: ignore[assignment]
+    story_repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    ws_repo: WorkspaceRepoDep = None,  # type: ignore[assignment]
+    extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
+    invalidation_repo: InvalidationRepoDep = None,  # type: ignore[assignment]
+) -> None:
+    """Revoke the task's active mark — an UPDATE of the row, never a DELETE.
+
+    Gated to the workspace owner or an admin. The row that answers 404 is the
+    active mark ``find_active_by_task`` resolves: no active mark means nothing
+    to revoke. The row's reason, ``marked_by`` and ``marked_at`` stay intact —
+    the revoke history is the record.
+    """
+    task = await require_task_owner_or_admin(
+        task_id,
+        current_user,
+        task_repo=repo,
+        story_repo=story_repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
+        ws_repo=ws_repo,
+    )
+    frozen, current = await _frozen_version_state(task, extraction_repo)
+    if frozen:
+        raise ApiError(
+            status_code=status.HTTP_409_CONFLICT,
+            error_code=TASK_VERSION_FROZEN,
+            detail=_frozen_refusal_detail("revoked", current),
+        )
+    active = await invalidation_repo.find_active_by_task(task_id)
+    if active is None:
+        raise EntityNotFound("TaskInvalidation", str(task_id))
+    await invalidation_repo.revoke(
+        active.id, revoked_by=current_user.id, revoked_at=datetime.now(UTC)
+    )
+
+
+@router.get("/{task_id}/invalidations/repetition")
+async def find_repetition(
+    task_id: UUID,
+    current_user: User = Depends(get_current_user),
+    repo: TaskRepoDep = None,  # type: ignore[assignment]
+    story_repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    invalidation_repo: InvalidationRepoDep = None,  # type: ignore[assignment]
+) -> RepetitionResponse:
+    """Warn on marks of the story's other versions whose title repeats this task's.
+
+    The D16 read, and deliberately nothing more: the title is resolved
+    server-side from the task id (the endpoint accepts no arbitrary text), the
+    SQL narrows to the story's other versions' active marks, and the match is
+    an exact comparison of ``normalize_task_title`` outputs — casefold plus
+    whitespace collapse. No fuzzy, no vector, no prefix, and no write: the read
+    creates, updates and revokes nothing.
+    """
+    task = await _validate_task_workspace_access(
+        task_id, current_user, repo, story_repo, project_repo, member_repo
+    )
+    candidates = await invalidation_repo.list_active_on_other_versions(
+        user_story_id=task.user_story_id, exclude_extraction_id=task.extraction_id
+    )
+    normalized = normalize_task_title(task.title)
+    matches = [
+        RepetitionMatch(
+            version_number=candidate.version_number,
+            reason=candidate.reason,
+            marked_at=candidate.marked_at,
+        )
+        for candidate in candidates
+        if normalize_task_title(candidate.title) == normalized
+    ]
+    return RepetitionResponse(matches=matches)

@@ -42,6 +42,7 @@ __all__ = [
     "REPOSITORY_ERROR",
     "REQUEST_VALIDATION_FAILED",
     "STORY_NOT_IN_WORKSPACE",
+    "TASK_ALREADY_MARKED",
     "TASK_CREATION_ENDPOINT_REMOVED",
     "TASK_DELETE_ENDPOINT_REMOVED",
     "TASK_VERSION_FROZEN",
@@ -144,6 +145,12 @@ TASK_DELETE_ENDPOINT_REMOVED = "TASK_DELETE_ENDPOINT_REMOVED"
 # refused with the current version number in the detail (design decisions
 # D5/D21 of extraction-versioning).
 TASK_VERSION_FROZEN = "TASK_VERSION_FROZEN"
+
+# ``tasks.py`` POST /{task_id}/invalidations: the task already holds an active
+# mark — the refusal is resolved through ``find_active_by_task`` before the
+# write, and the detail carries the live mark's reason; the partial unique
+# index is only the lost-race backstop, not the contract.
+TASK_ALREADY_MARKED = "TASK_ALREADY_MARKED"
 
 # ``stories.py`` POST: actor + feature + benefit already exist in the project.
 DUPLICATE_USER_STORY = "DUPLICATE_USER_STORY"

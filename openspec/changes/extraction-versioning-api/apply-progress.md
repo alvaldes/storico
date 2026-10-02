@@ -2844,3 +2844,124 @@ that number is stated in PR #36's body so the reviewer knows what they are readi
 
 For the record of how the two halves landed: W5-B keeps its own measurement and its own PR boundary, and
 nothing here was absorbed silently.
+
+## W5-B1 — the mark's HTTP contract (tasks 5.1, 5.4, 5.8, 5.9, 5.10, 5.11) — 2026-10-02
+
+Branch `feat/extraction-versioning-api-wu5b`, stacked on W5-A's head `c9a9f48`. Consumed from W5-A
+unchanged: the `TaskInvalidation` entity, the port (with `TaskInvalidationCandidate`), the SQLAlchemy
+repository, and `normalize_task_title`. No migration, no model, no DDL — the table and
+`TaskInvalidationModel` are slice (a)'s and were not touched.
+
+### Consumed branch/baseline facts
+- Baseline measured by the parent at `c9a9f48`: **1161 passed, 36 deselected**; ruff check clean;
+  format clean (267 files). Verified green at start of work, never re-derived from another head.
+- Allowed edit surfaces respected exactly: `api/schemas/task.py`, `api/routes/tasks.py`,
+  `api/error_codes.py`, `tests/test_unit/test_invalidation_request.py` (new),
+  `tests/test_api/test_tasks.py`, plus the two plan artifacts. `api/errors.py`,
+  `api/dependencies.py`, every domain/repository file, and `test_stories.py` were not touched.
+
+### RED (observed, not assumed)
+- 5.1 first: `tests/test_unit/test_invalidation_request.py` **failed at collection** —
+  `ImportError: cannot import name 'CreateInvalidationRequest'` — the schema did not exist.
+- 5.4 second: `tests/test_api/test_tasks.py` → **23 failed, 49 passed**. Every new invalidation
+  case failed (the routes did not exist: 404s and, for the blank-reason shapes, failures against
+  the same missing route); every pre-existing case stayed green. The three `TestMemberSurface`
+  cases passed at RED on purpose — they pin existing ungated behaviour (task 4.2's member-surfaces
+  clause), not the new endpoints.
+
+### GREEN (observed)
+- Schemas (5.8): `CreateInvalidationRequest` (`extra="forbid"`, `max_length=500`, blank-reason
+  `field_validator` — `str.strip()` sees the tab/newline shapes the column's
+  `length(trim(reason)) > 0` cannot), `InvalidationResponse` (six fields, no `task_id`),
+  `RepetitionMatch` (no title — the title is the matching input, never an output),
+  `RepetitionResponse`.
+- Routes (5.9): the four handlers on `routes/tasks.py`, in the design's refusal order — gate →
+  frozen → `find_active_by_task` → write. The 409 `TASK_ALREADY_MARKED` resolves the live mark
+  through `find_active_by_task` **before** writing, with the active reason as the `detail`; the
+  partial unique index stays the lost-race backstop, not the contract. Revoke is
+  `revoke(active.id, ...)` on the row `find_active_by_task` resolved — an UPDATE, never a DELETE —
+  with 404 (`EntityNotFound("TaskInvalidation", …)`) when no active mark exists. The two reads are
+  membership-only via the unchanged `_validate_task_workspace_access`. The repetition read resolves
+  the title server-side, reads `list_active_on_other_versions(user_story_id=…,
+  exclude_extraction_id=task.extraction_id)`, and matches with exact `normalize_task_title`
+  equality — no fuzzy, no vector, no prefix, and no write of any kind.
+- Error code (5.10): `TASK_ALREADY_MARKED` added to the sorted `__all__` (between
+  `STORY_NOT_IN_WORKSPACE` and `TASK_CREATION_ENDPOINT_REMOVED`) and to the route raise-sites
+  comment block.
+- Result: 73 passed in `test_tasks.py`, 5/5 in the unit file.
+
+### The frozen-check reuse decision (task 5.9's condition)
+**Helper extracted, wording kept.** `_frozen_version_state(task, extraction_repo) ->
+tuple[bool, Extraction | None]` now carries the D21 predicate exactly once
+(`current is None or task.extraction_id != current.id`); `update_task` calls it and keeps its own
+two reason strings **byte-identical** — its 409 `detail` wording, the `model_fields_set` presence
+key, and the state-machine order are untouched, and its existing frozen cases in
+`test_tasks.py` pass unchanged (they were among the 49 green at RED and stayed green throughout).
+The mark/revoke guards build their own detail through `_frozen_refusal_detail(action, current)`
+because `update_task`'s wording ("Dependencies can only be edited…") does not describe a mark.
+
+### The three blank shapes
+`""`, `"   "`, and `"\t\n"` — parametrized at both layers. The unit file pins them on the schema;
+the API case pins 422 `REQUEST_VALIDATION_FAILED` with a zero-row table read after each. The
+`\t\n` shape is the reason the rule lives in a validator: the column's `CHECK` would accept it.
+
+### The no-write witness for the repetition read
+Direct `task_invalidations` row reads, not status codes: `test_the_repetition_read_writes_nothing`
+captures every row's `(id, revoked_at, revoked_by, reason)` before the GET and asserts the tuple
+list is identical after — created nothing, revoked nothing, updated nothing — while the response
+still carries the match.
+
+### The similarity-free claim: a **monkeypatch**
+`test_a_one_character_difference_yields_no_match_with_no_similarity_call` monkeypatches
+`QdrantAdapter.search_similar` with a function that calls `pytest.fail` if invoked, then requests
+the repetition read for a one-character title difference: no match, and the vector read was never
+reachable. (A fake class was unnecessary — the route holds no vector dependency at all, so the
+monkeypatch is the stronger witness: it fails the test if any similarity path ever appears.)
+
+### Task 4.2 — clause-by-clause accounting
+Landed in W5-B1 (`test_tasks.py`): MEMBER 403 `WORKSPACE_OWNER_OR_ADMIN_REQUIRED` on **mark**
+(`test_a_member_is_refused_with_the_gate_code_and_no_row`) and on **unmark**
+(`test_a_member_revocation_is_refused_and_the_row_stays_active`), both row-unchanged; owner
+success on mark/unmark (the 201/204 cases); **non-owner ADMIN** success on mark and unmark
+(`test_a_non_owner_admin_member_marks_and_revokes`); non-member keeps
+`NOT_A_WORKSPACE_MEMBER` (`test_a_non_member_keeps_the_not_a_workspace_member_code`); MEMBER
+surfaces on task routes — board read (`test_a_member_still_reads_the_board`), card move
+(`test_a_member_still_moves_a_card`), `labels` edit (`test_a_member_still_edits_labels`),
+repetition read (`test_a_member_calls_the_repetition_read`).
+Already pinned, cited not duplicated: MEMBER-extract refusal →
+`test_extraction.py::TestExtractionOwnerOrAdminGate::test_a_member_who_is_neither_owner_nor_admin_is_refused`;
+MEMBER story-delete refusal →
+`test_stories.py::TestDeleteStory::test_a_member_who_is_neither_owner_nor_admin_is_refused`;
+owner succeeds on extract → `test_the_owner_posts_even_when_their_member_role_is_member`, on story
+delete → `test_the_owner_deletes_a_story_with_versions_and_leaves_the_record`; non-owner ADMIN on
+extract → `test_a_non_owner_admin_member_posts`; non-member on extract →
+`test_a_non_member_keeps_the_not_a_workspace_member_code`, on story delete →
+`TestDeleteStory::test_a_non_member_keeps_the_not_a_workspace_member_code`; exhausted allocation →
+`test_an_exhausted_allocation_is_not_silent` (409, never 202, no extraction row).
+**Still uncovered — 4.2 stays unchecked:** an ADMIN succeeding on the story delete, a MEMBER
+editing the story's four fields, and a MEMBER reading versions. All three live in
+`test_stories.py`, outside this unit's allowed edit surfaces. Recorded in `tasks.md`'s 4.2
+amendment; the first unit covering that file should close them.
+
+### W5-A risk notes, resolved or carried
+- `list_by_task`'s active-first key **re-exercised through the API** as the W5-A note asked:
+  `test_the_history_lists_the_active_mark_first_with_every_field` reads an 11:00-revoked/12:00-active
+  history through `GET /{task_id}/invalidations` and pins the active mark at index 0.
+- The lost-race-as-500 risk is unchanged by this unit: the normal 409 path resolves through
+  `find_active_by_task` before writing, so it never reaches the index. Still named, still not
+  absorbed — a concurrent double-mark contract is nobody's task yet.
+- The port/entity `__init__` re-export gap: consumed directly from the modules, same as W5-A's
+  tests; no `__init__` file was in this unit's surfaces either. Still open for whoever owns those
+  two files.
+
+### Measured size
+`git diff --numstat` against `c9a9f48`, code+tests only (plan artifacts excluded; the new unit file
+counted by line count since untracked): error_codes 7+/0−, routes/tasks.py 243+/4−, schemas/task.py
+63+/1−, test_tasks.py 618+/1−, test_invalidation_request.py 50+ (new) → **981 additions, 6
+deletions, ≈987 changed lines** — inside WU5's ≈800–1,050 band, and the PR split stays
+W5-A/W5-B as decided.
+
+### Remaining unchecked in Phase 5
+5.12 (frontend mirror), 5.13 (REFACTOR rerun), 5.14 (D-a-4 contract — owner decision: a designed
+409 with a new code and the blocking marks in the `detail`), plus 4.2's three `test_stories.py`
+clauses named above.
