@@ -21,9 +21,10 @@ import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getProject } from '@/lib/projects-api';
 import { getLLMConfigStatus, type LLMConfigStatus } from '@/lib/llm-config-api';
-import { listVersions } from '@/lib/versioning-api';
+import { listInvalidations } from '@/lib/versioning-api';
 import { canManageVersions } from '@/lib/workspace-role';
 import type { StoryVersion } from '@/types/story';
+import type { TaskInvalidation } from '@/types/task';
 import { StoryForm } from '@/components/react/StoryForm';
 import { TaskEditor } from '@/components/react/TaskEditor';
 import { VersionSelector } from '@/components/react/VersionSelector';
@@ -61,7 +62,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const workspaceRole = useWorkspaceStore((s) => s.currentWorkspace?.role);
   const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace);
   const currentUserId = useAuthStore((s) => s.user?.id);
-  const { stories, loading: storyLoading, fetchStory, updateStory, deleteStory } = useStoryStore();
+  const { stories, loading: storyLoading, fetchStory, updateStory, deleteStory, fetchVersions, versionsByStory } = useStoryStore();
   const {
     tasks,
     loading: tasksLoading,
@@ -76,10 +77,19 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const [deleting, setDeleting] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  // The story's version history and the displayed version. `null` is "the read
-  // has not answered (or failed)": the selector stays hidden and the page falls
-  // back to its pre-versioning behavior instead of blocking on a hiccup.
-  const [versions, setVersions] = useState<StoryVersion[] | null>(null);
+  // Which entry point opened the editor: the "Marcar como inválida" button
+  // opens it with the mark checkbox checked and the focus in the reason field
+  // (the Edit pencil does not). Nothing is applied until the user saves.
+  const [markIntent, setMarkIntent] = useState(false);
+  // The edited task's active mark, read when the editor opens. `'loading'` is
+  // the read in flight; the editor renders only once it has settled, so its
+  // checkbox/reason initializers see the final value.
+  const [activeMark, setActiveMark] = useState<TaskInvalidation | null | 'loading'>(null);
+  // The story's version history, read into the store so the delete dialog's
+  // version count and the selector share one read. `null` is "the read has not
+  // answered (or failed)": the selector stays hidden and the page falls back
+  // to its pre-versioning behavior instead of blocking on a hiccup.
+  const versions = versionsByStory[storyId] ?? null;
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   // Whether the extract confirmation is open. The confirmation is where the
   // version facts are named; the store's request only starts on accept.
@@ -102,31 +112,27 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
     fetchStory(storyId).then(() => setInitialLoad(false));
   }, [fetchStory, storyId]);
 
+  // Version-aware task read (W6-B1): without a selected version the backend's
+  // current-version predicate answers; with one, the read carries the selected
+  // version's extraction_id so a frozen version shows its OWN tasks.
   useEffect(() => {
-    if (storyId) {
-      fetchTasks(storyId);
-    }
-  }, [fetchTasks, storyId]);
+    fetchTasks(storyId, selectedVersionId ?? undefined);
+  }, [fetchTasks, storyId, selectedVersionId]);
 
-  // Load the version history once per story. The selector read doubles as the
-  // delete dialog's version count here — the dialog reuses what the page has.
+  // Load the version history once per story, into the store. The selector read
+  // doubles as the delete dialog's version count here — the dialog reuses what
+  // the page has.
   useEffect(() => {
-    let active = true;
-    listVersions(storyId)
-      .then((history) => {
-        if (!active) return;
-        setVersions(history);
-        setSelectedVersionId(
-          history.find((v) => v.isCurrent)?.id ?? history[0]?.id ?? null,
-        );
-      })
-      .catch(() => {
-        if (active) setVersions(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [storyId]);
+    void fetchVersions(storyId);
+  }, [fetchVersions, storyId]);
+
+  // Default the displayed version to the current one once the history lands.
+  useEffect(() => {
+    if (!versions) return;
+    if (selectedVersionId === null || !versions.some((v) => v.id === selectedVersionId)) {
+      setSelectedVersionId(versions.find((v) => v.isCurrent)?.id ?? versions[0]?.id ?? null);
+    }
+  }, [versions, selectedVersionId]);
 
   // Reset extraction state on unmount
   useEffect(() => {
@@ -134,6 +140,27 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       resetExtraction(storyId);
     };
   }, [storyId, resetExtraction]);
+
+  // Read the edited task's active mark when the editor opens, whichever entry
+  // point opened it: an already-marked task must open with the checkbox checked
+  // and the reason populated. The editor renders only once this read settles,
+  // so its initial state sees the final value. A failed read leaves the task
+  // treated as unmarked — the server's 409 TASK_ALREADY_MARKED is the backstop.
+  useEffect(() => {
+    if (!editingTaskId) return;
+    let active = true;
+    setActiveMark('loading');
+    listInvalidations(editingTaskId)
+      .then((history) => {
+        if (active) setActiveMark(history.find((m) => m.revokedAt === null) ?? null);
+      })
+      .catch(() => {
+        if (active) setActiveMark(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [editingTaskId]);
 
   // Ask once per workspace whether extraction is possible here, so the refusal can be
   // shown before the attempt instead of only after it fails.
@@ -569,17 +596,23 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
                     )}
                     <button
                       type="button"
-                      onClick={() => setEditingTaskId(task.id)}
+                      onClick={() => {
+                        setMarkIntent(false);
+                        setEditingTaskId(task.id);
+                      }}
                       className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
                       disabled={extraction?.status === 'pending'}
                       title={t.taskEditor.title}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
-                    {canManage && (
+                    {canManage && !displayedVersionFrozen && (
                       <button
                         type="button"
-                        onClick={() => setEditingTaskId(task.id)}
+                        onClick={() => {
+                          setMarkIntent(true);
+                          setEditingTaskId(task.id);
+                        }}
                         className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
                         disabled={extraction?.status === 'pending'}
                         title={t.stories.mark_invalid}
@@ -708,8 +741,11 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Task Editor dialog */}
+      {/* Task Editor dialog — rendered only once the task's mark read has
+          settled, so the editor's checkbox/reason initializers see the final
+          mark state. */}
       {editingTaskId &&
+        activeMark !== 'loading' &&
         (() => {
           const editingTask = storyTasks.find((t) => t.id === editingTaskId);
           if (!editingTask) return null;
@@ -718,9 +754,12 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
               key={editingTask.id}
               task={editingTask}
               open={!!editingTaskId}
-              // The displayed tasks are the current version's, so the editor's
+              // The displayed tasks are the selected version's, so the editor's
               // frozen state follows the displayed version's currency.
               frozen={displayedVersionFrozen}
+              activeMark={activeMark}
+              markDefaultChecked={markIntent && !activeMark}
+              reasonAutofocus={markIntent}
               onOpenChange={(open) => {
                 if (!open) setEditingTaskId(null);
               }}

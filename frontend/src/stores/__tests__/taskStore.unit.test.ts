@@ -188,6 +188,36 @@ describe('taskStore — extraction error handling', () => {
     expect(extraction.status).toBe('failed');
     expect(extraction.errorCode).toBe('config');
   });
+
+  it('categorizes an exhausted allocation 409 as a version conflict, before the status codes', async () => {
+    // Exactly what the API answers when create_next_version exhausts the retry:
+    // a designed 409 whose body carries the code. The code, not the status,
+    // decides — checked before any status-based branch could claim it.
+    vi.mocked(api.startExtraction).mockRejectedValue(
+      new ApiRequestError(409, 'Conflict', 'No version number available', {
+        error_code: 'VERSION_ALLOCATION_CONFLICT',
+      }),
+    );
+
+    await useTaskStore.getState().extractTasks('story-conflict', 'ws-1');
+
+    const extraction = useTaskStore.getState().extractions['story-conflict'];
+    expect(extraction.status).toBe('failed');
+    expect(extraction.errorCode).toBe('version-conflict');
+    expect(extraction.userStoryStatus).toBe('failed_extraction');
+  });
+
+  it('categorizes an HTTP 403 as unauthorized', async () => {
+    vi.mocked(api.startExtraction).mockRejectedValue(
+      new ApiRequestError(403, 'Forbidden', 'Not allowed'),
+    );
+
+    await useTaskStore.getState().extractTasks('story-403', 'ws-1');
+
+    const extraction = useTaskStore.getState().extractions['story-403'];
+    expect(extraction.status).toBe('unauthorized');
+    expect(extraction.errorCode).toBe('unauthorized');
+  });
 });
 
 describe('taskStore — stale workspace continuations', () => {
@@ -679,5 +709,38 @@ describe('taskStore — the failure it records', () => {
       friendlyMessage: 'boom',
       rawDetail: 'boom',
     });
+  });
+});
+
+describe('taskStore — version-aware task read (W6-B1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetScopedWorkspace();
+    vi.mocked(api.listTasks).mockResolvedValue([]);
+    useTaskStore.setState({
+      tasks: {},
+      workspaceTasks: [],
+      extractions: {},
+      loading: false,
+      error: null,
+      updatingTaskId: null,
+      allowedTransitions: {},
+    });
+  });
+
+  it('passes the selected version extraction_id into the task read', async () => {
+    await useTaskStore.getState().fetchTasks('story-2', 'ext-1');
+
+    expect(api.listTasks).toHaveBeenCalledTimes(1);
+    expect(api.listTasks).toHaveBeenCalledWith('story-2', 'ext-1');
+    expect(useTaskStore.getState().tasks['story-2']).toEqual([]);
+  });
+
+  it('reads the current version when no extraction_id is given', async () => {
+    await useTaskStore.getState().fetchTasks('story-2');
+
+    expect(api.listTasks).toHaveBeenCalledTimes(1);
+    // Exactly the pre-versioning call: no extraction_id argument at all.
+    expect(api.listTasks).toHaveBeenCalledWith('story-2');
   });
 });

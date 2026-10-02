@@ -13,7 +13,14 @@ const t = useTranslations('en');
 // Mock the api module — the store consumes these mocks.
 vi.mock('@/lib/tasks-api', () => ({
   updateTask: vi.fn(),
+  listTasksByWorkspace: vi.fn(),
 }));
+
+import { listTasksByWorkspace } from '@/lib/tasks-api';
+
+// The real store action, captured before any test replaces it: the 6.7 cases drive the
+// board's actual fetch path (store → `listTasksByWorkspace`) instead of stubbing it.
+const realFetchTasksForWorkspace = useTaskStore.getState().fetchTasksForWorkspace;
 
 const mockTasks: Task[] = [
   {
@@ -187,5 +194,110 @@ describe('KanbanBoard', () => {
     expect(screen.queryByText(t.kanban.empty_board)).not.toBeInTheDocument();
 
     release?.();
+  });
+});
+
+/* ── Current-version-only workspace reads (0.9.0 slice b, 6.7) ──
+ *
+ * The board renders whatever the workspace read returns; the current-version filter
+ * itself is the backend's (`list_current_by_workspace`, WU3 3.7). These cases pin the
+ * frontend half of that contract: the board fetches through `listTasksByWorkspace` —
+ * the endpoint that carries the filter — and renders exactly the tasks that read
+ * returns, so a superseded version cannot appear as cards and a failed-only story
+ * cannot appear as anything at all. A frozen version's cards are unreachable here by
+ * the same construction: only current versions ever reach the board, so the frozen
+ * clause is pinned where a frozen task can actually be acted on — the editor's
+ * status-only save of a frozen task ("never blocks or warns on a status-only save of a
+ * frozen task" in TaskEditor.test.tsx).
+ */
+describe('KanbanBoard — current-version-only workspace reads', () => {
+  function makeTask(id: string, title: string, status: Task['status']): Task {
+    return {
+      id,
+      storyId: 'story-1',
+      title,
+      description: `Description for ${title}`,
+      status,
+      priority: 'medium',
+      labels: [],
+      dependencies: [],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    };
+  }
+
+  // One story with two completed runs: v1's four tasks are superseded and must never
+  // render; v2's four tasks are the current version and are all the API can answer.
+  const v1Titles = ['v1 schema', 'v1 endpoint', 'v1 UI', 'v1 tests'];
+  const v2Tasks: Task[] = [
+    makeTask('task-v2-1', 'v2 schema', 'backlog'),
+    makeTask('task-v2-2', 'v2 endpoint', 'backlog'),
+    makeTask('task-v2-3', 'v2 UI', 'in_progress'),
+    makeTask('task-v2-4', 'v2 tests', 'done'),
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspace: {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        ownerId: 'user-1',
+        role: 'admin',
+        memberCount: 1,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      } as Workspace,
+      loading: false,
+      saving: false,
+    });
+    useTaskStore.setState({
+      tasks: {},
+      workspaceTasks: [],
+      extractions: {},
+      loading: false,
+      error: null,
+      updatingTaskId: null,
+      allowedTransitions: {},
+      fetchTasksForWorkspace: realFetchTasksForWorkspace,
+      updateTaskStatus: vi.fn().mockResolvedValue(undefined),
+    });
+  });
+
+  it('renders exactly the current version\'s cards for a story with two completed runs, and none of v1\'s', async () => {
+    vi.mocked(listTasksByWorkspace).mockResolvedValue(v2Tasks);
+
+    render(<KanbanBoard locale="en" />);
+
+    // The read went through the workspace endpoint that carries the current-version filter.
+    await waitFor(() => expect(listTasksByWorkspace).toHaveBeenCalledWith('workspace-1'));
+
+    // All four of v2's tasks render as cards...
+    for (const task of v2Tasks) {
+      expect(await screen.findByText(task.title)).toBeInTheDocument();
+    }
+    expect(screen.getByText(t.kanban.total_tasks.replace('{count}', '4'))).toBeInTheDocument();
+    // ...and none of v1's tasks do, even though the story has two completed runs.
+    for (const title of v1Titles) {
+      expect(screen.queryByText(title)).not.toBeInTheDocument();
+    }
+  });
+
+  it('renders no cards and no error for a story whose only run failed', async () => {
+    // A failed-only story has no current version, so the workspace read answers [] —
+    // a completed answer, not a failure.
+    vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
+
+    render(<KanbanBoard locale="en" />);
+
+    await waitFor(() => expect(listTasksByWorkspace).toHaveBeenCalledWith('workspace-1'));
+
+    // The board shows its distinct empty state...
+    expect(await screen.findByText(t.kanban.empty_board)).toBeInTheDocument();
+    // ...and nothing failed: no alert is rendered and the store records no error.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(useTaskStore.getState().error).toBeNull();
   });
 });

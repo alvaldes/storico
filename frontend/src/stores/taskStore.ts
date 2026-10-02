@@ -25,6 +25,8 @@ export type ExtractionErrorCode =
   | 'server'
   /** The workspace's LLM configuration cannot extract. The user can fix it. */
   | 'config'
+  /** The version-number allocation was exhausted: a designed 409 the user can retry. */
+  | 'version-conflict'
   | null;
 
 export interface ExtractionState {
@@ -55,7 +57,7 @@ export interface TaskState {
   /** Store allowed transitions per task for client-side validation. */
   allowedTransitions: Record<string, TaskStatus[]>;
 
-  fetchTasks: (storyId: string) => Promise<void>;
+  fetchTasks: (storyId: string, extractionId?: string) => Promise<void>;
   /**
    * Start an asynchronous extraction and begin polling for completion.
    *
@@ -112,6 +114,10 @@ function categorizeExtractionError(err: unknown): ExtractionErrorCode {
   // it. Checked before the status codes because the refusal carries the code, not the
   // status.
   if (anyErr.errorCode === LLM_CONFIG_INCOMPLETE_CODE) return 'config';
+  // An exhausted version allocation is likewise a designed 409 with its own
+  // code and retry hint — the code, not the status, decides, so this check
+  // also sits before the status-based branches.
+  if (anyErr.errorCode === 'VERSION_ALLOCATION_CONFLICT') return 'version-conflict';
   const status = anyErr.status ?? (typeof anyErr.code === 'number' ? anyErr.code : null);
   if (status === 401 || status === 403) return 'unauthorized';
   if (status === 504) return 'timeout';
@@ -137,10 +143,18 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   // ── Fetching ──
 
-  fetchTasks: async (storyId: string) => {
+  fetchTasks: async (storyId: string, extractionId?: string) => {
     set({ loading: true, error: null });
     try {
-      const items = await api.listTasks(storyId);
+      // Version-aware read (W6-B1): pass the selected version's extraction id
+      // to read a frozen version's own tasks; omit it to read the current
+      // version, which is what every read defaults to. The argument is only
+      // forwarded when a version is named, so a plain current-version read
+      // looks exactly like the pre-versioning call it replaced.
+      const items =
+        extractionId !== undefined
+          ? await api.listTasks(storyId, extractionId)
+          : await api.listTasks(storyId);
       set((state) => ({
         tasks: { ...state.tasks, [storyId]: items },
         loading: false,

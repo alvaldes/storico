@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 
 import { AccountPage } from '@/components/react/AccountPage';
+import { api, ApiRequestError } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { DEFAULT_SETTINGS, type ExportFormat } from '@/types/settings';
 import { fetchSettings, saveSettings } from '@/lib/settings-api';
+import { useTranslations } from '@/i18n/utils';
+
+const t = useTranslations('en');
 
 vi.mock('@/lib/settings-api', () => ({
   fetchSettings: vi.fn(),
@@ -18,12 +22,17 @@ vi.mock('sonner', () => ({
 }));
 
 // The page reads the signed-in user for its profile card; the subject here is the export
-// preference, so the session is a constant.
+// preference, so the session is a constant. The mock honors the selector: the
+// delete-account dialog reads `user` and `clear` separately (D-a-4 carry case below).
 vi.mock('@/stores/authStore', () => ({
-  useAuthStore: () => ({
-    user: { name: 'Ada Lovelace', email: 'ada@example.com', provider: 'github' },
-    loading: false,
-  }),
+  useAuthStore: (selector?: (s: unknown) => unknown) => {
+    const state = {
+      user: { name: 'Ada Lovelace', email: 'ada@example.com', provider: 'github' },
+      loading: false,
+      clear: vi.fn(),
+    };
+    return selector ? selector(state) : state;
+  },
 }));
 
 describe('AccountPage — the default export format', () => {
@@ -110,5 +119,53 @@ describe('AccountPage — the default export format', () => {
       ),
     );
     expect(toast.success).not.toHaveBeenCalled();
+  });
+});
+
+/* ── The delete-account refusal (0.9.0 slice b, D-a-4 carry) ──
+ *
+ * The backend answers 409 `ACCOUNT_DELETE_BLOCKED` when an account still has standing
+ * revocations, and its `errorCodes` copy is mirrored in both locales. The dialog must
+ * render that code's localized headline through the error-code map — never the raw
+ * error the HTTP layer built, whose object detail degrades to the status text.
+ */
+describe('AccountPage — the delete-account refusal', () => {
+  it('renders the ACCOUNT_DELETE_BLOCKED refusal through the error-code map, never a raw status', async () => {
+    const user = userEvent.setup();
+    // Built the way the backend's 409 envelope arrives: the canonical `error_code`
+    // beside an object `detail` that names the blocking marks. The API layer turns the
+    // object detail into the status text — exactly what the user must not be shown.
+    const deleteSpy = vi.spyOn(api, 'delete').mockRejectedValue(
+      new ApiRequestError(
+        409,
+        'Conflict',
+        { message: 'Account deletion is blocked by 2 standing revocations.', count: 2, marks: [] },
+        {
+          detail: { message: 'Account deletion is blocked by 2 standing revocations.', count: 2, marks: [] },
+          error_code: 'ACCOUNT_DELETE_BLOCKED',
+        },
+      ),
+    );
+
+    render(<AccountPage locale="en" />);
+    await screen.findByLabelText('Default Format');
+
+    await user.click(screen.getByRole('button', { name: t.settings.danger_delete_account }));
+    const dialog = await screen.findByRole('dialog');
+
+    const inputs = within(dialog).getAllByRole('textbox');
+    await user.type(inputs[0], 'ada@example.com');
+    await user.type(inputs[1], 'delete my personal account');
+    await user.click(
+      within(dialog).getByRole('button', { name: t.settings.danger_delete_dialog_confirm }),
+    );
+
+    expect(deleteSpy).toHaveBeenCalledWith('/api/v1/users/me');
+
+    // The designed refusal is the code's localized sentence...
+    expect(await screen.findByText(t.errorCodes.ACCOUNT_DELETE_BLOCKED)).toBeInTheDocument();
+    // ...never the status text the raw error carried, and never a bare status number.
+    expect(screen.queryByText('Conflict')).not.toBeInTheDocument();
+    expect(screen.queryByText(/409/)).not.toBeInTheDocument();
   });
 });

@@ -82,4 +82,20 @@ describe('VersionSelector', () => {
 
     expect(onSelect).toHaveBeenCalledWith('ext-3');
   });
+
+  it('offers a frozen completed version as selectable — the store version-aware read shows its own tasks', async () => {
+    // W6-B1 lifts W6-A's restriction: once the store re-reads tasks with the
+    // selected version's extraction_id, selecting a frozen completed version
+    // displays that version's own tasks, so it is no longer a lie.
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(<VersionSelector versions={versions} selectedId="ext-2" onSelect={onSelect} />);
+
+    const selector = screen.getByRole('combobox', { name: t.versionSelector.label });
+    const frozen = [...selector.querySelectorAll('option')].find((o) => o.value === 'ext-1');
+    expect(frozen?.disabled).toBe(false);
+
+    await user.selectOptions(selector, 'ext-1');
+    expect(onSelect).toHaveBeenCalledWith('ext-1');
+  });
 });

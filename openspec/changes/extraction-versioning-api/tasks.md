@@ -744,7 +744,7 @@ store test in this unit.
       `frontend/src/lib/versioning-api.ts` **New** (path free);
       `frontend/src/types/task.ts`, `frontend/src/types/story.ts` and
       `frontend/src/types/workspace.ts`: the version and mark types.
-- [ ] 6.3 RED — `frontend/src/components/react/__tests__/VersionSelector.test.tsx` **New** (path
+- [x] 6.3 RED — `frontend/src/components/react/__tests__/VersionSelector.test.tsx` **New** (path
       free) and `frontend/src/components/react/__tests__/StoryDetail.test.tsx`: the failing cases —
       every version is listed with exactly the current one marked; a failed version is offered with
       its `error_info`, model and date and renders a localized "no output" state, never an empty
@@ -767,7 +767,17 @@ store test in this unit.
   > lands** (same precedent as 4.2, which stayed unchecked across units until its last clause did).
   > What W6-A shipped stands unchanged: the "Marcar como inválida" button beside "Editar", it opens
   > the editor, it issues zero requests, and it is gate-hidden for members.
-- [ ] 6.4 RED — `frontend/src/components/react/__tests__/TaskEditor.test.tsx` and
+  > **[Closed 2026-10-02, W6-B1 — the deferred clause landed]** The editor recut delivered the
+  > seam and the behavior: `TaskEditorProps` grows `markDefaultChecked` / `reasonAutofocus` /
+  > `activeMark`, and the story page passes them from the "Marcar como inválida" button. The
+  > integration-level case lives in `StoryDetail.test.tsx` ("opens the editor with the mark checkbox
+  > checked and the focus in the reason field, issuing no request until save"): it clicks the
+  > button, asserts the editor opens, the checkbox is checked, `document.activeElement` is the
+  > reason textarea, and that no mutating request (create/revoke/PUT/extract) runs. The one HTTP
+  > call the open path makes is the `GET …/invalidations` mark read that populates the
+  > already-marked state — the same class of read the design itself mandates for the D16 notice on
+  > open; no write happens before a confirmed save, and cancel still issues none.
+- [x] 6.4 RED — `frontend/src/components/react/__tests__/TaskEditor.test.tsx` and
       `frontend/src/stores/__tests__/taskStore.unit.test.ts`: the failing cases — the "Inválida"
       checkbox with a mandatory reason textarea, an empty reason blocking the save with no request, a
       non-empty reason persisting the mark, unchecking revoking it, both confirmation dialogs with
@@ -777,55 +787,86 @@ store test in this unit.
       `VERSION_ALLOCATION_CONFLICT` as `'version-conflict'` before the status codes and 401/403 as
       `unauthorized`. Prove RED with
       `cd frontend && pnpm test src/components/react/__tests__/TaskEditor.test.tsx src/stores/__tests__/taskStore.unit.test.ts`.
+      *(Closed 2026-10-02, W6-B1: 11 new TaskEditor cases + 4 taskStore cases; 17 of the 18 failed
+      at RED — the 403→`unauthorized` companion case passed pre-GREEN because the status branch
+      already handled 403, so it is a coverage companion to the 409 case, named rather than claimed
+      as RED. Observed RED: 17 failed / 61 passed across the four focused files.)*
 - [x] 6.5 GREEN — `frontend/src/components/react/VersionSelector.tsx` **New** (path free);
       `frontend/src/components/react/StoryDetail.tsx`: the selector wiring, the "Marcar como inválida"
       button beside "Editar", the extract confirmation naming both version numbers, the
       `MEMBER`-hidden/disabled controls via `canManageVersions`, and the delete dialog's version
       count fetched on open with a neutral fallback sentence when that read fails;
       `frontend/src/components/react/StoriesList.tsx`: the same delete-dialog version count.
-- [ ] 6.6 GREEN — `frontend/src/components/react/TaskEditor.tsx`: the "Inválida" checkbox, the
+- [x] 6.6 GREEN — `frontend/src/components/react/TaskEditor.tsx`: the "Inválida" checkbox, the
       mandatory reason textarea, the D16 notice with its copy action, the two confirmation dialogs and
       the submission sequence (mark → `POST`, unmark → `DELETE …/current`, then `PUT`) with optimistic
       update and rollback; `frontend/src/stores/taskStore.ts`: the `'version-conflict'` category and
       the version-aware extraction state; `frontend/src/stores/storyStore.ts`: the version state the
       delete dialog reads.
-- [ ] 6.7 GREEN — `frontend/src/components/react/KanbanBoard.tsx`,
+      *(Closed 2026-10-02, W6-B1: the sequence is exactly the design's; the version-aware read flows
+      `fetchTasks(storyId, extractionId?)` → `listTasks` → `&extraction_id=…`, and the selector's
+      restriction on frozen completed versions was lifted with a pinning case. storyStore gained
+      `versionsByStory` + `fetchVersions`, read by StoryDetail's delete dialog and cleared by
+      `reset()`. Focused suites 78/78, full suite 661, `tsc` clean, build complete.)*
+- [x] 6.7 GREEN — `frontend/src/components/react/KanbanBoard.tsx`,
       `frontend/src/components/react/ExportPanel.tsx` and
       `frontend/src/components/react/__tests__/KanbanBoard.test.tsx`: confirm the filtered reads land
       as current-version-only cards (a story with two completed runs shows 4 cards and none from v1), a
       failed-only story contributes no cards and no error, and a status change on a frozen version is
       neither blocked nor warned.
-- [ ] 6.8 GREEN (copy) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`: the selector,
+- [x] 6.8 GREEN (copy) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`: the selector,
       mark-controls, confirmation, D16 notice, "no output" and delete-dialog copy in both locales with
       identical key sets and neutral international Spanish (`tú`, no voseo), plus the corrected
       `landing.faq.a4` that no longer promises editing `title`/`description` or per-task deletion;
       `frontend/src/i18n/__tests__/api-docs-copy.test.ts` stays green because both retirement handlers
       use exact paths and `include_in_schema=False`.
-- [ ] 6.9 TRIANGULATE (frontend) — `frontend/src/components/react/__tests__/TaskEditor.test.tsx`:
+- [x] 6.9 TRIANGULATE (frontend) — `frontend/src/components/react/__tests__/TaskEditor.test.tsx`:
       the cancel edge — the extract confirmation, the mark confirmation and the unmark confirmation
       each issue zero requests and change nothing when cancelled;
       `frontend/src/components/react/__tests__/StoriesList.test.tsx`: cancelling the delete dialog
       issues no request, and a failed version-count read keeps the confirm enabled with the fallback
       sentence. Prove with `cd frontend && pnpm test`.
-- [ ] 6.10 REFACTOR (frontend) — rerun `cd frontend && pnpm test` and confirm the i18n key-parity and
+- [x] 6.10 REFACTOR (frontend) — rerun `cd frontend && pnpm test` and confirm the i18n key-parity and
       neutral-Spanish suites are green.
 
 ## Phase 7: Slice Verification
 
-- [ ] 7.1 Whole backend suite: `cd backend && conda run -n storico python -m pytest`.
-- [ ] 7.2 Whole frontend suite: `cd frontend && pnpm test` (includes the neutral-Spanish and key-parity
+> **[Closed 2026-10-02 at `75e679e` — results in `verification.md`, which this phase writes]** The full
+> split of evidence, every number, the 36 skips attributed by gate, and the one cross-slice dependency no
+> test here can prove are all in that file. What follows is what each task delivered.
+
+- [x] 7.1 Whole backend suite: `cd backend && conda run -n storico python -m pytest`.
+      **Local `1206 passed, 36 skipped`; CI `1224 passed, 18 skipped`** — and the two reconcile exactly
+      (1242 collected = 1206 + 36; the 18 Docker-gated cases execute in CI, the other 18 are
+      environment-flag opt-ins that skip everywhere).
+- [x] 7.2 Whole frontend suite: `cd frontend && pnpm test` (includes the neutral-Spanish and key-parity
       guards).
-- [ ] 7.3 Integration layer, run where the Docker daemon exists:
+      **57 files, 665 tests passed**, and the gates named rather than assumed:
+      `neutral-spanish.test.ts` (the copy cases *and* the key-parity assertion), `no-duplicate-keys.test.ts`,
+      `api-docs-copy`, `export-copy` and `provider-copy` — the i18n directory run focused: 5 files, 41 tests.
+- [x] 7.3 Integration layer, run where the Docker daemon exists:
       `cd backend && conda run -n storico python -m pytest -m integration`. Without a Docker daemon
       every case skips and the Postgres-only invariants (the story-deletion cascade, the record's
       survival, the `deleted_by` null-out, the partial-index shape, the migration chain) stay
       unverified — record that outcome instead of reporting green.
-- [ ] 7.4 Repo-documented lint/format (`AGENTS.md` §0): from `backend/`,
+      **Run in CI on this head: the 18 Docker-gated cases executed and passed** (the twelve slice-(a)
+      schema invariants against head `0029`, the three story-deletion record cases, the two migration-chain
+      cases and one projects case). On this machine all 36 integration cases **skipped** — and a skip is
+      not a proof. The Qdrant and Ollama live gates are a **second** class that skipped in *both* places:
+      nothing in this slice has ever run against a real Qdrant or a real Ollama.
+- [x] 7.4 Repo-documented lint/format (`AGENTS.md` §0): from `backend/`,
       `conda run -n storico python -m ruff check src tests` and
       `conda run -n storico python -m ruff format --check src tests`.
-- [ ] 7.5 Record in the verify report the honest split of evidence: what the SQLite unit layer proved,
+      **`All checks passed!` and `269 files already formatted`**, locally and in CI. The frontend's
+      `tsc --noEmit` and `pnpm build` were run in the same pass (both clean/complete).
+- [x] 7.5 Record in the verify report the honest split of evidence: what the SQLite unit layer proved,
       what the frontend vitest suite proved, what ran against Postgres, and what skipped without a
       Docker daemon.
+      **`openspec/changes/extraction-versioning-api/verification.md` (new)** carries the layer-by-layer
+      split, the skip attribution table, the session's named residuals, the cross-slice D10 dependency
+      (nothing in (b) calls `set_has_invalid_tasks`; slice (c)'s 3.6–3.8 must, and until then every mark
+      excludes nothing and **nothing goes red**), and the two things not in this slice's evidence at all:
+      the deploy and production's missing LLM config (D-a-6).
 
 ## Slice Boundary
 

@@ -1286,3 +1286,86 @@ extraction the route has just minted, and (b) adds no re-dispatch surface. The s
 restated as ≈4,500–5,800 to include 5.14; 5.15 adds prose only. **WU5 then starts**, split into two
 chained PRs on the axis `tasks.md` already named: entity/port/repository/normalizer first, then the
 endpoints and the D16 read.
+
+## RESUME POINT — end of session 2026-10-02 (b7). WU5 and WU6 delivered; the slice is one verification pass from done
+
+**Where things stand, physically.** Every commit is pushed; the working tree is clean except the two
+files that are not mine (`backend/.gitignore`, `.claude/skills/`). **Nine PRs are open, chained, green
+and none merged**: #31 → #32 → #33 → #34 (WU4-A) → #35 (WU4-B) → #36 (W5-A) → #37 (W5-B) → #38 (WU6-A)
+→ #39 (WU6-B) → `main`.
+
+| Branch | Tip | Which PR |
+| --- | --- | --- |
+| `…-wu4a` / `…-wu4b` | `718e52b` / `ef962ed` | #34 / #35 |
+| `…-wu5a` / `…-wu5b` | `c9a9f48` / `de75076` | #36 / #37 |
+| `…-wu6a` / `…-wu6b` | `a985f83` / `507d447` | #38 / #39 |
+
+**Plan state: 74/79.** Phase 4 **18/18**, Phase 5 **15/15**, Phase 6 **10/10**. The only work left is
+**Phase 7, the slice's verification pass** (7.1–7.5). The count grew from 77 to 79 because this session
+gave the two carried defects task IDs (5.14, 5.15).
+
+**Measured at the head** (`507d447`, plus the resume commit): unit layer **1206 passed / 36 deselected**
+locally, **1150+ passed / 18 skipped** in CI (the Postgres + Qdrant halves run there); frontend
+**665 passed** / 57 files; `tsc --noEmit` clean; `pnpm build` completes; ruff check clean and **269 files**
+formatted.
+
+**Sizes, for the next session's forecasting** — the slice's one durable pattern: the plan prices
+production code and undercounts the proof. WU3 1,244 (forecast 600–750) · WU4 2,701 (1,300–1,700) · WU5
+2,426 (≈800–1,050) · WU6 2,408.
+
+### What this session actually did, in order
+
+1. **WU4** — the extract gate (4.6 + the extract half of 4.2), the sanctioned story deletion (4.13,
+   4.3's API half, 4.15) and the Postgres-only record proofs (4.16–4.18), split across two chained PRs
+   at the seam of `d93349f`, with the W4-T1..T3 evidence sections moved into the PR whose code they
+   document.
+2. **The first CI run WU4 ever had went red** on a *slice (a)* integration test that pinned
+   `declared_head == "0028"`. Only a Docker-bearing machine could see it, and the branch had never been
+   pushed. Fixed head-agnostically (`034cebd`), and the Postgres half then ran green in CI.
+3. **The two carried defects got task IDs** before WU5 (D-a-4 → 5.14, D-a-1 → 5.15 as an explicit
+   non-goal with the measurement behind it).
+4. **WU5** — the mark's entity/port/repository/normalizer (W5-A), the four endpoints and the D16 read
+   (W5-B1), D-a-4's designed 409 (W5-B2a), and the mirror plus the closing pass (W5-B2b). Task 4.2 closed
+   here.
+5. **WU6** — the version selector and the gate mirror (W6-A), then the editor recut, the D16 notice,
+   the version-aware read and the remaining copy (W6-B1/B2). Phase 6 closed.
+6. **A process hole, found and closed**: splitting the i18n mirror into its own task left the frontend
+   suite red twice (615 → 613), because backend tranches never run `pnpm test`. Both mirror moves were
+   **folded into the commits that added their codes** with `--fixup` + autosquash, and the intermediate
+   commit was verified green as well — so the branch has no red commit.
+7. **A real UI gap closed**: the account-delete dialog rendered the raw "Conflict" for the backend's
+   designed 409; it now resolves the code through the error-code map.
+
+### What to do next, in order
+
+1. **Phase 7 — the slice's verification pass** (7.1–7.5): the whole backend suite, the whole frontend
+   suite, the integration layer, lint/format, and then the honest evidence split written into the
+   change's verify report — what the SQLite unit layer proved, what only CI's testcontainers proved,
+   and what nothing has proven yet. 7.3 must say plainly that the integration layer is evidenced by CI
+   on every PR head and cannot run on this machine (no Docker).
+2. **The owner's merge decision.** Nine chained PRs are waiting; none is merged and nothing is in
+   production from this session. Merging deploys the `0029` migration — additive, no data plan needed,
+   so the D-a-3 rule does not bite. **Production still cannot extract until the LLM config is recreated
+   in Configuración (D-a-6)**, which is independent of all of this.
+3. **Carried and named, not absorbed**: the account-delete race residual (a revoke landing between
+   D-a-4's pre-check and the delete still surfaces as the raw integrity refusal; translating it belongs
+   to `UserRepository.delete`), the two pieces of dead code left in place by decision
+   (`TaskRepository.list_by_workspace`, the story port/repository `delete`), and a failed
+   `GET …/invalidations` on editor open treating a task as unmarked (the server's 409 is the backstop).
+
+**Traps the next session should not re-learn:** backend-only tranches do not run `pnpm test`, so a new
+error code must move the i18n mirror **in the same commit**; the gated `DELETE /stories/{id}` route
+needs `app.dependency_overrides[get_vector_store]` in every test that reaches it; `git diff --numstat`
+cannot see untracked files (measure with `git add -N`, reset immediately); and pushes hang under
+`credential-osxkeychain` without
+`GIT_ASKPASS=/tmp/storico_askpass.sh GIT_TERMINAL_PROMPT=0 git -c credential.helper= push`.
+
+**Addendum, same session, minutes later — the slice closed.** Phase 7 ran and `tasks.md` now reads
+**79/79**: no remaining plan work. The report is
+`openspec/changes/extraction-versioning-api/verification.md`, with the evidence split stated honestly
+(local `1206 passed, 36 skipped` vs CI `1224 passed, 18 skipped`, and the reconciliation that makes both
+numbers meaningful), the 36 local skips attributed by gate — 18 Docker-gated that ran in CI and 18
+environment-flag opt-ins that skip everywhere, so nothing in this slice has ever run against a real
+Qdrant or a real Ollama — and the one cross-slice dependency no test here can prove: nothing in (b) calls
+`set_has_invalid_tasks`, so until slice (c) lands 3.6–3.8 every mark excludes nothing from few-shot
+retrieval and **nothing goes red**. The only thing left is the owner's merge of the nine-PR chain.
