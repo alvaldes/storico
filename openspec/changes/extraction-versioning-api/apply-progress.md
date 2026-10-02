@@ -2657,3 +2657,22 @@ applies it to the current production schema without needing a data plan. The D-a
 that refuses existing data needs its plan in `prod.todo.md` before it reaches `main`* — does not bite
 here; this is the case the rule was written to distinguish. Production still cannot extract until the
 LLM config is recreated in Configuración (D-a-6), which is independent of this unit.
+
+## Parent fix after the first CI run WU4 ever had (PR B, 2026-10-02) — a stale head pin in a slice (a) test
+
+PR #35's backend job failed on
+`test_extraction_versioning_schema.py::test_downgrade_to_0027_and_back_round_trips_on_a_private_database`:
+`assert declared_head == "0028"` stopped being true the moment `0029` existed. That file is slice (a)'s
+and needs a Docker daemon, so neither this machine nor any earlier WU4 session could see it — the WU4
+commits `d93349f` and `155b975` had never been pushed, and this was their first CI run.
+
+Two stale pins, both made **head-agnostic** rather than bumped to the current literal:
+
+- the precondition now asserts that a declared head exists **and** that `0028` is still in the walked
+  chain, so the case stays meaningful for every revision stacked on it (a `0029`-era literal goes
+  stale at the next migration — the failure mode this repo has already paid for twice in the
+  error-code counts);
+- the post-re-apply assertion compares against the declared head instead of `["0028"]`.
+
+Measured locally without Docker: the packaged scripts declare `0029` and `0028` is in the chain, which
+is exactly the precondition's new premise. The round trip itself stays CI-owned.
