@@ -11,16 +11,22 @@ import {
   Fingerprint,
   CheckCircle2,
   AlertCircle,
+  Flag,
 } from 'lucide-react';
 import { shortUUID } from '@/lib/utils';
 import { useProjectStore } from '@/stores/projectStore';
 import { useStoryStore } from '@/stores/storyStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useAuthStore } from '@/stores/authStore';
 import { getProject } from '@/lib/projects-api';
 import { getLLMConfigStatus, type LLMConfigStatus } from '@/lib/llm-config-api';
+import { listVersions } from '@/lib/versioning-api';
+import { canManageVersions } from '@/lib/workspace-role';
+import type { StoryVersion } from '@/types/story';
 import { StoryForm } from '@/components/react/StoryForm';
 import { TaskEditor } from '@/components/react/TaskEditor';
+import { VersionSelector } from '@/components/react/VersionSelector';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -53,6 +59,8 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const t = useTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
   const workspaceRole = useWorkspaceStore((s) => s.currentWorkspace?.role);
+  const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace);
+  const currentUserId = useAuthStore((s) => s.user?.id);
   const { stories, loading: storyLoading, fetchStory, updateStory, deleteStory } = useStoryStore();
   const {
     tasks,
@@ -68,6 +76,14 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const [deleting, setDeleting] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  // The story's version history and the displayed version. `null` is "the read
+  // has not answered (or failed)": the selector stays hidden and the page falls
+  // back to its pre-versioning behavior instead of blocking on a hiccup.
+  const [versions, setVersions] = useState<StoryVersion[] | null>(null);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  // Whether the extract confirmation is open. The confirmation is where the
+  // version facts are named; the store's request only starts on accept.
+  const [extractConfirming, setExtractConfirming] = useState(false);
   const [parentProject, setParentProject] = useState<{ id: string; name: string } | null>(null);
   const [resolvingProject, setResolvingProject] = useState(false);
   // Track previous extraction status to detect failure transitions during polling
@@ -91,6 +107,26 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       fetchTasks(storyId);
     }
   }, [fetchTasks, storyId]);
+
+  // Load the version history once per story. The selector read doubles as the
+  // delete dialog's version count here — the dialog reuses what the page has.
+  useEffect(() => {
+    let active = true;
+    listVersions(storyId)
+      .then((history) => {
+        if (!active) return;
+        setVersions(history);
+        setSelectedVersionId(
+          history.find((v) => v.isCurrent)?.id ?? history[0]?.id ?? null,
+        );
+      })
+      .catch(() => {
+        if (active) setVersions(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [storyId]);
 
   // Reset extraction state on unmount
   useEffect(() => {
@@ -197,13 +233,30 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
 
   const handleExtract = async () => {
     if (!workspaceId) {
-      toast.error(t.stories?.extractionFailed ?? 'Extraction failed');
+      // Same localized prompt the click handler gives: the handler is also the
+      // confirmation's accept path, and neither may issue a request blind.
+      toast.error(t.stories.select_workspace_required);
       return;
     }
     // `extractTasks` swallows its own errors: it records the failure into
     // `extractions[storyId]`, so awaiting it here can never reject and the
     // toast effect above owns the failure message.
     await extractTasks(storyId, workspaceId);
+  };
+
+  // Click on "Extract": with a workspace, open the confirmation that names the
+  // version facts; without one, the localized prompt and no request at all.
+  const handleExtractClick = () => {
+    if (!workspaceId) {
+      toast.error(t.stories.select_workspace_required);
+      return;
+    }
+    setExtractConfirming(true);
+  };
+
+  const handleExtractConfirm = () => {
+    setExtractConfirming(false);
+    void handleExtract();
   };
 
   // ── Extract button rendering ──
@@ -271,6 +324,24 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const missingConfigNames = (llmStatus?.missing ?? [])
     .map((field) => missingConfigLabels[field] ?? field)
     .join(', ');
+
+  /* ── Version-aware state ── */
+
+  // The client mirror of the owner-or-admin gate. It only hides or disables
+  // controls as a courtesy; the server's 403 and its localized copy remain the
+  // authority if a refusal ever reaches the client.
+  const canManage = canManageVersions(currentWorkspace, currentUserId);
+  const selectedVersion = versions?.find((v) => v.id === selectedVersionId) ?? null;
+  const currentVersion = versions?.find((v) => v.isCurrent) ?? null;
+  const nextVersionNumber =
+    (versions?.reduce((max, v) => Math.max(max, v.versionNumber ?? 0), 0) ?? 0) + 1;
+  // The displayed tasks are the current version's (the backend filters every
+  // read to it), so `frozen` follows the displayed version's currency.
+  const displayedVersionFrozen = selectedVersion ? !selectedVersion.isCurrent : false;
+  // No workspace is the one state where the extract control stays reachable on
+  // purpose: its click path owns the localized "select a workspace" prompt.
+  const extractGateLocked = !!workspaceId && !canManage;
+  const extractButtonDisabled = extractDisabled || extractGateLocked;
 
   // ── Render ──
 
@@ -346,15 +417,17 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
             <Pencil className="mr-2 h-4 w-4" />
             {t.common.edit}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-destructive"
-            onClick={() => setDeleting(true)}
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            {t.common.delete}
-          </Button>
+          {canManage && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive"
+              onClick={() => setDeleting(true)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {t.common.delete}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -392,6 +465,16 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
         </div>
       </div>
 
+      {/* Version selector — the story's history; hidden when the read failed. */}
+      {versions !== null && versions.length > 0 && (
+        <VersionSelector
+          versions={versions}
+          selectedId={selectedVersionId}
+          onSelect={setSelectedVersionId}
+          locale={locale}
+        />
+      )}
+
       {/* Tasks section */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -399,8 +482,8 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
           <Button
             size="sm"
             variant={extractButton.variant}
-            onClick={extractDisabled ? undefined : handleExtract}
-            disabled={extractDisabled}
+            onClick={extractButtonDisabled ? undefined : handleExtractClick}
+            disabled={extractButtonDisabled}
           >
             <extractButton.icon
               className={'mr-2 h-4 w-4' + (extraction?.status === 'pending' ? ' animate-spin' : '')}
@@ -446,7 +529,22 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
           </div>
         )}
 
-        {tasksLoading ? (
+        {selectedVersion && !selectedVersion.hasOutput ? (
+          /* A failed version is shown honestly: what it is, which model ran it
+             and why it produced nothing — never an empty board that reads as
+             "this story has no tasks". */
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-12">
+            <AlertCircle className="mb-3 h-8 w-8 text-muted-foreground" />
+            <p className="text-sm font-medium text-foreground">
+              {t.versionSelector.no_output_title}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t.versionSelector.no_output_desc
+                .replace('{model}', selectedVersion.modelUsed)
+                .replace('{error}', selectedVersion.errorInfo ?? '—')}
+            </p>
+          </div>
+        ) : tasksLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-6 w-6 animate-spin rounded-full border-4 border-border border-t-primary-500" />
           </div>
@@ -478,6 +576,18 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingTaskId(task.id)}
+                        className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                        disabled={extraction?.status === 'pending'}
+                        title={t.stories.mark_invalid}
+                        aria-label={t.stories.mark_invalid}
+                      >
+                        <Flag className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
                 {task.description && (
@@ -548,6 +658,16 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>{t.stories.delete_confirm_title}</AlertDialogTitle>
             <AlertDialogDescription>{t.stories.delete_confirm_description}</AlertDialogDescription>
+            {/* The count is a fact about the destructive action, read from the
+                selector data this page already holds. A failed read drops the
+                count and says so instead of blocking the confirmation: the
+                count is informational, the gate and the record are the
+                interlocks. */}
+            <AlertDialogDescription>
+              {versions === null
+                ? t.stories.delete_confirm_versions_unknown
+                : t.stories.delete_confirm_versions.replace('{count}', String(versions.length))}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
@@ -563,6 +683,31 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Extract confirmation — names the version being frozen and the new one. */}
+      <AlertDialog open={extractConfirming} onOpenChange={setExtractConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.stories.extract_confirm_title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {currentVersion?.versionNumber != null
+                ? t.stories.extract_confirm_body
+                    .replace('{newVersion}', String(nextVersionNumber))
+                    .replace('{currentVersion}', String(currentVersion.versionNumber))
+                : t.stories.extract_confirm_body_first.replace(
+                    '{newVersion}',
+                    String(nextVersionNumber),
+                  )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleExtractConfirm}>
+              {t.stories.detail_extract}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Task Editor dialog */}
       {editingTaskId &&
         (() => {
@@ -573,9 +718,9 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
               key={editingTask.id}
               task={editingTask}
               open={!!editingTaskId}
-              // Explicit `false` for now: WU3 is the tranche that computes this
-              // from the version selector's `is_current`. No speculative source.
-              frozen={false}
+              // The displayed tasks are the current version's, so the editor's
+              // frozen state follows the displayed version's currency.
+              frozen={displayedVersionFrozen}
               onOpenChange={(open) => {
                 if (!open) setEditingTaskId(null);
               }}

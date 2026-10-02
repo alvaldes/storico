@@ -45,6 +45,45 @@ export interface UserStory {
   createdAt: string;
 }
 
+/* ── Extraction versions (0.9.0 slice b) ── */
+
+/** Raw story version from `GET /stories/{id}/versions` (snake_case). */
+export interface RawStoryVersion {
+  id: string;
+  version_number: number | null;
+  status: string;
+  model_used: string;
+  provider: string;
+  temperature: number;
+  created_at: string;
+  completed_at: string | null;
+  error_info: string | null;
+  is_current: boolean;
+  has_output: boolean;
+}
+
+/**
+ * One version of a story's extraction, as the version selector reads it.
+ * Mirrors the backend `StoryVersionResponse`: every run of the story —
+ * pending and failed ones included — ordered `version_number DESC` by the
+ * route. `is_current` marks the first `completed` entry of the ordered list
+ * (a story with no completed run has no current entry) and `has_output` is
+ * `status == completed`; both are derived server-side, never stored.
+ */
+export interface StoryVersion {
+  id: string;
+  versionNumber: number | null;
+  status: string;
+  modelUsed: string;
+  provider: string;
+  temperature: number;
+  createdAt: string;
+  completedAt: string | null;
+  errorInfo: string | null;
+  isCurrent: boolean;
+  hasOutput: boolean;
+}
+
 /* ── CSV import ── */
 
 /** Why a CSV row was skipped as a duplicate during import. */

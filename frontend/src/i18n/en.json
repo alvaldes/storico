@@ -222,6 +222,13 @@
     "delete_error": "Failed to delete user story",
     "delete_confirm_title": "Delete user story?",
     "delete_confirm_description": "This will permanently delete this user story and its generated tasks. This action cannot be undone.",
+    "delete_confirm_versions": "{count} extraction versions will be destroyed with it.",
+    "delete_confirm_versions_unknown": "The extraction versions it holds will be destroyed with it as well.",
+    "extract_confirm_title": "Extract tasks — create a new version",
+    "extract_confirm_body": "Extracting creates version {newVersion} and freezes version {currentVersion}. The frozen version keeps its tasks readable, but its dependencies can no longer change.",
+    "extract_confirm_body_first": "Extracting creates version {newVersion}. There is no earlier version to freeze.",
+    "select_workspace_required": "Select a workspace before extracting tasks.",
+    "mark_invalid": "Mark as invalid",
     "create_disabled_hint": "Select a project first to create a new user story.",
     "status_pending_extraction": "Pending Extraction",
     "status_extracting": "Extracting",
@@ -354,6 +361,13 @@
     "saved": "Task updated",
     "error_save": "Failed to update task — please try again",
     "cancel": "Cancel"
+  },
+  "versionSelector": {
+    "label": "Version",
+    "current": "current",
+    "failed": "failed",
+    "no_output_title": "This version produced no tasks",
+    "no_output_desc": "The extraction failed. Model: {model}. Reason: {error}"
   },
   "exportPage": {
     "title": "Export Tasks",

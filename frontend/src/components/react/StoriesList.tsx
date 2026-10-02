@@ -15,6 +15,9 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import { useStoryStore } from '@/stores/storyStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useAuthStore } from '@/stores/authStore';
+import { listVersions } from '@/lib/versioning-api';
+import { canManageVersions } from '@/lib/workspace-role';
 import type { UserStory } from '@/types/story';
 import { shortUUID } from '@/lib/utils';
 import { StoryForm } from '@/components/react/StoryForm';
@@ -60,12 +63,20 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
   const { projects, fetchProjects } = useProjectStore();
   const { stories, loading, fetchStories, createStory, updateStory, deleteStory } = useStoryStore();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
+  const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace);
+  const currentUserId = useAuthStore((s) => s.user?.id);
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(initialProjectId);
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editingStory, setEditingStory] = useState<UserStory | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
+  // The delete dialog's version count: fetched when the dialog opens (this page
+  // holds no selector data). `null` is "not answered yet", and the failed flag
+  // swaps the count line for the neutral fallback sentence — a failed metadata
+  // read never blocks the destructive action it describes.
+  const [deleteVersionCount, setDeleteVersionCount] = useState<number | null>(null);
+  const [deleteVersionsFailed, setDeleteVersionsFailed] = useState(false);
   const [sortBy, setSortBy] = useState<string>('createdAt_desc');
 
   // Sort options with labels and icons
@@ -139,6 +150,28 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
   useEffect(() => {
     fetchStories(selectedProjectId, workspaceId);
   }, [fetchStories, selectedProjectId, workspaceId]);
+
+  // Read the story's version count when its delete dialog opens; reset with it.
+  useEffect(() => {
+    if (deletingId === null) {
+      setDeleteVersionCount(null);
+      setDeleteVersionsFailed(false);
+      return;
+    }
+    let active = true;
+    setDeleteVersionCount(null);
+    setDeleteVersionsFailed(false);
+    listVersions(deletingId)
+      .then((history) => {
+        if (active) setDeleteVersionCount(history.length);
+      })
+      .catch(() => {
+        if (active) setDeleteVersionsFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [deletingId]);
 
   // Client-side filter: guard against View Transition stale store data.
   // Stories from a previous page survive in the Zustand singleton until
@@ -264,6 +297,10 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
       setDeleteSaving(false);
     }
   };
+
+  // The client mirror of the owner-or-admin gate: it hides the delete control
+  // as a courtesy; the server's 403 remains the authority.
+  const canManage = canManageVersions(currentWorkspace, currentUserId);
 
   return (
     <div className="space-y-6">
@@ -434,6 +471,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-(--color-surface-tertiary)"
+                  aria-label={t.common.edit}
                   onClick={(e) => {
                     e.stopPropagation();
                     setEditingStory(story);
@@ -441,17 +479,20 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
                 >
                   <Pencil className="h-4 w-4" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeletingId(story.id);
-                  }}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {canManage && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    aria-label={t.common.delete}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeletingId(story.id);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           ))}
@@ -505,6 +546,17 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
           <AlertDialogHeader>
             <AlertDialogTitle>{t.stories.delete_confirm_title}</AlertDialogTitle>
             <AlertDialogDescription>{t.stories.delete_confirm_description}</AlertDialogDescription>
+            {/* The count is a fact about the destructive action, fetched when
+                the dialog opens. A failed read drops the count and says so
+                instead of blocking the confirmation: the count is
+                informational, the gate and the record are the interlocks. */}
+            <AlertDialogDescription>
+              {deleteVersionCount !== null
+                ? t.stories.delete_confirm_versions.replace('{count}', String(deleteVersionCount))
+                : deleteVersionsFailed
+                  ? t.stories.delete_confirm_versions_unknown
+                  : ''}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>

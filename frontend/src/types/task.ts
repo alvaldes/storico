@@ -52,3 +52,48 @@ export interface RawTaskItem {
   created_at: string;
   updated_at: string;
 }
+
+/* ── Invalidation marks (0.9.0 slice b) ── */
+
+/** Raw invalidation mark from the API (snake_case). */
+export interface RawTaskInvalidation {
+  id: string;
+  reason: string;
+  marked_by: string;
+  marked_at: string;
+  revoked_by: string | null;
+  revoked_at: string | null;
+}
+
+/**
+ * One invalidation mark (active or revoked) as the mark history returns it.
+ * Mirrors the backend `InvalidationResponse`: no `task_id`, because the route
+ * path is the task, so echoing it back says nothing the caller did not have.
+ */
+export interface TaskInvalidation {
+  id: string;
+  reason: string;
+  markedBy: string;
+  markedAt: string;
+  revokedBy: string | null;
+  revokedAt: string | null;
+}
+
+/** Raw D16 repetition match from the API (snake_case). */
+export interface RawRepetitionMatch {
+  version_number: number;
+  reason: string;
+  marked_at: string;
+}
+
+/** One D16 match: a mark on another version whose normalized title equals the task's. */
+export interface RepetitionMatch {
+  versionNumber: number;
+  reason: string;
+  markedAt: string;
+}
+
+/** The D16 read's answer — a bare list inside an envelope. */
+export interface RepetitionResponse {
+  matches: RepetitionMatch[];
+}

@@ -734,13 +734,13 @@ Commit: `feat(frontend): wire the version selector, the mark controls and the co
 Runner: `cd frontend && pnpm test` (vitest). Frontend only; every behavior task has its component or
 store test in this unit.
 
-- [ ] 6.1 RED — `frontend/src/lib/__tests__/workspace-role.test.ts` **New** (path free) and
+- [x] 6.1 RED — `frontend/src/lib/__tests__/workspace-role.test.ts` **New** (path free) and
       `frontend/src/lib/__tests__/versioning-api.test.ts` **New** (path free): the failing cases —
       `canManageVersions` is true for the owner and for a member with role `admin` and false for a
       `member` or a missing workspace/user; `listVersions`, `createInvalidation`, `listInvalidations`,
       `revokeInvalidation` and `fetchRepetition` hit their paths with their payloads. Prove RED with
       `cd frontend && pnpm test src/lib/__tests__/workspace-role.test.ts src/lib/__tests__/versioning-api.test.ts`.
-- [ ] 6.2 GREEN — `frontend/src/lib/workspace-role.ts` **New** (path free) and
+- [x] 6.2 GREEN — `frontend/src/lib/workspace-role.ts` **New** (path free) and
       `frontend/src/lib/versioning-api.ts` **New** (path free);
       `frontend/src/types/task.ts`, `frontend/src/types/story.ts` and
       `frontend/src/types/workspace.ts`: the version and mark types.
@@ -755,6 +755,18 @@ store test in this unit.
       code's localized copy; the story-delete dialog names the version count and cancel issues no
       request. Prove RED with
       `cd frontend && pnpm test src/components/react/__tests__/VersionSelector.test.tsx src/components/react/__tests__/StoryDetail.test.tsx`.
+  > **[Amended 2026-10-02, WU6 split — owner decision (Option A), kept here rather than rewritten]**
+  > W6-A shipped this task's checkbox (`[x]`) because every clause it could reach its surfaces for
+  > landed; the owner has reverted it to `[ ]` because one sub-clause is deferred out of its letter:
+  > the **checkbox-checked + reason-field-focus** half of "the 'Marcar como inválida' button opens
+  > the editor with the checkbox checked and the focus in the reason field". Why: that seam lives in
+  > `TaskEditorProps` (`TaskEditor.tsx`), W6-A's forbidden surface, and a props-only seam invented
+  > now would be speculative surface only W6-B consumes, with a mocked pass-through assertion as
+  > its only evidence. **W6-B's 6.6 owns the deferred half** — the checkbox and the reason field are
+  > delivered inside the editor recut that grows those controls — and **6.3 is checked when that
+  > lands** (same precedent as 4.2, which stayed unchecked across units until its last clause did).
+  > What W6-A shipped stands unchanged: the "Marcar como inválida" button beside "Editar", it opens
+  > the editor, it issues zero requests, and it is gate-hidden for members.
 - [ ] 6.4 RED — `frontend/src/components/react/__tests__/TaskEditor.test.tsx` and
       `frontend/src/stores/__tests__/taskStore.unit.test.ts`: the failing cases — the "Inválida"
       checkbox with a mandatory reason textarea, an empty reason blocking the save with no request, a
@@ -765,7 +777,7 @@ store test in this unit.
       `VERSION_ALLOCATION_CONFLICT` as `'version-conflict'` before the status codes and 401/403 as
       `unauthorized`. Prove RED with
       `cd frontend && pnpm test src/components/react/__tests__/TaskEditor.test.tsx src/stores/__tests__/taskStore.unit.test.ts`.
-- [ ] 6.5 GREEN — `frontend/src/components/react/VersionSelector.tsx` **New** (path free);
+- [x] 6.5 GREEN — `frontend/src/components/react/VersionSelector.tsx` **New** (path free);
       `frontend/src/components/react/StoryDetail.tsx`: the selector wiring, the "Marcar como inválida"
       button beside "Editar", the extract confirmation naming both version numbers, the
       `MEMBER`-hidden/disabled controls via `canManageVersions`, and the delete dialog's version

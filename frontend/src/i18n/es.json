@@ -222,6 +222,13 @@
     "delete_error": "No se pudo eliminar la historia de usuario",
     "delete_confirm_title": "¿Eliminar historia de usuario?",
     "delete_confirm_description": "Esto eliminará permanentemente la historia de usuario y sus tareas generadas. Esta acción no se puede deshacer.",
+    "delete_confirm_versions": "{count} versiones de extracción se destruirán con ella.",
+    "delete_confirm_versions_unknown": "Las versiones de extracción que contiene también se destruirán con ella.",
+    "extract_confirm_title": "Extraer tareas — crear una nueva versión",
+    "extract_confirm_body": "La extracción crea la versión {newVersion} y congela la versión {currentVersion}. La versión congelada mantiene sus tareas legibles, pero sus dependencias ya no se pueden cambiar.",
+    "extract_confirm_body_first": "La extracción crea la versión {newVersion}. No hay una versión anterior que congelar.",
+    "select_workspace_required": "Selecciona un espacio de trabajo antes de extraer tareas.",
+    "mark_invalid": "Marcar como inválida",
     "create_disabled_hint": "Selecciona un proyecto primero para crear una nueva historia de usuario.",
     "status_pending_extraction": "Extracción Pendiente",
     "status_extracting": "Extrayendo",
@@ -354,6 +361,13 @@
     "saved": "Tarea actualizada",
     "error_save": "Error al guardar la tarea — intenta de nuevo",
     "cancel": "Cancelar"
+  },
+  "versionSelector": {
+    "label": "Versión",
+    "current": "actual",
+    "failed": "fallida",
+    "no_output_title": "Esta versión no produjo tareas",
+    "no_output_desc": "La extracción falló. Modelo: {model}. Motivo: {error}"
   },
   "exportPage": {
     "title": "Exportar Tareas",
