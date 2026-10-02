@@ -2965,3 +2965,85 @@ W5-A/W5-B as decided.
 5.12 (frontend mirror), 5.13 (REFACTOR rerun), 5.14 (D-a-4 contract — owner decision: a designed
 409 with a new code and the blocking marks in the `detail`), plus 4.2's three `test_stories.py`
 clauses named above.
+
+## W5-B2a (2026-10-02) — D-a-4, the account-delete contract, plus task 4.2's three clauses
+
+Branch `feat/extraction-versioning-api-wu5b`, starting from W5-B1's green tip `a7700ca`. Baseline
+consumed as measured by the parent: `pytest -m "not integration" -q` → **1193 passed, 36
+deselected**; `ruff check src tests` clean; `ruff format --check` → 268 files already formatted.
+
+### The port read
+One new read on `TaskInvalidationRepository`: `list_standing_revocations_by_user(user_id) ->
+list[StandingRevocation]`, with a frozen slotted read model `StandingRevocation(user_story_id,
+version_number, title)` beside `TaskInvalidationCandidate`. Join: `task_invalidations JOIN tasks
+JOIN extractions` (explicit `select_from(TaskInvalidationModel)` — without it SQLAlchemy inferred
+`FROM extractions … JOIN extractions` and SQLite answered "ambiguous column name"), filtered by
+`revoked_by = :user_id AND revoked_at IS NOT NULL`, ordered **`version_number ASC, title ASC`** —
+oldest version first, alphabetical within a version, so a refusal's entry list reads as a stable
+checklist independent of mark timestamps. The repository read wraps nothing: a plain select, same
+posture as `list_active_on_other_versions`. The port's surface pin
+(`test_unit/test_task_invalidation_port.py`) moved from five methods to six — **owner-authorized
+(option 1, 2026-10-02): the pin exists to make a port-surface change visible and deliberate, and
+this one is deliberate**; nothing else in that file changed.
+
+### RED, honestly
+- Repository file: **6 failed / 19 passed** — 1 `ImportError` (`StandingRevocation` unimportable)
+  + 5 `AttributeError` (`list_standing_revocations_by_user` absent). The twelve slice-(a)/W5-A
+  cases untouched and green throughout.
+- Route file (new `test_account_deletion.py`): the 409 case and the clears-then-succeeds case
+  failed through the **real refusal** — `sqlite3.IntegrityError: FOREIGN KEY constraint failed` on
+  `DELETE FROM users` under `PRAGMA foreign_keys=ON` — the exact unhandled path D-a-4 describes.
+  The 401 case and the no-revoke success case are characterization (they pin today's behaviour).
+- Exception, stated: the three 4.2 clause tests in `test_stories.py` have **no RED** — the gate
+  behaviour they witness shipped in WU4/W5-B1; the clauses were uncovered, not broken. They are
+  coverage witnesses and were green on first run.
+
+### GREEN and the route contract
+Focused: `test_task_invalidation.py` + `test_account_deletion.py` + `test_stories.py` → **66
+passed**. `DELETE /api/v1/users/me` now pre-checks the standing revocations and, when any exist,
+answers **409 `ACCOUNT_DELETE_BLOCKED`** deleting nothing; the `detail` is a dict shaped
+`{"message": <readable sentence>, "count": <int>, "revocations": [{"user_story_id", "version_number",
+"task_title"}]}` — snake_case keys, same precedent as `TASK_VERSION_FROZEN`'s structured detail.
+The docstring states the refusal instead of promising an unconditional cascade.
+
+**The named race residual:** a revoke that lands between the pre-check and the delete still
+surfaces as the raw `IntegrityError`/500 — closing that window would need `UserRepository.delete`
+to translate the refusal, and that file (and the `UserRepository` port) are outside this unit's
+surfaces by design. Recorded in the route docstring; not absorbed anywhere.
+
+**The pin authorization line (for the next reader):** the pin moved because the port-surface
+change was deliberate and owner-authorized, not silently — see the italic note under tasks.md 5.14
+and the section above.
+
+### Task 4.2 — the three clauses, clause by clause
+- `ADMIN` succeeding on the story delete →
+  `test_stories.py::TestDeleteStory::test_a_non_owner_admin_member_deletes_the_story` (foreign
+  owner + `ADMIN` membership, 204, story gone, exactly one record row).
+- `MEMBER` editing the story's four fields →
+  `test_stories.py::TestUpdateStory::test_a_member_edits_all_four_story_fields` (PUT 200; actor,
+  feature, benefit, raw_text all persisted).
+- `MEMBER` reading versions →
+  `test_stories.py::TestStoryVersionsEndpoint::test_a_member_reads_the_versions` (200; versions
+  listed, `is_current` derived).
+Combined with W5-B1's accounting (recorded in `tasks.md`'s 4.2 amendments), every clause of the
+bullet has a named witness; **4.2 is checked**.
+
+### Verification (all commands run to completion)
+- `cd backend && conda run -n storico python -m pytest tests/test_repositories/test_task_invalidation.py tests/test_api/test_account_deletion.py tests/test_api/test_stories.py -m "not integration" -q` → **66 passed**.
+- `cd backend && conda run -n storico python -m pytest tests/test_api tests/test_repositories tests/test_unit -m "not integration" -q` → **1045 passed**.
+- `cd backend && conda run -n storico python -m pytest -m "not integration" -q` → **1206 passed, 36 deselected** — baseline 1193 + exactly the 13 new test functions (6 repository, 4 route, 3 story clauses).
+- `cd backend && conda run -n storico python -m ruff check src tests` → **All checks passed**.
+- `cd backend && conda run -n storico python -m ruff format --check src tests` → **269 files already formatted**.
+
+### Measured size
+`git diff --numstat` at this unit's working tree, code+tests only (plan artifacts excluded; the
+new route-test file counted by line count since untracked): error_codes 10+/0−, routes/settings.py
+41+/2−, ports/task_invalidation_repository.py 32+/0−, repositories/task_invalidation_repository.py
+34+/0−, test_task_invalidation.py 190+/0−, test_stories.py 134+/0−,
+test_task_invalidation_port.py 2+/1−, test_account_deletion.py 191 (new) → **443 additions, 5
+deletions, ≈448 changed lines** — inside 5.14's ≈60–120 forecast for the defect itself plus the
+4.2 clauses and the port read this unit was delegated.
+
+### Remaining unchecked in Phase 5
+5.12 (frontend mirror — now for both `TASK_ALREADY_MARKED` and `ACCOUNT_DELETE_BLOCKED`) and 5.13
+(the closing refactor rerun). Phase 6/7 untouched.

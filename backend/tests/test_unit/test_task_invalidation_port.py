@@ -21,7 +21,7 @@ from storico.domain.ports.task_invalidation_repository import (
 )
 
 
-def test_the_port_pins_its_five_methods() -> None:
+def test_the_port_pins_its_six_methods() -> None:
     """The exact abstract surface; a future re-add or rename fails visibly."""
     abstract_methods = {
         name
@@ -34,6 +34,7 @@ def test_the_port_pins_its_five_methods() -> None:
         "list_by_task",
         "revoke",
         "list_active_on_other_versions",
+        "list_standing_revocations_by_user",
     }
 
 

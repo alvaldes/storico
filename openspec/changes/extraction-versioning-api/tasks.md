@@ -432,7 +432,7 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
       over `_is_owner_or_admin` — the workspace owner passes, a member with role `ADMIN` passes, a
       member with role `MEMBER` fails, and no other combination passes. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_unit/test_workspace_gate.py -m "not integration"`.
-- [ ] 4.2 RED — `backend/tests/test_api/test_extraction.py`, `backend/tests/test_api/test_tasks.py`
+- [x] 4.2 RED — `backend/tests/test_api/test_extraction.py`, `backend/tests/test_api/test_tasks.py`
       and `backend/tests/test_api/test_stories.py`: the failing gate cases — a `MEMBER` gets 403
       `WORKSPACE_OWNER_OR_ADMIN_REQUIRED` on extract, mark, unmark and story delete with no data
       changed; the owner and an `ADMIN` succeed on all four; a non-member keeps the unchanged
@@ -468,6 +468,17 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
   > stays empty:** an `ADMIN` succeeding on the story delete, a `MEMBER` editing the story's four
   > fields, and a `MEMBER` reading versions — all three live in `test_stories.py`, which is outside
   > W5-B1's edit surfaces. The first unit whose surface covers `test_stories.py` should close them.
+  > **[Amended 2026-10-02, W5-B2a — the three test_stories.py clauses landed; task complete]** All
+  > three remaining clauses now have named witnesses in `test_stories.py`: an `ADMIN` succeeding on
+  > the story delete →
+  > `test_stories.py::TestDeleteStory::test_a_non_owner_admin_member_deletes_the_story` (204, story
+  > gone, exactly one record row); a `MEMBER` editing the story's four fields →
+  > `test_stories.py::TestUpdateStory::test_a_member_edits_all_four_story_fields` (PUT 200 with
+  > actor, feature, benefit and raw_text all persisted); a `MEMBER` reading versions →
+  > `test_stories.py::TestStoryVersionsEndpoint::test_a_member_reads_the_versions` (200, versions
+  > listed, current derived). With W5-B1's accounting above, every clause of the bullet has a
+  > named witness and the checkbox closes. Note: these three are coverage witnesses over behaviour
+  > WU4/W5-B1 already shipped — they were green on first run, so no RED exists for them.
 - [x] 4.3 RED — `backend/tests/test_api/test_stories.py` and
       `backend/tests/test_repositories/test_user_story_repo.py` (the file the design calls
       `test_story_repo.py`): the failing deletion cases — the owner deletes a story with v1 and v2
@@ -666,7 +677,7 @@ and endpoints — not the DDL.
       locale counts `47` → `48`. Prove with `cd frontend && pnpm test`.
 - [ ] 5.13 REFACTOR — rerun
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py tests/test_repositories/test_task_invalidation.py tests/test_unit -m "not integration"`.
-- [ ] 5.14 GREEN (D-a-4, tasked 2026-10-02) — the account-delete contract.
+- [x] 5.14 GREEN (D-a-4, tasked 2026-10-02) — the account-delete contract.
       `backend/src/storico/api/routes/settings.py`: `DELETE /api/v1/users/me` currently calls
       `UserRepository.delete`, a bare `delete(UserModel)` with no `IntegrityError` handling, so the
       refusal raised by `fk_task_invalidations_revoked_by_users` (`ON DELETE RESTRICT`) escapes to the
@@ -677,6 +688,18 @@ and endpoints — not the DDL.
       account are both left intact, and the success path keeps cascading as its docstring promises.
       Prove with `cd backend && conda run -n storico python -m pytest tests/test_api/test_user_settings.py -m "not integration"`.
       If the chosen option needs a new error code, 5.12's frontend mirror moves in the same unit.
+      *(W5-B2a, 2026-10-02: the owner chose the designed 409 — code `ACCOUNT_DELETE_BLOCKED`, produced
+      by a pre-check over the new port read `list_standing_revocations_by_user`; the 409 `detail`
+      carries a readable sentence, the count and one entry per blocking mark (story id, version
+      number, task title), and nothing is deleted when it fires. The route's first DELETE-verb tests
+      live in `backend/tests/test_api/test_account_deletion.py`, a NEW file rather than appending to
+      `test_user_settings.py`, because that file's docstring scopes it to the settings endpoints and
+      the account-delete verb is a different contract. Residual, named in the route docstring: a
+      revoke landing between the pre-check and the delete still surfaces as the raw integrity
+      refusal — translating it belongs to `UserRepository.delete`, outside this unit's surfaces by
+      design. Extending the port moved its surface pin
+      `test_unit/test_task_invalidation_port.py` from five methods to six — owner-authorized as
+      option 1 on 2026-10-02.)*
 - [x] 5.15 DECISION (D-a-1, tasked 2026-10-02) — record D-a-1 as an **explicit non-goal** of this
       slice, with the measurement instead of an assertion: the single production caller of
       `run_background_extraction` (`api/routes/extraction.py:264`) runs once per extraction the route

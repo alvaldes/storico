@@ -5,9 +5,11 @@ from __future__ import annotations
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 
 from storico.api.dependencies import get_current_user, get_repository
+from storico.api.error_codes import ACCOUNT_DELETE_BLOCKED
+from storico.api.errors import ApiError
 from storico.api.schemas.settings import (
     REMOVED_PREFERENCE_KEYS,
     RETIRED_EXPORT_FORMATS,
@@ -22,6 +24,7 @@ from storico.config.settings import Settings
 from storico.domain.entities import User
 from storico.domain.services.llm_config_readiness import normalize_optional
 from storico.infrastructure.database.repositories import (
+    SQLAlchemyTaskInvalidationRepository,
     SQLAlchemyUserPreferencesRepository,
     SQLAlchemyUserRepository,
 )
@@ -41,6 +44,10 @@ PrefRepoDep = Annotated[
 UserRepoDep = Annotated[
     SQLAlchemyUserRepository,
     Depends(get_repository(SQLAlchemyUserRepository)),
+]
+InvalidationRepoDep = Annotated[
+    SQLAlchemyTaskInvalidationRepository,
+    Depends(get_repository(SQLAlchemyTaskInvalidationRepository)),
 ]
 
 
@@ -336,11 +343,43 @@ async def test_llm_connection(
 async def delete_account(
     current_user: CurrentUserDep,
     repo: UserRepoDep,
+    invalidation_repo: InvalidationRepoDep,
 ) -> DeleteAccountResponse:
     """Permanently delete the current user's account and ALL associated data.
 
     This action cannot be undone. All projects, stories, tasks, extractions,
-    and linked accounts are cascade-deleted.
+    and linked accounts are cascade-deleted — with one designed refusal: if
+    the account's invalidation revocations still stand, the delete is refused
+    with 409 ``ACCOUNT_DELETE_BLOCKED`` before anything is touched.
+    ``fk_task_invalidations_revoked_by_users`` is ``ON DELETE RESTRICT``, so
+    those rows refuse to lose their revoker; the pre-check names each blocking
+    mark (story id, version number, task title) so the user can act on it —
+    by having the marking stories deleted, since a revoke is history and has
+    no undo endpoint. A revoke that lands between the pre-check and the delete
+    still surfaces as the raw integrity refusal: translating it belongs to
+    ``UserRepository.delete``, which this route does not own.
     """
+    standing = await invalidation_repo.list_standing_revocations_by_user(current_user.id)
+    if standing:
+        raise ApiError(
+            status_code=status.HTTP_409_CONFLICT,
+            error_code=ACCOUNT_DELETE_BLOCKED,
+            detail={
+                "message": (
+                    "This account's invalidation revocations still stand, and the "
+                    "marked rows refuse to lose their revoker. Delete the stories "
+                    "that hold the marked tasks, then delete the account."
+                ),
+                "count": len(standing),
+                "revocations": [
+                    {
+                        "user_story_id": str(entry.user_story_id),
+                        "version_number": entry.version_number,
+                        "task_title": entry.title,
+                    }
+                    for entry in standing
+                ],
+            },
+        )
     await repo.delete(current_user.id)
     return DeleteAccountResponse()

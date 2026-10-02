@@ -9,6 +9,7 @@ frontend translation (WU5) keys on these exact strings.
 """
 
 __all__ = [
+    "ACCOUNT_DELETE_BLOCKED",
     "ADMIN_ACCESS_REQUIRED",
     "AUTH_TOKEN_INVALID",
     "CANNOT_REMOVE_OWNER",
@@ -178,6 +179,15 @@ PROVIDER_NAME_RESERVED = "PROVIDER_NAME_RESERVED"
 # ``workspace_settings.py`` probe: the provider could not be reached to list
 # its models (wrong API key or Base URL, or the provider is down).
 PROVIDER_MODELS_UNREACHABLE = "PROVIDER_MODELS_UNREACHABLE"
+
+# ``settings.py`` DELETE /api/v1/users/me: the account holds standing
+# invalidation revocations and ``fk_task_invalidations_revoked_by_users``
+# (``ON DELETE RESTRICT``) would refuse the delete as a raw integrity error —
+# a 500 today. The pre-check over the invalidation port's standing-revocation
+# read answers first with this designed 409, and its ``detail`` carries the
+# count and one entry per blocking mark (story id, version number, task
+# title); nothing is deleted when it fires.
+ACCOUNT_DELETE_BLOCKED = "ACCOUNT_DELETE_BLOCKED"
 
 # ── Framework-level handlers ─────────────────────────────────────
 

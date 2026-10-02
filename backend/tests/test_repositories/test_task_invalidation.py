@@ -758,3 +758,193 @@ async def test_candidate_read_with_no_excluded_version_excludes_nothing(
         (2, "v2 mark"),
         (1, "v1 mark"),
     ]
+
+
+# --- 5.14 account-delete read (W5-B2a) ---------------------------------------
+# The account-delete pre-check needs the revocations one user's account is
+# still standing behind — each carrying enough context to be named to a human:
+# the story the mark sits in, the version number and the task title. Every case
+# here reads through the new port method only; the twelve cases above are the
+# slice-(a) and W5-A record and stay untouched.
+
+
+@pytest.mark.asyncio
+async def test_standing_revocations_come_back_with_story_version_and_title(
+    db_session: AsyncSession,
+) -> None:
+    """A user's standing revokes answer with their story, version and title.
+
+    The pre-check must be able to name each blocker to the account's owner:
+    the story id the mark's task belongs to, the version number the task was
+    built from and the task's title — resolved through the same
+    mark → task → extraction join the D16 candidate read uses (R14).
+    """
+    from storico.domain.ports.task_invalidation_repository import StandingRevocation
+
+    story_id = uuid4()
+    extraction = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 10, 2, 10, 0, tzinfo=UTC),
+    )
+    task = await seed_task(db_session, story_id, "Implement login", extraction=extraction)
+    revoker_id = uuid4()
+    mark = await _seed_mark(
+        db_session,
+        task.id,
+        reason="overlaps the export task",
+        marked_at=datetime(2026, 10, 2, 12, 0, tzinfo=UTC),
+    )
+    await _repo(db_session).revoke(
+        mark.id, revoked_by=revoker_id, revoked_at=datetime(2026, 10, 2, 13, 0, tzinfo=UTC)
+    )
+
+    standing = await _repo(db_session).list_standing_revocations_by_user(revoker_id)
+
+    assert standing == [
+        StandingRevocation(user_story_id=story_id, version_number=1, title="Implement login")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_nulled_revoker_is_attributed_to_no_one(db_session: AsyncSession) -> None:
+    """A ``revoked_by IS NULL`` row belongs to no account's standing list.
+
+    The revoke-pair CHECK ties the two nulls together — ``revoked_by IS NULL``
+    can only stand beside a nulled ``revoked_at``, the active-mark shape — so
+    the row the read must never attribute is exactly an active mark: neither
+    the attribution predicate nor the ``revoked_at IS NOT NULL`` filter may let
+    it through for any user id.
+    """
+    task = await seed_task(db_session, uuid4(), "Implement login")
+    await _seed_mark(
+        db_session,
+        task.id,
+        reason="still active",
+        marked_at=datetime(2026, 10, 2, 12, 0, tzinfo=UTC),
+    )
+
+    standing = await _repo(db_session).list_standing_revocations_by_user(uuid4())
+
+    assert standing == []
+
+
+@pytest.mark.asyncio
+async def test_a_revoked_then_remarked_task_yields_only_the_standing_revoke(
+    db_session: AsyncSession,
+) -> None:
+    """Two mark rows on one task, one standing revoke: exactly one entry.
+
+    The revoked row answers (its revoker still exists); the later active mark
+    on the same task carries no revoke attribution and must not double the
+    entry — the read counts standing revocations, not rows.
+    """
+    task = await seed_task(db_session, uuid4(), "Implement login")
+    revoker_id = uuid4()
+    first = await _seed_mark(
+        db_session,
+        task.id,
+        reason="overlaps",
+        marked_at=datetime(2026, 10, 2, 12, 0, tzinfo=UTC),
+    )
+    await _repo(db_session).revoke(
+        first.id, revoked_by=revoker_id, revoked_at=datetime(2026, 10, 2, 13, 0, tzinfo=UTC)
+    )
+    await _seed_mark(
+        db_session,
+        task.id,
+        reason="re-mark after fix",
+        marked_at=datetime(2026, 10, 2, 14, 0, tzinfo=UTC),
+        marked_by=uuid4(),
+    )
+
+    standing = await _repo(db_session).list_standing_revocations_by_user(revoker_id)
+
+    assert [(entry.title, entry.version_number) for entry in standing] == [("Implement login", 1)]
+
+
+@pytest.mark.asyncio
+async def test_another_users_revocations_are_absent(db_session: AsyncSession) -> None:
+    """Attribution is exact: only the revoker's own standing list carries a revoke."""
+    task = await seed_task(db_session, uuid4(), "Implement login")
+    mark = await _seed_mark(
+        db_session,
+        task.id,
+        reason="overlaps",
+        marked_at=datetime(2026, 10, 2, 12, 0, tzinfo=UTC),
+    )
+    await _repo(db_session).revoke(
+        mark.id, revoked_by=uuid4(), revoked_at=datetime(2026, 10, 2, 13, 0, tzinfo=UTC)
+    )
+
+    standing = await _repo(db_session).list_standing_revocations_by_user(uuid4())
+
+    assert standing == []
+
+
+@pytest.mark.asyncio
+async def test_a_mark_merely_made_by_the_user_is_absent(db_session: AsyncSession) -> None:
+    """``marked_by`` is not attribution: an unrevoked mark blocks nobody's deletion.
+
+    The read filters on ``revoked_by`` — who *revoked* — never on ``marked_by``;
+    a user who only made a mark holds no standing revocation.
+    """
+    task = await seed_task(db_session, uuid4(), "Implement login")
+    await _seed_mark(
+        db_session,
+        task.id,
+        reason="overlaps",
+        marked_at=datetime(2026, 10, 2, 12, 0, tzinfo=UTC),
+        marked_by=uuid4(),
+    )
+
+    standing = await _repo(db_session).list_standing_revocations_by_user(uuid4())
+
+    assert standing == []
+
+
+@pytest.mark.asyncio
+async def test_standing_revocations_order_version_number_asc_then_title_asc(
+    db_session: AsyncSession,
+) -> None:
+    """The pinned order: oldest version first, alphabetical within a version.
+
+    A refusal's entry list is a checklist the user acts on top-down, so the
+    read is ordered ``version_number ASC, title ASC`` — deterministic across
+    pages and independent of mark timestamps.
+    """
+    story_id = uuid4()
+    v1 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 10, 2, 10, 0, tzinfo=UTC),
+    )
+    v2 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 10, 2, 11, 0, tzinfo=UTC),
+    )
+    task_b = await seed_task(db_session, story_id, "b task", extraction=v2)
+    task_z = await seed_task(db_session, story_id, "z task", extraction=v1)
+    task_a = await seed_task(db_session, story_id, "a task", extraction=v1)
+    revoker_id = uuid4()
+    for task, marked_at in [
+        (task_z, datetime(2026, 10, 2, 12, 0, tzinfo=UTC)),
+        (task_b, datetime(2026, 10, 2, 13, 0, tzinfo=UTC)),
+        (task_a, datetime(2026, 10, 2, 14, 0, tzinfo=UTC)),
+    ]:
+        mark = await _seed_mark(db_session, task.id, reason="overlaps", marked_at=marked_at)
+        await _repo(db_session).revoke(
+            mark.id, revoked_by=revoker_id, revoked_at=datetime(2026, 10, 2, 15, 0, tzinfo=UTC)
+        )
+
+    standing = await _repo(db_session).list_standing_revocations_by_user(revoker_id)
+
+    assert [(entry.version_number, entry.title) for entry in standing] == [
+        (1, "a task"),
+        (1, "z task"),
+        (2, "b task"),
+    ]
