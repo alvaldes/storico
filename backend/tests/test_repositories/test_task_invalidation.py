@@ -429,3 +429,332 @@ async def test_a_v2_task_sharing_a_marked_v1_tasks_title_carries_no_mark(
     )
     assert [mark.reason for mark in v1_marks] == ["overlaps"]
     assert v2_marks == []
+
+
+# --- 5.3 query-level cases (WU5-A) ------------------------------------------
+# Slice (a) pinned the table's shape and invariants above; these cases exercise
+# the repository port on top of it. Marks are seeded through the repository's
+# ``create`` — the same birth path the API will use — and each case reads back
+# through the method under test.
+
+
+async def _seed_mark(
+    db_session: AsyncSession,
+    task_id,
+    *,
+    reason: str,
+    marked_at: datetime,
+    marked_by=None,
+):
+    from storico.domain.entities.task_invalidation import TaskInvalidation
+    from storico.infrastructure.database.repositories import (
+        SQLAlchemyTaskInvalidationRepository,
+    )
+
+    return await SQLAlchemyTaskInvalidationRepository(db_session).create(
+        TaskInvalidation(task_id=task_id, reason=reason, marked_by=marked_by, marked_at=marked_at)
+    )
+
+
+def _repo(db_session: AsyncSession):
+    from storico.infrastructure.database.repositories import (
+        SQLAlchemyTaskInvalidationRepository,
+    )
+
+    return SQLAlchemyTaskInvalidationRepository(db_session)
+
+
+@pytest.mark.asyncio
+async def test_find_active_by_task_returns_the_single_active_row(
+    db_session: AsyncSession,
+) -> None:
+    """The active mark resolves by task id alone — at most one row can match (R9)."""
+    task = await seed_task(db_session, uuid4(), "Implement login")
+    marker_id = uuid4()
+    marked_at = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)
+    created = await _seed_mark(
+        db_session,
+        task.id,
+        reason="overlaps the export task",
+        marked_at=marked_at,
+        marked_by=marker_id,
+    )
+
+    found = await _repo(db_session).find_active_by_task(task.id)
+
+    assert found is not None
+    assert found.id == created.id
+    assert found.task_id == task.id
+    assert found.reason == "overlaps the export task"
+    assert found.marked_by == marker_id
+    assert found.revoked_by is None
+    assert found.revoked_at is None
+
+
+@pytest.mark.asyncio
+async def test_find_active_by_task_returns_none_when_the_only_row_is_revoked(
+    db_session: AsyncSession,
+) -> None:
+    """A revoked mark is history, not an active mark: the read answers None (R10)."""
+    task = await seed_task(db_session, uuid4(), "Implement login")
+    created = await _seed_mark(
+        db_session, task.id, reason="overlaps", marked_at=datetime(2026, 9, 28, 12, 0, tzinfo=UTC)
+    )
+    await _repo(db_session).revoke(
+        created.id,
+        revoked_by=uuid4(),
+        revoked_at=datetime(2026, 9, 28, 13, 0, tzinfo=UTC),
+    )
+
+    assert await _repo(db_session).find_active_by_task(task.id) is None
+
+
+@pytest.mark.asyncio
+async def test_list_by_task_puts_the_active_mark_first_then_orders_marked_at_desc(
+    db_session: AsyncSession,
+) -> None:
+    """The active mark leads even when its marked_at is the *earlier* one (R9).
+
+    The re-mark is created with an ``marked_at`` earlier than the revoked mark's:
+    a bare ``marked_at DESC`` would put the revoked row first, so the ordering the
+    port documents (active first, then ``marked_at DESC``) is pinned against both
+    keys at once. The revoked row comes back with its full history.
+    """
+    task = await seed_task(db_session, uuid4(), "Implement login")
+    marker_id = uuid4()
+    first = await _seed_mark(
+        db_session,
+        task.id,
+        reason="first mark",
+        marked_at=datetime(2026, 9, 28, 12, 0, tzinfo=UTC),
+        marked_by=marker_id,
+    )
+    revoker_id = uuid4()
+    revoked_at = datetime(2026, 9, 28, 13, 0, tzinfo=UTC)
+    await _repo(db_session).revoke(first.id, revoked_by=revoker_id, revoked_at=revoked_at)
+    second = await _seed_mark(
+        db_session,
+        task.id,
+        reason="re-mark after fix",
+        marked_at=datetime(2026, 9, 28, 11, 0, tzinfo=UTC),
+    )
+
+    history = await _repo(db_session).list_by_task(task.id)
+
+    assert [mark.id for mark in history] == [second.id, first.id]
+    assert history[0].revoked_at is None
+    assert history[1].revoked_by == revoker_id
+    assert history[1].revoked_at.replace(tzinfo=None) == revoked_at.replace(tzinfo=None)
+    assert history[1].marked_by == marker_id
+
+
+@pytest.mark.asyncio
+async def test_revoke_sets_only_the_revoke_fields_and_deletes_nothing(
+    db_session: AsyncSession,
+) -> None:
+    """Revoking is an UPDATE on the resolved row; the row count never moves (R10)."""
+    from sqlalchemy import func, select
+
+    from storico.infrastructure.database.models import TaskInvalidationModel
+
+    task = await seed_task(db_session, uuid4(), "Implement login")
+    marker_id = uuid4()
+    marked_at = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)
+    created = await _seed_mark(
+        db_session, task.id, reason="overlaps", marked_at=marked_at, marked_by=marker_id
+    )
+    count_before = (
+        await db_session.execute(select(func.count()).select_from(TaskInvalidationModel))
+    ).scalar_one()
+
+    revoker_id = uuid4()
+    revoked_at = datetime(2026, 9, 28, 13, 0, tzinfo=UTC)
+    await _repo(db_session).revoke(created.id, revoked_by=revoker_id, revoked_at=revoked_at)
+
+    count_after = (
+        await db_session.execute(select(func.count()).select_from(TaskInvalidationModel))
+    ).scalar_one()
+    assert count_after == count_before == 1
+
+    found = (await _repo(db_session).list_by_task(task.id))[0]
+    assert found.id == created.id
+    assert found.revoked_by == revoker_id
+    assert found.revoked_at.replace(tzinfo=None) == revoked_at.replace(tzinfo=None)
+    # Nothing else moved.
+    assert found.reason == "overlaps"
+    assert found.marked_by == marker_id
+    assert found.marked_at.replace(tzinfo=None) == marked_at.replace(tzinfo=None)
+
+
+@pytest.mark.asyncio
+async def test_candidate_read_returns_other_versions_active_marks_with_version_and_title(
+    db_session: AsyncSession,
+) -> None:
+    """The D16 read: non-revoked marks of the story's *other* versions, with their
+    version number and task title attached (R11). Same-version, revoked and
+    other-story marks are all invisible."""
+    story_id = uuid4()
+    v1 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 9, 28, 10, 0, tzinfo=UTC),
+    )
+    v2 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 9, 28, 11, 0, tzinfo=UTC),
+    )
+    v3 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 9, 28, 12, 0, tzinfo=UTC),
+    )
+    v1_task = await seed_task(db_session, story_id, "Implement  Login", extraction=v1)
+    v3_task = await seed_task(db_session, story_id, "Implement login", extraction=v3)
+    other_story_id = uuid4()
+    other_v1 = await seed_extraction(
+        db_session,
+        other_story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 9, 28, 10, 0, tzinfo=UTC),
+    )
+    other_task = await seed_task(db_session, other_story_id, "Implement login", extraction=other_v1)
+
+    await _seed_mark(
+        db_session,
+        v1_task.id,
+        reason="covered by the auth refactor",
+        marked_at=datetime(2026, 9, 28, 12, 0, tzinfo=UTC),
+    )
+    # A revoked mark on v2 must not surface.
+    v2_task = await seed_task(db_session, story_id, "Implement login", extraction=v2)
+    revoked = await _seed_mark(
+        db_session,
+        v2_task.id,
+        reason="revoked mark",
+        marked_at=datetime(2026, 9, 28, 12, 0, tzinfo=UTC),
+    )
+    await _repo(db_session).revoke(
+        revoked.id, revoked_by=uuid4(), revoked_at=datetime(2026, 9, 28, 13, 0, tzinfo=UTC)
+    )
+    # Another story's active mark must not surface.
+    await _seed_mark(
+        db_session,
+        other_task.id,
+        reason="another story's mark",
+        marked_at=datetime(2026, 9, 28, 12, 0, tzinfo=UTC),
+    )
+
+    candidates = await _repo(db_session).list_active_on_other_versions(
+        user_story_id=story_id, exclude_extraction_id=v3_task.extraction_id
+    )
+
+    assert [(c.version_number, c.title, c.reason) for c in candidates] == [
+        (1, "Implement  Login", "covered by the auth refactor")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_candidate_read_orders_version_number_desc_then_marked_at_desc(
+    db_session: AsyncSession,
+) -> None:
+    """Newest version first; within one version, the latest mark first (R11).
+
+    Two active marks can coexist inside one version because they sit on two
+    different task rows — the partial unique index constrains per task, not per
+    version — which is what makes the ``marked_at`` tiebreaker observable.
+    """
+    story_id = uuid4()
+    v1 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 9, 28, 10, 0, tzinfo=UTC),
+    )
+    v2 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 9, 28, 11, 0, tzinfo=UTC),
+    )
+    v3 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 9, 28, 12, 0, tzinfo=UTC),
+    )
+    v1_task_earlier = await seed_task(db_session, story_id, "task a", extraction=v1)
+    v1_task_later = await seed_task(db_session, story_id, "task b", extraction=v1)
+    v2_task = await seed_task(db_session, story_id, "task c", extraction=v2)
+    v3_task = await seed_task(db_session, story_id, "Implement login", extraction=v3)
+
+    await _seed_mark(
+        db_session,
+        v1_task_earlier.id,
+        reason="earlier in v1",
+        marked_at=datetime(2026, 9, 28, 11, 0, tzinfo=UTC),
+    )
+    await _seed_mark(
+        db_session,
+        v1_task_later.id,
+        reason="later in v1",
+        marked_at=datetime(2026, 9, 28, 12, 0, tzinfo=UTC),
+    )
+    await _seed_mark(
+        db_session, v2_task.id, reason="in v2", marked_at=datetime(2026, 9, 28, 10, 0, tzinfo=UTC)
+    )
+
+    candidates = await _repo(db_session).list_active_on_other_versions(
+        user_story_id=story_id, exclude_extraction_id=v3_task.extraction_id
+    )
+
+    assert [(c.version_number, c.title, c.reason) for c in candidates] == [
+        (2, "task c", "in v2"),
+        (1, "task b", "later in v1"),
+        (1, "task a", "earlier in v1"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_candidate_read_with_no_excluded_version_excludes_nothing(
+    db_session: AsyncSession,
+) -> None:
+    """``exclude_extraction_id=None`` means the predicate filters out nothing.
+
+    The version D16 warning is for the task being edited — its own version is
+    excluded — but the port keeps the parameter optional: ``None`` is the
+    "exclude nothing" shape, not "exclude nulls".
+    """
+    story_id = uuid4()
+    v1 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 9, 28, 10, 0, tzinfo=UTC),
+    )
+    v2 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 9, 28, 11, 0, tzinfo=UTC),
+    )
+    v1_task = await seed_task(db_session, story_id, "task a", extraction=v1)
+    v2_task = await seed_task(db_session, story_id, "task b", extraction=v2)
+    await _seed_mark(
+        db_session, v1_task.id, reason="v1 mark", marked_at=datetime(2026, 9, 28, 12, 0, tzinfo=UTC)
+    )
+    await _seed_mark(
+        db_session, v2_task.id, reason="v2 mark", marked_at=datetime(2026, 9, 28, 12, 0, tzinfo=UTC)
+    )
+
+    candidates = await _repo(db_session).list_active_on_other_versions(
+        user_story_id=story_id, exclude_extraction_id=None
+    )
+
+    assert [(c.version_number, c.reason) for c in candidates] == [
+        (2, "v2 mark"),
+        (1, "v1 mark"),
+    ]

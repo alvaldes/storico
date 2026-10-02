@@ -224,6 +224,25 @@ case plus either a handler or a pre-check, and a frontend copy decision if the a
 the refusal. Give them task IDs and forecast numbers when apply is authorized for this slice, so the
 review workload estimate reflects them rather than discovering them mid-PR.
 
+> **[Tasked 2026-10-02, WU5 apply authorized — owner]** Both defects now carry task IDs in Phase 5.
+> WU5 is where D-a-4 stops being latent (it is the unit that can first write a mark), and it is the
+> last honest place to record D-a-1's decision:
+>
+> - **D-a-4 → task 5.14** (the account-delete contract). Forecast **≈60–120 changed lines**: the
+>   route's first DELETE-verb test plus either a registered handler or a pre-check. Any frontend copy
+>   that explains the refusal is Phase 6's, not this unit's. **The contract itself is an owner
+>   decision** — a designed 409 with a reason, or a pre-check that names the marks that block the
+>   deletion — and is recorded as such in the task.
+> - **D-a-1 → task 5.15** (an explicit non-goal). Forecast **0 production lines**, and that is
+>   measured rather than assumed: the only production caller of `run_background_extraction` is
+>   `api/routes/extraction.py:264`, invoked once for the extraction the route has just minted through
+>   `create_next_version`, and slice (b) adds no re-dispatch or retry surface. The task closes by
+>   recording that reasoning, not by writing a guard.
+>
+> The slice forecast above is therefore restated as **≈4,500–5,800** to include 5.14; 5.15 adds prose
+> only. Neither number is in the 1,300–1,700 WU4 band that already came in over — WU5 keeps its own
+> two-PR split.
+
 ---
 
 ## Phase 1: WU1 — The Two 410 Retirements
@@ -558,11 +577,11 @@ and endpoints — not the DDL.
       `CreateInvalidationRequest` refuses `""`, `"   "` and `"\t\n"` (Python whitespace is wider than
       the column's `CHECK`) and accepts a non-blank reason bounded by the column's 500. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_unit/test_invalidation_request.py -m "not integration"`.
-- [ ] 5.2 RED — `backend/tests/test_unit/test_task_title_normalizer.py` **New** (path free):
+- [x] 5.2 RED — `backend/tests/test_unit/test_task_title_normalizer.py` **New** (path free):
       `normalize_task_title` casefolds, collapses whitespace runs to one space and strips, table-driven
       over the `casefold` cases SQL `lower` would miss. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_unit/test_task_title_normalizer.py -m "not integration"`.
-- [ ] 5.3 RED — `backend/tests/test_repositories/test_task_invalidation.py` (the file slice (a)
+- [x] 5.3 RED — `backend/tests/test_repositories/test_task_invalidation.py` (the file slice (a)
       creates at 1.2/4.1; add the query-level cases): `find_active_by_task` finds the single active
       row; `list_by_task` orders `marked_at DESC` with the active mark first; `revoke` sets only
       `revoked_by`/`revoked_at` on the resolved row and deletes nothing; `list_active_on_other_versions`
@@ -581,18 +600,18 @@ and endpoints — not the DDL.
       returns the match, `{"matches": []}` for no match / the task's own version / another story / a
       revoked mark, and creates, updates and revokes nothing. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py -m "not integration"`.
-- [ ] 5.5 GREEN — `backend/src/storico/domain/entities/task_invalidation.py` **New** (path free): the
+- [x] 5.5 GREEN — `backend/src/storico/domain/entities/task_invalidation.py` **New** (path free): the
       frozen, slotted `TaskInvalidation`;
       `backend/src/storico/domain/ports/task_invalidation_repository.py` **New** (path free): the port
       (`create`, `find_active_by_task`, `list_by_task`, `revoke`) plus the `TaskInvalidationCandidate`
       read model and the join contract of `list_active_on_other_versions`.
-- [ ] 5.6 GREEN — `backend/src/storico/infrastructure/database/repositories/task_invalidation_repository.py`
+- [x] 5.6 GREEN — `backend/src/storico/infrastructure/database/repositories/task_invalidation_repository.py`
       **New** (path free): `create`, `find_active_by_task`, `list_by_task`, `revoke` as an `UPDATE` of
       the row `find_active_by_task` resolved, and the
       `task_invalidations JOIN tasks JOIN extractions` candidate read filtered by story,
       `extraction_id IS DISTINCT FROM` the excluded version and `revoked_at IS NULL`, ordered
       `version_number DESC, marked_at DESC`.
-- [ ] 5.7 GREEN — `backend/src/storico/domain/services/task_title_normalizer.py` **New** (path free):
+- [x] 5.7 GREEN — `backend/src/storico/domain/services/task_title_normalizer.py` **New** (path free):
       `normalize_task_title(text)` = casefold + whitespace-run collapse + strip.
 - [ ] 5.8 GREEN — `backend/src/storico/api/schemas/task.py`: `CreateInvalidationRequest` with the
       blank-reason `field_validator` and the 500 bound, `InvalidationResponse`, `RepetitionMatch` and
@@ -616,6 +635,25 @@ and endpoints — not the DDL.
       locale counts `47` → `48`. Prove with `cd frontend && pnpm test`.
 - [ ] 5.13 REFACTOR — rerun
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py tests/test_repositories/test_task_invalidation.py tests/test_unit -m "not integration"`.
+- [ ] 5.14 GREEN (D-a-4, tasked 2026-10-02) — the account-delete contract.
+      `backend/src/storico/api/routes/settings.py`: `DELETE /api/v1/users/me` currently calls
+      `UserRepository.delete`, a bare `delete(UserModel)` with no `IntegrityError` handling, so the
+      refusal raised by `fk_task_invalidations_revoked_by_users` (`ON DELETE RESTRICT`) escapes to the
+      generic handler as a **500**. Add the route's first DELETE-verb test and the decided contract.
+      **Owner decision required first:** (a) a designed **409** with an error code and a reason naming
+      the blocking marks, or (b) a **pre-check** that explains which marks block the deletion before
+      attempting it. Either way the refusal is designed rather than incidental, the mark rows and the
+      account are both left intact, and the success path keeps cascading as its docstring promises.
+      Prove with `cd backend && conda run -n storico python -m pytest tests/test_api/test_user_settings.py -m "not integration"`.
+      If the chosen option needs a new error code, 5.12's frontend mirror moves in the same unit.
+- [x] 5.15 DECISION (D-a-1, tasked 2026-10-02) — record D-a-1 as an **explicit non-goal** of this
+      slice, with the measurement instead of an assertion: the single production caller of
+      `run_background_extraction` (`api/routes/extraction.py:264`) runs once per extraction the route
+      has just minted through `create_next_version`, and no endpoint in (b) re-dispatches a run, so
+      the INSERT-only persist loop at `infrastructure/tasks/extraction_task.py:441` cannot duplicate
+      task rows today. Close it by writing that reasoning here and in `apply-progress.md`; do **not**
+      add a speculative guard, and do **not** widen `3b-iii`'s test to assert "one set of task rows per
+      version" — that test pins "one row, one number", which is what the code guarantees.
 
 ## Phase 6: WU6 — The Version-Aware UI
 

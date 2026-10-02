@@ -9,6 +9,9 @@ from storico.infrastructure.database.repositories.extraction_repository import (
 from storico.infrastructure.database.repositories.project_repository import (
     SQLAlchemyProjectRepository,
 )
+from storico.infrastructure.database.repositories.task_invalidation_repository import (
+    SQLAlchemyTaskInvalidationRepository,
+)
 from storico.infrastructure.database.repositories.task_repository import (
     SQLAlchemyTaskRepository,
 )
@@ -40,6 +43,7 @@ __all__ = [
     "SQLAlchemyProjectRepository",
     "SQLAlchemyUserStoryRepository",
     "SQLAlchemyTaskRepository",
+    "SQLAlchemyTaskInvalidationRepository",
     "SQLAlchemyExtractionRepository",
     "SQLAlchemyWorkspaceRepository",
     "SQLAlchemyWorkspaceMemberRepository",
