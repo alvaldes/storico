@@ -26,6 +26,7 @@ from storico.api.dependencies import (
     get_llm_config_repository,
     get_repository,
     get_workspace_for_user,
+    require_owner_or_admin,
 )
 from storico.api.error_codes import (
     EXTRACTION_ENDPOINT_REMOVED,
@@ -152,7 +153,14 @@ async def _validate_story_belongs_to_workspace(
 @extraction_router.post("/", status_code=status.HTTP_202_ACCEPTED)
 async def extract_tasks(
     body: ExtractRequest,
-    ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
+    # The version-mutating gate (D13): extracting mints a new version, so only
+    # the workspace owner or an admin may start a run. The dependency chains
+    # ``get_workspace_for_user`` itself, so a non-member's 403
+    # ``NOT_A_WORKSPACE_MEMBER`` fires first and keeps its code; the gate's own
+    # 403 ``WORKSPACE_OWNER_OR_ADMIN_REQUIRED`` is reserved for a member who is
+    # neither the owner nor an ``ADMIN``. The status route below stays open to
+    # every member — the gate is on the mutation, not on the read.
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(require_owner_or_admin),
     extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
     story_repo: StoryRepoDep = None,  # type: ignore[assignment]
     project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
@@ -161,8 +169,10 @@ async def extract_tasks(
     """Extract tasks from a user story using an LLM.
 
     The user story must belong to a project within the workspace specified
-    in the URL path. Workspace membership is validated via
-    ``get_workspace_for_user``.
+    in the URL path. Only the workspace owner or a member with the ``admin``
+    role may start an extraction: a member with the ``member`` role gets
+    403 ``WORKSPACE_OWNER_OR_ADMIN_REQUIRED`` and a non-member 403
+    ``NOT_A_WORKSPACE_MEMBER``, and neither creates an extraction.
 
     **This endpoint is asynchronous.** It creates a pending extraction
     record, launches the LLM call in a background task, and responds

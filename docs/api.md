@@ -350,6 +350,13 @@ ruta responde `400` con `error_code: "LLM_CONFIG_INCOMPLETE"` a nivel superior d
 cuerpo y la lista `missing` dentro de `detail` (el sobre canónico de §Errores), **sin
 crear ninguna extracción**.
 
+Además, iniciar una extracción exige ser el dueño del workspace o un miembro con rol
+`admin`: un miembro con rol `member` recibe `403` con `error_code:
+"WORKSPACE_OWNER_OR_ADMIN_REQUIRED"`, y quien no pertenece al workspace recibe `403`
+con `"NOT_A_WORKSPACE_MEMBER"`. En ambos casos no se crea ninguna extracción. La
+lectura de estado (`GET .../status/{extractionId}`) sigue abierta a cualquier miembro
+del workspace.
+
 ```http
 GET /api/v1/workspaces/{wsId}/extract/status/{extractionId}
 ```

@@ -422,6 +422,13 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
       becomes reachable in Phase 5); an exhausted allocation answers 409 `VERSION_ALLOCATION_CONFLICT`,
       never 500 and never 202, with no extraction row written. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_api -m "not integration"`.
+  > **[Amended 2026-09-30, WU4 split — owner decision, kept here rather than rewritten]** The owner
+  > split this task across three work units: the **extract** half landed with W4-T7 (PR A, branch
+  > `feat/extraction-versioning-api-wu4a`), **mark/unmark** belongs to a later work unit (those
+  > endpoints do not exist yet), and the **story-deletion** half ships with PR B (branch
+  > `feat/extraction-versioning-api-wu4`, commit `155b975`). This task stays unchecked until all
+  > three halves land; the extract-half RED/GREEN evidence is recorded in `apply-progress.md`
+  > (section W4-T7). The bullet above stays as the planning record.
 - [ ] 4.3 RED — `backend/tests/test_api/test_stories.py` and
       `backend/tests/test_repositories/test_user_story_repo.py` (the file the design calls
       `test_story_repo.py`): the failing deletion cases — the owner deletes a story with v1 and v2
@@ -446,7 +453,7 @@ Sequenced after Phase 3 because 4.13's snapshot consumes 3.5's `list_versions`.
       `require_story_owner_or_admin` and `require_task_owner_or_admin`. The membership refusal fires
       first in the shared walk; `ApiError(403, WORKSPACE_OWNER_OR_ADMIN_REQUIRED)` is raised only for
       a member who is neither owner nor `ADMIN`.
-- [ ] 4.6 GREEN — `backend/src/storico/api/routes/extraction.py`: replace
+- [x] 4.6 GREEN — `backend/src/storico/api/routes/extraction.py`: replace
       `Depends(get_workspace_for_user)` with `Depends(require_owner_or_admin)` and add
       `version_number` to the 202 `ExtractResponse` from the pending version slice (a) minted.
 - [ ] 4.7 GREEN — `backend/src/storico/api/error_codes.py`: add `VERSION_ALLOCATION_CONFLICT`,

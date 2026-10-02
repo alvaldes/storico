@@ -1571,3 +1571,81 @@ section as a `[Ratified 2026-09-30, after measurement]` note.
 **Standalone finding recorded for the next units.** `git diff | grep '^-' | grep -c assert` returned
 **0** on `test_tasks.py`, `test_export.py`, `test_task_repo.py` and `test_stories.py` — the fastest
 proof available that a fixture-heavy unit went green without loosening a single check.
+
+# Apply Progress — W4-T7 (task 4.6 GREEN + the extract half of 4.2 RED: the POST extract gate) — 2026-09-30, branch `feat/extraction-versioning-api-wu4a`
+
+## Structured status consumed
+
+- **Branch**: `feat/extraction-versioning-api-wu4a`, head `d93349f` (PR A — the authorization
+  tier: gate primitives in `dependencies.py`, the three new error codes + handlers, the frontend
+  mirror — already committed there; none of it touched).
+- **Allowed edit surfaces**: `backend/src/storico/api/routes/extraction.py`,
+  `backend/tests/test_api/test_extraction.py`, `docs/api.md`,
+  `openspec/changes/extraction-versioning-api/tasks.md`,
+  `openspec/changes/extraction-versioning-api/apply-progress.md`. Nothing else was written.
+- **Measured baseline at this head**: full unit suite **1105 passed, 33 deselected**;
+  `ruff check src tests` clean; `ruff format --check src tests` → 255 files already formatted.
+- **Micro-checks honored**: no `delete_by_story` on the vector port and no
+  `story_deletion_service.py` — PR B's files (`155b975`) are deliberately absent; not reached for.
+
+## RED — observed before the swap
+
+New class `TestExtractionOwnerOrAdminGate` (5 test functions) plus the remainder added to
+`test_an_exhausted_allocation_is_not_silent` (its own docstring already promised the 4.2 edges):
+
+| Case | Observed at `d93349f` (pre-swap) |
+| --- | --- |
+| `test_a_member_who_is_neither_owner_nor_admin_is_refused` | **RED** — `assert 400 == 403`: the config-completeness `400 LLM_CONFIG_INCOMPLETE` fired ahead of where the gate belongs, exactly the leak the case exists to prevent (no LLM config seeded on purpose) |
+| `test_the_owner_posts_even_when_their_member_role_is_member` | green pre-swap (pin: ownership is a data fact, not a role) |
+| `test_a_non_owner_admin_member_posts` | green pre-swap (pin: catches an over-strict owner-only gate) |
+| `test_a_non_member_keeps_the_not_a_workspace_member_code` | green pre-swap (pin: the unchanged 403 code) |
+| `test_a_member_who_is_not_the_owner_still_reads_the_status` | green pre-swap (pin: the read stays open) |
+| `test_an_exhausted_allocation_is_not_silent` (+ never-202, no-row asserts) | green pre-swap (pin; the 409 handler already landed in 4.7) |
+
+Focused file at RED: **1 failed, 45 passed**. Each refusal case witnesses "no data changed" by
+direct row reads (`_extraction_rows`), and the MEMBER refusal also asserts the story stays at
+`UserStoryStatus.PENDING_EXTRACTION`.
+
+## GREEN — one dependency swap plus the import
+
+`routes/extraction.py`: `Depends(get_workspace_for_user)` → `Depends(require_owner_or_admin)` on
+`extract_tasks` **only** (import added; the status route untouched). Focused file after the swap:
+**46 passed**.
+
+Confirmed, not re-added: `version_number` was **already** on the 202 `ExtractResponse`
+(`routes/extraction.py:277`, `version_number=pending.version_number`), delivered by an earlier
+unit; no edit was needed for that half of 4.6.
+
+## Branch state
+
+PR A head `d93349f` + this unit's uncommitted diff. PR B's commit `155b975` (migration `0029`,
+the sanctioned story deletion) is deliberately absent from this tree; the gate cases here do not
+depend on it.
+
+## Changed-line count (this unit)
+
+`git diff --numstat`: **184 changed lines** — production 13+/3− (`routes/extraction.py`), tests
+156+/1− (`test_api/test_extraction.py`), docs 7+ (`docs/api.md`), tasks.md 8+/1−. Under budget;
+no size exception needed.
+
+## Stub-comment note (no edit)
+
+The two `_RecordingVectorStore.delete_by_story` stubs (`tests/test_api/test_extraction.py`,
+`tests/test_services/test_extraction_service.py`) carry a comment naming "W4-T7" as the unit that
+replaces them; the owner's split renumbered the units, so **this** unit is W4-T7 and the stub
+replacement is the next one. Both comments left untouched — they are deleted by the commit that
+replaces the stub.
+
+## Verification (writer-run, exact commands)
+
+| Command | Result |
+| --- | --- |
+| `cd backend && conda run -n storico python -m pytest tests/test_api/test_extraction.py -m "not integration" -q` | **46 passed** |
+| `cd backend && conda run -n storico python -m pytest -m "not integration" -q` | **1110 passed, 33 deselected** (baseline 1105 + exactly the 5 new test functions; the sixth item augments an existing test) |
+| `cd backend && conda run -n storico python -m ruff check src tests` | All checks passed |
+| `cd backend && conda run -n storico python -m ruff format --check src tests` | 255 files already formatted |
+
+## Remaining unchecked (re-read after the edits)
+
+4.2 stays unchecked **with** its dated amendment block recording the three-way split; 4.3, 4.13,
+4.15, 4.16, 4.17 and 4.18 confirmed unchecked. Only **4.6** was marked `[x]`.
