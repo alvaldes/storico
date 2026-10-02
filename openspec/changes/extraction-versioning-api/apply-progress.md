@@ -3047,3 +3047,61 @@ deletions, ≈448 changed lines** — inside 5.14's ≈60–120 forecast for the
 ### Remaining unchecked in Phase 5
 5.12 (frontend mirror — now for both `TASK_ALREADY_MARKED` and `ACCOUNT_DELETE_BLOCKED`) and 5.13
 (the closing refactor rerun). Phase 6/7 untouched.
+
+## W5-B2b — the frontend mirror, folded where it belongs (5.12), and the closing pass (5.13) — 2026-10-02
+
+**The part that went wrong, recorded before the fix.** The mirror move for WU5's two new codes was
+planned as its own task, and that split broke the plan's own rule: the delivery note in `tasks.md` says
+the i18n map "must move in the same unit that adds each registry entry or the mirror test leaves the
+suite red". W5-B1 added `TASK_ALREADY_MARKED` and W5-B2a added `ACCOUNT_DELETE_BLOCKED`, each with the
+backend suite green and the **frontend suite red** — 615 → 613 passing — caught because this session
+re-ran `pnpm test`, not because a tranche gate did: backend-only tranches never ran it. That is the
+process hole this note exists to close, and it is the second time this slice has paid for a mirror that
+lags its registry (the first was the error-code count going stale three times).
+
+**The fix is a fold, not a follow-up commit.** Each mirror move was committed as a `--fixup` against the
+commit that added its code and folded in with an autosquash rebase, so the branch carries **no red
+commit**: `16a70a7` (the four endpoints + `TASK_ALREADY_MARKED` in both locales and the count) and
+`ba71497` (D-a-4's 409 + `ACCOUNT_DELETE_BLOCKED`). `EXPECTED_REGISTRY_COUNT` moved 42 → 44 in two
+steps; the locale tables hold 49 keys each and are **derived** (`EXPECTED_REGISTRY_COUNT +
+ROUTE_ERROR_CODES.length`), so they were never edited. Verified rather than assumed: `pnpm test` is
+**615/615 at the head and at the intermediate commit**.
+
+Copy, both locales, neutral Spanish with "tú" (voseo is a test failure in this repo):
+
+- `TASK_ALREADY_MARKED` — the task already carries an active mark; revoke it before marking again.
+- `ACCOUNT_DELETE_BLOCKED` — the account cannot be deleted while the revocations stand; delete the
+  stories that hold the marked tasks, then try again. It echoes the route's own refusal, which is the
+  point of D-a-4: the user is told what blocks the deletion *and* what to do about it.
+
+**5.13's closing pass**, at the branch head, one battery: unit layer **1206 passed, 36 deselected** ·
+ruff check clean · ruff format **269 files** · frontend **615 passed**. The three claims WU5 makes were
+re-checked in the same pass: no fuzzy or vector path is reachable from the D16 read (the monkeypatched
+`search_similar` fails the test if one ever appears), the two mutations are owner/admin-gated while the
+three reads stay member-reachable, and `update_task`'s frozen-version wording is byte-identical to its
+pre-WU5 form.
+
+## Parent close-out of WU5 (session 2026-10-02) — measured, and the third unit over its forecast
+
+| Tranche | Commit | code + tests | + plan artifacts |
+| --- | --- | --- | --- |
+| W5-A — entity, port, repository, normalizer | `f749705` | 793 | 199 |
+| W5-B1 — the four endpoints, the D16 read, `TASK_ALREADY_MARKED` | `16a70a7` | 991 | 164 |
+| W5-B2a — D-a-4's designed 409, task 4.2's last three clauses | `ba71497` | 646 | 109 |
+| W5-B2b — mirror folded, closing pass | this commit | ~20 | ~90 |
+| **WU5** | `ecec049..HEAD` | **2,426** | **481** |
+
+WU5 was forecast at ≈800–1,050 for the whole unit. It measured **2,426 code+test lines**, split across
+two PRs on the axis `tasks.md` named, with W5-A's 793 reported and the owner choosing to ship it as it
+stood. This is the third unit of the slice to come in at roughly twice its forecast (WU3 1,244 against
+600–750; WU4 2,701 against 1,300–1,700), and the pattern is now named rather than re-discovered: the
+plan's estimates price production code and undercount the proof.
+
+**Close state.** Phase 4: **18/18**. Phase 5: **15/15** (5.14 and 5.15 were added by this session's
+numbering, so the slice's task count moved 77 → **79**). Slice (b): **64/79**. The only work the plan
+still owes is Phase 6 (the version-aware UI, ten tasks) and Phase 7 (the verification pass, five).
+
+**Carried, still open, and not absorbed:** the account-delete race residual (a revoke landing between
+D-a-4's pre-check and the delete still surfaces as the raw integrity refusal, because translating it
+belongs to `UserRepository.delete`, outside that unit), and the two pieces of dead code left in place by
+the owner's decision (`TaskRepository.list_by_workspace`, and the story port/repository `delete`).

@@ -671,12 +671,31 @@ and endpoints — not the DDL.
       *(W5-B1: all edges green in the same run — the blank shapes are a parametrized case, the
       no-write witnesses are direct row reads, and the no-similarity claim is a monkeypatch on
       `QdrantAdapter.search_similar` that fails the test if invoked.)*
-- [ ] 5.12 GREEN (frontend mirror) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`:
+- [x] 5.12 GREEN (frontend mirror) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`:
       `TASK_ALREADY_MARKED` in `errorCodes` with neutral international Spanish;
       `frontend/src/lib/__tests__/error-codes.test.ts`: `EXPECTED_REGISTRY_COUNT` `42` → `43` and both
       locale counts `47` → `48`. Prove with `cd frontend && pnpm test`.
-- [ ] 5.13 REFACTOR — rerun
+  > **[Amended 2026-10-02, W5 — two codes, and the count is derived]** WU5's mark work added **two**
+  > registry entries, not one: `TASK_ALREADY_MARKED` and, from D-a-4's decided contract,
+  > `ACCOUNT_DELETE_BLOCKED`. `EXPECTED_REGISTRY_COUNT` therefore went `42` → `44` and the locale
+  > tables hold **49** keys each — derived, never edited (`EXPECTED_REGISTRY_COUNT +
+  > ROUTE_ERROR_CODES.length`, the rule the file's own comment states). Third time this plan's locale
+  > arithmetic has been stale; the rule is the thing to read, not the total.
+  >
+  > The delivery note above says the map "must move in the same unit that adds each registry entry or
+  > the mirror test leaves the suite red", and the tranche split broke exactly that: the two backend
+  > commits went in with the backend suite green and the **frontend suite red** (615 → 613 passing,
+  > caught by re-running `pnpm test` in this session). Both mirror moves were then **folded into the
+  > commits that added their codes** (`16a70a7` for `TASK_ALREADY_MARKED`, `ba71497` for
+  > `ACCOUNT_DELETE_BLOCKED`), so every commit on the branch leaves both suites green — verified by
+  > running `pnpm test` on the intermediate commit as well as the head.
+- [x] 5.13 REFACTOR — rerun
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py tests/test_repositories/test_task_invalidation.py tests/test_unit -m "not integration"`.
+  > **[Closed 2026-10-02]** Run at the branch head with the full battery beside it: the unit layer,
+  > ruff check and ruff format, and both frontend suites. WU5's own claims re-checked in the same pass:
+  > the D16 read has no fuzzy or vector path (a monkeypatched `search_similar` fails the test if one
+  > ever appears), the two mutations are gated and the three reads are member-reachable, and
+  > `update_task`'s frozen-version wording is byte-identical to what it was before this unit.
 - [x] 5.14 GREEN (D-a-4, tasked 2026-10-02) — the account-delete contract.
       `backend/src/storico/api/routes/settings.py`: `DELETE /api/v1/users/me` currently calls
       `UserRepository.delete`, a bare `delete(UserModel)` with no `IntegrityError` handling, so the
