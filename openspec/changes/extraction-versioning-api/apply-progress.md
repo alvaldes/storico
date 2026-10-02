@@ -2712,3 +2712,124 @@ code defending against a caller that does not exist), and `3b-iii`'s test is **n
 "one set of task rows per version" — that test pins what the code guarantees ("one row, one number"),
 and widening it would have turned a latent defect into a false green. When a re-dispatch surface ever
 arrives, this note is the requirement it must satisfy.
+
+## W5-A — the mark's domain and storage layer (tasks 5.2, 5.3, 5.5, 5.6, 5.7) — 2026-10-02
+
+### Structured status consumed
+Branch `feat/extraction-versioning-api-wu5a` at tip `2f97ff1` (unchanged, never switched). Baseline
+measured by the parent before this unit: `1132 passed, 36 deselected` (`-m "not integration"`), ruff
+check clean, `ruff format --check` → 261 files formatted. The DDL (`task_invalidations`, revision
+`0028`) and `TaskInvalidationModel` are slice (a)'s and were not touched.
+
+### TDD Cycle Evidence (strict TDD)
+
+- **RED** (observed before any production edit): the three new test homes first, then the run.
+  - `tests/test_unit/test_task_title_normalizer.py` (new, 18 parametrized cases) and
+    `tests/test_unit/test_task_invalidation_port.py` (new, 4 cases): both failed collection with
+    `ModuleNotFoundError: No module named 'storico.domain.entities.task_invalidation'` — the
+    module-not-found is the failure kind the RED is made of (the unit under test does not exist).
+  - `tests/test_repositories/test_task_invalidation.py`: the seven appended query-level cases ran
+    and **7 failed, 12 passed** — the 12 slice-(a) invariant cases untouched and still green, the
+    7 new cases failing with the same `ModuleNotFoundError` at the `_seed_mark` helper
+    (`tests/test_repositories/test_task_invalidation.py:449`).
+- **GREEN**: same three files after the entity/port/normalizer/repository landed:
+  `41 passed` (12 existing + 7 appended repository cases + 18 normalizer cases + 4 port cases).
+- **TRIANGULATE** (built into the case set, not a separate run): the ordering test pins
+  *active-first ahead of a bare `marked_at DESC`* by revoking a 12:00 mark and re-marking at 11:00;
+  the candidate read pins revoked-invisible, other-story-invisible, same-version-excluded,
+  `exclude_extraction_id=None` excludes nothing, and `version_number DESC` + `marked_at DESC`
+  together (two active marks inside one version, on two task rows — the partial unique index is per
+  task, so the tiebreaker is observable); the normalizer tables carry the non-match edges
+  (logout, plural, whitespace-vs-none).
+- **REFACTOR**: two defects of my own caught and fixed between RED and final green — the
+  ordering test's expected list was inverted (the repository's `version_number DESC` was right; the
+  expectation said v1 first), and one normalizer non-match edge (`("a", "a ")`) asserted a
+  difference the rule correctly erases (trailing whitespace strips to a match; replaced with
+  `("a b", "ab")`, a difference that survives). No production shape changed in refactor.
+
+### The `is_distinct_from` portability note
+`list_active_on_other_versions` filters with
+`TaskModel.extraction_id.is_distinct_from(exclude_extraction_id)`, not raw SQL text, so the
+predicate builds identically against the SQLite unit schema and Postgres. The parameter stays
+`None`-able per the design; `None` **skips the predicate entirely** — it excludes nothing — and the
+docstring states that it does *not* mean "exclude null extraction ids" (the column is `NOT NULL`
+anyway, so `IS DISTINCT FROM NULL` would be a tautology there).
+
+### What the normalizer's disagreement cases are, and why `lower()` would lose them
+`normalize_task_title` = `casefold` + collapse whitespace runs + strip — the whole D16 rule, no
+fuzzy, no vector, no prefix. The table pins the pairs where SQL `LOWER()` answers a *different*
+question than the spec: `Straße` vs `STRASSE` (casefold expands `ß` → `ss`; `lower()` keeps `ß`
+distinct from `ss`), and final `ς` vs `Σ` (`lower()` leaves `ς` standing; casefold folds both to
+`σ`). `İ` is pinned as a round-trip of the dotted-capital-I decomposition (`İ` → `i` + combining
+dot) so a normalization-library change cannot silently move the rule. The whitespace half is
+invisible to `lower()` altogether: internal runs collapse (`"Implement \t\n login"` ≡
+`"Implement login"`), edges strip. This is why the match runs in Python after the SQL narrows to
+the story's other versions, never in SQL.
+
+### The `revoke`-deletes-nothing witness (row counts)
+`test_revoke_sets_only_the_revoke_fields_and_deletes_nothing` measures
+`SELECT count(*)` on `task_invalidations` before and after the revoke: **1 == 1**. The row keeps
+its `id`, `reason`, `marked_by`, `marked_at` byte-identical and gains only `revoked_by`/`revoked_at`;
+the implementation is one `UPDATE` whose `WHERE` also requires `revoked_at IS NULL`, so a revoked
+mark can never be silently re-revoked — the no-active-row arm raises `EntityNotFound` (the route's
+404 comes from `find_active_by_task` in W5-B, per the design's refusal order).
+
+### Files changed (this unit — 793 changed lines: 460 new-file lines + 333 tracked additions, 0 deletions)
+- `backend/src/storico/domain/entities/task_invalidation.py` (new, 37): frozen, slotted
+  `TaskInvalidation`, defaults per the design sketch (`marked_by=None`, `marked_at=now(UTC)`,
+  `id=uuid7()`, revoke pair `None`).
+- `backend/src/storico/domain/ports/task_invalidation_repository.py` (new, 91): the five-method
+  ABC plus the frozen slotted `TaskInvalidationCandidate` read model
+  `(version_number, title, reason, marked_at)` — a read model, not an entity, because the D16
+  join's rows belong to *other* tasks.
+- `backend/src/storico/domain/services/task_title_normalizer.py` (new, 28): the normalizer.
+- `backend/src/storico/infrastructure/database/repositories/task_invalidation_repository.py`
+  (new, 177): `create` (INSERT + commit + refresh, returns the entity as the table holds it),
+  `find_active_by_task`, `list_by_task` (active-first, then `marked_at DESC`), `revoke` (targeted
+  UPDATE of the resolved row), and the `task_invalidations JOIN tasks JOIN extractions` candidate
+  read ordered `version_number DESC, marked_at DESC`.
+- `backend/src/storico/infrastructure/database/repositories/__init__.py` (+4): the export, slotted
+  between `SQLAlchemyTaskRepository` and `SQLAlchemyUserPreferencesRepository` in the sorted import
+  block; nothing else in the file moved.
+- `backend/tests/test_repositories/test_task_invalidation.py` (+311, all appended): the two
+  module-level helpers (`_seed_mark`, `_repo`) and the seven query-level cases. Every slice-(a)
+  case byte-identical; `tests/_helpers.py` untouched.
+- `backend/tests/test_unit/test_task_title_normalizer.py` (new, 70): the three tables.
+- `backend/tests/test_unit/test_task_invalidation_port.py` (new, 57): the port-surface pin
+  (the repo's convention, as slice (a) pinned the extraction port in
+  `test_extraction_repo.py:432`) plus the entity/candidate dataclass contracts.
+
+`git diff --numstat` over tracked files at this head: **333 additions, 0 deletions**; the six
+new files add **460 lines**; **793 changed lines total** against the WU5-A half of WU5's
+≈800–1,050 two-PR band.
+
+### Verification (writer-run, exact commands, at this head)
+- `cd backend && conda run -n storico python -m pytest tests/test_repositories/test_task_invalidation.py tests/test_unit/test_task_title_normalizer.py -m "not integration" -q` → **37 passed**.
+- `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py tests/test_repositories/test_task_invalidation.py tests/test_unit -m "not integration" -q` → **534 passed** (4 warnings, pre-existing).
+- `cd backend && conda run -n storico python -m pytest -m "not integration" -q` → **1161 passed, 36 deselected** — baseline 1132 + **exactly 29** new test functions (18 + 4 + 7), no other delta.
+- `cd backend && conda run -n storico python -m ruff check src tests` → **All checks passed!** (two `I001` import-order errors in my own new/edited files were found and hand-fixed mid-run).
+- `cd backend && conda run -n storico python -m ruff format --check src tests` → **267 files already formatted** (261 baseline + 6 new files + 1 edited).
+
+### Persisted checkbox
+`tasks.md`: **5.2, 5.3, 5.5, 5.6, 5.7 → [x]**, only those. Re-read after the edit: 5.1, 5.4 and
+5.8–5.13 remain unchecked (W5-B), 5.14 stays unchecked (owner decision pending), 5.15 stays as the
+pre-existing `[x]` recorded before this unit, Phase 6 and Phase 7 untouched.
+
+### Remaining unchecked tasks (next lines for W5-B)
+5.1 (`CreateInvalidationRequest` unit), 5.4 (endpoint RED), 5.8 (schemas), 5.9 (four routes),
+5.10 (`TASK_ALREADY_MARKED`), 5.11 (pinned edges), 5.12 (frontend mirror), 5.13 (REFACTOR rerun),
+then 5.14 (D-a-4 contract, owner decision first).
+
+### Risks
+- The `list_by_task` active-first key is `revoked_at.is_(None).desc()` — a boolean ordering that
+  both SQLite and Postgres evaluate the same way; the 11:00-active/12:00-revoked case pins it, but
+  the W5-B endpoint test should re-exercise it through the API.
+- `create` wraps every `SQLAlchemyError` in `RepositoryError`; the lost-race against
+  `uq_task_invalidations_active_task` therefore arrives as a `RepositoryError`, not an
+  `IntegrityError` subclass. W5-B's 409 path resolves through `find_active_by_task` before
+  writing, so the normal path never sees it — but a concurrent double-mark could surface as a 500
+  until someone decides that race's contract. Named here, not absorbed.
+- The port-surface test imports the port and entity directly from their modules (not via
+  `domain/ports/__init__` / `domain/entities/__init__`): those two `__init__` files were not in
+  this unit's allowed edit surfaces. W5-B's route work will likely want the conventional
+  re-exports added there.

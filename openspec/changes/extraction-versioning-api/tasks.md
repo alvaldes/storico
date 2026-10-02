@@ -577,11 +577,11 @@ and endpoints — not the DDL.
       `CreateInvalidationRequest` refuses `""`, `"   "` and `"\t\n"` (Python whitespace is wider than
       the column's `CHECK`) and accepts a non-blank reason bounded by the column's 500. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_unit/test_invalidation_request.py -m "not integration"`.
-- [ ] 5.2 RED — `backend/tests/test_unit/test_task_title_normalizer.py` **New** (path free):
+- [x] 5.2 RED — `backend/tests/test_unit/test_task_title_normalizer.py` **New** (path free):
       `normalize_task_title` casefolds, collapses whitespace runs to one space and strips, table-driven
       over the `casefold` cases SQL `lower` would miss. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_unit/test_task_title_normalizer.py -m "not integration"`.
-- [ ] 5.3 RED — `backend/tests/test_repositories/test_task_invalidation.py` (the file slice (a)
+- [x] 5.3 RED — `backend/tests/test_repositories/test_task_invalidation.py` (the file slice (a)
       creates at 1.2/4.1; add the query-level cases): `find_active_by_task` finds the single active
       row; `list_by_task` orders `marked_at DESC` with the active mark first; `revoke` sets only
       `revoked_by`/`revoked_at` on the resolved row and deletes nothing; `list_active_on_other_versions`
@@ -600,18 +600,18 @@ and endpoints — not the DDL.
       returns the match, `{"matches": []}` for no match / the task's own version / another story / a
       revoked mark, and creates, updates and revokes nothing. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py -m "not integration"`.
-- [ ] 5.5 GREEN — `backend/src/storico/domain/entities/task_invalidation.py` **New** (path free): the
+- [x] 5.5 GREEN — `backend/src/storico/domain/entities/task_invalidation.py` **New** (path free): the
       frozen, slotted `TaskInvalidation`;
       `backend/src/storico/domain/ports/task_invalidation_repository.py` **New** (path free): the port
       (`create`, `find_active_by_task`, `list_by_task`, `revoke`) plus the `TaskInvalidationCandidate`
       read model and the join contract of `list_active_on_other_versions`.
-- [ ] 5.6 GREEN — `backend/src/storico/infrastructure/database/repositories/task_invalidation_repository.py`
+- [x] 5.6 GREEN — `backend/src/storico/infrastructure/database/repositories/task_invalidation_repository.py`
       **New** (path free): `create`, `find_active_by_task`, `list_by_task`, `revoke` as an `UPDATE` of
       the row `find_active_by_task` resolved, and the
       `task_invalidations JOIN tasks JOIN extractions` candidate read filtered by story,
       `extraction_id IS DISTINCT FROM` the excluded version and `revoked_at IS NULL`, ordered
       `version_number DESC, marked_at DESC`.
-- [ ] 5.7 GREEN — `backend/src/storico/domain/services/task_title_normalizer.py` **New** (path free):
+- [x] 5.7 GREEN — `backend/src/storico/domain/services/task_title_normalizer.py` **New** (path free):
       `normalize_task_title(text)` = casefold + whitespace-run collapse + strip.
 - [ ] 5.8 GREEN — `backend/src/storico/api/schemas/task.py`: `CreateInvalidationRequest` with the
       blank-reason `field_validator` and the 500 bound, `InvalidationResponse`, `RepetitionMatch` and
