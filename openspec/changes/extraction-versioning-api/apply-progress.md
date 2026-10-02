@@ -2676,3 +2676,18 @@ Two stale pins, both made **head-agnostic** rather than bumped to the current li
 
 Measured locally without Docker: the packaged scripts declare `0029` and `0028` is in the chain, which
 is exactly the precondition's new premise. The round trip itself stays CI-owned.
+
+### CI verdict on PR #35 — the Postgres half ran, and it also caught the stale pin
+
+The layer this machine cannot run **executed and passed in CI** (run `37053354607`, job
+`110991906602`, head `034cebd`): **`1150 passed, 18 skipped`**. Reconcile it against the local
+`1132 passed, 36 deselected`: the 36 deselected are exactly 18 cases that run on the testcontainers
+runner and 18 that skip everywhere (16 Qdrant + 2 Ollama live). So task 4.16's three cases and task
+4.17's chain cases move from *unverified here* to **verified in CI**, and the red head this PR started
+from (`68ee3db`: `1 failed, 1149 passed, 18 skipped`) is closed by `034cebd`.
+
+It is worth recording *how* the red surfaced, because it is the argument for pushing before believing a
+local green: the failure was a slice (a) integration test that pinned `declared_head == "0028"` — an
+assertion that could only ever be checked by a machine with Docker, in a branch that had never been
+pushed. Neither the local suite nor any earlier WU4 session could see it, and no amount of local
+re-running would have.
