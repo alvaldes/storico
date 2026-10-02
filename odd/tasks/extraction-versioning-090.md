@@ -1249,3 +1249,31 @@ integration functions; WU3 shipped 1,244 lines under a ratified exception; CI on
 every delete case must pin the boundary with `app.dependency_overrides[get_vector_store]`. And
 `git diff --numstat` still does not see untracked files (that is why W4's first measurement was wrong);
 measure with `git add -N` and reset immediately.
+
+### Addendum, same session (2026-10-02) — pushed, PRs opened, CI green, and the one thing CI caught
+
+The owner resolved the two open items above in this same session: **ship the two PRs as they are, with
+the measured numbers stated**, and **push and open them**. Both happened.
+
+- **PR #34** — `feat/extraction-versioning-api-wu4a` → `feat/extraction-versioning-api-wu3` — open, **green**
+  (backend, frontend and Vercel).
+- **PR #35** — `feat/extraction-versioning-api-wu4b` → `feat/extraction-versioning-api-wu4a` — open,
+  **green** on head `45e0ccf`, with the measured sizes and the evidence split stated in the body.
+- The chain is now five deep: #31 → #32 → #33 → #34 → #35, none merged.
+
+**CI's first look at WU4 caught something no local run could.** The branch had never been pushed, and
+the first push turned the backend job red on a *slice (a)* integration test:
+`test_downgrade_to_0027_and_back_round_trips_on_a_private_database` pinned `declared_head == "0028"`,
+which stopped being true the moment `0029` existed. That file needs a Docker daemon, so neither the
+local suite nor any earlier WU4 session could see it. Fixed in `034cebd` by making both pins
+head-agnostic (the precondition now asserts a head exists *and* that `0028` is still in the walked
+chain; the post-re-apply assertion compares against the declared head) instead of bumping the literal,
+which would go stale at the next migration. Then the Postgres half **ran for real**: CI reports
+**`1150 passed, 18 skipped`**, which reconciles exactly with the local `1132 passed, 36 deselected`
+(18 cases run on the testcontainers runner, 18 skip everywhere). Tasks 4.16 and 4.17 are therefore
+verified, not merely CI-owned.
+
+**Consequence for the next session:** everything in this file's items 1 and 2 above is done, and the
+deploy question is answered (`0029` is additive — the window applies it with no data plan). What is
+left is item 3 onward: number **D-a-4** and **D-a-1** inside slice (b), then **WU5** (Phase 5), which
+also closes 4.2 and gives `require_task_owner_or_admin` its caller.
