@@ -21,7 +21,7 @@ from storico.api.schemas.story import (
     UpdateUserStoryRequest,
     UserStoryResponse,
 )
-from storico.api.schemas.task import CreateTaskRequest, TaskResponse, UpdateTaskRequest
+from storico.api.schemas.task import TaskResponse, UpdateTaskRequest
 from storico.api.schemas.user import AuthSyncRequest, UserResponse
 from storico.api.schemas.workspace import (
     CreateWorkspaceRequest,
@@ -56,7 +56,6 @@ __all__ = [
     "CreateUserStoryRequest",
     "UserStoryResponse",
     "UpdateUserStoryRequest",
-    "CreateTaskRequest",
     "TaskResponse",
     "UpdateTaskRequest",
     "AuthSyncRequest",

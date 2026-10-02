@@ -42,6 +42,8 @@ __all__ = [
     "REPOSITORY_ERROR",
     "REQUEST_VALIDATION_FAILED",
     "STORY_NOT_IN_WORKSPACE",
+    "TASK_CREATION_ENDPOINT_REMOVED",
+    "TASK_DELETE_ENDPOINT_REMOVED",
     "UNSUPPORTED_EXPORT_FORMAT",
     "WORKSPACE_NOT_FOUND",
     "WORKSPACE_SLUG_TAKEN",
@@ -109,6 +111,14 @@ EXTRACTION_NOT_FOUND = "EXTRACTION_NOT_FOUND"
 
 # ``extraction.py``: the pre-workspace extraction endpoints are gone (410).
 EXTRACTION_ENDPOINT_REMOVED = "EXTRACTION_ENDPOINT_REMOVED"
+
+# ``tasks.py`` POST: manual task creation is gone (410) — a task is only born
+# from an extraction run (design decision D3 of extraction-versioning).
+TASK_CREATION_ENDPOINT_REMOVED = "TASK_CREATION_ENDPOINT_REMOVED"
+
+# ``tasks.py`` DELETE: single-task deletion is gone (410) — no product path
+# deletes a single task (design decision D12 of extraction-versioning).
+TASK_DELETE_ENDPOINT_REMOVED = "TASK_DELETE_ENDPOINT_REMOVED"
 
 # ``stories.py`` POST: actor + feature + benefit already exist in the project.
 DUPLICATE_USER_STORY = "DUPLICATE_USER_STORY"

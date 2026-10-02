@@ -219,43 +219,43 @@ Runner: `cd backend && conda run -n storico python -m pytest tests/test_api/test
 plus `cd frontend && pnpm test src/lib/__tests__/error-codes.test.ts` for the mirror.
 STRICT TDD order: RED first, then GREEN, then TRIANGULATE, then REFACTOR.
 
-- [ ] 1.1 RED — `backend/tests/test_api/test_tasks.py`: add the failing retirement cases.
+- [x] 1.1 RED — `backend/tests/test_api/test_tasks.py`: add the failing retirement cases.
       `DELETE /api/v1/tasks/{task_id}` (currently 204 and the row is deleted) must answer 410 with
       `error_code` `TASK_DELETE_ENDPOINT_REMOVED`, a `detail` naming D12, and leave the task row
       linked to its version; `POST /api/v1/tasks/` (currently the 500 slice (a) pinned) must answer
       410 with `error_code` `TASK_CREATION_ENDPOINT_REMOVED`, a `detail` naming D3, and add no row.
       Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py -m "not integration"`.
-- [ ] 1.2 RED — `backend/tests/test_api/test_tasks.py`: flip slice (a)'s two pinned 500 cases
+- [x] 1.2 RED — `backend/tests/test_api/test_tasks.py`: flip slice (a)'s two pinned 500 cases
       (`TestCreateTask::test_create_task` and `::test_create_task_with_labels`, rewritten by (a)
       1.17) to pin the 410; add the route-shape case that `DELETE /api/v1/tasks/{task_id}/invalidations/current`
       still resolves (neither retirement may be a `/{path:path}` catch-all) and that
       `DELETE /api/v1/tasks/` still answers 405, not 410. Same runner command as 1.1.
-- [ ] 1.3 GREEN — `backend/src/storico/api/routes/tasks.py`: replace the `delete_task` handler body
+- [x] 1.3 GREEN — `backend/src/storico/api/routes/tasks.py`: replace the `delete_task` handler body
       with `@router.api_route("/{task_id}", methods=["DELETE"], status_code=410, include_in_schema=False)`
       that runs the unchanged `_validate_task_workspace_access` walk and then raises
       `ApiError(410, TASK_DELETE_ENDPOINT_REMOVED, detail=…)`, with no `repo.delete` call; replace
       `create_task` with `@router.api_route("/", methods=["POST"], status_code=410, include_in_schema=False)`
       that reads no body and raises `ApiError(410, TASK_CREATION_ENDPOINT_REMOVED, detail=…)`.
-- [ ] 1.4 GREEN — `backend/src/storico/api/schemas/task.py`: delete `CreateTaskRequest` (and any
+- [x] 1.4 GREEN — `backend/src/storico/api/schemas/task.py`: delete `CreateTaskRequest` (and any
       import it leaves unused); `backend/src/storico/api/error_codes.py`: add
       `TASK_CREATION_ENDPOINT_REMOVED` and `TASK_DELETE_ENDPOINT_REMOVED` to the alphabetically
       sorted `__all__` plus their `# ── Route raise sites` comment block.
-- [ ] 1.5 GREEN (frontend mirror) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`: add
+- [x] 1.5 GREEN (frontend mirror) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`: add
       both codes to the `errorCodes` family with neutral international Spanish copy (`tú`, no voseo);
       `frontend/src/lib/__tests__/error-codes.test.ts`: move `EXPECTED_REGISTRY_COUNT` from `36` to
       `38` and both locale counts from `41` to `43`. Prove with
       `cd frontend && pnpm test src/lib/__tests__/error-codes.test.ts`.
-- [ ] 1.6 TRIANGULATE — `backend/tests/test_api/test_tasks.py`: the non-member edge — a caller who is
+- [x] 1.6 TRIANGULATE — `backend/tests/test_api/test_tasks.py`: the non-member edge — a caller who is
       not a member of the owning workspace gets 403 `NOT_A_WORKSPACE_MEMBER` on
       `DELETE /api/v1/tasks/{task_id}`, and an addressed task that does not exist gets 404
       `ENTITY_NOT_FOUND`, both before the 410 is reached; assert the task row count is unchanged and
       the response discloses nothing about the workspace. Prove with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py -m "not integration"`.
-- [ ] 1.7 REFACTOR — `backend/src/storico/api/routes/tasks.py`: confirm no import of the deleted
+- [x] 1.7 REFACTOR — `backend/src/storico/api/routes/tasks.py`: confirm no import of the deleted
       request schema survives and no `repo.delete(` call remains in the file; then rerun
       `cd backend && conda run -n storico python -m pytest tests/test_api -m "not integration"`.
-- [ ] 1.8 REFACTOR (frontend) — rerun
+- [x] 1.8 REFACTOR (frontend) — rerun
       `cd frontend && pnpm test src/lib/__tests__/error-codes.test.ts src/i18n/__tests__/neutral-spanish.test.ts src/i18n/__tests__/no-duplicate-keys.test.ts`.
 
 ## Phase 2: WU2 — The Field Matrix and the Version-Aware Client

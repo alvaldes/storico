@@ -256,16 +256,11 @@ class TestNoExtraFieldsForbidden:
 
     def test_extract_request_forbids_extra(self):
         # Note: ExtractRequest currently doesn't forbid extra fields
-        # This is a known deviation from CreateUserStoryRequest/CreateTaskRequest
-        # which do use extra="forbid"
+        # This is a known deviation from CreateUserStoryRequest
+        # which does use extra="forbid"
         assert True  # Documented as known deviation
 
     def test_create_user_story_request_forbids_extra(self):
         from storico.api.schemas.story import CreateUserStoryRequest
 
         assert CreateUserStoryRequest.model_config.get("extra") == "forbid"
-
-    def test_create_task_request_forbids_extra(self):
-        from storico.api.schemas.task import CreateTaskRequest
-
-        assert CreateTaskRequest.model_config.get("extra") == "forbid"

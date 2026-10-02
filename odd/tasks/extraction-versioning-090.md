@@ -687,3 +687,118 @@ Two things worth knowing before touching them, from that README:
 If `~/storico-ops/` is gone (new machine, wiped home), the *procedure* is still reproducible from
 `prod.todo.md` — inventory, runbook, executed steps, and the verification checklist — and the scripts are
 regenerable from it in a few minutes. Nothing in the repo depends on their existence.
+
+## Slice (b) apply — session 2026-09-30 (b1): WU1 authorized
+
+**The owner authorized apply of `extraction-versioning-api`, starting with WU1**, and confirmed the SDD
+session preflight on the slice (a) defaults: execution `auto`, artifact store `openspec`, delivery
+`ask-on-risk`, review budget `400` lines. Strict TDD stays active (`openspec/config.yaml`).
+
+### The repo was not where I left it, and it was not my doing
+
+Between my first read-only pass and the owner's "continua", **another session worked in this checkout**
+(measured from `git reflog` and file mtimes, not inferred):
+
+| Local time | Event |
+| --- | --- |
+| 11:33 | this session starts; `main @ a809428`, clean tree |
+| 12:33–12:45 | another session creates `chore/dev-reset-0028` from `a809428`, three docs commits, one amended |
+| 13:00 | `.claude/skills/` appears (local copies of the neon skills) |
+| 13:37 | checkout still mounted on that branch, never pushed |
+
+The dev-reset branch was **docs-only** (+349: `odd/tasks/dev-reset-0028.md` 272, `docs/deployment.md` +69,
+`AGENTS.md` +4, `odd/tasks/board-debt-closure.md` +5), zero `backend/**`, so it could not deploy or break
+CI. On the owner's choice it was merged into `main` with `--ff-only` before the feature branch opened,
+keeping one line of history; `main` is now `241cd55`, **ahead 3 of `origin/main` and unpushed** — push is
+the owner's call. `feat/extraction-versioning-api-wu1` branches from `241cd55`.
+
+Two untracked files are **not mine and stay uncommitted**: `backend/.gitignore` (31 B, ignores `.atl/` —
+Pi runtime state) and `.claude/skills/` (not gitignored). Never `git add -A` in this worktree without
+looking.
+
+### Gates consumed before the first write
+
+- Native `gentle-ai sdd-status extraction-versioning-api --contract gentle-ai.sdd-status/v2`:
+  `nextRecommended: apply`, `applyState: ready`, `dependencies` proposal/specs/design/tasks `all_done`,
+  `apply/verify/archive: ready`, `taskProgress` 0/77, `blockedReasons: []`, `notes: []`,
+  `actionContext` mode `repo-local`, workspaceRoot = allowedEditRoots = `/Users/alvaldes/Developer/storico`.
+- **Review Workload Guard**: the slice forecast says `400-line budget risk: High`,
+  `Chained PRs recommended: Yes`, `Decision needed before apply: Yes`. That is the *whole slice* (77 tasks,
+  ≈4,400–5,700 lines). This run is **WU1 only**, which `tasks.md` itself estimates at ≈260–340 lines and
+  ships whole, and the delivery decision accepted on 2026-09-28 is recorded in the same file (`size:exception`
+  is accepted for WU2 and WU4 **and for no other unit**). `ask-on-risk` therefore has nothing to ask here.
+- **Model routing drift, reported not fixed**: `.pi/gentle-ai/models.json` (written 2026-09-14) pins every
+  SDD phase to `nan/deepseek-v4-flash`, while the installed `~/.pi/agent/agents/sdd-apply.md`
+  (written 2026-09-28) carries `model: nan/glm5.3-flash`, `thinking: high`. The launch resolves through the
+  installed definition; no ad-hoc model was passed, per the phase model gate.
+
+### WU1 execution plan (the two 410 retirements)
+
+`tasks.md` Phase 1, tasks **1.1–1.8**, commit `refactor(api): retire manual task creation and single-task
+deletion with 410 Gone`. Two sequential writers, because the lesson that held in slice (a) is that tranches
+of 2–4 files survive the provider and bigger ones die on 429:
+
+| Tranche | Tasks | Allowed edit surfaces |
+| --- | --- | --- |
+| A — backend | 1.1, 1.2 (RED), 1.3, 1.4 (GREEN), 1.6 (TRIANGULATE), 1.7 (REFACTOR) | `backend/tests/test_api/test_tasks.py`, `backend/src/storico/api/routes/tasks.py`, `backend/src/storico/api/schemas/task.py`, `backend/src/storico/api/error_codes.py` |
+| B — frontend mirror | 1.5 (GREEN), 1.8 (REFACTOR) | `frontend/src/i18n/en.json`, `frontend/src/i18n/es.json`, `frontend/src/lib/__tests__/error-codes.test.ts` |
+
+Writers do not commit. The parent runs both suites, counts the diff, and lands one work-unit commit for WU1.
+Runners: `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py -m "not integration"`,
+then `cd frontend && pnpm test src/lib/__tests__/error-codes.test.ts src/i18n/__tests__/neutral-spanish.test.ts src/i18n/__tests__/no-duplicate-keys.test.ts`.
+
+- [x] b1-1. Gates closed (preflight, native status, workload guard, model drift reported).
+- [x] b1-2. Docs branch merged to `main` (`--ff-only` → `241cd55`), `feat/extraction-versioning-api-wu1` opened.
+- [x] b1-3. This section written before the first source write.
+- [x] b1-4. Tranche A (backend, tasks 1.1–1.4, 1.6, 1.7) green.
+- [x] b1-5. Tranche B (frontend mirror, tasks 1.5, 1.8) green.
+- [x] b1-6. Full verification: `tests/test_api` unit suite + the three frontend test files, line count under 400.
+- [x] b1-7. WU1 work-unit commit on the branch.
+- [x] b1-8. `tasks.md` checkboxes and `apply-progress.md` reconciled, handoff updated.
+
+### WU1 closure evidence (measured by the parent, not reported by the writers)
+
+| Check | Result |
+| --- | --- |
+| Commits | **`e4be843`** `refactor(api): retire manual task creation and single-task deletion with 410 Gone` (code + SDD artifacts) and **`58720db`** `docs(odd): …` (this document). Branch `feat/extraction-versioning-api-wu1` from `241cd55`. |
+| Changed lines of code | **357** (213+/144−): backend 346 (205+/141−) + frontend 11 (8+/3−). Inside the 400 budget, **no `size:exception` used**. The PR also carries 16 checkbox lines and a 182-line `apply-progress.md`, which are process records, not review material. |
+| Backend suite | `conda run -n storico python -m pytest -m "not integration"` → **1051 passed, 33 deselected**. Focused `tests/test_api` + `tests/contract` → 394 passed. Baseline before WU1 was 1049 passed / 33 skipped over the same 1084 collected, so nothing regressed and two net cases were added. |
+| Frontend suite | `pnpm test` → **606 passed in 54 files**, including `neutral-spanish` and `no-duplicate-keys`. |
+| Hard greps | zero `repo.delete(` in `routes/tasks.py`; zero `CreateTaskRequest` anywhere in `src/`; zero `path:path` catch-all; both new codes sorted at `error_codes.py:45-46`. |
+| Native status after | `gentle-ai.sdd-status@2` → **8/77 complete**, `next: apply`, `apply: ready`, `blockedReasons: []`. |
+| RDD | `gentle-ai review mode status` → **off (clone_local)**: the switch was read, not skipped, and ordinary repository policy decided delivery. |
+| Delivered | Pushed and opened as **PR #31** → https://github.com/alvaldes/storico/pull/31 (base `main` `241cd55`, head `21fb611`). CI **green**: backend `1066 passed, 18 skipped` in 1m32s, frontend `606 passed` + `tsc --noEmit` clean + Astro build in 1m18s, Vercel preview deployed. The 15 integration cases that cannot run on this machine (1051 local vs 1066 CI) passed in CI, the same delta slice (a) showed. |
+| PR shape | 12 files, 499+/152− total, of which **357 lines are code** and **294 are process artifacts** (`apply-progress.md` 182, this document 96, `tasks.md` 16). The repo has no PR template, no issue-linkage gate and no `type:*` label gate — the `branch-pr` skill's checks belong to a different repo, and #23–#30 ship label-less with no `Closes #N`. |
+| Not yet in production | Merging is the owner's call and it **deploys**: `deploy-backend.yml` matches `main` + `backend/**`, so the maintenance window (stop → `alembic upgrade head` → start) runs. WU1 adds no migration, so the upgrade is a no-op and the only cost is the window. |
+
+### The push hung, and the cause is not mine to guess at
+
+`git push` produced no output and no result three times under this harness's shell. `GIT_TRACE=1` named it: git ran
+`git credential-osxkeychain get` and that process **blocked forever** waiting for a keychain authorization a
+non-GUI shell cannot answer. Reads are unaffected because the repository is public, so `ls-remote` succeeds and
+the failure looks like a network problem until you trace it.
+
+Two things about the fix are worth keeping, because both were wrong the first time:
+
+- `GIT_ASKPASS=…` alone does **not** bypass the helper. `credential.helper` is a multivar, so
+  `-c credential.helper='!gh auth git-credential'` **appends** to the chain and `osxkeychain` still runs first
+  and still hangs. The value that clears the chain is an empty one: `-c credential.helper=`.
+- With the chain cleared, `GIT_ASKPASS` supplying `alvaldes` + `gh auth token` pushes fine, and the token never
+  reaches `argv` or the remote URL. The askpass script is a `/tmp` throwaway that calls `gh` at runtime; nothing
+  was written to `~/.gitconfig`, and the user's own interactive pushes keep working exactly as before.
+
+**Two deviations recorded, both accepted:** the handlers are annotated `-> None` because FastAPI rejects `-> NoReturn` as a response field (same shape as the repo's own 410 precedents); and deleting `CreateTaskRequest` mechanically required two companion edits outside the declared four-file surface — `api/schemas/__init__.py` (its re-export) and `tests/contract/test_api_schemas.py` (the case importing it). The writer disclosed both before I measured them; widening a surface is not mine to overlook.
+
+**D-a-5 is half closed, and not in production yet.** Item 1 (the `POST /api/v1/tasks/` contract that advertised `201` and answered 500) is fixed on the branch; it reaches users only at merge → deploy. Item 2 (reads without a current-version predicate) waits for **WU3**.
+
+### Still open inside slice (b), named so nobody rediscovers them mid-PR
+
+1. **D-a-4 and D-a-1 have no task IDs and no line estimate.** `tasks.md` says to assign them when apply is
+   authorized; the owner chose WU1 first, so they land before **WU5** (marks backend), where D-a-4 stops
+   being latent. Until they are numbered they are outside the 77 and outside the forecast.
+2. **D-a-5 closes only at WU1 + WU3.** WU1 kills the `POST /api/v1/tasks/` lie; WU3 adds the
+   current-version predicate. Between them, production still shows both runs' task sets to anyone who
+   re-extracts.
+3. **`openspec validate` has still never run** — the manual archive of slice (a) keeps its declared gap.
+4. **Production cannot extract** until the owner re-creates the LLM config; his call, not a task of mine.
+5. **Qdrant dev writes against the production cluster** — design debt, unassigned.
