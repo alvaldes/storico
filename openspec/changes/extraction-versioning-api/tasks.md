@@ -831,20 +831,42 @@ store test in this unit.
 
 ## Phase 7: Slice Verification
 
-- [ ] 7.1 Whole backend suite: `cd backend && conda run -n storico python -m pytest`.
-- [ ] 7.2 Whole frontend suite: `cd frontend && pnpm test` (includes the neutral-Spanish and key-parity
+> **[Closed 2026-10-02 at `75e679e` — results in `verification.md`, which this phase writes]** The full
+> split of evidence, every number, the 36 skips attributed by gate, and the one cross-slice dependency no
+> test here can prove are all in that file. What follows is what each task delivered.
+
+- [x] 7.1 Whole backend suite: `cd backend && conda run -n storico python -m pytest`.
+      **Local `1206 passed, 36 skipped`; CI `1224 passed, 18 skipped`** — and the two reconcile exactly
+      (1242 collected = 1206 + 36; the 18 Docker-gated cases execute in CI, the other 18 are
+      environment-flag opt-ins that skip everywhere).
+- [x] 7.2 Whole frontend suite: `cd frontend && pnpm test` (includes the neutral-Spanish and key-parity
       guards).
-- [ ] 7.3 Integration layer, run where the Docker daemon exists:
+      **57 files, 665 tests passed**, and the gates named rather than assumed:
+      `neutral-spanish.test.ts` (the copy cases *and* the key-parity assertion), `no-duplicate-keys.test.ts`,
+      `api-docs-copy`, `export-copy` and `provider-copy` — the i18n directory run focused: 5 files, 41 tests.
+- [x] 7.3 Integration layer, run where the Docker daemon exists:
       `cd backend && conda run -n storico python -m pytest -m integration`. Without a Docker daemon
       every case skips and the Postgres-only invariants (the story-deletion cascade, the record's
       survival, the `deleted_by` null-out, the partial-index shape, the migration chain) stay
       unverified — record that outcome instead of reporting green.
-- [ ] 7.4 Repo-documented lint/format (`AGENTS.md` §0): from `backend/`,
+      **Run in CI on this head: the 18 Docker-gated cases executed and passed** (the twelve slice-(a)
+      schema invariants against head `0029`, the three story-deletion record cases, the two migration-chain
+      cases and one projects case). On this machine all 36 integration cases **skipped** — and a skip is
+      not a proof. The Qdrant and Ollama live gates are a **second** class that skipped in *both* places:
+      nothing in this slice has ever run against a real Qdrant or a real Ollama.
+- [x] 7.4 Repo-documented lint/format (`AGENTS.md` §0): from `backend/`,
       `conda run -n storico python -m ruff check src tests` and
       `conda run -n storico python -m ruff format --check src tests`.
-- [ ] 7.5 Record in the verify report the honest split of evidence: what the SQLite unit layer proved,
+      **`All checks passed!` and `269 files already formatted`**, locally and in CI. The frontend's
+      `tsc --noEmit` and `pnpm build` were run in the same pass (both clean/complete).
+- [x] 7.5 Record in the verify report the honest split of evidence: what the SQLite unit layer proved,
       what the frontend vitest suite proved, what ran against Postgres, and what skipped without a
       Docker daemon.
+      **`openspec/changes/extraction-versioning-api/verification.md` (new)** carries the layer-by-layer
+      split, the skip attribution table, the session's named residuals, the cross-slice D10 dependency
+      (nothing in (b) calls `set_has_invalid_tasks`; slice (c)'s 3.6–3.8 must, and until then every mark
+      excludes nothing and **nothing goes red**), and the two things not in this slice's evidence at all:
+      the deploy and production's missing LLM config (D-a-6).
 
 ## Slice Boundary
 

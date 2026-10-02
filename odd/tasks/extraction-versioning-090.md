@@ -1359,3 +1359,13 @@ needs `app.dependency_overrides[get_vector_store]` in every test that reaches it
 cannot see untracked files (measure with `git add -N`, reset immediately); and pushes hang under
 `credential-osxkeychain` without
 `GIT_ASKPASS=/tmp/storico_askpass.sh GIT_TERMINAL_PROMPT=0 git -c credential.helper= push`.
+
+**Addendum, same session, minutes later — the slice closed.** Phase 7 ran and `tasks.md` now reads
+**79/79**: no remaining plan work. The report is
+`openspec/changes/extraction-versioning-api/verification.md`, with the evidence split stated honestly
+(local `1206 passed, 36 skipped` vs CI `1224 passed, 18 skipped`, and the reconciliation that makes both
+numbers meaningful), the 36 local skips attributed by gate — 18 Docker-gated that ran in CI and 18
+environment-flag opt-ins that skip everywhere, so nothing in this slice has ever run against a real
+Qdrant or a real Ollama — and the one cross-slice dependency no test here can prove: nothing in (b) calls
+`set_has_invalid_tasks`, so until slice (c) lands 3.6–3.8 every mark excludes nothing from few-shot
+retrieval and **nothing goes red**. The only thing left is the owner's merge of the nine-PR chain.

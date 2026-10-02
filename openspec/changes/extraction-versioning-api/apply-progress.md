@@ -3564,3 +3564,22 @@ property lives in the read they already consume, and the cases prove it rather t
 
 `6.7`, `6.8`, `6.9`, `6.10` are `[x]`. Every Phase 7 item (`7.1`–`7.5`) remains `[ ]` — they are the
 slice's verification pass, not this unit's. Confirmed by re-reading `tasks.md` after the edit.
+
+# Slice verification — Phase 7 closed, 2026-10-02, head `75e679e`
+
+The whole slice's evidence lives in **`verification.md`** (new, written by this phase). The headlines,
+each measured rather than assumed:
+
+- Backend suite, no marker filter: **1206 passed, 36 skipped** locally · **1224 passed, 18 skipped** in
+  CI. They reconcile exactly (1242 collected = 1206 + 36; the 18 Docker-gated cases ran in CI).
+- The 36 local skips are **two classes**, not one: 18 Docker-gated (run in CI) and 18 environment-flag
+  opt-ins (16 Qdrant + 2 Ollama) that skip everywhere. **Nothing in this slice has ever run against a
+  real Qdrant or a real Ollama.**
+- Frontend: **57 files, 665 tests passed**, with the i18n gates named (`neutral-spanish.test.ts` carries
+  both the copy cases and the key-parity assertion; `no-duplicate-keys`, `api-docs-copy`, `export-copy`,
+  `provider-copy`). `tsc --noEmit` clean, `pnpm build` completes.
+- Lint/format: `All checks passed!` and **269 files already formatted**, locally and in CI.
+- The report also records the residuals this slice names instead of absorbing, and the one cross-slice
+  dependency no test here can prove: **D10's exclusion** — (b) makes marks creatable and revocable but
+  nothing in it calls `set_has_invalid_tasks`; slice (c)'s 3.6–3.8 must, and until then every mark
+  excludes nothing from few-shot retrieval while **nothing goes red**.
