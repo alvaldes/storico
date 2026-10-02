@@ -16,6 +16,7 @@ from storico.api.error_codes import (
     NOT_A_WORKSPACE_MEMBER,
     TASK_CREATION_ENDPOINT_REMOVED,
     TASK_DELETE_ENDPOINT_REMOVED,
+    TASK_VERSION_FROZEN,
 )
 from storico.api.errors import ApiError
 from storico.api.schemas.common import PaginatedResponse, PaginationParams
@@ -26,6 +27,7 @@ from storico.application.services.task_service import (
 )
 from storico.domain.entities import EntityNotFound, Task, User
 from storico.infrastructure.database.repositories import (
+    SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserStoryRepository,
@@ -54,6 +56,11 @@ ProjectRepoDep = Annotated[
 MemberRepoDep = Annotated[
     SQLAlchemyWorkspaceMemberRepository,
     Depends(get_repository(SQLAlchemyWorkspaceMemberRepository)),
+]
+
+ExtractionRepoDep = Annotated[
+    SQLAlchemyExtractionRepository,
+    Depends(get_repository(SQLAlchemyExtractionRepository)),
 ]
 
 
@@ -242,10 +249,15 @@ async def update_task(
     story_repo: StoryRepoDep = None,  # type: ignore[assignment]
     project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
     member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
 ) -> TaskResponse:
     """Update an existing task.
 
-    For ``labels`` and ``dependencies``:
+    The D5/D21 field matrix: ``status`` and ``labels`` are editable in every
+    version state; ``dependencies`` is only editable while the task's version
+    is the story's current one — a dependencies write on a frozen version is
+    refused with 409 ``TASK_VERSION_FROZEN``. For ``labels`` and
+    ``dependencies`` on an editable task:
     - ``None`` means keep existing values.
     - ``[]`` means clear the list.
 
@@ -254,6 +266,40 @@ async def update_task(
     existing = await _validate_task_workspace_access(
         task_id, current_user, repo, story_repo, project_repo, member_repo
     )
+
+    # The frozen guard keys on presence, not value: ``model_fields_set`` is
+    # populated by an explicit ``"dependencies": null`` too, so the key alone
+    # is a write attempt. ``current is None`` (no completed version) counts as
+    # frozen — the conservative reading of design decision D21. The current-
+    # version lookup is paid only when the body actually carries the
+    # ``dependencies`` key: no keyless payload can observe the frozen verdict,
+    # so a ``{"status": …}``-only board write must not spend the extra
+    # statement the D21 tradeoff prices. When the key is present the refusal
+    # still precedes the state-machine check below.
+    if "dependencies" in body.model_fields_set:
+        current = await extraction_repo.find_current_version(existing.user_story_id)
+        frozen = current is None or existing.extraction_id != current.id
+        if frozen:
+            if current is not None:
+                reason = (
+                    "Dependencies can only be edited on the story's current "
+                    f"version (v{current.version_number}); this task belongs to a "
+                    "superseded version."
+                )
+            else:
+                reason = (
+                    "Dependencies can only be edited on the story's current "
+                    "version, but this story has no current version: no completed "
+                    "extraction exists for it."
+                )
+            raise ApiError(
+                status_code=status.HTTP_409_CONFLICT,
+                error_code=TASK_VERSION_FROZEN,
+                detail={
+                    "detail": reason,
+                    "current_version": current.version_number if current else None,
+                },
+            )
 
     # Validate status transition if status is being updated
     if body.status is not None:
@@ -272,14 +318,8 @@ async def update_task(
             ) from exc
 
     kwargs: dict = {"updated_at": datetime.now(UTC)}
-    if body.title is not None:
-        kwargs["title"] = body.title
-    if body.description is not None:
-        kwargs["description"] = body.description
     if body.status is not None:
         kwargs["status"] = body.status
-    if body.priority is not None:
-        kwargs["priority"] = body.priority
     if body.labels is not None:
         kwargs["labels"] = body.labels
     if body.dependencies is not None:

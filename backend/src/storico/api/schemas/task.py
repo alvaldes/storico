@@ -9,14 +9,18 @@ from storico.domain.entities.task import TaskStatus
 
 
 class UpdateTaskRequest(BaseModel):
-    """Request body for updating an existing task."""
+    """Request body for updating an existing task.
+
+    The D5/D21 field matrix: only ``status``, ``labels`` and ``dependencies``
+    are writable. ``title``, ``description`` and ``priority`` are deleted, not
+    ignored — ``extra="forbid"`` refuses them with 422 during body validation,
+    and ``dependencies`` is only accepted while the task's version is the
+    story's current one (the route refuses the write with 409 otherwise).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    title: str | None = None
-    description: str | None = None
     status: TaskStatus | None = None
-    priority: str | None = None
     labels: list[str] | None = None
     dependencies: list[str] | None = None
 

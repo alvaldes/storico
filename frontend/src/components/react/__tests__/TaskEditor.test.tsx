@@ -56,7 +56,7 @@ describe('TaskEditor', () => {
 
   it('rejects empty label', async () => {
     const user = userEvent.setup();
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
+    render(<TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="en" />);
 
     await screen.findByText('Edit Task');
 
@@ -68,7 +68,7 @@ describe('TaskEditor', () => {
 
   it('rejects duplicate label (case-insensitive)', async () => {
     const user = userEvent.setup();
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
+    render(<TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="en" />);
 
     await screen.findByText('Edit Task');
 
@@ -80,7 +80,7 @@ describe('TaskEditor', () => {
 
   it('accepts a new unique label', async () => {
     const user = userEvent.setup();
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
+    render(<TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="en" />);
 
     await screen.findByText('Edit Task');
 
@@ -99,6 +99,7 @@ describe('TaskEditor', () => {
       <TaskEditor
         task={{ ...mockTask, dependencies: [] }}
         open={true}
+        frozen={false}
         onOpenChange={vi.fn()}
         locale="en"
       />,
@@ -121,6 +122,7 @@ describe('TaskEditor', () => {
       <TaskEditor
         task={{ ...mockTask, dependencies: [] }}
         open={true}
+        frozen={false}
         onOpenChange={vi.fn()}
         locale="en"
       />,
@@ -135,7 +137,7 @@ describe('TaskEditor', () => {
   });
 
   it('does not re-offer a sibling that is already a dependency', async () => {
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
+    render(<TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="en" />);
 
     await screen.findByText('Edit Task');
 
@@ -155,7 +157,7 @@ describe('TaskEditor', () => {
     // "Maximum update depth exceeded" and the dialog never appeared.
     useTaskStore.setState({ tasks: {} });
 
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
+    render(<TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="en" />);
 
     expect(await screen.findByText('Edit Task')).toBeInTheDocument();
   });
@@ -170,6 +172,7 @@ describe('TaskEditor', () => {
       <TaskEditor
         task={{ ...mockTask, dependencies: [] }}
         open={true}
+        frozen={false}
         onOpenChange={vi.fn()}
         locale="en"
       />,
@@ -187,25 +190,29 @@ describe('TaskEditor', () => {
 
   /* ── i18n — validation messages must follow the dialog's locale ── */
 
-  it('shows the localized required-title error in Spanish, never the hardcoded English', async () => {
+  it('shows a localized validation error in Spanish, never the hardcoded English', async () => {
     const user = userEvent.setup();
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="es" />);
+    render(<TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="es" />);
 
     await screen.findByText('Editar Tarea');
 
-    const titleInput = screen.getByPlaceholderText('Título de la tarea');
-    await user.clear(titleInput);
-    await user.click(screen.getByText('Guardar Cambios'));
+    // Recut for the D5/D21 matrix (T2b): the title is read-only text now, so
+    // its required-error path is unreachable by design. The reachable local
+    // validation path here is the empty label — the test's intent is
+    // unchanged: the message follows the dialog's locale, the hardcoded
+    // English never shows, and the store is never called.
+    const labelInput = screen.getByPlaceholderText('Agrega una etiqueta y presiona Enter');
+    await user.type(labelInput, '{Enter}');
 
-    expect(screen.getByText('El título es obligatorio')).toBeInTheDocument();
-    expect(screen.queryByText('Required')).not.toBeInTheDocument();
+    expect(screen.getByText('La etiqueta no puede estar vacía')).toBeInTheDocument();
+    expect(screen.queryByText('Label cannot be empty')).not.toBeInTheDocument();
     // Local validation failed: the store must never be called.
     expect(api.updateTask).not.toHaveBeenCalled();
   });
 
   it('shows the localized invalid-transition error in Spanish with translated status names', async () => {
     const user = userEvent.setup();
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="es" />);
+    render(<TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="es" />);
 
     await screen.findByText('Editar Tarea');
 
@@ -238,7 +245,7 @@ describe('TaskEditor', () => {
       new ApiRequestError(403, 'Forbidden', 'Not a member of this workspace', backendBody),
     );
 
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="es" />);
+    render(<TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="es" />);
 
     await screen.findByText('Editar Tarea');
 
@@ -272,23 +279,18 @@ describe('TaskEditor', () => {
     };
     vi.mocked(api.updateTask).mockResolvedValue(serverResponse);
 
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={onOpenChange} locale="en" />);
+    render(<TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={onOpenChange} locale="en" />);
 
     await screen.findByText('Edit Task');
 
-    const titleInput = screen.getByPlaceholderText('Task title');
-    await user.clear(titleInput);
-    await user.type(titleInput, 'Updated title');
-
     await user.click(screen.getByText('Save Changes'));
 
-    // store.updateTask called exactly once with the optimistic payload.
+    // store.updateTask called exactly once with the narrowed D5/D21 payload:
+    // the title and description are read-only text and never sent, and the
+    // payload still carries the unchanged status — a no-op status is valid
+    // under the current contract.
     expect(api.updateTask).toHaveBeenCalledTimes(1);
-    // The edit payload carries the form state, including the unchanged
-    // status: a no-op status is valid under the current contract.
     expect(api.updateTask).toHaveBeenCalledWith('task-1', {
-      title: 'Updated title',
-      description: 'Create the database schema',
       labels: ['db', 'backend'],
       dependencies: ['task-0'],
       status: 'todo',
@@ -324,7 +326,7 @@ describe('TaskEditor', () => {
 
     vi.mocked(api.updateTask).mockRejectedValue(new Error('Network error'));
 
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={onOpenChange} locale="en" />);
+    render(<TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={onOpenChange} locale="en" />);
 
     await screen.findByText('Edit Task');
 
@@ -354,22 +356,158 @@ describe('TaskEditor', () => {
   /* ── Form reset ── */
 
   it('resets form when dialog opens with a different task', async () => {
-    render(<TaskEditor task={mockTask} open={true} onOpenChange={vi.fn()} locale="en" />);
+    const user = userEvent.setup();
+    const firstRender = render(
+      <TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="en" />,
+    );
 
     await screen.findByText('Edit Task');
 
-    // Change title
-    const titleInput = screen.getByPlaceholderText('Task title');
-    await userEvent.clear(titleInput);
-    await userEvent.type(titleInput, 'Changed title');
+    // The title is read-only under the D5/D21 matrix, so the editable state
+    // this test observes is a label: type one in and see it appear.
+    const labelInput = screen.getByPlaceholderText('Add a label and press Enter');
+    await user.type(labelInput, 'api{Enter}');
+    expect(screen.getByText('api')).toBeInTheDocument();
 
-    // Rerender with a different task (simulating opening editor for another task)
+    // Rerender with a different task (simulating opening editor for another
+    // task): unmount the first dialog so the assertion sees only the new one.
     const otherTask: Task = { ...mockTask, id: 'task-2', title: 'Other task' };
-    render(<TaskEditor task={otherTask} open={true} onOpenChange={vi.fn()} locale="en" />);
+    firstRender.unmount();
+    render(<TaskEditor task={otherTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="en" />);
 
-    // Title should be reset to the new task's title
+    // The form resets to the new task: the typed label is gone, and the new
+    // task's title shows as the read-only text it now is.
     await waitFor(() => {
-      expect(screen.getByDisplayValue('Other task')).toBeInTheDocument();
+      expect(screen.queryByText('api')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Other task')).toBeInTheDocument();
+  });
+
+  /* ── WU2 field policy + frozen seam (tasks 2.6 / 2.9 — RED until T2b lands) ──
+   *
+   * design.md "the editor owns the field policy": `title` and `description`
+   * render as read-only text (no input, no textarea), there is no `priority`
+   * control at all (D21), and `dependencies` is disabled — and omitted from the
+   * payload — while the new required `frozen` prop is true. `frozen` is passed
+   * explicitly everywhere here so T2b cannot quietly default it away; the
+   * WU3 seam (the page computing it from the selector's `is_current`) stays
+   * visible at the call site.
+   */
+
+  describe('field policy and frozen seam', () => {
+    it('renders title and description as read-only text, not editable controls', async () => {
+      render(
+        <TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="en" />,
+      );
+
+      await screen.findByText('Edit Task');
+
+      // No editable control answers to either field's label...
+      expect(screen.queryByRole('textbox', { name: 'Title' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: 'Description' })).not.toBeInTheDocument();
+      // ...and the content itself stays visible as read-only text.
+      expect(screen.getByText('DB schema')).toBeInTheDocument();
+      expect(screen.getByText('Create the database schema')).toBeInTheDocument();
+    });
+
+    it('renders no priority control at all (D21)', async () => {
+      render(
+        <TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="en" />,
+      );
+
+      await screen.findByText('Edit Task');
+
+      expect(screen.queryByLabelText(/priority/i)).not.toBeInTheDocument();
+    });
+
+    it('disables the dependencies control while frozen', async () => {
+      // A task that depends on nothing, so the select is ENABLED today via the
+      // empty-candidates rule alone — the only way this turns green is the
+      // frozen prop actually gating the control.
+      const openTask = { ...mockTask, dependencies: [] };
+
+      render(
+        <TaskEditor task={openTask} open={true} frozen={true} onOpenChange={vi.fn()} locale="en" />,
+      );
+
+      await screen.findByText('Edit Task');
+
+      const depSelect = screen.getByLabelText('Dependencies') as HTMLSelectElement;
+      expect(depSelect).toBeDisabled();
+    });
+
+    it('omits the dependencies key from the save body while frozen', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.updateTask).mockResolvedValue(mockTask);
+
+      render(
+        <TaskEditor task={mockTask} open={true} frozen={true} onOpenChange={vi.fn()} locale="en" />,
+      );
+
+      await screen.findByText('Edit Task');
+      await user.click(screen.getByText('Save Changes'));
+
+      await waitFor(() => {
+        expect(api.updateTask).toHaveBeenCalledTimes(1);
+      });
+      const [, payload] = vi.mocked(api.updateTask).mock.calls[0];
+      // The payload cannot contain the key at all — not even as `[]` — so the
+      // editor can never trigger TASK_VERSION_FROZEN.
+      expect(payload).not.toHaveProperty('dependencies');
+      expect(payload).toMatchObject({ status: 'todo', labels: ['db', 'backend'] });
+    });
+
+    it('sends exactly the contract keys on a current-version save (frozen false)', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.updateTask).mockResolvedValue(mockTask);
+
+      render(
+        <TaskEditor task={mockTask} open={true} frozen={false} onOpenChange={vi.fn()} locale="en" />,
+      );
+
+      await screen.findByText('Edit Task');
+      await user.click(screen.getByText('Save Changes'));
+
+      await waitFor(() => {
+        expect(api.updateTask).toHaveBeenCalledTimes(1);
+      });
+      const [, payload] = vi.mocked(api.updateTask).mock.calls[0];
+      // Exactly status, labels and dependencies — no title, description or priority.
+      expect(Object.keys(payload as object).sort()).toEqual(['dependencies', 'labels', 'status']);
+    });
+
+    it('never blocks or warns on a status-only save of a frozen task', async () => {
+      const user = userEvent.setup();
+      const onOpenChange = vi.fn();
+      vi.mocked(api.updateTask).mockResolvedValue(mockTask);
+
+      render(
+        <TaskEditor
+          task={mockTask}
+          open={true}
+          frozen={true}
+          onOpenChange={onOpenChange}
+          locale="en"
+        />,
+      );
+
+      await screen.findByText('Edit Task');
+      await user.click(screen.getByText('Save Changes'));
+
+      // The save goes through without a dependencies write...
+      await waitFor(() => {
+        expect(api.updateTask).toHaveBeenCalledTimes(1);
+      });
+      const [, payload] = vi.mocked(api.updateTask).mock.calls[0];
+      expect(payload).not.toHaveProperty('dependencies');
+      // ...no failure banner is shown...
+      expect(
+        screen.queryByText('Failed to update task — please try again'),
+      ).not.toBeInTheDocument();
+      // ...and the dialog closes as on any successful save.
+      await waitFor(() => {
+        expect(onOpenChange).toHaveBeenCalledWith(false);
+      });
     });
   });
 });

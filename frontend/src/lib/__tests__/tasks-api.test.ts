@@ -137,6 +137,9 @@ describe('tasks-api', () => {
 
   describe('updateTask', () => {
     it('updates task fields via PUT', async () => {
+      // Reconciled to the WU2 write contract (task 2.7): the call carries only
+      // contract fields and the asserted body mirrors it exactly — `title` and
+      // `description` are read-only now, so they are neither sent nor pinned.
       const raw = {
         id: 't1',
         user_story_id: uuid(550),
@@ -152,15 +155,11 @@ describe('tasks-api', () => {
       vi.mocked(api.put).mockResolvedValue(raw);
 
       const result = await tasksApi.updateTask('t1', {
-        title: 'Updated',
-        description: 'New desc',
         labels: ['fe'],
         dependencies: ['dep1'],
       });
 
       expect(api.put).toHaveBeenCalledWith('/api/v1/tasks/t1', {
-        title: 'Updated',
-        description: 'New desc',
         labels: ['fe'],
         dependencies: ['dep1'],
       });
@@ -171,6 +170,67 @@ describe('tasks-api', () => {
       vi.mocked(api.put).mockResolvedValue({} as any);
       await tasksApi.updateTask('t1', { status: 'done' });
       expect(api.put).toHaveBeenCalledWith('/api/v1/tasks/t1', { status: 'done' });
+    });
+  });
+
+  /* ── WU2 field matrix — the client stops sending removed fields (task 2.6) ──
+   *
+   * The backend `UpdateTaskRequest` now carries only `status`, `labels` and
+   * `dependencies` with `extra="forbid"`, so any body that still carries
+   * `title`, `description` or `priority` 422s. These cases pin the client half
+   * of that contract. RED until task 2.7 lands.
+   */
+
+  describe('updateTask — WU2 field matrix', () => {
+    // Task 2.7 narrows `updateTask`'s accepted fields to `status | labels |
+    // dependencies`. The legacy fields are passed through a cast so this case
+    // keeps compiling after that signature shrink: it pins that the BODY never
+    // carries them, even if a caller tries to smuggle them in.
+    const legacyFields = {
+      title: 'Updated',
+      description: 'New desc',
+      priority: 'high',
+      labels: ['fe'],
+      status: 'todo',
+    } as unknown as Parameters<typeof tasksApi.updateTask>[1];
+
+    it('never sends the removed fields (title, description, priority)', async () => {
+      vi.mocked(api.put).mockResolvedValue({} as any);
+
+      await tasksApi.updateTask('t1', legacyFields);
+
+      expect(api.put).toHaveBeenCalledTimes(1);
+      const [, body] = vi.mocked(api.put).mock.calls[0];
+      expect(body).not.toHaveProperty('title');
+      expect(body).not.toHaveProperty('description');
+      expect(body).not.toHaveProperty('priority');
+    });
+
+    it('sends only what the caller passes — no dependencies key grows on a status+labels save', async () => {
+      // Regression guard: task 2.7 rebuilds the body explicitly instead of
+      // passing `toSnakeCase(fields)` through, and the risk named in review is
+      // that the rebuild defaults a `dependencies: []` in. It must not.
+      vi.mocked(api.put).mockResolvedValue({} as any);
+
+      await tasksApi.updateTask('t1', { status: 'review', labels: ['api'] });
+
+      expect(api.put).toHaveBeenCalledWith('/api/v1/tasks/t1', {
+        status: 'review',
+        labels: ['api'],
+      });
+    });
+
+    it('forwards a dependencies key only when the caller passes one', async () => {
+      // Regression guard for the same rebuild risk from the other side: when a
+      // dependency IS passed it reaches the body untouched.
+      vi.mocked(api.put).mockResolvedValue({} as any);
+
+      await tasksApi.updateTask('t1', { status: 'review', dependencies: ['task-0'] });
+
+      expect(api.put).toHaveBeenCalledWith('/api/v1/tasks/t1', {
+        status: 'review',
+        dependencies: ['task-0'],
+      });
     });
   });
 
@@ -308,7 +368,12 @@ describe('tasks-api', () => {
       const validationError = new ApiRequestError(422, 'Unprocessable Entity', 'Invalid task id');
       vi.mocked(api.put).mockRejectedValue(validationError);
 
-      const err = await tasksApi.updateTask('t1', { title: 'X' }).catch((e) => e);
+      // The stale `{ title: 'X' }` literal is admitted through a local cast:
+      // the strict `TaskUpdateFields` type forbids it, the cast admits it
+      // deliberately, and the case keeps pinning 422 propagation as-is.
+      const err = await tasksApi
+        .updateTask('t1', { title: 'X' } as unknown as Parameters<typeof tasksApi.updateTask>[1])
+        .catch((e) => e);
       expect(err).toBeInstanceOf(ApiRequestError);
       expect((err as ApiRequestError).status).toBe(422);
     });

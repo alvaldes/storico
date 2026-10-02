@@ -8,18 +8,21 @@ body field before it persists anything.
 """
 
 from datetime import datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import User, UserStory
+from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.task import TaskStatus
 from storico.infrastructure.database.repositories import (
+    SQLAlchemyExtractionRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
 )
-from tests._helpers import seed_task
+from tests._helpers import seed_extraction, seed_task
 
 
 class TestCreateTask:
@@ -424,14 +427,16 @@ class TestUpdateTask:
     """PUT /api/v1/tasks/{task_id}"""
 
     async def test_update_task(self, authed_client, db_session: AsyncSession, seed_workspace):
-        """Seed a task then PUT updates the task fields.
+        """Seed a task then PUT updates the task fields the contract still accepts.
 
-        The task starts in ``todo`` because the Kanban state machine only allows
-        ``todo → in_progress``: a task created in ``backlog`` cannot legally reach
-        ``in_progress`` in one step, and that rejection is a separate contract from
-        the field updates this test is about. Seeded through the repository: the
-        creation route cannot persist since ``0028`` made ``tasks.extraction_id``
-        ``NOT NULL``.
+        The contract accepts only ``status``, ``labels`` and ``dependencies``
+        (the D5/D21 field matrix): ``title``, ``description`` and ``priority``
+        are deleted, not ignored, and their refusal is pinned by
+        ``TestUpdateTaskFieldMatrix``. The task starts in ``todo`` because the
+        Kanban state machine only allows ``todo → in_progress``: a task created
+        in ``backlog`` cannot legally reach ``in_progress`` in one step. Seeded
+        through the repository: the creation route cannot persist since ``0028``
+        made ``tasks.extraction_id`` ``NOT NULL``.
         """
         story_id = (await seed_workspace()).story_id
         task = await seed_task(
@@ -445,20 +450,15 @@ class TestUpdateTask:
 
         response = await authed_client.put(
             f"/api/v1/tasks/{task.id}",
-            json={
-                "title": "After",
-                "description": "New desc",
-                "status": "in_progress",
-                "priority": "high",
-            },
+            json={"status": "in_progress"},
         )
         assert response.status_code == 200
 
         data = response.json()
-        assert data["title"] == "After"
-        assert data["description"] == "New desc"
+        assert data["title"] == "Before"
+        assert data["description"] == "Old desc"
         assert data["status"] == "in_progress"
-        assert data["priority"] == "high"
+        assert data["priority"] == "low"
         assert data["id"] == str(task.id)
 
     async def test_update_task_rejects_invalid_transition(
@@ -517,6 +517,388 @@ class TestUpdateTask:
         )
         assert response.status_code == 200
         assert response.json()["labels"] == ["frontend", "ui"]
+
+
+class TestUpdateTaskFieldMatrix:
+    """PUT /api/v1/tasks/{task_id} — the D5/D21 field matrix.
+
+    ``status`` and ``labels`` stay editable in every version state;
+    ``dependencies`` is only editable while the task's version is the story's
+    current one — a dependencies write on a frozen version answers 409
+    ``TASK_VERSION_FROZEN`` with the current version number in the detail.
+    ``title``, ``description`` and ``priority`` are deleted from the request
+    schema, so sending any of them is refused 422 ``REQUEST_VALIDATION_FAILED``
+    by the ``extra="forbid"`` schema — the observable contract change, not a
+    silent ignore. Presence, not value, is what counts as a dependencies
+    write: an explicit ``[]`` or ``null`` on a frozen version is refused
+    exactly like any other write, while a body without the key keeps working.
+    """
+
+    async def _seed_versions(self, db_session: AsyncSession, seed_workspace):
+        """Seed one story with completed versions v1 and v2, a task on each.
+
+        Returns ``(frozen_task, current_task)``: the v1 task is frozen because
+        the completed v2 is the story's current version, the v2 task is current.
+        ``version_number`` is minted by the birth path, so the current version
+        is number 2. Both tasks start in ``todo`` so legal transitions exist.
+        """
+        story_id = (await seed_workspace()).story_id
+        v1 = await seed_extraction(
+            db_session, story_id, status=ExtractionStatus.COMPLETED, raw_response="v1"
+        )
+        v2 = await seed_extraction(
+            db_session, story_id, status=ExtractionStatus.COMPLETED, raw_response="v2"
+        )
+        frozen = await seed_task(
+            db_session, story_id, "Frozen task", extraction=v1, status=TaskStatus.TODO
+        )
+        current = await seed_task(
+            db_session, story_id, "Current task", extraction=v2, status=TaskStatus.TODO
+        )
+        return frozen, current
+
+    async def test_status_stays_editable_on_a_frozen_version(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A ``status`` write on a frozen version answers 200 and is persisted.
+
+        The Kanban board only ever sends ``{"status": …}``, so the board must
+        keep moving cards of frozen versions too (design decision D5).
+        """
+        frozen, _current = await self._seed_versions(db_session, seed_workspace)
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{frozen.id}",
+            json={"status": "in_progress"},
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "in_progress"
+
+        persisted = await SQLAlchemyTaskRepository(db_session).find_by_id(frozen.id)
+        assert persisted.status is TaskStatus.IN_PROGRESS
+
+    async def test_labels_stay_editable_on_a_frozen_version(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A ``labels`` write on a frozen version answers 200 and is persisted."""
+        frozen, _current = await self._seed_versions(db_session, seed_workspace)
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{frozen.id}",
+            json={"labels": ["frontend", "ui"]},
+        )
+        assert response.status_code == 200
+        assert response.json()["labels"] == ["frontend", "ui"]
+
+        persisted = await SQLAlchemyTaskRepository(db_session).find_by_id(frozen.id)
+        assert persisted.labels == ["frontend", "ui"]
+
+    async def test_dependencies_on_a_frozen_version_refuse_with_the_current_version_number(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A ``dependencies`` write on a frozen version answers 409, writes nothing.
+
+        The ``detail`` names the story's current version number (2 — the number
+        the birth path minted), and the task's dependencies are unchanged.
+        """
+        frozen, _current = await self._seed_versions(db_session, seed_workspace)
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{frozen.id}",
+            json={"dependencies": ["T1"]},
+        )
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "TASK_VERSION_FROZEN"
+        assert response.json()["detail"]["current_version"] == 2
+
+        persisted = await SQLAlchemyTaskRepository(db_session).find_by_id(frozen.id)
+        assert persisted.dependencies == frozen.dependencies
+
+    async def test_dependencies_on_the_current_version_persist(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A ``dependencies`` write on the current version answers 200 and persists."""
+        _frozen, current = await self._seed_versions(db_session, seed_workspace)
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{current.id}",
+            json={"dependencies": ["T1", "T2"]},
+        )
+        assert response.status_code == 200
+        assert response.json()["dependencies"] == ["T1", "T2"]
+
+        persisted = await SQLAlchemyTaskRepository(db_session).find_by_id(current.id)
+        assert persisted.dependencies == ["T1", "T2"]
+
+    async def test_a_status_only_body_on_the_current_version_skips_the_frozen_lookup(
+        self, authed_client, db_session: AsyncSession, seed_workspace, monkeypatch
+    ):
+        """A ``{"status": …}``-only PUT never calls ``find_current_version``.
+
+        The frozen refusal can only fire on a body that carries the
+        ``dependencies`` key, so resolving the story's current version for a
+        status-only write produces a verdict the handler never consults — one
+        extra statement (~2s against the dev pooler) on the most common editor
+        call, the write the Kanban board sends to keep a card alive. The call
+        itself is the contract here: the response assertions stay in the same
+        case so the lookup cannot be "saved" by breaking the write, and if the
+        unconditional lookup creeps back this case fails on the counter even
+        though the 200 would still be correct.
+        """
+        _frozen, current = await self._seed_versions(db_session, seed_workspace)
+
+        calls: list[UUID] = []
+        original = SQLAlchemyExtractionRepository.find_current_version
+
+        async def counting_find_current_version(repo, user_story_id):
+            calls.append(user_story_id)
+            return await original(repo, user_story_id)
+
+        monkeypatch.setattr(
+            SQLAlchemyExtractionRepository,
+            "find_current_version",
+            counting_find_current_version,
+        )
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{current.id}",
+            json={"status": "in_progress"},
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "in_progress"
+
+        persisted = await SQLAlchemyTaskRepository(db_session).find_by_id(current.id)
+        assert persisted.status is TaskStatus.IN_PROGRESS
+
+        assert calls == [], (
+            "find_current_version ran for a status-only body: "
+            f"{len(calls)} wasted lookup(s) for story {calls}"
+        )
+
+    async def test_a_dependencies_write_still_reaches_the_frozen_lookup(
+        self, authed_client, db_session: AsyncSession, seed_workspace, monkeypatch
+    ):
+        """A body carrying ``dependencies`` on a frozen version still 409s.
+
+        The mirror case: skipping the lookup for key-less bodies must not lose
+        the refusal for bodies that have the key. The lookup runs exactly once,
+        the frozen predicate fires on its verdict, and the 409 keeps the current
+        version number in the detail. If the lookup were removed altogether,
+        this case fails with a 200 and an empty counter — the pair of cases
+        pins the lookup to exactly the payloads that can use it.
+        """
+        frozen, _current = await self._seed_versions(db_session, seed_workspace)
+
+        calls: list[UUID] = []
+        original = SQLAlchemyExtractionRepository.find_current_version
+
+        async def counting_find_current_version(repo, user_story_id):
+            calls.append(user_story_id)
+            return await original(repo, user_story_id)
+
+        monkeypatch.setattr(
+            SQLAlchemyExtractionRepository,
+            "find_current_version",
+            counting_find_current_version,
+        )
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{frozen.id}",
+            json={"dependencies": ["T1"]},
+        )
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "TASK_VERSION_FROZEN"
+        assert response.json()["detail"]["current_version"] == 2
+
+        assert calls == [frozen.user_story_id]
+
+        persisted = await SQLAlchemyTaskRepository(db_session).find_by_id(frozen.id)
+        assert persisted.dependencies == frozen.dependencies
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("title", "After"),
+            ("description", "New desc"),
+            ("priority", "high"),
+        ],
+    )
+    async def test_removed_fields_refuse_on_frozen_and_current(
+        self,
+        authed_client,
+        db_session: AsyncSession,
+        seed_workspace,
+        field: str,
+        value: str,
+    ):
+        """``title``, ``description`` and ``priority`` are 422 on every task.
+
+        The fields are deleted from the contract, not ignored: the
+        ``extra="forbid"`` schema refuses them during body validation, on both
+        a frozen and a current task, and no field of either task changes.
+        """
+        frozen, current = await self._seed_versions(db_session, seed_workspace)
+
+        for task in (frozen, current):
+            response = await authed_client.put(
+                f"/api/v1/tasks/{task.id}",
+                json={field: value},
+            )
+            assert response.status_code == 422, (field, task.id)
+            assert response.json()["error_code"] == "REQUEST_VALIDATION_FAILED"
+
+            persisted = await SQLAlchemyTaskRepository(db_session).find_by_id(task.id)
+            assert persisted.title == task.title
+            assert persisted.description == task.description
+            assert persisted.priority == task.priority
+            assert persisted.status is task.status
+
+    async def test_a_mixed_body_on_a_frozen_version_answers_409_not_400(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """An illegal transition plus a dependencies write on frozen → 409.
+
+        The frozen-version refusal is checked before the state machine: the
+        body's ``todo → done`` move is illegal, but the version-level reason is
+        the one that will not be there tomorrow, so it wins (design decision
+        D21). Neither path writes, so nothing partial can land.
+        """
+        frozen, _current = await self._seed_versions(db_session, seed_workspace)
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{frozen.id}",
+            json={"status": "done", "dependencies": ["T1"]},
+        )
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "TASK_VERSION_FROZEN"
+
+        persisted = await SQLAlchemyTaskRepository(db_session).find_by_id(frozen.id)
+        assert persisted.status is TaskStatus.TODO
+
+    async def test_an_explicit_empty_dependencies_array_is_still_a_write(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """``{"dependencies": []}`` on a frozen version is 409 and clears nothing.
+
+        Presence, not value, is what counts as a write: an empty array carries
+        the key, so it is refused, and the seeded dependencies survive.
+        """
+        story_id = (await seed_workspace()).story_id
+        v1 = await seed_extraction(
+            db_session, story_id, status=ExtractionStatus.COMPLETED, raw_response="v1"
+        )
+        v2 = await seed_extraction(
+            db_session, story_id, status=ExtractionStatus.COMPLETED, raw_response="v2"
+        )
+        frozen = await seed_task(
+            db_session,
+            story_id,
+            "Frozen task",
+            extraction=v1,
+            dependencies=["old-dep"],
+        )
+        # v2 exists only so v1 is superseded and the frozen predicate fires.
+        await seed_extraction(
+            db_session, story_id, status=ExtractionStatus.COMPLETED, raw_response="v2 again"
+        )
+        assert v2.version_number == 2
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{frozen.id}",
+            json={"dependencies": []},
+        )
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "TASK_VERSION_FROZEN"
+
+        persisted = await SQLAlchemyTaskRepository(db_session).find_by_id(frozen.id)
+        assert persisted.dependencies == ["old-dep"]
+
+    async def test_explicit_null_dependencies_is_still_a_write(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """``{"dependencies": null}`` on a frozen version is 409.
+
+        ``model_fields_set`` is populated by explicit presence even when the
+        value is ``None``, so the null body is refused exactly like any other
+        dependencies write on a frozen version.
+        """
+        frozen, _current = await self._seed_versions(db_session, seed_workspace)
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{frozen.id}",
+            json={"dependencies": None},
+        )
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "TASK_VERSION_FROZEN"
+
+    async def test_a_body_without_the_dependencies_key_keeps_working_on_a_frozen_version(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A ``status``-only body on a frozen version is 200 — no frozen refusal.
+
+        A body that does not carry the ``dependencies`` key is not a
+        dependencies write, whatever its other fields say.
+        """
+        story_id = (await seed_workspace()).story_id
+        v1 = await seed_extraction(
+            db_session, story_id, status=ExtractionStatus.COMPLETED, raw_response="v1"
+        )
+        await seed_extraction(
+            db_session, story_id, status=ExtractionStatus.COMPLETED, raw_response="v2"
+        )
+        frozen = await seed_task(
+            db_session, story_id, "Frozen task", extraction=v1, status=TaskStatus.IN_PROGRESS
+        )
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{frozen.id}",
+            json={"status": "review"},
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "review"
+
+    async def test_a_story_with_no_completed_version_refuses_the_dependencies_write(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """No ``completed`` version means frozen, and the detail says so.
+
+        ``current is None`` is the conservative reading of frozen (design
+        decision D21): the 409's detail states there is no current version
+        instead of inventing version number 0.
+        """
+        story_id = (await seed_workspace()).story_id
+        pending = await seed_extraction(db_session, story_id)
+        task = await seed_task(db_session, story_id, "Orphan task", extraction=pending)
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{task.id}",
+            json={"dependencies": ["T1"]},
+        )
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "TASK_VERSION_FROZEN"
+        assert "no current version" in response.json()["detail"]["detail"]
+        assert response.json()["detail"]["current_version"] is None
+
+    async def test_an_illegal_transition_on_a_frozen_version_writes_nothing(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A frozen version plus an illegal transition writes nothing.
+
+        Without a dependencies key the frozen guard does not fire and the state
+        machine still answers 400 — and the refused write must not have reached
+        persistence.
+        """
+        frozen, _current = await self._seed_versions(db_session, seed_workspace)
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{frozen.id}",
+            json={"status": "done"},
+        )
+        assert response.status_code == 400
+        assert response.json()["error_code"] == "INVALID_STATE_TRANSITION"
+
+        persisted = await SQLAlchemyTaskRepository(db_session).find_by_id(frozen.id)
+        assert persisted.status is TaskStatus.TODO
 
 
 class TestDeleteTask:

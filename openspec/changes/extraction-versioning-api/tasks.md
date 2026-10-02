@@ -266,7 +266,7 @@ and `cd frontend && pnpm test src/components/react/__tests__/TaskEditor.test.tsx
 This unit is cross-stack by construction — the schema shrink and the client must land together or
 every editor save 422s — so each line names exactly one runner.
 
-- [ ] 2.1 RED — `backend/tests/test_api/test_tasks.py`: add the failing field-matrix cases. `status`
+- [x] 2.1 RED — `backend/tests/test_api/test_tasks.py`: add the failing field-matrix cases. `status`
       on a frozen version is 200 and persisted; `labels` on a frozen version is 200 and persisted;
       `dependencies` on a frozen version is 409 `TASK_VERSION_FROZEN` with the current version number
       in the `detail` and the dependencies unchanged; `dependencies` on the current version is 200
@@ -275,10 +275,10 @@ every editor save 422s — so each line names exactly one runner.
       and a `dependencies` write on a frozen version answers 409, not 400.
       Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py -m "not integration"`.
-- [ ] 2.2 GREEN — `backend/src/storico/api/schemas/task.py`: `UpdateTaskRequest` shrinks to `status`,
+- [x] 2.2 GREEN — `backend/src/storico/api/schemas/task.py`: `UpdateTaskRequest` shrinks to `status`,
       `labels` and `dependencies`; `title`, `description` and `priority` are deleted, not ignored, and
       `extra="forbid"` stays.
-- [ ] 2.3 GREEN — `backend/src/storico/api/routes/tasks.py`: in `update_task`, after the unchanged
+- [x] 2.3 GREEN — `backend/src/storico/api/routes/tasks.py`: in `update_task`, after the unchanged
       membership walk, resolve `current = await extraction_repo.find_current_version(existing.user_story_id)`
       and `frozen = current is None or existing.extraction_id != current.id`; if
       `"dependencies" in body.model_fields_set and frozen` raise
@@ -286,37 +286,37 @@ every editor save 422s — so each line names exactly one runner.
       **before** the state-machine check; keep the state machine and the `body.dependencies is not None`
       write, and drop the `title`/`description`/`priority` kwargs. Add the `ExtractionRepoDep`
       dependency.
-- [ ] 2.4 GREEN — `backend/src/storico/api/error_codes.py`: add `TASK_VERSION_FROZEN` to the sorted
+- [x] 2.4 GREEN — `backend/src/storico/api/error_codes.py`: add `TASK_VERSION_FROZEN` to the sorted
       `__all__` and its comment block.
-- [ ] 2.5 TRIANGULATE — `backend/tests/test_api/test_tasks.py`: the presence edge — `{"dependencies": []}`
+- [x] 2.5 TRIANGULATE — `backend/tests/test_api/test_tasks.py`: the presence edge — `{"dependencies": []}`
       on a frozen version is 409 and clears nothing; `{"dependencies": null}` on a frozen version is
       409; `{"status": "review"}` with no `dependencies` key on a frozen version is 200; a story with
       no `completed` version answers 409 with "no current version" in the `detail`; a frozen version
       plus an illegal transition writes nothing. Prove with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py -m "not integration"`.
-- [ ] 2.6 RED (frontend) — `frontend/src/lib/__tests__/tasks-api.test.ts` and
+- [x] 2.6 RED (frontend) — `frontend/src/lib/__tests__/tasks-api.test.ts` and
       `frontend/src/components/react/__tests__/TaskEditor.test.tsx`: the failing cases — `fetch`'s body
       carries `status` and `labels` and no `title`, `description` or `priority`; `title` and
       `description` render read-only; no `priority` control is rendered; a frozen task's save body
       carries no `dependencies` key. Prove RED with
       `cd frontend && pnpm test src/components/react/__tests__/TaskEditor.test.tsx src/lib/__tests__/tasks-api.test.ts`.
-- [ ] 2.7 GREEN (frontend) — `frontend/src/lib/tasks-api.ts`: `updateTask` narrows its accepted fields
+- [x] 2.7 GREEN (frontend) — `frontend/src/lib/tasks-api.ts`: `updateTask` narrows its accepted fields
       to `status | labels | dependencies` and sends only what it is given;
       `frontend/src/components/react/TaskEditor.tsx`: `title`/`description` render read-only, the
       `priority` control is removed, and `dependencies` is disabled and omitted from the payload while
       the new `frozen` prop is true.
-- [ ] 2.8 GREEN (frontend mirror) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`:
+- [x] 2.8 GREEN (frontend mirror) — `frontend/src/i18n/en.json` and `frontend/src/i18n/es.json`:
       `TASK_VERSION_FROZEN` copy in `errorCodes` plus any read-only label the recut needs, neutral
       international Spanish; `frontend/src/lib/__tests__/error-codes.test.ts`:
       `EXPECTED_REGISTRY_COUNT` `38` → `39` and both locale counts `43` → `44`. Prove with
       `cd frontend && pnpm test`.
-- [ ] 2.9 TRIANGULATE (frontend) — `frontend/src/components/react/__tests__/TaskEditor.test.tsx`:
+- [x] 2.9 TRIANGULATE (frontend) — `frontend/src/components/react/__tests__/TaskEditor.test.tsx`:
       the frozen edge — a frozen task's save body carries no `dependencies` key, and a
       current-version task's save body carries exactly the keys the contract accepts; a
       `{"status": …}`-only save is never blocked and never warns. Prove with
       `cd frontend && pnpm test src/components/react/__tests__/TaskEditor.test.tsx`.
-- [ ] 2.10 REFACTOR — rerun `cd backend && conda run -n storico python -m pytest tests/test_api -m "not integration"`.
-- [ ] 2.11 REFACTOR (frontend) — rerun
+- [x] 2.10 REFACTOR — rerun `cd backend && conda run -n storico python -m pytest tests/test_api -m "not integration"`.
+- [x] 2.11 REFACTOR (frontend) — rerun
       `cd frontend && pnpm test src/components/react/__tests__/TaskEditor.test.tsx src/lib/__tests__/tasks-api.test.ts src/components/react/__tests__/KanbanBoard.test.tsx`.
 
 ## Phase 3: WU3 — The Reads
