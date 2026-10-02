@@ -1,3 +1,28 @@
+## v0.10.0 (2026-10-02)
+
+### Feat
+
+- **web**: own the invalidation mark in the task editor
+- **web**: add the version selector and the client-side gate mirror
+- **api**: expose the invalidation mark's endpoints and the repetition read
+- **api**: give the invalidation mark its entity, port and repository
+- **api**: delete a story with its record and its vector cleanup
+- **api**: store the sanctioned deletion as an audit record that survives it
+- **api**: gate extraction to the workspace owner or an admin
+- **api**: gate version mutations to owner or admin and add their error vocabulary
+- **api**: read only the current version and expose the version selector
+- **tasks**: enforce the D5/D21 field matrix and stop the editor sending removed fields
+
+### Fix
+
+- **web**: show the designed copy for a blocked account deletion
+- **api**: answer a designed 409 when a revoking account asks to be deleted
+- **tests**: stop pinning the migration head to 0028 in the round-trip case
+
+### Refactor
+
+- **api**: retire manual task creation and single-task deletion with 410 Gone
+
 ## v0.9.0 (2026-09-30)
 
 ### Feat
