@@ -15,11 +15,14 @@ once would keep passing if the query itself were split in two.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 import pytest_asyncio
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from storico.domain.entities.extraction import ExtractionStatus
 from tests._helpers import seed_extraction, seed_task
 
 # endpoint, the table that endpoint lists, and whether the listed rows need seeding on top of a story.
@@ -50,7 +53,15 @@ async def seed_listed_rows(db_session: AsyncSession):
     """
 
     async def _seed(seeded) -> None:
-        extraction = await seed_extraction(db_session, seeded.story_id)
+        # The extraction is completed so the task it carries is visible to the
+        # current-version reads (D-a-5 item 2); the row counts below are
+        # unchanged — one task and one extraction per workspace.
+        extraction = await seed_extraction(
+            db_session,
+            seeded.story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
         await seed_task(db_session, seeded.story_id, "Counted task", extraction=extraction)
 
     return _seed
@@ -126,6 +137,55 @@ async def test_unfiltered_list_still_returns_rows_from_every_workspace(
 
     assert response.status_code == 200
     assert response.json()["total"] == WORKSPACES
+
+
+@pytest.mark.asyncio
+async def test_the_unfiltered_task_list_shows_no_superseded_tasks(
+    authed_client,
+    three_workspaces,
+    seed_listed_rows,
+    db_session: AsyncSession,
+) -> None:
+    """The no-parameter ``GET /api/v1/tasks/`` reads current versions only.
+
+    This file's whole point is that the unfiltered branch must not quietly read
+    across every workspace's full history — and the current-version predicate
+    (D-a-5 item 2) must ride that single statement too. One workspace's story
+    carries two completed versions: v1's two tasks are superseded by v2's
+    three, so v1's rows are gone from the response while ``total`` agrees with
+    the rows actually returned.
+    """
+    seeded = three_workspaces[0]
+    superseded = await seed_extraction(
+        db_session,
+        seeded.story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime.now(UTC),
+    )
+    await seed_task(db_session, seeded.story_id, "Old task 1", extraction=superseded)
+    await seed_task(db_session, seeded.story_id, "Old task 2", extraction=superseded)
+    current = await seed_extraction(
+        db_session,
+        seeded.story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime.now(UTC),
+    )
+    await seed_task(db_session, seeded.story_id, "New task 1", extraction=current)
+    await seed_task(db_session, seeded.story_id, "New task 2", extraction=current)
+    await seed_task(db_session, seeded.story_id, "New task 3", extraction=current)
+    # A second workspace keeps its ordinary single-version story, so the
+    # unfiltered branch is proven to fold workspaces without un-superseding rows.
+    await seed_listed_rows(three_workspaces[1])
+
+    response = await authed_client.get("/api/v1/tasks/")
+
+    assert response.status_code == 200
+    data = response.json()
+    titles = [item["title"] for item in data["items"]]
+    assert "Old task 1" not in titles
+    assert "Old task 2" not in titles
+    # v2's three tasks plus the other workspace's current one.
+    assert data["total"] == len(data["items"]) == 4
 
 
 @pytest.mark.asyncio

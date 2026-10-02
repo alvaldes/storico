@@ -424,7 +424,9 @@ def test_the_port_exposes_no_delete_and_no_whole_row_writer() -> None:
     writes are the birth (``create_next_version``) and the targeted marks, so no
     method writes a full row and none can silently null a snapshot column it does
     not own. The exact method list is pinned, so a future re-add fails visibly
-    instead of silently widening the surface.
+    instead of silently widening the surface. Task 3.5 added ``list_versions``: the
+    version selector's read, sanctioned by the change's design (one unpaginated
+    story-scoped read), not a silent widening.
     """
 
     abstract_methods = {
@@ -440,6 +442,7 @@ def test_the_port_exposes_no_delete_and_no_whole_row_writer() -> None:
         "find_by_id",
         "find_current_version",
         "list_page",
+        "list_versions",
         "list",
     }
     assert not hasattr(ExtractionRepository, "delete")
@@ -630,3 +633,112 @@ async def test_an_allocation_that_never_wins_fails_loudly_after_three_attempts(
         await repo.create_next_version(_versioned(story_id, "m1"))
 
     assert attempts == 3
+
+
+# --- Version listing (task 3.2): the selector's read and its agreement pin ---
+
+
+@pytest.mark.asyncio
+async def test_list_versions_returns_every_version_newest_first_with_no_page_window(
+    db_session: AsyncSession, test_engine: AsyncEngine, workspace_id: UUID
+) -> None:
+    """list_versions returns every version of the story, ordered version_number DESC.
+
+    The version selector must show the story's whole history — including a pending
+    and a failed run — because a user has to be able to see that run 3 failed and go
+    back to reading run 2. The read is therefore deliberately unbounded: the version
+    list is the pagination *input*, not a paginated resource, and the paginator's
+    window would truncate a long history silently. Both the ordering and the absence
+    of a LIMIT are asserted on the statement the database received, following the
+    statement-capture style of ``test_list_page_pins_the_order_rule_in_sql`` —
+    result-order assertions alone can pass by accident on a different query plan.
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyExtractionRepository(db_session)
+    story = await _seed_story(db_session, workspace_id, "Versioned")
+    other = await _seed_story(db_session, workspace_id, "Other story")
+
+    v1 = await repo.create_next_version(_versioned(story.id, "v1-completed"))
+    await repo.mark_completed(
+        v1.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+    )
+    v2 = await repo.create_next_version(_versioned(story.id, "v2-completed"))
+    await repo.mark_completed(
+        v2.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+    )
+    v3 = await repo.create_next_version(_versioned(story.id, "v3-failed"))
+    await repo.mark_failed(v3.id, error_info="LLM call failed", completed_at=datetime.now(UTC))
+    await repo.create_next_version(_versioned(story.id, "v4-pending"))  # still pending
+    other_run = await repo.create_next_version(_versioned(other.id, "other-story-run"))
+    await repo.mark_completed(
+        other_run.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+    )
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        versions = await repo.list_versions(story.id)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    # Every version, newest first, with no window: four versions seeded, four back.
+    assert [e.version_number for e in versions] == [4, 3, 2, 1]
+    assert [e.model_used for e in versions] == [
+        "v4-pending",
+        "v3-failed",
+        "v2-completed",
+        "v1-completed",
+    ]
+    statuses = {e.model_used: e.status for e in versions}
+    assert statuses["v3-failed"] is ExtractionStatus.FAILED
+    assert statuses["v4-pending"] is ExtractionStatus.PENDING
+    # A second story's versions never leak in.
+    assert "other-story-run" not in {e.model_used for e in versions}
+    assert all(e.user_story_id == story.id for e in versions)
+
+    # No page window and the ordering rule in SQL, not in one run's result.
+    version_queries = [s for s in statements if "FROM extractions" in s]
+    assert len(version_queries) == 1, version_queries
+    query = version_queries[0]
+    assert "LIMIT" not in query, query
+    order_by = query.split("ORDER BY", 1)[-1]
+    assert "extractions.version_number DESC" in order_by, order_by
+
+
+@pytest.mark.asyncio
+async def test_find_current_version_agrees_with_list_versions_first_completed(
+    db_session: AsyncSession, story_id: UUID
+) -> None:
+    """The two derivations of "current" agree for a three-version story.
+
+    Currency is derived (status ``completed`` + highest ``version_number``), and it is
+    encoded twice: the ``LIMIT 1`` predicate in ``find_current_version`` and the first
+    ``completed`` entry of ``list_versions``. This pin is what keeps the board — which
+    asks ``find_current_version`` on every task write via the frozen check — and the
+    version selector — which derives ``is_current`` from the ordered list — from
+    disagreeing about which version is live. It is also the guard on how they are
+    *not* unified: ``find_current_version`` must stay a ``LIMIT 1`` statement, never
+    this list filtered in Python, because it sits on the hot path of every task write.
+    """
+    repo = SQLAlchemyExtractionRepository(db_session)
+    v1 = await repo.create_next_version(_versioned(story_id, "m1"))
+    await repo.mark_completed(
+        v1.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+    )
+    v2 = await repo.create_next_version(_versioned(story_id, "m2"))
+    await repo.mark_failed(v2.id, error_info="LLM call failed", completed_at=datetime.now(UTC))
+    v3 = await repo.create_next_version(_versioned(story_id, "m3"))
+    await repo.mark_completed(
+        v3.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+    )
+
+    current = await repo.find_current_version(story_id)
+    versions = await repo.list_versions(story_id)
+
+    first_completed = next(e for e in versions if e.status is ExtractionStatus.COMPLETED)
+    assert current is not None
+    assert current.id == first_completed.id
+    assert current.version_number == first_completed.version_number == 3

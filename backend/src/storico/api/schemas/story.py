@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 
 
@@ -44,6 +45,32 @@ class UserStoryResponse(BaseModel):
     raw_text: str
     created_at: datetime
     status: UserStoryStatus = UserStoryStatus.PENDING_EXTRACTION
+
+
+class StoryVersionResponse(BaseModel):
+    """One version of a user story, as the version selector reads it.
+
+    A bare entry of the unpaginated ``GET /stories/{story_id}/versions`` array:
+    every run of the story — ``pending`` and ``failed`` ones included — ordered
+    ``version_number DESC`` by the route. The two booleans are derived there,
+    never stored: ``is_current`` marks the first ``completed`` entry of the
+    ordered list (a story with no completed run has no current entry), and
+    ``has_output`` is ``status == completed``.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    version_number: int | None
+    status: ExtractionStatus
+    model_used: str
+    provider: str
+    temperature: float
+    created_at: datetime
+    completed_at: datetime | None
+    error_info: str | None = None
+    is_current: bool
+    has_output: bool
 
 
 class StoryImportErrorItem(BaseModel):

@@ -270,6 +270,13 @@ async def extract_tasks(
         status=ExtractionStatus.PENDING,
         user_story_id=body.user_story_id,
         message="Extraction started. Poll GET /extractions/{extraction_id} for progress.",
+        # What the just-created extraction actually has: the minted number is the
+        # returned entity's (create_next_version is its only source), and the
+        # provider/temperature are the values resolved above that the background
+        # run itself was handed.
+        version_number=pending.version_number,
+        provider=provider,
+        temperature=resolved_temperature,
     )
 
 
@@ -313,4 +320,7 @@ async def extraction_status(
         confidence_score=extraction.confidence_score,
         created_at=extraction.created_at,
         completed_at=extraction.completed_at,
+        version_number=extraction.version_number,
+        provider=extraction.provider,
+        temperature=extraction.temperature,
     )

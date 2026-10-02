@@ -84,6 +84,10 @@ async def export_tasks(
     - ``json`` (default): JSON array of tasks
     - ``markdown``: Markdown document with one section per story
 
+    Only each story's current version (the highest-numbered ``completed``
+    run) is exported — the filter rides the serializing statement itself, so
+    a superseded version's tasks can never leak into a file.
+
     The response includes a ``Content-Disposition`` header for file download.
     """
     workspace, _ = ctx  # validates workspace membership
@@ -95,7 +99,7 @@ async def export_tasks(
             detail=f"Unsupported format '{format}'. Supported formats: json, markdown",
         )
 
-    tasks = await repo.list_by_workspace(workspace.id)
+    tasks = await repo.list_current_by_workspace(workspace.id)
     task_responses = [
         TaskResponse(
             id=t.id,

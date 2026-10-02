@@ -152,6 +152,9 @@ async def list_extractions(
             confidence_score=e.confidence_score,
             created_at=e.created_at,
             completed_at=e.completed_at,
+            version_number=e.version_number,
+            provider=e.provider,
+            temperature=e.temperature,
         )
         for e in page
     ]
@@ -191,4 +194,7 @@ async def get_extraction(
         confidence_score=extraction.confidence_score,
         created_at=extraction.created_at,
         completed_at=extraction.completed_at,
+        version_number=extraction.version_number,
+        provider=extraction.provider,
+        temperature=extraction.temperature,
     )

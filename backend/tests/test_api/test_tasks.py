@@ -7,7 +7,7 @@ workspace — ``POST /`` included, which resolves the walk from its ``user_story
 body field before it persists anything.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -250,8 +250,16 @@ class TestListTasksPagination:
             )
         )
         titles = [f"task {day}" for day in range(1, count + 1)]
+        # One completed version carries all the tasks: reads answer the story's
+        # current version only (D-a-5 item 2), and one completed version per task
+        # would leave only the highest-numbered one visible.
+        version = await seed_extraction(
+            db_session, story.id, status=ExtractionStatus.COMPLETED, completed_at=datetime.now(UTC)
+        )
         for day, title in enumerate(titles, start=1):
-            await seed_task(db_session, story.id, title, created_at=datetime(2026, 1, day))
+            await seed_task(
+                db_session, story.id, title, extraction=version, created_at=datetime(2026, 1, day)
+            )
         return seeded.workspace_id, story.id, titles
 
     async def test_no_filter_returns_the_full_total(
@@ -279,9 +287,24 @@ class TestListTasksPagination:
                 raw_text="As a user, I want the second feature so that value",
             )
         )
-        await seed_task(db_session, story_a.id, "task 1")
-        await seed_task(db_session, story_a.id, "task 2")
-        await seed_task(db_session, story_b.id, "task 3")
+        # One completed version per story: reads answer the story's current
+        # version only (D-a-5 item 2), and one version per task would leave
+        # only the highest-numbered one visible.
+        version_a = await seed_extraction(
+            db_session,
+            story_a.id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        version_b = await seed_extraction(
+            db_session,
+            story_b.id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        await seed_task(db_session, story_a.id, "task 1", extraction=version_a)
+        await seed_task(db_session, story_a.id, "task 2", extraction=version_a)
+        await seed_task(db_session, story_b.id, "task 3", extraction=version_b)
 
         response = await authed_client.get("/api/v1/tasks/?page=1&size=2")
 
@@ -321,9 +344,24 @@ class TestListTasksPagination:
                 raw_text="As a user, I want the second feature so that value",
             )
         )
-        await seed_task(db_session, story_a.id, "task 1")
-        await seed_task(db_session, story_a.id, "task 2")
-        await seed_task(db_session, story_b.id, "task 3")
+        # One completed version per story: reads answer the story's current
+        # version only (D-a-5 item 2), and one version per task would leave
+        # only the highest-numbered one visible.
+        version_a = await seed_extraction(
+            db_session,
+            story_a.id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        version_b = await seed_extraction(
+            db_session,
+            story_b.id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        await seed_task(db_session, story_a.id, "task 1", extraction=version_a)
+        await seed_task(db_session, story_a.id, "task 2", extraction=version_a)
+        await seed_task(db_session, story_b.id, "task 3", extraction=version_b)
 
         response = await authed_client.get("/api/v1/tasks/?page=9&size=2")
 
@@ -400,6 +438,134 @@ class TestListTasksPagination:
         data = response.json()
         assert data["items"] == []
         assert data["total"] == 3
+
+
+class TestListTasksVersionReads:
+    """GET /api/v1/tasks/?user_story_id=S[&extraction_id=X] — the version read.
+
+    The default story read answers the story's current (highest-numbered
+    ``completed``) version only; an explicit ``extraction_id`` reads exactly
+    that version, so a superseded version's tasks stay addressable. A version
+    that does not belong to the requested story — or does not exist — is
+    refused with 422 ``REQUEST_VALIDATION_FAILED``, not 404. And
+    ``extraction_id`` without ``user_story_id`` is refused with 422 by the
+    route itself, before the repository is ever reached: the repository's
+    ``ValueError`` for that same shape is an internal invariant, not an HTTP
+    contract, and letting it escape would surface as a 500.
+    """
+
+    async def test_a_foreign_extraction_id_refuses_and_leaks_nothing(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """?user_story_id=A&extraction_id=<version of story B> is 422, never story B's tasks."""
+        seeded = await seed_workspace(stories=2)
+        story_a, story_b = seeded.story_ids
+        await seed_task(db_session, story_a, "Story A task")
+        foreign_version = await seed_extraction(
+            db_session, story_b, status=ExtractionStatus.COMPLETED, completed_at=datetime.now(UTC)
+        )
+        await seed_task(db_session, story_b, "Story B task", extraction=foreign_version)
+
+        response = await authed_client.get(
+            f"/api/v1/tasks/?user_story_id={story_a}&extraction_id={foreign_version.id}"
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error_code"] == "REQUEST_VALIDATION_FAILED"
+        # The refusal discloses nothing about story B: not its id, not its tasks.
+        assert str(story_b) not in response.text
+        assert "Story B task" not in response.text
+
+    async def test_an_unknown_extraction_id_refuses_with_422(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """?user_story_id=S&extraction_id=<no such version> is 422, not 404 or 500."""
+        story_id = (await seed_workspace()).story_id
+        await seed_task(db_session, story_id, "Story A task")
+
+        response = await authed_client.get(
+            f"/api/v1/tasks/?user_story_id={story_id}&extraction_id={uuid4()}"
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error_code"] == "REQUEST_VALIDATION_FAILED"
+
+    async def test_extraction_id_without_user_story_id_refuses_before_the_repository(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The 422 is the route's own answer, raised before any repository call.
+
+        ``list_page`` raises ``ValueError`` when ``extraction_id`` arrives
+        without ``user_story_id``. That is an internal invariant: if the route
+        let the call through, the ``ValueError`` would fall to the generic
+        error handler as a 500 — so a 422 carrying the registry code, on both
+        the workspace and the unfiltered branch, is the proof the refusal
+        happened before the repository was reached.
+        """
+        seeded = await seed_workspace()
+        version = await seed_extraction(
+            db_session,
+            seeded.story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+
+        workspace_response = await authed_client.get(
+            f"/api/v1/tasks/?workspace_id={seeded.workspace_id}&extraction_id={version.id}"
+        )
+        assert workspace_response.status_code == 422
+        assert workspace_response.json()["error_code"] == "REQUEST_VALIDATION_FAILED"
+
+        unfiltered_response = await authed_client.get(f"/api/v1/tasks/?extraction_id={version.id}")
+        assert unfiltered_response.status_code == 422
+        assert unfiltered_response.json()["error_code"] == "REQUEST_VALIDATION_FAILED"
+
+    async def test_a_story_whose_only_run_is_failed_reads_an_empty_page(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A story with no completed version has no current version: 200 with []."""
+        story_id = (await seed_workspace()).story_id
+        failed_version = await seed_extraction(db_session, story_id, status=ExtractionStatus.FAILED)
+        await seed_task(db_session, story_id, "Orphaned task", extraction=failed_version)
+
+        response = await authed_client.get(f"/api/v1/tasks/?user_story_id={story_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 0
+        assert data["items"] == []
+
+    async def test_an_explicit_superseded_extraction_id_reads_that_versions_tasks(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """History stays addressable: extraction_id=v1 reads v1's tasks, not v2's."""
+        story_id = (await seed_workspace()).story_id
+        v1 = await seed_extraction(
+            db_session, story_id, status=ExtractionStatus.COMPLETED, completed_at=datetime.now(UTC)
+        )
+        await seed_task(db_session, story_id, "v1 task one", extraction=v1)
+        await seed_task(db_session, story_id, "v1 task two", extraction=v1)
+        v2 = await seed_extraction(
+            db_session, story_id, status=ExtractionStatus.COMPLETED, completed_at=datetime.now(UTC)
+        )
+        await seed_task(db_session, story_id, "v2 task one", extraction=v2)
+        await seed_task(db_session, story_id, "v2 task two", extraction=v2)
+
+        current = await authed_client.get(f"/api/v1/tasks/?user_story_id={story_id}")
+        assert current.status_code == 200
+        assert current.json()["total"] == 2
+        assert {item["title"] for item in current.json()["items"]} == {
+            "v2 task one",
+            "v2 task two",
+        }
+
+        historical = await authed_client.get(
+            f"/api/v1/tasks/?user_story_id={story_id}&extraction_id={v1.id}"
+        )
+        assert historical.status_code == 200
+        data = historical.json()
+        assert data["total"] == 2
+        assert {item["title"] for item in data["items"]} == {"v1 task one", "v1 task two"}
 
 
 class TestGetTask:
