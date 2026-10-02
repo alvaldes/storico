@@ -1571,3 +1571,425 @@ section as a `[Ratified 2026-09-30, after measurement]` note.
 **Standalone finding recorded for the next units.** `git diff | grep '^-' | grep -c assert` returned
 **0** on `test_tasks.py`, `test_export.py`, `test_task_repo.py` and `test_stories.py` — the fastest
 proof available that a fixture-heavy unit went green without loosening a single check.
+
+# Apply Progress — WU4 tranche W4-T2 (task 4.7 + the exception half of 4.8: the error vocabulary) — 2026-09-30, branch `feat/extraction-versioning-api-wu4`
+
+Run before the plan's own order: the plan numbers 4.5 (the gate) before 4.7 (the codes), but 4.5
+raises `WORKSPACE_OWNER_OR_ADMIN_REQUIRED`, which only exists after 4.7. The parent reordered; this
+tranche lands the vocabulary so the gate tranche can consume it.
+
+## Structured status consumed
+
+Native `gentle-ai.sdd-status` v2 consumed from the parent: `changeName: extraction-versioning-api`,
+`nextRecommended: apply`, `applyState: ready`, `taskProgress` 31/77, `blockedReasons: []`,
+`actionContext` mode `repo-local`, `workspaceRoot`/`allowedEditRoots` `/Users/alvaldes/Developer/storico`.
+Preflight: `strict_tdd: active`, `size:exception` accepted by the owner for WU4 (≈1,300–1,700),
+branch `feat/extraction-versioning-api-wu4` at WU3's head. No warnings.
+
+## TDD Cycle Evidence (strict TDD)
+
+| Cycle | Test | Command | Result |
+| --- | --- | --- | --- |
+| RED | `backend/tests/test_unit/test_version_and_vector_errors.py` (10 cases, new) | `conda run -n storico python -m pytest tests/test_unit/test_version_and_vector_errors.py -m "not integration"` | collection error: `ImportError: cannot import name 'version_allocation_conflict_handler' from 'storico.api.errors'` |
+| GREEN | same 10 cases | same command | **10 passed** |
+| Full gates | unit + api, full suite, lint, format | `pytest tests/test_unit tests/test_api -m "not integration"` · `pytest -m "not integration"` · `ruff check src tests` · `ruff format --check src tests` | **810 passed** · **1099 passed, 33 deselected** (parent's baseline 1089 + these 10) · clean · 254 files already formatted |
+
+The 10 cases pin: the three codes declared in the registry with their intended status pairing; the
+409 and 503 handler bodies; both own-class registrations; and both `detail`-composition branches.
+
+## What the vocabulary is
+
+| Code | Status | Raised by |
+| --- | --- | --- |
+| `VERSION_ALLOCATION_CONFLICT` | 409 | `version_allocation_conflict_handler` — every bounded allocation attempt lost the race; the run never started, nothing to poll |
+| `VECTOR_STORE_UNAVAILABLE` | 503 | `vector_store_error_handler` — a down dependency, the exact shape `llm_connection_error_handler` uses (`detail` + `message: str(exc)`) |
+| `WORKSPACE_OWNER_OR_ADMIN_REQUIRED` | 403 | no handler — consumed at the gate's `ApiError(403, …)` raise site that task 4.5 introduces |
+
+## Registration position and the MRO proof
+
+Both registrations sit in `create_app`'s `add_exception_handler` block in `backend/src/storico/api/app.py`:
+
+- `VersionAllocationConflictError → version_allocation_conflict_handler` is placed **immediately
+  after** `app.add_exception_handler(RepositoryError, repository_error_handler)`, with a comment
+  stating why it must be registered for its own class.
+- `VectorStoreError → vector_store_error_handler` is placed **after** `ParseError`'s registration,
+  next to the LLM family it deliberately sits beside in `exceptions.py`, and **not** inside the
+  `RepositoryError` tree at all.
+
+MRO precedence is **proven, not assumed**: the test module implements Starlette's own lookup (walk
+`type(exc).__mro__`, first class present in `app.exception_handlers` wins) as `_resolve_handler`,
+and asserts the walk **stops at `VersionAllocationConflictError` itself** and at `VectorStoreError`
+itself — never at a base class — and that the resolved handler `is not repository_error_handler`
+for both. Before this tranche the subclass fell through to the base handler (the latent defect the
+parent measured); the RED→GREEN pair is what closes it.
+
+## The `detail` composition, both branches pinned (4.7's exact requirement)
+
+`version_allocation_conflict_handler` takes `detail` from `str(exc)`; when the message is silent it
+composes `detail` from the exception's own `user_story_id`
+(`"Could not allocate a version number for story '<id>'"`), and a final guard keeps `detail`
+non-empty even when both are silent. To carry that id, `VersionAllocationConflictError` gained an
+optional `user_story_id: UUID | None = None` constructor parameter — fully backward compatible with
+the existing raise site in `extraction_repository.py` (not an allowed surface, not touched). Three
+tests pin the branches: message-speaks → `detail == str(exc)`; silent + id → id composed in;
+silent + no id → non-empty generic detail.
+
+## Surface expanded with explicit parent authorization — `tests/test_api/test_extraction.py`
+
+**Authorized by the parent mid-tranche (decision (a), stated reason: a behaviour change and its test
+move in the same tranche — a test documenting a 500 the code no longer returns is worse than a
+surface widened with permission).** File: `backend/tests/test_api/test_extraction.py`, function
+`TestExtractionVersioning::test_an_exhausted_allocation_is_not_silent`, and nothing else in the file.
+The flip belongs to this tranche and not to 4.2 because registering the 409 handler *is* the
+behaviour change — the moment it lands, the old pin (500 `REPOSITORY_ERROR`) asserts a falsehood, and
+the test's own docstring had already scheduled the move ("slice (b) owns the final status code and
+will move it"). The assertion is strengthened toward the designed contract: 409
+`VERSION_ALLOCATION_CONFLICT`, with the docstring rewritten to state the live contract (no "today"),
+no silent 202, and task 4.2 named as owner of the remaining edges (never-202, no-row-written, the
+MEMBER gate refusal). No assertion was weakened; no new cases were added there.
+
+## 4.8 taken only by its exception half
+
+`backend/src/storico/domain/entities/exceptions.py` gained `VectorStoreError(Exception)` next to the
+`LLMError` family — deliberately **not** a `RepositoryError` subclass, so a vector-store failure can
+never be swallowed by `repository_error_handler`. **Task 4.8 is left unchecked**: its other half
+(`domain/entities/story_deletion.py`, the frozen `StoryDeletion` entity) belongs to tranche W4-T4
+with the storage work and was not created.
+
+## Files changed (this tranche; ≈287 changed lines — production 87+/1−, authorized flip +4 net, new test file 180)
+
+- `backend/src/storico/api/error_codes.py` — three codes in the sorted `__all__` and in their declaration sections (+18)
+- `backend/src/storico/api/errors.py` — two handlers, imports, `__all__` (+54)
+- `backend/src/storico/api/app.py` — two registrations in the `add_exception_handler` block, imports (+15/1−)
+- `backend/src/storico/domain/entities/exceptions.py` — `VectorStoreError`; `user_story_id` on the allocation conflict (+24)
+- `backend/tests/test_api/test_extraction.py` — the parent-authorized flip (+12/8−, mostly docstring)
+- `backend/tests/test_unit/test_version_and_vector_errors.py` — new, 10 cases (180 lines)
+
+`frontend/` untouched. `api/dependencies.py`, `api/routes/*`, `story_deletion.py`, both
+repository/port files untouched.
+
+## The seam left red (by design, owned by W4-T3)
+
+`cd frontend && pnpm test src/lib/__tests__/error-codes.test.ts` → **2 failed | 6 passed**:
+`the errorCodes map mirrors the backend registry > reads the backend registry and maps every name it
+declares, in both locales` and `… > pins the expected counts so drift is loud on both sides`
+(`EXPECTED_REGISTRY_COUNT` 39 vs actual 42). Expected: the three codes are backend-only until W4-T3
+adds the `en.json`/`es.json` copy and moves the count 39 → 42. No frontend file touched, no code
+dropped or renamed to quiet it.
+
+## Persisted checkbox
+
+`tasks.md` 4.7 marked `[x]` immediately after GREEN. Re-read before returning: 4.1, 4.5, 4.8 and
+every other Phase 4 line remain unchecked; taskProgress moves 31/77 → 32/77.
+
+## Remaining unchecked tasks
+
+Phase 4 minus 4.7: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.8–4.18 (plus Phases 5–6). Next tranche per the
+parent's reordered plan: W4-T3, the frontend mirror (codes 39 → 42, locales 44 → 47), which closes
+the seam above.
+
+## Risks
+
+- The stale 500-pin flip is authorized but touches a file outside the tranche's original surface;
+  the reasoning is recorded above so a #34 reviewer finds it without re-searching.
+- `WU4`'s `size:exception` (≈1,300–1,700) stands; this tranche consumed ≈287 of it. The restatement
+  against the final measurement happens at WU4 close-out, per the WU3 precedent.
+- `VectorStoreError` has no raiser yet — the port method that raises it arrives with W4-T4. The
+  handler and its 503 contract are pinned now so the adapter lands against a fixed contract.
+
+---
+
+# Apply Progress — WU4 tranche W4-T3 (task 4.14: the frontend error-code mirror) — 2026-09-30, branch `feat/extraction-versioning-api-wu4`
+
+Closes the red W4-T2 left deliberately: the backend registry grew to 42 codes and the mirror test
+had not moved. W4-T2 progress above is preserved verbatim.
+
+## Structured status consumed
+
+`gentle-ai.sdd-status` v2 for `extraction-versioning-api` from the parent: `nextRecommended: apply`,
+`applyState: ready`, `blockedReasons: []`, `taskProgress` 31/77 (32 at parent measurement — 4.7 was
+already checked), `actionContext` mode `repo-local`, workspaceRoot and `allowedEditRoots`
+`["/Users/alvaldes/Developer/storico"]`. Delivery path already resolved (`size:exception` accepted
+for WU4, owner 2026-09-28). Edits stayed inside the three allowed frontend files plus the two SDD
+artifacts; no backend file, no i18n test gate, no planning artifact outside the two was touched.
+
+## RED measured before any edit
+
+`cd frontend && pnpm test src/lib/__tests__/error-codes.test.ts` → **2 failed, 6 passed (8)**:
+(1) the mirror case reports the three new codes missing from both locales; (2) the count pin reads
+`expected 39 but got 42` from the registry extraction.
+
+## The one knob, not two — task 4.14's "44 → 47" is NOT an edit (same stale-arithmetic class as WU2's 2.8)
+
+`tasks.md` 4.14 says "`EXPECTED_REGISTRY_COUNT` `39` → `42` and both locale counts `44` → `47`".
+Measured before editing: the per-locale expectation is **derived** at
+`error-codes.test.ts:125` as `EXPECTED_REGISTRY_COUNT + ROUTE_ERROR_CODES.length`. There is no
+literal `44` anywhere in the file. Only `EXPECTED_REGISTRY_COUNT` moved (39 → 42) and both locale
+counts followed by derivation: **42 + 5 = 47**, verified by the green count-pin assertion. The next
+unit must not re-derive or "edit" a locale count that does not exist as a constant.
+
+The adjacent "Count note" comment still reads "39 + 5 = 44 keys"; it is inside the test file but
+outside the single-knob allowance, so it was left untouched — flagged here for the archive pass
+(the comment now understates the map by 3 keys, but no assertion depends on it).
+
+## The three codes shipped (verbatim copy, insertion positions)
+
+- `VERSION_ALLOCATION_CONFLICT` — inserted after `PARSE_ERROR` in both locales (domain-handler
+  neighborhood, next to the extraction-adjacent codes).
+  - en: `Another extraction running on this story claimed the next version first, so this run could not start. Give the extraction another try.`
+  - es: `Otra extracción en curso sobre esta historia tomó primero la siguiente versión, así que esta no pudo iniciar. Vuelve a lanzar la extracción.`
+- `VECTOR_STORE_UNAVAILABLE` — same position, paired with the above.
+  - en: `The service that stores extraction history could not be reached, so the operation did not complete. Wait a moment and try again.`
+  - es: `No se pudo conectar con el servicio que guarda el historial de extracciones, así que la operación no se completó. Espera un momento e inténtalo de nuevo.`
+- `WORKSPACE_OWNER_OR_ADMIN_REQUIRED` — inserted after `OWNER_ACCESS_REQUIRED` in both locales
+  (access-control neighborhood).
+  - en: `This action is limited to the workspace owner or an admin. Ask one of them to do it for you.`
+  - es: `Esta acción está limitada al propietario del espacio de trabajo o a un administrador. Pídele a uno de ellos que la realice.`
+
+Spanish is neutral international with `tú` ("vuelve", "inténtalo", "pídele" — no voseo, no
+regional performatives), matching the voice and two-sentence shape of the neighbours.
+
+No hardcoded locale count was found anywhere (searched; the only per-locale number in the file is
+the derived expectation).
+
+## TDD Cycle Evidence
+
+| Cycle | Test(s) | Command | Result |
+| --- | --- | --- | --- |
+| RED (before edits) | `error-codes.test.ts` as W4-T2 left it | `cd frontend && pnpm test src/lib/__tests__/error-codes.test.ts` | **2 failed, 6 passed (8)** |
+| GREEN (4.14) | same file after the edits | same command | **8 passed (8)** |
+| Full suite | everything | `cd frontend && pnpm test` | **615 passed (615), 54 files** — holds the parent's pre-tranche number; the previously-red assertion now passes |
+| Type gate | whole frontend | `cd frontend && pnpm exec tsc --noEmit` | **exit 0** |
+
+Backend suite not run (per instruction — nothing touched affects it).
+
+## Files changed (this tranche)
+
+- `frontend/src/i18n/en.json` (+3/−0) — three `errorCodes` keys, nothing else.
+- `frontend/src/i18n/es.json` (+3/−0) — three `errorCodes` keys, key sets identical to en.
+- `frontend/src/lib/__tests__/error-codes.test.ts` (+1/−1) — only `EXPECTED_REGISTRY_COUNT` 39 → 42.
+- `openspec/changes/extraction-versioning-api/tasks.md` — 4.14 → `[x]` only.
+- `openspec/changes/extraction-versioning-api/apply-progress.md` — this section (append).
+
+## Persisted checkbox
+
+`tasks.md` 4.14 marked `[x]` immediately after GREEN. Re-read before returning: 4.1 and 4.5 remain
+unchecked (not this tranche's), 4.7 remains checked exactly as W4-T2 left it; checked total 33.
+taskProgress moves to 33/77.
+
+## Remaining unchecked tasks
+
+Phase 4 minus 4.7/4.14: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.8, 4.9, 4.10, 4.11, 4.12, 4.13, 4.15,
+4.16, 4.17, 4.18 (plus Phases 5–6). Next per the parent's plan: W4-T4.
+
+## Workload / PR boundary
+
+Tranche ≈10 changed lines (7 in locales + 1 test knob + 2 artifact lines). WU4 `size:exception`
+stands (≈1,300–1,700); the restatement against the final measurement happens at WU4 close-out, per
+the WU3 precedent. Not committed, not staged, branch not switched — the parent lands the work-unit
+commit.
+
+## Risks
+
+- The "Count note" comment in `error-codes.test.ts` now understates the map (says 44 keys, holds
+  47) — cosmetic only, no assertion depends on it; fixing it was outside the single-knob allowance.
+- None new otherwise: the mirror is fully green and derives both locale counts from the one
+  constant, so the next registry growth repeats this exact shape.
+
+---
+
+# Apply Progress — WU4 tranche W4-T1 (tasks 4.1 and 4.5: the gate primitives and the shared access walk) — 2026-09-30, branch `feat/extraction-versioning-api-wu4`
+
+The owner-or-admin gate rule lands as new code; the existing access walks are extracted
+behaviour-preserving. W4-T2 (error vocabulary) and W4-T3 (frontend mirror) ran before this tranche;
+their sections above are preserved verbatim.
+
+## Structured status consumed
+
+`gentle-ai.sdd-status` v2 for `extraction-versioning-api` from the parent: `nextRecommended: apply`,
+`applyState: ready`, `blockedReasons: []`, `taskProgress` 32/77 at parent measurement (33 after
+W4-T3's 4.14), `actionContext` mode `repo-local`, workspaceRoot and `allowedEditRoots`
+`["/Users/alvaldes/Developer/storico"]`. Delivery path already resolved (`size:exception` accepted
+for WU4, owner 2026-09-28, amended per the WU3 restatement rule at close-out). Edits stayed inside
+the allowed surfaces: `tests/test_unit/test_workspace_gate.py` (new), `api/dependencies.py`,
+`api/routes/tasks.py` (thin-caller change only), plus the two SDD artifacts. `api/error_codes.py`,
+`api/errors.py`, `api/app.py`, `frontend/**`, `require_admin`/`require_owner` — untouched.
+
+## TDD Cycle Evidence (strict TDD)
+
+| Cycle | Test(s) | Command | Result |
+| --- | --- | --- | --- |
+| RED (4.1, before any production edit) | `test_workspace_gate.py` | `conda run -n storico python -m pytest tests/test_unit/test_workspace_gate.py -m "not integration"` | **collection ERROR** — `ImportError: cannot import name '_is_owner_or_admin'` |
+| GREEN (4.5) | same file after the dependencies.py edit | same command | **6 passed** |
+| Regression | `tests/test_unit` | `pytest tests/test_unit -m "not integration"` | **436 passed** |
+| Regression | `tests/test_api` | `pytest tests/test_api -m "not integration"` | **380 passed** — no access-refusal case changed status (parent measured 373 at WU2 close; the +7 are earlier tranches' additions to `test_api`, e.g. W3's extraction_id and versions cases; this tranche added **zero** `test_api` tests) |
+| Regression | whole suite | `pytest -m "not integration"` | **1105 passed, 33 deselected** — parent's head measurement was 1099; delta = **+6**, exactly the 6 new test functions in `test_workspace_gate.py` (4 truth-table params + enum-exhaustion guard + stranger pin) |
+| Lint/format | `ruff check` / `ruff format --check src tests` | canonical §0 commands | both clean (one F401 self-inflicted and fixed: `EntityNotFound` left `tasks.py` when the walk moved out) |
+
+## The truth table as shipped
+
+Two variables, four combinations — the exhaustive cross product (no `OWNER` role exists; ownership
+is `workspace.owner_id == user.id`, pinned by the `owner-with-role-member` case):
+
+| Caller is workspace owner | Membership role | `_is_owner_or_admin` |
+| --- | --- | --- |
+| yes | `ADMIN` | `True` |
+| yes | `MEMBER` | `True` (ownership is not a role) |
+| no | `ADMIN` | `True` |
+| no | `MEMBER` | `False` — the only refusal |
+
+"No other combination passes" is enforced structurally, not rhetorically: the parametrization is
+the full 2×2, and a guard test asserts `{role for role in WorkspaceRole} == {ADMIN, MEMBER}` so a
+future third role cannot silently fall through the gate. A standalone case pins a user distinct
+from the owner with role `MEMBER` failing. RED was the import itself.
+
+## Byte-for-byte proof on the extracted refusals
+
+Diffed against `HEAD` (the W4-T2/T3 tree does not touch these functions, so HEAD is the
+pre-refusal-extraction text):
+
+- **Story walk**: `git show HEAD:./src/storico/api/dependencies.py` body of
+  `require_story_workspace_access` (`label, report_id = …` → `return story`) vs the new
+  `resolve_story_access` body → **diff empty except the removed `return story` line**, which became
+  `return StoryAccess(...)`. Both `raise EntityNotFound(label, str(report_id))` statements, the
+  `reported_as or ("UserStory", story_id)` default, and the whole
+  `ApiError(403, NOT_A_WORKSPACE_MEMBER, "Not a member of this workspace")` block are
+  byte-identical.
+- **Task walk**: `git show HEAD:./src/storico/api/routes/tasks.py` body of
+  `_validate_task_workspace_access` vs the new `resolve_task_access` body → **diff is exactly two
+  lines**, both the delegation rename (`await require_story_workspace_access(` →
+  `access = await resolve_story_access(` and its closing paren). The leading
+  `raise EntityNotFound("Task", str(task_id))`, the `reported_as=("Task", task_id)` argument, the
+  preserving comment, and every kwargs are byte-identical. `routes/tasks.py` keeps
+  `_validate_task_workspace_access` as a thin caller returning `.task`, so all three call sites
+  (`:266`, `:306`, `:409`) are untouched; WU1's 410 handlers and WU2's frozen check did not move.
+
+## `StoryAccess` / `TaskAccess` field choices — and why
+
+Both are `@dataclass(frozen=True, slots=True)`, matching the module's value-type conventions. They
+carry the **identity, the workspace id, and the caller's role** — `story/task`, `workspace_id`,
+`role` — deliberately **not** the `Workspace` entity. The design is explicit: only the gated
+wrappers fetch the workspace row, and only to read `owner_id` (`ws_repo.find_by_id(access.workspace_id)`),
+so every membership-only read keeps paying exactly the three statements it paid before the
+dataclasses existed. `role` rides for free (the membership row was already fetched to refuse
+non-members).
+
+## The gate primitives added (pure additions)
+
+`_is_owner_or_admin(workspace, role, user)` — the D13 disjunction, one place in the codebase;
+`require_owner_or_admin` — sibling of `require_admin`/`require_owner` (both untouched: other routes
+depend on `ADMIN_ACCESS_REQUIRED`/`OWNER_ACCESS_REQUIRED` exactly as they are), over
+`get_workspace_for_user` whose membership refusal fires first; `require_story_owner_or_admin` and
+`require_task_owner_or_admin` — over the shared walks, fetching the workspace row only to read
+`owner_id`, raising `ApiError(403, WORKSPACE_OWNER_OR_ADMIN_REQUIRED)` (imported from the W4-T2
+registry — no local string) **only** for a member who is neither owner nor `ADMIN`. Ordering rule
+honoured: a non-member still gets 404/`NOT_A_WORKSPACE_MEMBER` exactly as today — the gate never
+becomes a louder signal than the access walk. One defensive arm, disclosed: a `None` workspace row
+from `ws_repo.find_by_id` (unreachable while FKs hold) is treated as a gate refusal rather than an
+`AttributeError` 500. Routes are not wired to the wrappers yet — 4.6, 4.13 and 5.9 own that.
+
+## Files changed (this tranche)
+
+- `backend/tests/test_unit/test_workspace_gate.py` **New** (88 lines after `ruff format`).
+- `backend/src/storico/api/dependencies.py` (+205/−1 net per `git diff --stat`: 210+/16− across the
+  two production files, of which the −16 are the two moved function bodies).
+- `backend/src/storico/api/routes/tasks.py` (+9/−13: the thin caller and the import swap).
+- Tranche size: ≈298 changed lines (210+/16− production, 88 test) — inside this tranche's own
+  right, and WU4's `size:exception` stands with the restatement against measurement deferred to WU4
+  close-out per the WU3 rule.
+- `openspec/changes/extraction-versioning-api/tasks.md` — 4.1 and 4.5 → `[x]` only (re-read
+  before returning: checked total 35; **4.2, 4.6 and 4.13 confirmed still unchecked**).
+- `openspec/changes/extraction-versioning-api/apply-progress.md` — this section (append).
+
+## Remaining unchecked tasks
+
+Phase 4 minus 4.1/4.5/4.7/4.14: 4.2, 4.3, 4.4, 4.6, 4.8, 4.9, 4.10, 4.11, 4.12, 4.13, 4.15, 4.16,
+4.17, 4.18 (plus Phases 5–6). taskProgress: 35/77.
+
+## Risks
+
+- The wrappers are dead code until 4.6/4.13/5.9 wire them — intentional (this tranche is the rule
+  and the walks only), but it means the 403 `WORKSPACE_OWNER_OR_ADMIN_REQUIRED` path is proven at
+  the predicate level, not yet end-to-end; 4.2's RED carries that proof.
+- None new otherwise: every pre-existing refusal is byte-identical and the full non-integration
+  suite is green at 1105 with the delta fully accounted for.
+
+---
+
+# Apply Progress — W4-T7 (task 4.6 GREEN + the extract half of 4.2 RED: the POST extract gate) — 2026-09-30, branch `feat/extraction-versioning-api-wu4a`
+
+## Structured status consumed
+
+- **Branch**: `feat/extraction-versioning-api-wu4a`, head `d93349f` (PR A — the authorization
+  tier: gate primitives in `dependencies.py`, the three new error codes + handlers, the frontend
+  mirror — already committed there; none of it touched).
+- **Allowed edit surfaces**: `backend/src/storico/api/routes/extraction.py`,
+  `backend/tests/test_api/test_extraction.py`, `docs/api.md`,
+  `openspec/changes/extraction-versioning-api/tasks.md`,
+  `openspec/changes/extraction-versioning-api/apply-progress.md`. Nothing else was written.
+- **Measured baseline at this head**: full unit suite **1105 passed, 33 deselected**;
+  `ruff check src tests` clean; `ruff format --check src tests` → 255 files already formatted.
+- **Micro-checks honored**: no `delete_by_story` on the vector port and no
+  `story_deletion_service.py` — PR B's files (`155b975`) are deliberately absent; not reached for.
+
+## RED — observed before the swap
+
+New class `TestExtractionOwnerOrAdminGate` (5 test functions) plus the remainder added to
+`test_an_exhausted_allocation_is_not_silent` (its own docstring already promised the 4.2 edges):
+
+| Case | Observed at `d93349f` (pre-swap) |
+| --- | --- |
+| `test_a_member_who_is_neither_owner_nor_admin_is_refused` | **RED** — `assert 400 == 403`: the config-completeness `400 LLM_CONFIG_INCOMPLETE` fired ahead of where the gate belongs, exactly the leak the case exists to prevent (no LLM config seeded on purpose) |
+| `test_the_owner_posts_even_when_their_member_role_is_member` | green pre-swap (pin: ownership is a data fact, not a role) |
+| `test_a_non_owner_admin_member_posts` | green pre-swap (pin: catches an over-strict owner-only gate) |
+| `test_a_non_member_keeps_the_not_a_workspace_member_code` | green pre-swap (pin: the unchanged 403 code) |
+| `test_a_member_who_is_not_the_owner_still_reads_the_status` | green pre-swap (pin: the read stays open) |
+| `test_an_exhausted_allocation_is_not_silent` (+ never-202, no-row asserts) | green pre-swap (pin; the 409 handler already landed in 4.7) |
+
+Focused file at RED: **1 failed, 45 passed**. Each refusal case witnesses "no data changed" by
+direct row reads (`_extraction_rows`), and the MEMBER refusal also asserts the story stays at
+`UserStoryStatus.PENDING_EXTRACTION`.
+
+## GREEN — one dependency swap plus the import
+
+`routes/extraction.py`: `Depends(get_workspace_for_user)` → `Depends(require_owner_or_admin)` on
+`extract_tasks` **only** (import added; the status route untouched). Focused file after the swap:
+**46 passed**.
+
+Confirmed, not re-added: `version_number` was **already** on the 202 `ExtractResponse`
+(`routes/extraction.py:277`, `version_number=pending.version_number`), delivered by an earlier
+unit; no edit was needed for that half of 4.6.
+
+## Branch state
+
+PR A head `d93349f` + this unit's uncommitted diff. PR B's commit `155b975` (migration `0029`,
+the sanctioned story deletion) is deliberately absent from this tree; the gate cases here do not
+depend on it.
+
+## Changed-line count (this unit)
+
+`git diff --numstat`: **184 changed lines** — production 13+/3− (`routes/extraction.py`), tests
+156+/1− (`test_api/test_extraction.py`), docs 7+ (`docs/api.md`), tasks.md 8+/1−. Under budget;
+no size exception needed.
+
+## Stub-comment note (no edit)
+
+The two `_RecordingVectorStore.delete_by_story` stubs (`tests/test_api/test_extraction.py`,
+`tests/test_services/test_extraction_service.py`) carry a comment naming "W4-T7" as the unit that
+replaces them; the owner's split renumbered the units, so **this** unit is W4-T7 and the stub
+replacement is the next one. Both comments left untouched — they are deleted by the commit that
+replaces the stub.
+
+## Verification (writer-run, exact commands)
+
+| Command | Result |
+| --- | --- |
+| `cd backend && conda run -n storico python -m pytest tests/test_api/test_extraction.py -m "not integration" -q` | **46 passed** |
+| `cd backend && conda run -n storico python -m pytest -m "not integration" -q` | **1110 passed, 33 deselected** (baseline 1105 + exactly the 5 new test functions; the sixth item augments an existing test) |
+| `cd backend && conda run -n storico python -m ruff check src tests` | All checks passed |
+| `cd backend && conda run -n storico python -m ruff format --check src tests` | 255 files already formatted |
+
+## Remaining unchecked (re-read after the edits)
+
+4.2 stays unchecked **with** its dated amendment block recording the three-way split; 4.3, 4.13,
+4.15, 4.16, 4.17 and 4.18 confirmed unchecked. Only **4.6** was marked `[x]`.

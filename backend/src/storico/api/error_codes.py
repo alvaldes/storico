@@ -46,7 +46,10 @@ __all__ = [
     "TASK_DELETE_ENDPOINT_REMOVED",
     "TASK_VERSION_FROZEN",
     "UNSUPPORTED_EXPORT_FORMAT",
+    "VECTOR_STORE_UNAVAILABLE",
+    "VERSION_ALLOCATION_CONFLICT",
     "WORKSPACE_NOT_FOUND",
+    "WORKSPACE_OWNER_OR_ADMIN_REQUIRED",
     "WORKSPACE_SLUG_TAKEN",
 ]
 
@@ -64,6 +67,16 @@ INSUFFICIENT_ROLE = "INSUFFICIENT_ROLE"
 OWNER_TRANSFER_ERROR = "OWNER_TRANSFER_ERROR"
 LAST_ADMIN_ERROR = "LAST_ADMIN_ERROR"
 CANNOT_REMOVE_OWNER = "CANNOT_REMOVE_OWNER"
+
+# An exhausted version allocation (extraction repository): every bounded
+# attempt to mint ``max(version_number) + 1`` lost the race against a
+# concurrent run on the same story. The run never started, so there is nothing
+# to poll and the client may retry — a conflict (409), not an internal error.
+VERSION_ALLOCATION_CONFLICT = "VERSION_ALLOCATION_CONFLICT"
+
+# The vector store adapter: a destructive cleanup could not reach Qdrant.
+# A down dependency (503), the same posture LLM_CONNECTION_ERROR takes.
+VECTOR_STORE_UNAVAILABLE = "VECTOR_STORE_UNAVAILABLE"
 
 # ── Credential cipher exception handlers ─────────────────────────
 
@@ -87,6 +100,11 @@ ADMIN_ACCESS_REQUIRED = "ADMIN_ACCESS_REQUIRED"
 
 # ``require_owner``: the caller is an admin but not the workspace owner.
 OWNER_ACCESS_REQUIRED = "OWNER_ACCESS_REQUIRED"
+
+# ``require_owner_or_admin`` (and its story/task wrappers): the caller is a
+# member but is neither the workspace owner nor an admin — version-mutating
+# operations are gated to the owner or an admin.
+WORKSPACE_OWNER_OR_ADMIN_REQUIRED = "WORKSPACE_OWNER_OR_ADMIN_REQUIRED"
 
 # ── Route raise sites (api/routes/) ──────────────────────────────
 

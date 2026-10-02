@@ -16,7 +16,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from storico.config.settings import _reset_settings_cache
-from storico.domain.entities import Extraction, LLMConnectionError, User
+from storico.domain.entities import (
+    Extraction,
+    LLMConnectionError,
+    User,
+    WorkspaceMember,
+    WorkspaceRole,
+)
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
@@ -32,6 +38,9 @@ from storico.infrastructure.database.repositories import (
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
     SQLAlchemyWorkspaceLLMConfigRepository,
+)
+from storico.infrastructure.database.repositories.workspace_member_repository import (
+    SQLAlchemyWorkspaceMemberRepository,
 )
 from storico.infrastructure.tasks import extraction_task
 from tests._helpers import seed_extraction
@@ -81,6 +90,16 @@ class _RecordingVectorStore(VectorStorePort):
     async def store_extraction(self, **kwargs: object) -> bool:
         self.stored.append(kwargs)
         return True
+
+    async def delete_by_story(
+        self,
+        *,
+        workspace_id: UUID,  # noqa: ARG002
+        user_story_id: str,  # noqa: ARG002
+    ) -> None:
+        # Mechanical placeholder so this fake satisfies the port's new abstract
+        # method; task 4.3 / W4-T7 replaces it with a fake that records deletes.
+        return None
 
 
 def _make_the_vector_store_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1125,12 +1144,16 @@ class TestVersioningTriangulation:
     async def test_an_exhausted_allocation_is_not_silent(
         self, async_client, db_session, seed_workspace, monkeypatch
     ) -> None:
-        """A lost race on every attempt surfaces as an error, never as a half-started run.
+        """A lost race on every attempt surfaces as an explicit conflict, never silently.
 
-        ``VersionAllocationConflictError`` reaches the generic ``repository_error_handler`` and
-        answers 500 ``REPOSITORY_ERROR`` **today**, and this case pins exactly that: slice (b) owns
-        the final status code and will move it, which is why the assertion names the code and not a
-        promise. The alternative — a 202 with no row to poll — is the silent failure this prevents.
+        An exhausted version allocation answers 409 ``VERSION_ALLOCATION_CONFLICT``: every
+        bounded attempt lost the race, so the run never started — there is no extraction to
+        poll and the caller may retry. The handler was registered for
+        ``VersionAllocationConflictError`` itself (task 4.7), so the MRO resolves the
+        subclass here instead of falling through to ``repository_error_handler``'s generic
+        500 ``REPOSITORY_ERROR``. Task 4.2 owns the remaining edges of this contract: the
+        "never 202" refusal, that no extraction row is written, and the ``MEMBER`` gate
+        refusal that precedes it.
         """
         from storico.domain.entities.exceptions import VersionAllocationConflictError
 
@@ -1151,8 +1174,154 @@ class TestVersioningTriangulation:
             headers=_auth_headers(str(user.id)),
         )
 
-        assert response.status_code == 500
-        assert response.json()["error_code"] == "REPOSITORY_ERROR"
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "VERSION_ALLOCATION_CONFLICT"
+        # The remainder task 4.2 promises: the run never started. The response was
+        # never a 202 and no extraction row exists for the story — there is
+        # nothing to poll, and the caller may retry.
+        assert response.status_code != 202
+        assert await _extraction_rows(db_session, seeded.story_id) == []
+
+
+class TestExtractionOwnerOrAdminGate:
+    """POST extract is gated to the workspace owner or an admin (D13 / task 4.6).
+
+    The dependency runs before the handler body, so every refusal below is
+    deliberately witnessed **without** a seeded LLM configuration: a
+    config-completeness 400 leaking ahead of the gate would fail the case. The
+    202 cases seed the config, exactly like the success case does.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_member_who_is_neither_owner_nor_admin_is_refused(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """A plain MEMBER posting extract gets 403 and leaves the story untouched.
+
+        No extraction row may exist for the story afterwards and the story's
+        status stays exactly what a birth gives it: a refusal must not drag the
+        story into any extraction state.
+        """
+        owner = await _create_user(db_session, "owner@example.com")
+        member = await _create_user(db_session, "member@example.com")
+        seeded = await seed_workspace(user=owner)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id,
+                user_id=member.id,
+                role=WorkspaceRole.MEMBER,
+            )
+        )
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(member.id)),
+        )
+
+        assert response.status_code == 403
+        assert response.json()["error_code"] == "WORKSPACE_OWNER_OR_ADMIN_REQUIRED"
+        assert await _extraction_rows(db_session, seeded.story_id) == []
+        story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
+        assert story is not None
+        assert story.status == UserStoryStatus.PENDING_EXTRACTION
+
+    @pytest.mark.asyncio
+    async def test_the_owner_posts_even_when_their_member_role_is_member(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """Ownership is ``workspace.owner_id == user.id``, not a member role.
+
+        The owner below holds a MEMBER-role membership row, and the gate still
+        admits them: the rule is a disjunction over a data fact and a role.
+        """
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user, role=WorkspaceRole.MEMBER)
+        await _seed_llm_config(db_session, seeded.workspace_id, provider="ollama", model="llama3.2")
+        monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", AsyncMock())
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 202, response.text
+
+    @pytest.mark.asyncio
+    async def test_a_non_owner_admin_member_posts(
+        self, async_client, db_session, seed_workspace, monkeypatch
+    ) -> None:
+        """A member with role ADMIN who is not the owner passes the gate."""
+        owner = await _create_user(db_session, "owner@example.com")
+        admin = await _create_user(db_session, "admin@example.com")
+        seeded = await seed_workspace(user=owner)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id,
+                user_id=admin.id,
+                role=WorkspaceRole.ADMIN,
+            )
+        )
+        await _seed_llm_config(db_session, seeded.workspace_id, provider="ollama", model="llama3.2")
+        monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", AsyncMock())
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(admin.id)),
+        )
+
+        assert response.status_code == 202, response.text
+
+    @pytest.mark.asyncio
+    async def test_a_non_member_keeps_the_not_a_workspace_member_code(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """A user with no membership row keeps the unchanged 403, not the gate code.
+
+        ``require_owner_or_admin`` chains ``get_workspace_for_user``, whose
+        membership refusal fires first: a non-member never sees
+        ``WORKSPACE_OWNER_OR_ADMIN_REQUIRED``.
+        """
+        owner = await _create_user(db_session, "owner@example.com")
+        outsider = await _create_user(db_session, "outsider@example.com")
+        seeded = await seed_workspace(user=owner)
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(outsider.id)),
+        )
+
+        assert response.status_code == 403
+        assert response.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
+        assert await _extraction_rows(db_session, seeded.story_id) == []
+
+    @pytest.mark.asyncio
+    async def test_a_member_who_is_not_the_owner_still_reads_the_status(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """The gate is on the mutation, not on the read: a MEMBER still polls 200."""
+        owner = await _create_user(db_session, "owner@example.com")
+        member = await _create_user(db_session, "member@example.com")
+        seeded = await seed_workspace(user=owner)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id,
+                user_id=member.id,
+                role=WorkspaceRole.MEMBER,
+            )
+        )
+        saved = await seed_extraction(db_session, seeded.story_id, model_used="llama3.2")
+
+        response = await async_client.get(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/status/{saved.id}",
+            headers=_auth_headers(str(member.id)),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["id"] == str(saved.id)
 
 
 # ── Tasks 3.2 / 3.8 — versioning on the live runner path ────────────────────

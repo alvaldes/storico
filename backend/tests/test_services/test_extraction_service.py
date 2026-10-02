@@ -402,6 +402,16 @@ class _RecordingVectorStore(VectorStorePort):
         self.stored.append(kwargs)
         return True
 
+    async def delete_by_story(
+        self,
+        *,
+        workspace_id: UUID,  # noqa: ARG002
+        user_story_id: str,  # noqa: ARG002
+    ) -> None:
+        # Mechanical placeholder so this fake satisfies the port's new abstract
+        # method; task 4.3 / W4-T7 replaces it with a fake that records deletes.
+        return None
+
 
 def _make_vector_store_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     """Turn the RAG dependency off before the background task builds it.
