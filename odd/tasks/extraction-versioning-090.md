@@ -1277,3 +1277,12 @@ verified, not merely CI-owned.
 deploy question is answered (`0029` is additive — the window applies it with no data plan). What is
 left is item 3 onward: number **D-a-4** and **D-a-1** inside slice (b), then **WU5** (Phase 5), which
 also closes 4.2 and gives `require_task_owner_or_admin` its caller.
+
+**Item 3 is done too, in the same session — the two defects now carry task IDs.** **D-a-4 → task 5.14**
+(the account-delete contract; its 409-vs-pre-check choice is flagged as an owner decision inside the
+task) and **D-a-1 → task 5.15**, recorded as an **explicit non-goal** with the measurement behind it:
+the only production caller of `run_background_extraction` is `api/routes/extraction.py:264`, once per
+extraction the route has just minted, and (b) adds no re-dispatch surface. The slice forecast is
+restated as ≈4,500–5,800 to include 5.14; 5.15 adds prose only. **WU5 then starts**, split into two
+chained PRs on the axis `tasks.md` already named: entity/port/repository/normalizer first, then the
+endpoints and the D16 read.

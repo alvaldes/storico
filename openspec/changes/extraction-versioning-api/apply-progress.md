@@ -2691,3 +2691,24 @@ local green: the failure was a slice (a) integration test that pinned `declared_
 assertion that could only ever be checked by a machine with Docker, in a branch that had never been
 pushed. Neither the local suite nor any earlier WU4 session could see it, and no amount of local
 re-running would have.
+
+## Task 5.15 (D-a-1) — recorded as an explicit non-goal before WU5's code starts, 2026-10-02
+
+Slice (a) closed with **D-a-1**: `infrastructure/tasks/extraction_task.py:441` is an INSERT-only persist
+loop over `parsed_tasks`, so calling `run_background_extraction` twice for the same extraction would
+append a second set of task rows against the same version.
+
+The decision, made by measurement rather than assumption: **(b) gives nobody a way to do that, so the
+defect stays latent and no speculative guard is written.** Measured in this session — the only
+production caller of `run_background_extraction` is `api/routes/extraction.py:264`, invoked once for the
+extraction the route has just minted through `create_next_version`; each mint is a new extraction id, and
+no endpoint in this slice re-dispatches, retries or re-runs an existing extraction
+(`grep -rn "run_background_extraction" backend/src/` returns the import, the call site, the docstring
+references and nothing else). The one consumer that could have made it live — a retry/redo surface — is
+not in this slice's plan.
+
+Two consequences, both deliberate: the guard is **not** added (it would be untestable-by-construction
+code defending against a caller that does not exist), and `3b-iii`'s test is **not** widened to assert
+"one set of task rows per version" — that test pins what the code guarantees ("one row, one number"),
+and widening it would have turned a latent defect into a false green. When a re-dispatch surface ever
+arrives, this note is the requirement it must satisfy.
