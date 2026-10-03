@@ -92,6 +92,36 @@ class TaskInvalidationRepository(ABC):
         ...
 
     @abstractmethod
+    async def count_active_for_extraction(
+        self, *, extraction_id: UUID, exclude_mark_id: UUID | None = None
+    ) -> int:
+        """How many active marks the extraction still carries — a computed value.
+
+        The mark handlers' vector refresh needs exactly this number: the flag is
+        ``True`` iff the extraction still has at least one active mark after the
+        removal, so the revoke path counts with ``exclude_mark_id`` set to the
+        mark it is about to revoke, **before** revoking it. Because the value is
+        computed here, at call time, the refresh can run first without any
+        surgery on ``revoke`` — which commits internally and cannot be asked a
+        question first.
+
+        The statement is one read: ``task_invalidations JOIN tasks ON
+        tasks.id = task_invalidations.task_id``, filtered by
+        ``tasks.extraction_id = :extraction_id`` and
+        ``task_invalidations.revoked_at IS NULL``, minus the excluded mark
+        (``task_invalidations.id != :exclude_mark_id``) when one is given.
+
+        Args:
+            extraction_id: The run whose marks are counted.
+            exclude_mark_id: The mark being revoked, whose row must not count
+                toward the remaining value. ``None`` excludes nothing.
+
+        Returns:
+            The number of active marks on the extraction's tasks.
+        """
+        ...
+
+    @abstractmethod
     async def list_active_on_other_versions(
         self, *, user_story_id: UUID, exclude_extraction_id: UUID | None
     ) -> list[TaskInvalidationCandidate]:

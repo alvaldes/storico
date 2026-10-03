@@ -467,6 +467,17 @@ filter, or every existing point silently becomes unretrievable.
 > 3.6, which replaces it with the recording fake. Evidence in `apply-progress.md` (W3-A).
 >>
 > The task numbers below stay as the planning record; each new part cites the tasks it carries.
+
+> **[WU3 part (iii) — the refresh order landed 2026-10-03]** **3.6, 3.7, 3.8, 3.10 and 3.11 are
+> `[x]`**: the point-id setter's two handler call sites exist (`api/routes/tasks.py`, both mark
+> endpoints), `count_active_for_extraction` is on the port and the adapter, and the refresh sits
+> **before** the relational write per the accepted `(correction)` — a failing refresh answers 503
+> `VECTOR_STORE_UNAVAILABLE` with no mark persisted (create) or the mark still active (revoke), so
+> D10's mark-exists-while-valid state is unreachable. 3.6's clause "the same task un-marked while
+> its version is still current leaves the flag set" was resolved by the rule the other two cases pin
+> (flag `True` iff ≥ 1 active mark remains after the removal); the discrepancy is recorded in
+> `apply-progress.md` (W3-C). **3.9 stays `[ ]`** — the live-Qdrant cases are part (iv)'s and CI owns
+> them. Phase 4 untouched (measurement unit, not a TDD one). Evidence in `apply-progress.md` (W3-C).
 >
 > **[WU3 part (ii) — read side landed 2026-10-03]** **3.1, 3.2, 3.3 and 3.4 are `[x]`**: part (ii) carried
 > the read halves their letters name — `search_similar`'s required keyword-only `exclude_story_id` on
@@ -523,7 +534,7 @@ filter, or every existing point silently becomes unretrievable.
       alongside the temperature (a's parameter) — **seam 3 above: (a) 2.3 and (b) 4.6 do not schedule
       this parameter, so (c) owns it**, and the value is the one (b) returns in the 202 body so a
       retry reuses it (D22).
-- [ ] 3.6 RED — `backend/tests/test_api/test_tasks.py`: add the failing refresh cases, all through the
+- [x] 3.6 RED — `backend/tests/test_api/test_tasks.py`: add the failing refresh cases, all through the
       `get_vector_store` injection point with a recording fake. Marking a task calls
       `set_has_invalid_tasks(extraction_id, True)` **before** `invalidation_repo.create` (assert the
       call order, not just the call); the same task un-marked while its version is still current
@@ -533,7 +544,7 @@ filter, or every existing point silently becomes unretrievable.
       path; with no vector store configured both operations proceed and **no refresh call** is made.
       Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py -m "not integration"`.
-- [ ] 3.7 GREEN — `backend/src/storico/domain/ports/task_invalidation_repository.py` and
+- [x] 3.7 GREEN — `backend/src/storico/domain/ports/task_invalidation_repository.py` and
       `backend/src/storico/infrastructure/database/repositories/task_invalidation_repository.py`
       **(b's files, created at 5.5 and 5.6 — (c) adds this method)**: add
       `count_active_for_extraction(*, extraction_id, exclude_mark_id=None) -> int` as one statement —
@@ -541,7 +552,7 @@ filter, or every existing point silently becomes unretrievable.
       `tasks.extraction_id = :extraction_id`, `revoked_at IS NULL`, `id != :exclude_mark_id` — with its
       docstring stating it is a **computed** value, which is what makes refresh-first possible without
       surgery on (b)'s internally-committing `revoke`.
-- [ ] 3.8 GREEN — `backend/src/storico/api/routes/tasks.py` **(b's file, whose two handlers are
+- [x] 3.8 GREEN — `backend/src/storico/api/routes/tasks.py` **(b's file, whose two handlers are
       created at 5.9 — (c) adds these calls, seam 1 above)**: create-mark handler order becomes
       gate (403) → reason schema (422) → frozen check (409) → `find_active_by_task` (409) →
       **`set_has_invalid_tasks(extraction_id, True)`** → `invalidation_repo.create(mark)` → 201;
@@ -564,13 +575,13 @@ filter, or every existing point silently becomes unretrievable.
       reachable Qdrant** (Docker Compose dev / Qdrant Cloud prod); a skip here proves nothing and the
       flag makes an unreachable service a failure by design. Prove with
       `STORICO_TEST_LIVE_QDRANT=1 cd backend && conda run -n storico python -m pytest tests/test_integration/test_few_shot_rag_qdrant.py`.
-- [ ] 3.10 TRIANGULATE (unit) — `backend/tests/test_repositories/test_task_invalidation.py` **(b's
+- [x] 3.10 TRIANGULATE (unit) — `backend/tests/test_repositories/test_task_invalidation.py` **(b's
       file, created at 1.2/4.1 of (a) and extended at 5.3 of (b) — (c) adds the counting cases)**: two
       active marks on one extraction give `count_active_for_extraction(...) == 2`; revoking one with
       `exclude_mark_id` set to that mark gives `remaining == 1`; the last one gives `0`; the count is
       scoped to the extraction, so another version's mark on the same story is not counted. Prove with
       `cd backend && conda run -n storico python -m pytest tests/test_repositories/test_task_invalidation.py tests/test_unit/test_few_shot_retrieval.py -m "not integration"`.
-- [ ] 3.11 REFACTOR — confirm the validity exclusion is expressed in exactly one filter and never in
+- [x] 3.11 REFACTOR — confirm the validity exclusion is expressed in exactly one filter and never in
       Python, that the exclusion carries the story id from the story object rather than a
       re-derivation, that the payload assertion is the only place enumerating payload keys, and that
       the two handler orders are the only refresh call sites in the tree; then rerun the phase runner

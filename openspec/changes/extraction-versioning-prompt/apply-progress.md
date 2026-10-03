@@ -1101,3 +1101,184 @@ edits. A dated follow-up under the WU3 amendment blockquote records this part bo
 - The two live-search semantics decisions in `test_few_shot_rag_qdrant.py` (fresh-uuid exclusions,
   `Story.id` on the `_extract` helper) are judgment calls within the churn mandate; 3.9 should
   re-read them when it adds the live exclusion cases.
+
+## W3-C — WU3 part (iii), the mark's vector consequence: D10 closes (2026-10-03)
+
+Branch `feat/extraction-versioning-prompt-wu3c`, tip at start `1e279f9` (W3-B's commit). Nothing
+committed or staged by this run; the pre-existing untracked `backend/.gitignore` and
+`.claude/skills/` were left untouched. Consumed baseline facts from the parent task, re-observed:
+full suite at this head read **1273 passed, 39 deselected** (`-m "not integration"`); ruff check
+clean; ruff format 272 files clean; no known environmental failures. Parts (i)/(ii) were consumed
+as shipped — the recording fakes in `test_services/test_extraction_service.py`,
+`test_api/test_stories.py` and `test_api/test_extraction.py` still carry the inert
+`set_has_invalid_tasks` stubs naming 3.6; part (iii) needed none of them replaced because the
+refresh lives in the task routes, whose tests live in `test_api/test_tasks.py`, which had none.
+
+### RED (observed, both files, before any implementation)
+
+- `cd backend && conda run -n storico python -m pytest tests/test_repositories/test_task_invalidation.py -m "not integration" -q`
+  → **3 failed, 25 passed** — every new case failed
+  `AttributeError: 'SQLAlchemyTaskInvalidationRepository' object has no attribute
+  'count_active_for_extraction'` (the port had no such method).
+- `cd backend && conda run -n storico python -m pytest tests/test_api/test_tasks.py -m "not integration" -q`
+  → **5 failed, 74 passed** —
+  - the three order cases failed with `assert [('invalidation_repo.create', …)] == [('set_has_invalid_tasks', …, True), ('invalidation_repo.create', …)]`:
+    the shared log carried **only the relational write, no refresh call** — D10's shape observed,
+    not inferred;
+  - both failing-refresh cases failed with **201 / 204 instead of 503**: a store that raises on the
+    refresh was simply never consulted, and the mark was persisted anyway;
+  - the no-store case passed at RED. It is a structural pin, not a RED case: with no store
+    configured the handlers have nothing vector-shaped to call, so the operations already proceed.
+    After GREEN it pins the skip (the recording repository is still wired, so the absence of any
+    `set_has_invalid_tasks` entry in the shared log is directly witnessed).
+
+### GREEN numbers (observed, in order, at the final state)
+
+| Command | Result |
+| --- | --- |
+| `… tests/test_api/test_tasks.py -m "not integration" -q` | **79 passed** (73 prior + 6 new) |
+| `… tests/test_repositories/test_task_invalidation.py -m "not integration" -q` | **28 passed** (25 prior + 3 new) |
+| Phase runner `… test_vector_store.py test_few_shot_retrieval.py test_api/test_tasks.py -m "not integration" -q` | **121 passed** (W3-B: 115) |
+| `… tests/test_unit tests/test_api tests/test_repositories -m "not integration" -q` | **1 failed, 1119 passed** — the one failure is `tests/test_unit/test_task_invalidation_port.py::test_the_port_pins_its_six_methods`, **a file outside this unit's allowed edit surfaces** (see the interaction note below) |
+| `… -m "not integration" -q` (full suite) | **1 failed, 1281 passed, 39 deselected** — 1273 baseline + exactly the 9 new test functions; the same single out-of-surface pin failure |
+| `ruff check src tests` | **All checks passed!** |
+| `ruff format --check src tests` | **272 files already formatted** (one hand-applied pass on `test_task_invalidation.py`; the formatter never ran) |
+
+### The two handler orders as implemented (task 3.8), and how the order was witnessed
+
+- **Create** (`POST /{task_id}/invalidations`): gate → reason schema → frozen check (409) →
+  `find_active_by_task` (409) → `set_has_invalid_tasks(task.extraction_id, True)` →
+  `invalidation_repo.create(mark)` → 201.
+- **Revoke** (`DELETE /{task_id}/invalidations/current`): gate → frozen check (409) →
+  `find_active_by_task` (404) → `remaining = count_active_for_extraction(extraction_id,
+  exclude_mark_id=active.id)` → `set_has_invalid_tasks(extraction_id, remaining > 0)` →
+  `invalidation_repo.revoke(...)` → 204.
+- **How the order is witnessed, not just asserted**: one shared list. `_RefreshingVectorStore`
+  (a concrete `VectorStorePort` in `test_api/test_tasks.py`) appends
+  `("set_has_invalid_tasks", extraction_id, flag)`; `_override_invalidation_repo` replaces the
+  routes' own `InvalidationRepoDep` closure (taken from the alias's `__metadata__`) with a
+  subclass that delegates to the real repository — the rows are written for real — and appends
+  `("invalidation_repo.create"|"invalidation_repo.revoke", id)` **after** the write returns. The
+  new cases assert full-list equality against the expected two-element sequence, so a refresh
+  after the write, a missing refresh, or a second refresh all fail. A counting fake could not
+  answer any of that.
+- Observed orders at GREEN: create path
+  `[("set_has_invalid_tasks", "<extraction-id>", True), ("invalidation_repo.create", "<mark-id>")]`;
+  revoke with another mark standing
+  `[("set_has_invalid_tasks", "<extraction-id>", True), ("invalidation_repo.revoke", "<mark-id>")]`;
+  last mark revoked `[("set_has_invalid_tasks", "<extraction-id>", False),
+  ("invalidation_repo.revoke", "<mark-id>")]`.
+- **The failing refresh surfaces as 503 `VECTOR_STORE_UNAVAILABLE`** because slice (b)'s handler
+  (`api/errors.py`, registered in `app.py`) answers `VectorStoreError`; the routes let it
+  propagate. Witnessed: 503 with **no mark row** on create, and **the mark still active**
+  (`revoked_at IS NULL`) on revoke — `calls == []` in both, the refresh raised before recording.
+- **The no-store branch**: `get_vector_store` returning `None` skips the whole refresh block; both
+  operations complete (201/204) and the shared log carries only the two relational writes. The
+  skip is also what makes the 503 cases meaningful: the failure comes from a *configured* store.
+
+### Task 3.7 — the count, one statement
+
+`count_active_for_extraction(*, extraction_id, exclude_mark_id=None) -> int` on the port and the
+SQLAlchemy implementation: **one statement** — `select(func.count())` over
+`task_invalidations JOIN tasks ON tasks.id = task_invalidations.task_id`, `WHERE
+tasks.extraction_id = :extraction_id AND task_invalidations.revoked_at IS NULL`, plus
+`task_invalidations.id != :exclude_mark_id` only when the exclusion is given. The port docstring
+states it is a **computed** value, which is what lets the revoke handler ask the question before
+revoking without touching (b)'s internally-committing `revoke`.
+
+Repository cases (3.10, appended — existing cases untouched): two active marks on one extraction
+give `2`; the pre-revoke question with `exclude_mark_id=mark_a` gives `1` (refresh `True`), then
+after revoking `mark_a` the plain count is `1`, the last mark's pre-revoke question with
+`exclude_mark_id=mark_b` gives `0` (refresh `False`), and after both revokes `0`; and the count is
+scoped to the extraction — a mark on the same story's superseded version is not counted
+(`count(v2) == 1` with a `v1` mark standing).
+
+### The 3.6 clause discrepancy, and how it was resolved
+
+The plan's 3.6 letter says "**the same task un-marked while its version is still current leaves
+the flag set**". Read literally — a task's mark revoked and the flag *still* `True` — this
+contradicts the rule the plan's own other two cases pin: the flag is `True` iff the extraction
+still has **at least one** active mark after the removal, and the last mark's revoke writes
+`False`. Resolved **by the rule**, per the parent's instruction: the only rule-consistent reading
+of the clause is "un-marking one task of a still-current version while **another mark stands on
+the same extraction** leaves the flag set", which is exactly the second-mark case, and it is
+pinned (`test_a_second_active_mark_on_the_extraction_leaves_the_flag_true`). The literal reading
+is not implemented anywhere and no case asserts it.
+
+### Task 3.11 confirmations — what was read for each
+
+1. **Validity exclusion in exactly one filter, never in Python**: `grep -rn has_invalid_tasks
+   backend/src` matches only `domain/ports/vector_store_port.py` (port docs + signature) and
+   `infrastructure/vector/qdrant_adapter.py` — where `_build_workspace_filter` is the only filter
+   construction, expressing the rule as a positive `must` on `False` (adapter lines 154-177,
+   documented fail-closed) beside the payload write, the index and the setter. No match in
+   `extraction_service.py` or `extraction_task.py`: no Python filter on validity anywhere.
+2. **The exclusion carries the story id from the story object**: `extraction_service.py:193`
+   reads `story_id = getattr(user_story, "id", None)` — the story object's own id, stringified at
+   that boundary, fail-closed when absent — and forwards it through `_fetch_rag_examples` into
+   `search_similar(exclude_story_id=story_id)` (`:332`). No re-derivation.
+3. **The payload assertion is the only place enumerating payload keys**:
+   `test_vector_store.py::test_store_extraction_payload_has_all_fields` (`~:816`) is the one test
+   asserting the ten-key payload key-by-key; every other test that mentions `has_invalid_tasks`
+   asserts single keys (setter calls, filter shape, fixture payloads), never the key set.
+4. **The two handler orders are the only refresh call sites in the tree**: `grep -rn
+   set_has_invalid_tasks backend/src` matches the port declaration, the adapter implementation,
+   and exactly two call sites — `api/routes/tasks.py:541` (create) and `:638` (revoke).
+
+### Mid-GREEN defects, both mine, both fixed without weakening anything
+
+1. **Four slice-(b) tests needed the `get_vector_store` override** — mechanical churn, the same
+   shape part (ii)'s call-site moves took: once the handlers resolve the dependency, the
+   pre-existing cases that mark/revoke without an override built a real `QdrantAdapter` and the
+   suite's autouse `_forbid_real_qdrant_clients` guard failed them. The four tests
+   (`test_a_valid_mark_round_trips…`, `test_a_non_owner_admin_member_marks_and_revokes`,
+   `test_re_marking_after_a_revoke…`, `test_revoking_records_who_and_when…`) gained the `app`
+   fixture and `app.dependency_overrides[get_vector_store] = lambda: None` — the
+   `test_stories.py` pattern. **No assertion was touched.**
+2. **My own count case expected the wrong value mid-GREEN**:
+   `count(exclude_mark_id=mark_b) == 1` after `mark_a` was already revoked is wrong — only
+   `mark_b` is active, so excluding it answers `0`, which is exactly the handler's pre-revoke
+   question for the last mark. The test was corrected to `== 0`; the implementation was right.
+
+### The port-surface pin — resolved under explicit authorization
+
+`tests/test_unit/test_task_invalidation_port.py::test_the_port_pins_its_six_methods` pins the
+port's exact abstract-method set; 3.7 adds `"count_active_for_extraction"`, so the pin failed
+(`Extra items in the left set: 'count_active_for_extraction'`). That file was outside this unit's
+surfaces, so the writer stopped and the owner authorized the move (**option 1, 2026-10-03**).
+The pin moved to `test_the_port_pins_its_seven_methods` with `"count_active_for_extraction"` as
+the one added set entry — **under explicit authorization, and nothing else in that file changed**.
+The pin exists to make a port-surface change visible and deliberate; this one is deliberate. This
+is the second time this slice handed a writer a port-method mandate without the file that pins
+the port's abstract set (the first was W2-T3's extraction-repository pin); both times the fix was
+the same one-line expected-set addition, made only once the owner said so.
+
+### Files changed (this unit — `git diff --numstat` at the final state: **496+/6−** code+tests,
+### **693+/11−** with the two plan artifacts)
+
+- `backend/src/storico/api/routes/tasks.py` (+25/−0)
+- `backend/src/storico/domain/ports/task_invalidation_repository.py` (+30/−0)
+- `backend/src/storico/infrastructure/database/repositories/task_invalidation_repository.py` (+26/−1)
+- `backend/tests/test_api/test_tasks.py` (+283/−4)
+- `backend/tests/test_repositories/test_task_invalidation.py` (+130/−0)
+- `openspec/changes/extraction-versioning-prompt/tasks.md` (+16/−5 — the five checkboxes and the
+  dated part-(iii) note)
+- `openspec/changes/extraction-versioning-prompt/apply-progress.md` — this section appended,
+  earlier sections verbatim
+
+### Remaining unchecked tasks
+
+- **3.9 `[ ]`** — the live-Qdrant cases (part iv); no `-m integration` run and no Docker here.
+- Phase 4 untouched (`[ ]` throughout, verified by re-reading `tasks.md`).
+
+### Risks
+
+- **The revoke path's stale-count window, named rather than silently inherited.** The flag is
+  computed **pre**-revoke: the handler counts with `exclude_mark_id` set to the mark it is about
+  to revoke, then revokes. Two concurrent revokes of two different marks on the same extraction
+  each see a stale count — each excludes only its own mark, so with two active marks both read
+  `remaining = 1` and both keep the flag `True`, even though after both revokes land zero active
+  marks remain and D10 should have stopped excluding the point. This is the same class of
+  check-then-act window slice (b) already carries (`find_active_by_task` → `revoke`), now on the
+  count side; closing it would need the count and the revoke in one atomic step, which `revoke`'s
+  internal commit forbids. Named here and in the handler; not absorbed.

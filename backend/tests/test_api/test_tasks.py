@@ -8,17 +8,23 @@ body field before it persists anything.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from storico.api.dependencies import get_vector_store
+from storico.api.routes import tasks as task_routes
 from storico.domain.entities import User, UserStory
+from storico.domain.entities.exceptions import VectorStoreError
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.task import TaskStatus
 from storico.domain.entities.task_invalidation import TaskInvalidation
 from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
+from storico.domain.ports.vector_store_port import VectorStorePort
 from storico.infrastructure.database.models import TaskInvalidationModel
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
@@ -30,6 +36,7 @@ from storico.infrastructure.database.repositories import (
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
 )
+from storico.infrastructure.database.session import get_session
 from storico.infrastructure.vector.qdrant_adapter import QdrantAdapter
 from tests._helpers import seed_extraction, seed_task
 from tests.conftest import make_jwt_headers
@@ -1223,9 +1230,10 @@ class TestCreateInvalidation:
     """
 
     async def test_a_valid_mark_round_trips_with_reason_actor_and_timestamp(
-        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+        self, app, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
     ):
         """201 with the mark record; exactly one row was persisted."""
+        app.dependency_overrides[get_vector_store] = lambda: None
         story_id = (await seed_workspace()).story_id
         # A single completed run: its task sits on the story's current version.
         task = await seed_task(db_session, story_id, "Implement login")
@@ -1326,8 +1334,9 @@ class TestCreateInvalidation:
         assert await _mark_rows(db_session, task.id) == []
 
     async def test_a_non_owner_admin_member_marks_and_revokes(
-        self, db_session: AsyncSession, async_client, seed_workspace
+        self, app, db_session: AsyncSession, async_client, seed_workspace
     ):
+        app.dependency_overrides[get_vector_store] = lambda: None
         """A member with role ADMIN who is not the owner passes both gates (task 4.2).
 
         The owner-success cases above carry ownership; this one carries only the
@@ -1372,9 +1381,10 @@ class TestCreateInvalidation:
         assert await _mark_rows(db_session, task.id) == []
 
     async def test_re_marking_after_a_revoke_writes_a_second_row_and_keeps_the_first_revoked(
-        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+        self, app, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
     ):
         """Both mark events stay readable: a new row, the first still revoked."""
+        app.dependency_overrides[get_vector_store] = lambda: None
         story_id = (await seed_workspace()).story_id
         task = await seed_task(db_session, story_id, "Implement login")
         first = await _seed_mark(db_session, task.id, authed_user.id)
@@ -1460,9 +1470,10 @@ class TestRevokeInvalidation:
     """DELETE /api/v1/tasks/{task_id}/invalidations/current — revoke is an UPDATE (R10)."""
 
     async def test_revoking_records_who_and_when_and_keeps_the_row(
-        self, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+        self, app, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
     ):
         """204; the same row now records the revoker, and its original fields stay."""
+        app.dependency_overrides[get_vector_store] = lambda: None
         story_id = (await seed_workspace()).story_id
         task = await seed_task(db_session, story_id, "Implement login")
         marked_at = datetime.now(UTC) - timedelta(hours=2)
@@ -1773,3 +1784,271 @@ class TestMemberSurface:
         )
         assert response.status_code == 200
         assert response.json()["labels"] == ["backend"]
+
+
+class _RefreshingVectorStore(VectorStorePort):
+    """A configured store that records every refresh it is asked for.
+
+    ``calls`` is the list the test passes in, shared with the invalidation
+    repository's recording override (``_override_invalidation_repo``): one list
+    carries the order of the calls across the two boundaries — the vector
+    refresh and the relational write — so the handlers' ordering is witnessed,
+    not merely each call's presence. A fake that only counted calls could not
+    answer an order assertion.
+
+    With ``fail_refresh`` the refresh raises ``VectorStoreError`` before
+    recording anything, which is the shape slice (b)'s 503 handler answers.
+    """
+
+    def __init__(self, calls: list[tuple], *, fail_refresh: bool = False) -> None:
+        self._calls = calls
+        self._fail_refresh = fail_refresh
+
+    async def search_similar(  # noqa: ARG002
+        self,
+        text: str,
+        limit: int = 3,
+        threshold: float = 0.85,
+        *,
+        workspace_id: UUID,
+        exclude_story_id: str,
+    ) -> list:
+        return []
+
+    async def store_extraction(self, **kwargs: object) -> bool:  # noqa: ARG002
+        return True
+
+    async def set_has_invalid_tasks(self, *, extraction_id: str, has_invalid_tasks: bool) -> None:
+        if self._fail_refresh:
+            raise VectorStoreError("Qdrant unreachable")
+        self._calls.append(("set_has_invalid_tasks", extraction_id, has_invalid_tasks))
+
+    async def delete_by_story(  # noqa: ARG002
+        self, *, workspace_id: UUID, user_story_id: str
+    ) -> None:
+        return None
+
+
+def _override_invalidation_repo(app, calls: list[tuple]) -> None:
+    """Route the mark endpoints' repository through a recording wrapper.
+
+    The wrapper subclasses the real SQLAlchemy repository — the rows are
+    written for real — and appends the write it just performed to ``calls``,
+    the list the vector fake shares. The dependency object replaced is taken
+    from the route module's own ``InvalidationRepoDep`` alias, so the override
+    substitutes exactly the closure the handlers were declared with.
+    """
+    (depends_param,) = task_routes.InvalidationRepoDep.__metadata__
+    inner_dependency = depends_param.dependency
+
+    class _Recording(SQLAlchemyTaskInvalidationRepository):
+        async def create(self, mark: TaskInvalidation) -> TaskInvalidation:
+            created = await super().create(mark)
+            calls.append(("invalidation_repo.create", str(created.id)))
+            return created
+
+        async def revoke(  # type: ignore[override]
+            self, mark_id: UUID, *, revoked_by: UUID, revoked_at: datetime
+        ) -> None:
+            await super().revoke(mark_id, revoked_by=revoked_by, revoked_at=revoked_at)
+            calls.append(("invalidation_repo.revoke", str(mark_id)))
+
+    async def _recording_factory(
+        session: Annotated[AsyncSession, Depends(get_session)],
+    ) -> _Recording:
+        return _Recording(session)
+
+    app.dependency_overrides[inner_dependency] = _recording_factory
+
+
+class TestInvalidationRefreshesTheVectorFlag:
+    """The mark's vector consequence: the flag tracks the marks (WU3 part iii).
+
+    Slice (b) made marks creatable and revocable but nothing moved the vector
+    flag, so every mark excluded nothing from few-shot retrieval and nothing
+    went red — D10's silent failure. These cases pin the two handlers' order:
+    the refresh sits **before** the relational write, so a failing refresh
+    leaves no mark persisted (create) or the mark still active (revoke), and a
+    mark that exists while the flag still says valid cannot happen.
+
+    Every case goes through the ``get_vector_store`` injection point; with no
+    store configured the whole refresh block is skipped and both operations
+    proceed.
+    """
+
+    async def test_marking_refreshes_the_flag_before_the_mark_row_is_created(
+        self, app, authed_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """201, and the refresh is recorded before the ``create`` — in that order."""
+        calls: list[tuple] = []
+        app.dependency_overrides[get_vector_store] = lambda: _RefreshingVectorStore(calls)
+        _override_invalidation_repo(app, calls)
+        story_id = (await seed_workspace()).story_id
+        extraction = await seed_extraction(
+            db_session,
+            story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        task = await seed_task(db_session, story_id, "Implement login", extraction=extraction)
+
+        response = await authed_client.post(
+            f"/api/v1/tasks/{task.id}/invalidations", json={"reason": "Duplicates the export task"}
+        )
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert calls == [
+            ("set_has_invalid_tasks", str(extraction.id), True),
+            ("invalidation_repo.create", body["id"]),
+        ]
+        assert len(await _mark_rows(db_session, task.id)) == 1
+
+    async def test_a_second_active_mark_on_the_extraction_leaves_the_flag_true(
+        self, app, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """Revoking one mark while another stands on the same version refreshes with ``True``.
+
+        Two tasks of one extraction, each carrying an active mark: revoking one
+        leaves the other standing, so the extraction still has at least one
+        active mark and the flag must stay ``True``.
+        """
+        calls: list[tuple] = []
+        app.dependency_overrides[get_vector_store] = lambda: _RefreshingVectorStore(calls)
+        _override_invalidation_repo(app, calls)
+        story_id = (await seed_workspace()).story_id
+        extraction = await seed_extraction(
+            db_session,
+            story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        marked = await seed_task(db_session, story_id, "Marked task", extraction=extraction)
+        other = await seed_task(db_session, story_id, "Still-marked task", extraction=extraction)
+        marked_mark = await _seed_mark(db_session, marked.id, authed_user.id)
+        await _seed_mark(db_session, other.id, authed_user.id)
+
+        response = await authed_client.delete(f"/api/v1/tasks/{marked.id}/invalidations/current")
+
+        assert response.status_code == 204, response.text
+        assert calls == [
+            ("set_has_invalid_tasks", str(extraction.id), True),
+            ("invalidation_repo.revoke", str(marked_mark.id)),
+        ]
+
+    async def test_revoking_the_last_active_mark_clears_the_flag(
+        self, app, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """The last active mark revoked calls with ``False`` — before the revoke."""
+        calls: list[tuple] = []
+        app.dependency_overrides[get_vector_store] = lambda: _RefreshingVectorStore(calls)
+        _override_invalidation_repo(app, calls)
+        story_id = (await seed_workspace()).story_id
+        extraction = await seed_extraction(
+            db_session,
+            story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        task = await seed_task(db_session, story_id, "Implement login", extraction=extraction)
+        mark = await _seed_mark(db_session, task.id, authed_user.id)
+
+        response = await authed_client.delete(f"/api/v1/tasks/{task.id}/invalidations/current")
+
+        assert response.status_code == 204, response.text
+        assert calls == [
+            ("set_has_invalid_tasks", str(extraction.id), False),
+            ("invalidation_repo.revoke", str(mark.id)),
+        ]
+
+    async def test_a_failing_refresh_on_mark_answers_503_and_persists_no_row(
+        self, app, authed_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """503 VECTOR_STORE_UNAVAILABLE, and no mark row exists to retry against.
+
+        The refresh runs before the relational write on purpose: a mark that
+        exists while the vector flag still says valid is D10's silent failure.
+        """
+        calls: list[tuple] = []
+        app.dependency_overrides[get_vector_store] = lambda: _RefreshingVectorStore(
+            calls, fail_refresh=True
+        )
+        _override_invalidation_repo(app, calls)
+        story_id = (await seed_workspace()).story_id
+        extraction = await seed_extraction(
+            db_session,
+            story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        task = await seed_task(db_session, story_id, "Implement login", extraction=extraction)
+
+        response = await authed_client.post(
+            f"/api/v1/tasks/{task.id}/invalidations", json={"reason": "Duplicates the export task"}
+        )
+
+        assert response.status_code == 503, response.text
+        assert response.json()["error_code"] == "VECTOR_STORE_UNAVAILABLE"
+        assert await _mark_rows(db_session, task.id) == []
+        assert calls == []
+
+    async def test_a_failing_refresh_on_revoke_answers_503_and_the_mark_stays_active(
+        self, app, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """503 on the revoke path, and the mark row is unchanged and still active."""
+        calls: list[tuple] = []
+        app.dependency_overrides[get_vector_store] = lambda: _RefreshingVectorStore(
+            calls, fail_refresh=True
+        )
+        _override_invalidation_repo(app, calls)
+        story_id = (await seed_workspace()).story_id
+        extraction = await seed_extraction(
+            db_session,
+            story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        task = await seed_task(db_session, story_id, "Implement login", extraction=extraction)
+        await _seed_mark(db_session, task.id, authed_user.id)
+
+        response = await authed_client.delete(f"/api/v1/tasks/{task.id}/invalidations/current")
+
+        assert response.status_code == 503, response.text
+        assert response.json()["error_code"] == "VECTOR_STORE_UNAVAILABLE"
+        rows = await _mark_rows(db_session, task.id)
+        assert len(rows) == 1
+        assert rows[0].revoked_at is None
+        assert calls == []
+
+    async def test_without_a_vector_store_both_operations_proceed_and_no_refresh_is_made(
+        self, app, authed_client, authed_user: User, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """``None`` means no points exist to flag: 201 then 204, refresh skipped.
+
+        The recording repository is still wired, so the absence of any
+        ``set_has_invalid_tasks`` entry in the shared list is directly
+        witnessed — the only calls are the two relational writes.
+        """
+        calls: list[tuple] = []
+        app.dependency_overrides[get_vector_store] = lambda: None
+        _override_invalidation_repo(app, calls)
+        story_id = (await seed_workspace()).story_id
+        extraction = await seed_extraction(
+            db_session,
+            story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        task = await seed_task(db_session, story_id, "Implement login", extraction=extraction)
+
+        marked = await authed_client.post(
+            f"/api/v1/tasks/{task.id}/invalidations", json={"reason": "Duplicates the export task"}
+        )
+        revoked = await authed_client.delete(f"/api/v1/tasks/{task.id}/invalidations/current")
+
+        assert marked.status_code == 201, marked.text
+        assert revoked.status_code == 204, revoked.text
+        assert calls == [
+            ("invalidation_repo.create", marked.json()["id"]),
+            ("invalidation_repo.revoke", marked.json()["id"]),
+        ]

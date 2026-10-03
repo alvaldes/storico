@@ -948,3 +948,133 @@ async def test_standing_revocations_order_version_number_asc_then_title_asc(
         (1, "z task"),
         (2, "b task"),
     ]
+
+
+# --- (c) 3.10 — the computed active-mark count -------------------------------
+# The vector refresh needs "how many active marks will the extraction still
+# carry after this mark is revoked": one statement over the mark → task join,
+# scoped to the extraction, with the mark being revoked excluded. The count is
+# a computed value, not a read model, which is what lets the refresh run
+# before the revoke without touching the internally-committing ``revoke``.
+
+
+@pytest.mark.asyncio
+async def test_two_active_marks_on_one_extraction_count_two(
+    db_session: AsyncSession,
+) -> None:
+    """Two active marks on tasks of one extraction answer 2."""
+    story_id = uuid4()
+    extraction = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 10, 2, 10, 0, tzinfo=UTC),
+    )
+    task_a = await seed_task(db_session, story_id, "task a", extraction=extraction)
+    task_b = await seed_task(db_session, story_id, "task b", extraction=extraction)
+    await _seed_mark(
+        db_session, task_a.id, reason="overlaps", marked_at=datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+    )
+    await _seed_mark(
+        db_session,
+        task_b.id,
+        reason="duplicates",
+        marked_at=datetime(2026, 10, 2, 13, 0, tzinfo=UTC),
+    )
+
+    count = await _repo(db_session).count_active_for_extraction(extraction_id=extraction.id)
+
+    assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_excluding_the_mark_being_revoked_gives_the_remaining_count(
+    db_session: AsyncSession,
+) -> None:
+    """``exclude_mark_id`` answers the handler's pre-revoke question.
+
+    The revoke handler counts with ``exclude_mark_id`` set to the mark it is
+    about to revoke: the value is what the refresh writes, before the revoke
+    happens. Two marks: excluding the first gives 1 (the refresh writes
+    ``True`` and the mark is revoked); the last mark excluding itself gives 0
+    (the refresh writes ``False``), and after both revokes the plain count
+    gives 0.
+    """
+    story_id = uuid4()
+    extraction = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 10, 2, 10, 0, tzinfo=UTC),
+    )
+    task_a = await seed_task(db_session, story_id, "task a", extraction=extraction)
+    task_b = await seed_task(db_session, story_id, "task b", extraction=extraction)
+    mark_a = await _seed_mark(
+        db_session, task_a.id, reason="overlaps", marked_at=datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+    )
+    mark_b = await _seed_mark(
+        db_session,
+        task_b.id,
+        reason="duplicates",
+        marked_at=datetime(2026, 10, 2, 13, 0, tzinfo=UTC),
+    )
+    repo = _repo(db_session)
+
+    assert (
+        await repo.count_active_for_extraction(
+            extraction_id=extraction.id, exclude_mark_id=mark_a.id
+        )
+        == 1
+    )
+    await repo.revoke(
+        mark_a.id, revoked_by=uuid4(), revoked_at=datetime(2026, 10, 2, 14, 0, tzinfo=UTC)
+    )
+    assert await repo.count_active_for_extraction(extraction_id=extraction.id) == 1
+
+    assert (
+        await repo.count_active_for_extraction(
+            extraction_id=extraction.id, exclude_mark_id=mark_b.id
+        )
+        == 0
+    )
+    await repo.revoke(
+        mark_b.id, revoked_by=uuid4(), revoked_at=datetime(2026, 10, 2, 15, 0, tzinfo=UTC)
+    )
+    assert await repo.count_active_for_extraction(extraction_id=extraction.id) == 0
+
+
+@pytest.mark.asyncio
+async def test_the_count_is_scoped_to_the_extraction(
+    db_session: AsyncSession,
+) -> None:
+    """Another version's mark on the same story is not counted.
+
+    The join is mark → task → ``tasks.extraction_id``: a mark on a superseded
+    version's task belongs to a different extraction, so it never answers a
+    count scoped to this one.
+    """
+    story_id = uuid4()
+    v1 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 10, 2, 10, 0, tzinfo=UTC),
+    )
+    v2 = await seed_extraction(
+        db_session,
+        story_id,
+        status=ExtractionStatus.COMPLETED,
+        completed_at=datetime(2026, 10, 2, 11, 0, tzinfo=UTC),
+    )
+    v1_task = await seed_task(db_session, story_id, "v1 task", extraction=v1)
+    v2_task = await seed_task(db_session, story_id, "v2 task", extraction=v2)
+    await _seed_mark(
+        db_session, v1_task.id, reason="in v1", marked_at=datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+    )
+    await _seed_mark(
+        db_session, v2_task.id, reason="in v2", marked_at=datetime(2026, 10, 2, 13, 0, tzinfo=UTC)
+    )
+
+    count = await _repo(db_session).count_active_for_extraction(extraction_id=v2.id)
+
+    assert count == 1

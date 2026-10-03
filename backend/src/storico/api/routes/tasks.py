@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, status
 from storico.api.dependencies import (
     get_current_user,
     get_repository,
+    get_vector_store,
     require_story_workspace_access,
     require_task_owner_or_admin,
     resolve_task_access,
@@ -39,6 +40,7 @@ from storico.application.services.task_service import (
 from storico.domain.entities import EntityNotFound, Task, User
 from storico.domain.entities.extraction import Extraction
 from storico.domain.entities.task_invalidation import TaskInvalidation
+from storico.domain.ports.vector_store_port import VectorStorePort
 from storico.domain.services.task_title_normalizer import normalize_task_title
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
@@ -494,6 +496,7 @@ async def create_invalidation(
     ws_repo: WorkspaceRepoDep = None,  # type: ignore[assignment]
     extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
     invalidation_repo: InvalidationRepoDep = None,  # type: ignore[assignment]
+    vector_store: VectorStorePort | None = Depends(get_vector_store),
 ) -> InvalidationResponse:
     """Mark the task invalid, with a reason, as the current user.
 
@@ -528,6 +531,15 @@ async def create_invalidation(
             status_code=status.HTTP_409_CONFLICT,
             error_code=TASK_ALREADY_MARKED,
             detail=active.reason,
+        )
+    # The refresh runs before the relational write, per the accepted
+    # ``(correction)``: a failure raises ``VectorStoreError`` and leaves no mark
+    # persisted, so a mark that exists while the vector flag still says valid
+    # cannot happen. With no store configured there are no points to flag and
+    # the whole block is skipped.
+    if vector_store is not None:
+        await vector_store.set_has_invalid_tasks(
+            extraction_id=str(task.extraction_id), has_invalid_tasks=True
         )
     mark = await invalidation_repo.create(
         TaskInvalidation(task_id=task_id, reason=body.reason, marked_by=current_user.id)
@@ -586,6 +598,7 @@ async def revoke_invalidation(
     ws_repo: WorkspaceRepoDep = None,  # type: ignore[assignment]
     extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
     invalidation_repo: InvalidationRepoDep = None,  # type: ignore[assignment]
+    vector_store: VectorStorePort | None = Depends(get_vector_store),
 ) -> None:
     """Revoke the task's active mark — an UPDATE of the row, never a DELETE.
 
@@ -613,6 +626,19 @@ async def revoke_invalidation(
     active = await invalidation_repo.find_active_by_task(task_id)
     if active is None:
         raise EntityNotFound("TaskInvalidation", str(task_id))
+    # The refresh sits before the relational write, per the accepted
+    # ``(correction)``: the count is what the flag is written from — ``True``
+    # while another mark still stands on the extraction, ``False`` when this
+    # was the last one — and a failure raises ``VectorStoreError``, leaving the
+    # mark still active. With no store configured the whole block is skipped:
+    # there are no points to flag, so the count is not asked for either.
+    if vector_store is not None:
+        remaining = await invalidation_repo.count_active_for_extraction(
+            extraction_id=task.extraction_id, exclude_mark_id=active.id
+        )
+        await vector_store.set_has_invalid_tasks(
+            extraction_id=str(task.extraction_id), has_invalid_tasks=remaining > 0
+        )
     await invalidation_repo.revoke(
         active.id, revoked_by=current_user.id, revoked_at=datetime.now(UTC)
     )
