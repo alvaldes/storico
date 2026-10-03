@@ -335,6 +335,16 @@ Runner for this phase:
 STRICT TDD. If the pause asks for the split: parts i (2.1–2.3), ii (2.4–2.6) and iii (2.7–2.9) each
 end green.
 
+> **[Amended 2026-10-03, before WU2's first tranche — the boundaries move by one task]** The owner chose
+> to make each of WU1's parts its own chained PR, and the same shape carries here, which is what turns
+> this line's split into review boundaries. **2.3 cannot sit in part i.** Its cases assert the negative
+> block *in the rendered prompt*, and the block ships empty (WU1's part (ii)) until the runner feeds it
+> the composer's output — so a part ending at 2.3 ends **red**, and a red part is not a PR boundary.
+> The parts are therefore: **i = 2.1–2.2** (the composer and its unit table), **ii = 2.3–2.6** (the
+> block-level RED together with the wiring that turns it green, plus 2.6's row-level read-back), and
+> **iii = 2.7–2.11** (the `LLMResponse` / `usage` ripple, `record_usage`, and 2.10's pinned edges plus
+> 2.11's closing pass). The original line above stays as the planning record.
+
 - [ ] 2.1 RED — `backend/tests/test_unit/test_negative_examples.py` **New** (path free; confirmed
       absent): the failing composer table over `TaskInvalidationCandidate` rows.
       **21 distinct candidates yield 20 taken and `omitted == 1`**, most recent `marked_at` first;
