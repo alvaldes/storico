@@ -1493,3 +1493,44 @@ there is no OpenAI/Anthropic key in it, so those rows read *not confirmed*), and
 of the owner. **4.4**'s tables wait with the numbers, and **5.5**'s letter explicitly includes "what the
 four provider responses confirmed, and what each bench measured", so it stays unchecked as well — its
 record exists, its evidence does not.
+
+## W4 + Phase 5 closed — the benches ran, 2026-10-03
+
+`verify-report.md` is complete (§1 the split, §2 the sweep, §3 the two live defects, §4 the four usage
+rows, §5 the ladder and the 1000-story run, §6 the snapshot contract, §7 the production data disclosure).
+
+**The operators' inputs arrived**: a Gemini key (read from a 0600 temp file, never printed, never written
+into the repo) and production's database through a **direct** connection (no pooler — measured, not
+assumed), with `STORICO_QDRANT_COLLECTION` pinned to `storico_extractions_dev` so production's vector
+store was untouched.
+
+**4.1 — two confirmed, two not.** Gemini's real container is `usage_metadata` with
+`prompt_token_count`, `candidates_token_count`, `prompt_tokens_details`, `thoughts_token_count` and
+`total_token_count`; Ollama's is `prompt_eval_count` / `eval_count`. Both are copied verbatim. OpenAI and
+Anthropic are **not confirmed** — no credential on this machine — which is not the same as *absent from
+the provider*. Two product findings came out of the real calls: the repo's pinned Gemini models
+(`gemini-2.0-flash`, `gemini-2.5-flash`) answer **404 "no longer available to new users"** while
+`models.list()` still lists one of them (so a picker built from `list()` would offer dead models), and a
+thinking model can consume the whole `max_output_tokens` (64 → `finish_reason=MAX_TOKENS`, no parts).
+
+**4.2/4.3 — the ladder and the floor, measured:**
+
+| Stories | prompt chars | prompt tokens | total tokens | runner (wall) | row delta | context check |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1,750 | 354 | 1,445 | 36.0 s | 25.6 s | 0 = 0 |
+| 50 | 8,998 | 2,006 | 3,087 | 29.2 s | 18.8 s | 49 = 49 |
+| 200 | 31,204 | 6,960 | 8,328 | 32.3 s | 21.9 s | 199 = 199 |
+| **1000** | **147,852** | **33,314** | **34,505** | 33.3 s | 22.1 s | **999 = 999** |
+
+Every rung landed in the **first** legitimate outcome (`completed`, a stored version with its measured
+size and duration); **none was rejected**. The 1000-story rung's source, disclosed because hiding it
+would change what the number means: **917 distinct valid Salony stories + 83 synthetic ones** in the
+required INVEST shape. The import path is the endpoint's own sequence (`parse_story_csv` →
+`validate_import` → `save_many`) driven in-process. **1000 is a floor** (`MAX_ROWS = 1000` caps a file,
+not a project). The harness also proved itself: when the first attempt at 1000 accepted only 904 rows it
+**refused to continue** rather than measuring a rung that was not the rung.
+
+**Data written to production by the benches, disclosed in §7**: the bench owner, one workspace per rung
+(`Bench 1/50/200/1000`) and one extra workspace from that failed first attempt (904 stories, no
+extraction). The pre-bench state was measured first — revision `0029`, every business table at zero — so
+nothing pre-existing was touched, and the vector points went to the dev collection.

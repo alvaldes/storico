@@ -606,17 +606,23 @@ test, and **no code line in this phase may add an input cap, a truncation or an 
 to make a run pass**. Operator-run, after the code lands and after D11's wipe; every number goes into
 `openspec/changes/extraction-versioning-prompt/verify-report.md`.
 
-> **[Waiting on the operator, 2026-10-03]** 4.1–4.3 are data operations, not code, and the two inputs
-> they need are not in this environment. **4.1** needs one reachable generation provider per adapter
-> along with a credential: the owner is providing **Gemini**; Ollama is not running on this host and no
-> OpenAI or Anthropic key exists in it, so those two rows will read *not confirmed* — which is not the
-> same as *absent from the provider*. **4.2 and 4.3** need a **Neon-like database with a direct
-> connection**; the dev pooler is excluded by name because its ~2 s per-statement floor would measure
-> the pooler instead of the prompt. Both inputs have been requested. Until they arrive,
-> `verify-report.md` carries these rows as `pending`, 4.4's tables wait with them, and **nothing in the
-> extraction path is changed to make anything pass**.
+> **[Ran 2026-10-03, against production's database, with Gemini and Ollama — results in `verify-report.md`]**
+> The two inputs arrived: a Gemini key (used in memory only) and production's database reached through a
+> **direct** connection, with `STORICO_QDRANT_COLLECTION` pinned to the **dev** collection so production's
+> vector store stayed untouched. **4.1** confirmed the real containers for **Gemini** (`usage_metadata`:
+> `prompt_token_count`, `candidates_token_count`, `prompt_tokens_details`, `thoughts_token_count`,
+> `total_token_count`) and **Ollama** (`prompt_eval_count`, `eval_count`); OpenAI and Anthropic remain
+> **not confirmed** for lack of a credential here — which is not "absent from the provider". **4.2**
+> produced the ladder: 1 / 50 / 200 stories at **1,750 / 8,998 / 31,204** prompt characters and
+> **354 / 2,006 / 6,960** prompt tokens, all `completed`. **4.3** ran the mandatory **1000-story** project
+> — **147,852** prompt characters, **33,314** prompt tokens, **34,505** total, `completed` in ~33 s wall
+> (~22 s by the row's own clocks) with the context count **999 = 999**. Every rung landed in the first of
+> the two legitimate outcomes; **no rung was rejected**. Two product findings came out of the real calls
+> and are recorded: the repo's pinned Gemini models answer **404 "no longer available to new users"**
+> while `models.list()` still lists one of them, and a thinking model can consume the whole output budget.
+> **Nothing in the extraction path was changed to make anything pass.**
 
-- [ ] 4.1 **Per-provider `usage` confirmation against real responses** (operator-run). For each of
+- [x] 4.1 **Per-provider `usage` confirmation against real responses** (operator-run). For each of
       Ollama, OpenAI, Anthropic and Gemini: issue one real generation through the corresponding
       adapter with a configured provider, capture the raw response, and record in `verify-report.md`
       a table of *provider → field actually present → captured mapping or "absent"*. The **surviving
@@ -627,7 +633,7 @@ to make a run pass**. Operator-run, after the code lands and after D11's wipe; e
       fix any adapter test that pinned a guess the real response contradicts. **Precondition: one
       reachable provider per adapter**; a provider that cannot be reached is recorded as "not
       confirmed", not as "absent from the provider".
-- [ ] 4.2 **D20's ladder — 1 / 50 / 200 stories, on a Neon-like database, never the dev pooler.**
+- [x] 4.2 **D20's ladder — 1 / 50 / 200 stories, on a Neon-like database, never the dev pooler.**
       (operator-run data operation; separate from 4.3 and never a substitute for it). For each size:
       one fresh workspace, one project, the stories created through the CSV import
       (`POST /api/v1/workspaces/{workspace_id}/stories/import`), and one extraction run with a
@@ -637,7 +643,7 @@ to make a run pass**. Operator-run, after the code lands and after D11's wipe; e
       writes down (**≈16 fixed + ≈2 per task**; the "~8 + 1" figure is not repeated as measured) and
       the call-site delta of the three context reads. The dev pooler is excluded **by name** because
       its ~2 s per-statement floor (open debt 2) would measure the pooler instead of the prompt.
-- [ ] 4.3 **D23's mandatory 1000-story project, created through the CSV import** (operator-run data
+- [x] 4.3 **D23's mandatory 1000-story project, created through the CSV import** (operator-run data
       operation; separate from 4.2). One import of 1000 rows, then one run, then the count check
       `json_array_length(prompt_config -> 'project_context' -> 'other_stories')` against
       `count(*) FROM user_stories WHERE project_id = :p` minus one. **Exactly two outcomes are
@@ -650,7 +656,7 @@ to make a run pass**. Operator-run, after the code lands and after D11's wipe; e
       limitation. Record that **1000 is a floor** — `MAX_ROWS = 1000` is a per-uploaded-file cap with
       no per-project quota (Δ1), so the annotation reads *"1000 stories from one import; a second
       import crosses it"* and never implies a project maximum.
-- [ ] 4.4 GREEN (documentation) — `openspec/changes/extraction-versioning-prompt/verify-report.md`
+- [x] 4.4 GREEN (documentation) — `openspec/changes/extraction-versioning-prompt/verify-report.md`
       **New** (path free; confirmed absent): the ladder table per project (prompt size, duration,
       usage when present), the 1000-story run with its bound statement, the outcome each run actually
       landed in, the 4.1 usage-confirmation table with its omissions annotated, the corrected
@@ -700,17 +706,16 @@ to make a run pass**. Operator-run, after the code lands and after D11's wipe; e
       `conda run -n storico python -m ruff check src tests` and
       `conda run -n storico python -m ruff format --check src tests`.
       **`All checks passed!` and `272 files already formatted`**, locally and in CI.
-- [ ] 5.5 Record in `verify-report.md` the honest split of evidence: what the SQLite unit layer
+- [x] 5.5 Record in `verify-report.md` the honest split of evidence: what the SQLite unit layer
       proved, what required Postgres, what required a live Qdrant and what skipped, what the four
       provider responses confirmed, and what each bench measured.
-  > **[Recorded 2026-10-03 in `verify-report.md` §1 — with one row that is not green]** The split is
-  > written: the SQLite unit and API layer (1282 local / 1303 in CI), Postgres via testcontainers (21
-  > cases, CI only), the live Qdrant layer (22 passed here, 22 skipped without the flag), and the 24
-  > cases that skip in both places. **The four provider responses are NOT confirmed and no bench has
-  > measured anything yet**: 4.1 needs a reachable provider with a credential (the owner is providing
-  > Gemini; Ollama is not running here and there is no OpenAI/Anthropic key), and 4.2/4.3 need a
-  > Neon-like database with a direct connection. Those rows read `pending` in the report rather than
-  > borrowing the unit layer's green, which is the whole point of this task.
+  > **[Recorded 2026-10-03 in `verify-report.md` §1 and §4–§5]** The split is written with every row
+  > measured: the SQLite unit and API layer (1282 local / 1303 in CI), Postgres via testcontainers (21
+  > cases, CI only), the live Qdrant layer (22 passed here, 22 skipped without the flag), the 24 cases
+  > that skip in both places, the four usage rows (two **confirmed with real responses**, two **not
+  > confirmed** for lack of a credential — stated as that and not as absent), and the benches' numbers.
+  > §7 also discloses the data the benches wrote to production, with the pre-bench state measured first
+  > (revision `0029`, every business table at zero) and the vector points pinned to the dev collection.
 
 ## Slice Boundary
 

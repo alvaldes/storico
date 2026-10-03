@@ -1,11 +1,9 @@
 # Verify report — extraction-versioning-prompt (slice (c))
 
-**Head verified:** `55e9949` (`feat/extraction-versioning-prompt-wu3d`, open as PR #50).
-**Status: PARTIAL.** Phases 1–3 are code-complete and verified as far as this machine allows. **Phase 4's
-measurements (4.1–4.3) have not run**: they are operator-run data operations and they need two things
-this machine does not have — a reachable generation provider with a credential (the owner is providing a
-Gemini key) and a Neon-like database (the owner is providing one). Nothing below is reported as green
-because it was not run; the pending rows say so.
+**Head verified:** `55e9949` + the report commit (`feat/extraction-versioning-prompt-wu3d`, PR #50).
+**Status: COMPLETE**, with one qualification stated in §1: the benches ran against **production's database**
+(the owner's instruction) and their vector points went to the **dev** collection, so production's vector
+store is untouched. Two provider rows remain *not confirmed* and say so.
 
 ## 1. What ran where (the honest split)
 
@@ -13,88 +11,126 @@ because it was not run; the pending rows say so.
 | --- | --- | --- | --- |
 | Backend suite, no marker filter | `python -m pytest -q` | this machine | **1282 passed, 45 skipped** |
 | Backend suite, no marker filter | same | CI (Docker runner) | **1303 passed, 24 skipped** |
-| Integration layer (Postgres via testcontainers) | `-m integration` | CI | the **21** Docker-gated cases ran and passed |
-| Live Qdrant layer | `STORICO_TEST_LIVE_QDRANT=1 … -m integration` | this machine, against **Qdrant Cloud** | **22 passed** |
-| The same file **without** the flag | `-m integration` | this machine | **22 skipped** (the honest count) |
-| Live Ollama layer | `-m integration` | — | **2 skipped**: no Ollama on this host |
-| Lint / format | `ruff check src tests` · `ruff format --check src tests` | both | clean · **272 files** |
+| Integration layer (Postgres via testcontainers) | `-m integration` | CI | **21** Docker-gated cases ran and passed |
+| Live Qdrant layer | `STORICO_TEST_LIVE_QDRANT=1 … -m integration` | this machine, **Qdrant Cloud** | **22 passed** |
+| The same file **without** the flag | `-m integration` | this machine | **22 skipped** |
+| Live Ollama layer | `-m integration` | — | 2 skipped (the two live cases are opt-in) |
+| Lint / format | `ruff check` · `ruff format --check` | both | clean · **272 files** |
 
-The numbers reconcile exactly: **1327 collected = 1282 + 45 = 1303 + 24**, so 21 Docker-gated cases ran
-in CI and 24 cases (22 Qdrant + 2 Ollama live) **skip in both places**. The live-Qdrant layer ran only
-because this machine reaches Qdrant Cloud; **CI cannot run it**, so its evidence is this run's — not a
-green badge.
+**1327 collected = 1282 + 45 = 1303 + 24**: 21 Docker-gated cases ran in CI, and 24 (22 Qdrant + 2 Ollama
+live) skip in both places. The live-Qdrant layer ran only because this machine reaches Qdrant Cloud — **CI
+cannot run it**, so its evidence is this run's.
 
 ## 2. The no-shortcut sweep (task 4.5)
 
-Confirmed **by reading the extraction path**, not by trusting the benches:
+Confirmed **by reading the extraction path**: the story text reaches the prompt **whole** (`raw_text` is
+read once and used for retrieval and for `prompt_kwargs`, with no `len(`, `min(`, slice, cap or token
+budget — the only `len(...)` in that module is a log field); `max_tokens=2048` is an **output** budget in
+every adapter (Ollama `num_predict`, OpenAI `max_tokens`, Anthropic `max_tokens`, Gemini
+`max_output_tokens`); and **neither context read is paginated** (`list_for_context` takes no
+`limit`/`offset` and `list_page`'s 20/100 window has no caller on this path).
 
-- **The story text reaches the prompt whole.** `extraction_service.py` reads
-  `raw_text = getattr(user_story, "raw_text", str(user_story))` and uses that value for retrieval and for
-  `prompt_kwargs["user_story"]`. There is **no** `len(`, `min(`, slice, cap or token budget on it — the
-  only `len(...)` in the module is a log field for the example count.
-- **`max_tokens` is an output cap everywhere.** It is `num_predict` for Ollama, `max_tokens` for OpenAI
-  and Anthropic, and `max_output_tokens` for Gemini — the model's answer budget, never the prompt's.
-- **Neither context read is paginated.** `list_for_context` on both repositories takes no `limit` and no
-  `offset` (pinned by `inspect.signature` in the unit layer), and `list_page`'s 20/100 window has no
-  caller on this path: both methods are called only from the runner.
-
-**Conclusion: no input token cap, no truncation and no input-side pagination were introduced anywhere
-between the story text and the provider call.** That is what a bench failure would have put in doubt —
-and since the benches have not run yet, the sweep stands as the statement that the path is unclipped
-*by construction*, not as a claim that it survives 1000 stories.
+**And the 1000-story run below is the empirical half of the same claim.**
 
 ## 3. Two production defects the live layer found (and the fix)
 
-This is the strongest evidence in the slice for why the live layer exists — both defects were **green
-across the entire unit layer**:
+Both were green across the entire unit layer:
 
 1. **The filter excluded on a field with no payload index.** Qdrant answered `400 Index required but not
    found` for every filtered search, because `must_not` names `user_story_id` and only `workspace_id`,
-   `project_id` and `has_invalid_tasks` were indexed. The adapter's graceful degradation turned that hard
-   refusal into an **empty list**, so **few-shot retrieval would have been silently disabled in
-   production with every unit test green**. Fixed by indexing `user_story_id` as `KEYWORD`.
-   The design's own index list was **incomplete**: it named three fields while the filter it ships
-   filters on four.
-2. **An absent point is not a quiet success.** The setter's contract says a missing point is a no-op; the
-   unit case assumed a quiet return, and the live server answers `404 No point with id …`. The setter now
-   honours the documented no-op by shape, and the residual risk is named: a server re-wording would
-   reintroduce the raise.
+   `project_id` and `has_invalid_tasks` were indexed. Graceful degradation turned that hard refusal into
+   an **empty list**, so few-shot retrieval would have been **silently disabled in production with every
+   unit test green**. Fixed by indexing `user_story_id` as `KEYWORD`. The design's index list was
+   **incomplete**: three fields named, four filtered on.
+2. **An absent point is not a quiet success.** The setter's contract says no-op; the unit case assumed a
+   quiet return and the live server answers `404 No point with id …`. The setter now honours the no-op by
+   shape; the residual re-wording risk is named.
 
-Both fixes were verified against the real service (the 22 live cases above), and the three unit pins that
-asserted the index set moved to four under explicit authorization.
+## 4. The usage confirmation (task 4.1) — real responses
 
-## 4. What the version now records (the snapshot contract, verified in the unit layer)
+| Provider | Real call | Container the provider returned | Verdict |
+| --- | --- | --- | --- |
+| **Gemini** | `gemini-3.5-flash` through `GeminiAdapter` | `usage_metadata` → `prompt_token_count`, `candidates_token_count`, `prompt_tokens_details`, `thoughts_token_count`, `total_token_count` (and the None-valued detail keys `model_dump()` carries) | **confirmed**, copied verbatim |
+| **Ollama** | `llama3.1:8b` through `OllamaAdapter` | `{"prompt_eval_count": 17, "eval_count": 3}` | **confirmed**, copied verbatim |
+| OpenAI | — | — | **not confirmed** (no credential in this environment) — *not* "absent from the provider" |
+| Anthropic | — | — | **not confirmed** (same reason) |
 
-`prompt_config` carries exactly six keys — `validate`, `system_prompt`, `few_shots`,
-`project_context`, `story_text`, `negative_examples_omitted` — read from
-`RenderedPrompt.template_variables` and never re-derived; `negative_examples` deliberately travels in
-`prompt_rendered` instead; `usage` is added by `record_usage` **only when the provider returned one**, so
-"the provider reported nothing" never becomes a zero or an empty dict. A run whose provider failed keeps
-every key but `usage` and a non-null `prompt_rendered`; a run that died before render keeps
-`prompt_rendered IS NULL`.
+**Surviving rule, measured: no field, no key.** When a provider returns no usage container the `usage`
+key is **omitted** and the omission is annotated — never zero-filled, never estimated. The runners
+thousands of token counts above show the opposite case: when the container is there, it is stored whole.
 
-## 5. The statement-count baseline (to be confirmed by 4.2)
+**Two findings the real calls produced** (they are product-relevant, not test noise):
 
-This change records the baseline as **≈16 fixed statements + ≈2 per task**, plus the call-site delta of
-the three context reads. The earlier "~8 + 1" figure is **not** repeated as measured. 4.2's ladder is what
-turns this into a measurement; until it runs, this row is a stated baseline and not a number.
+- **The repo's pinned Gemini model names are retired for new users.** With a valid key,
+  `gemini-2.0-flash` and `gemini-2.5-flash` answer **`404 NOT_FOUND`: "no longer available to new users.
+  Please update your code to use models/gemini-3.8-flash"**. Worse for a picker: `client.models.list()`
+  **lists `gemini-2.5-flash`** while `generate_content` on it 404s — a model list built from `list()`
+  would offer dead models. The bench therefore ran on **`gemini-3.5-flash`**, chosen by measurement.
+  **This matters for production right now:** when the LLM configuration is recreated (D-a-6), a 2.x model
+  name will fail on the first extraction.
+- **A thinking model can consume the whole output budget.** With `max_output_tokens=64`,
+  `gemini-flash-latest` returned `finish_reason=MAX_TOKENS`, **zero parts** and `thoughts_token_count=61`
+  — the adapter correctly reports that as an empty response, and the run lands in `failed` with the
+  reason. Production's budget is 2048; on a long prompt a thinking model can exhaust it.
 
-## 6. Pending, explicitly (Phase 4, operator-run)
+## 5. D20's ladder (task 4.2) and D23's 1000-story project (task 4.3)
 
-| Task | What it needs | Status |
-| --- | --- | --- |
-| **4.1** per-provider `usage` confirmation | one reachable generation provider per adapter, with credentials. The owner is providing **Gemini**; Ollama is not running on this host and no OpenAI/Anthropic key exists here, so those rows will read **"not confirmed"** — which is not the same as "absent from the provider" | **pending** |
-| **4.2** D20's 1 / 50 / 200 ladder | a Neon-like database **with a direct connection** (the dev pooler is excluded by name: its ~2 s per-statement floor would measure the pooler instead of the prompt) | **pending** |
-| **4.3** the mandatory 1000-story project | the same database, one CSV import of 1000 rows and one run. **Exactly two outcomes are legitimate**: a stored version whose size and duration are recorded, **or** a provider rejection recorded as a finding (by D22 that run consumes a version number and produces nothing). Nothing in the extraction path may be changed to make it pass | **pending** |
-| **4.4** this report's tables | the numbers from 4.1–4.3 | **pending** (this file is its skeleton) |
+**Environment:** production's database (the owner's instruction), reached through a **direct** connection
+(no pooler), with `STORICO_QDRANT_COLLECTION` pinned to **`storico_extractions_dev`** so production's
+vector collection is untouched. Each rung: one fresh workspace, one project, the stories created through
+the **import's own write path** (`parse_story_csv` → `validate_import` → `save_many`, the exact sequence
+the import endpoint runs — driven in-process because no container harness wires the app's bearer
+dependency against a live server), then one extraction through the **background runner** with Gemini.
 
-**The rule these rows inherit:** a rejection or a failure at 1000 stories is a **recorded finding**, not
-a red test to retry until green, and **1000 is a floor** — `MAX_ROWS = 1000` caps one uploaded file, not
-a project, so a second import crosses it.
+| Stories | prompt chars | prompt tokens | total tokens | runner (wall) | row `completed_at − created_at` | context check |
+| --- | --- | --- | --- | --- | --- | --- |
+| **1** | 1,750 | 354 | 1,445 | 36.0 s | 25.6 s | `other_stories` 0 = `count(*)−1` 0 |
+| **50** | 8,998 | 2,006 | 3,087 | 29.2 s | 18.8 s | **49 = 49** |
+| **200** | 31,204 | 6,960 | 8,328 | 32.3 s | 21.9 s | **199 = 199** |
+| **1000** | **147,852** | **33,314** | **34,505** | 33.3 s | 22.1 s | **999 = 999** |
 
-## 7. Bottom line
+Every rung landed in the **first of the two legitimate outcomes**: `status = completed`, a stored version
+with its measured size, duration and usage, and the context count matching the database exactly. **No rung
+was rejected** — the 1000-story prompt went through in ~33 s of wall clock, and the run's own row delta is
+tighter (~22 s) because `created_at` comes from the database and `completed_at` from the application: the
+two are measured by different clocks and both are reported rather than averaged.
 
-The code of slice (c) is complete and green where it can be checked on this machine, the live vector
-layer is verified against the real service, and the two defects it caught are fixed and re-verified. The
-**measurements that require real provider credentials and a Neon-like database have not run**, and this
-report says so instead of borrowing the unit layer's green for claims it cannot support.
+**The 1000-story run's story source, disclosed:** the Salony dataset yields **917 distinct valid
+stories**, so the rung was topped up with **83 synthetic stories** in the required INVEST shape (`As a
+<role>, I want to review bench report number N so that I can act on its findings`). The measurement is of
+**1000 rows through the import and one prompt**, which is what the task requires; the composition of those
+1000 rows is stated because hiding it would make the number mean something else. **1000 is a floor**:
+`MAX_ROWS = 1000` caps one uploaded file, not a project, so a second import crosses it.
+
+**The statement-count baseline**, as this change writes it down: **≈16 fixed + ≈2 per task**, plus the
+call-site delta of the three context reads. The earlier "~8 + 1" figure is not repeated as measured.
+
+## 6. What the version records (verified in the unit layer, and observed above)
+
+`prompt_config` carries exactly six keys — `validate`, `system_prompt`, `few_shots`, `project_context`,
+`story_text`, `negative_examples_omitted` — read from `RenderedPrompt.template_variables` and never
+re-derived; `negative_examples` travels in `prompt_rendered` instead; and `usage` is added by
+`record_usage` **only when the provider returned one**. The live rows above show all seven keys on a
+successful run and the runner's failure paths show a run whose provider failed keeping every key but
+`usage` with a non-null `prompt_rendered`, and a run that died before render keeping `prompt_rendered IS
+NULL`.
+
+## 7. Data written to production by this report's benches (disclosed)
+
+The benches created real rows in production's database: the bench owner user, and one workspace + project
+per rung (`Bench 1`, `Bench 50`, `Bench 200`, `Bench 1000`) plus one additional workspace from a failed
+first attempt at the 1000 rung (**904 stories imported, no extraction** — the harness refused to continue
+when the import accepted fewer rows than the rung, which is the behaviour it should have). Their
+extractions, tasks and snapshots are the evidence in §5. **Nothing was written to production's Qdrant
+collection** (the bench pinned the dev one). The database's pre-bench state was measured first: revision
+`0029` and **every business table at zero**, so nothing pre-existing was touched. If the owner wants these
+rows gone, they are deletable per workspace; they are named here so nobody has to guess where they came
+from.
+
+## 8. Bottom line
+
+Slice (c)'s code is complete and green where it can be checked here; the live vector layer is verified
+against the real service and found two production defects that no unit test could; the prompt path is
+unclipped by construction **and** by measurement at 1000 stories; and the usage rule holds against two
+real providers — while the two providers this environment cannot reach are recorded as **not confirmed**,
+not as absent.
