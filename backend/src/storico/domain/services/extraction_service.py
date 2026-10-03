@@ -22,10 +22,9 @@ from storico.infrastructure.llm.prompt_manager import PromptManager
 from storico.infrastructure.llm.task_parser import TaskParser
 
 from .extraction_judge_service import LLMJudgeService
+from .negative_examples import negative_examples_as_template_variables
 
 if TYPE_CHECKING:
-    # WU2 lands this module with the negative-example composer; the field is
-    # always empty until then, so the runtime annotation stays a string.
     from storico.domain.services.negative_examples import NegativeExample
 
 logger = logging.getLogger(__name__)
@@ -60,7 +59,9 @@ class ProjectContext:
     description: str  # description at render time
     other_stories: tuple[StoryContextRow, ...]  # the project's OTHER stories, id + raw_text
     existing_tasks: tuple[TaskContextRow, ...]  # current-version, valid tasks only
-    negative_examples: tuple[NegativeExample, ...] = ()  # composed by WU2; empty until then
+    negative_examples: tuple[
+        NegativeExample, ...
+    ] = ()  # composed by the runner via compose_negative_examples
     negative_examples_omitted: int = 0
 
     def as_template_variables(self) -> dict[str, object]:
@@ -210,13 +211,17 @@ class ExtractionService:
         # Render with or without examples. ``prompt_kwargs`` IS
         # ``RenderedPrompt.template_variables``: the same dictionary the
         # template receives is what the snapshot records, so the two cannot
-        # drift. ``negative_examples`` is rendered, never snapshotted — the
-        # block itself is in ``prompt_rendered`` and re-derivable from the
-        # marks; WU2 replaces the raw list with the composed rendering.
+        # drift. The negative examples travel as the composer's JSON-native
+        # mapping — the ``NegativeExample → dict`` conversion lives in the
+        # composer's module and nowhere else. ``few_shots`` carries the vector
+        # port's own fields (``user_story_text``, ``tasks_summary``,
+        # ``model_used``, ``confidence_score``, ``similarity_score`` — text,
+        # never an id) and is snapshot-only: the template renders the few-shot
+        # section from ``examples``, never from ``few_shots``.
         prompt_kwargs: dict[str, object] = {
             "user_story": raw_text,
             "project_context": context.as_template_variables(),
-            "negative_examples": list(context.negative_examples),
+            "negative_examples": negative_examples_as_template_variables(context.negative_examples),
             "negative_examples_omitted": context.negative_examples_omitted,
             "few_shots": [asdict(example) for example in examples],
         }
