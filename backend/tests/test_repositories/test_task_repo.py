@@ -1,6 +1,7 @@
 """Tests for SQLAlchemyTaskRepository."""
 
-from datetime import datetime
+import inspect
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -10,8 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from storico.domain.entities import Project, Task, UserStory
 from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.entities.task import TaskStatus
+from storico.domain.entities.task_invalidation import TaskInvalidation
+from storico.domain.ports import TaskRepository
 from storico.infrastructure.database.repositories import (
     SQLAlchemyProjectRepository,
+    SQLAlchemyTaskInvalidationRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserStoryRepository,
 )
@@ -511,3 +516,281 @@ class TestCurrentVersionPredicate:
 
         assert len(tasks) == 5
         assert {t.title for t in tasks} == {f"v2-{i}" for i in range(4)} | {"plain-task"}
+
+
+async def _seed_context_project(db_session: AsyncSession, workspace_id: UUID, name: str) -> Project:
+    """Save one project for the context-read tests and return it."""
+    return await SQLAlchemyProjectRepository(db_session).save(
+        Project(name=name, workspace_id=workspace_id)
+    )
+
+
+async def _seed_story_in(db_session: AsyncSession, project: Project, feature: str) -> UserStory:
+    """Save one story inside ``project`` and return it."""
+    return await SQLAlchemyUserStoryRepository(db_session).save(
+        UserStory(
+            project_id=project.id,
+            actor="user",
+            feature=feature,
+            benefit="value",
+            raw_text=f"As a user, I want {feature} so that value",
+        )
+    )
+
+
+async def _mark(
+    db_session: AsyncSession, task_id: UUID, reason: str = "Duplicates the auth task"
+) -> TaskInvalidation:
+    """Create an active mark through the same write path production uses."""
+    return await SQLAlchemyTaskInvalidationRepository(db_session).create(
+        TaskInvalidation(task_id=task_id, reason=reason)
+    )
+
+
+class TestListForContext:
+    """The prompt-context read: current-version, valid tasks of one project
+    except the excluded story's, unpaginated.
+
+    Three facts belong to the statement, not to a Python pass: currency (no
+    higher-numbered completed version of the story), validity (no active mark
+    on the task), and the exclusion of the story being decomposed. A page
+    window would truncate the context block silently — the read is deliberately
+    unbounded, and the signature carries no ``limit``/``offset`` to reopen one.
+    """
+
+    @staticmethod
+    def _assert_no_window(target: object) -> None:
+        """Pin the signature over both the port and the SQLAlchemy implementation."""
+        signature = inspect.signature(target)  # type: ignore[arg-type]
+        assert "limit" not in signature.parameters, signature
+        assert "offset" not in signature.parameters, signature
+        exclude = signature.parameters["exclude_story_id"]
+        assert exclude.kind is inspect.Parameter.KEYWORD_ONLY, signature
+        assert exclude.default is inspect.Parameter.empty, signature
+
+    @pytest.mark.asyncio
+    async def test_the_excluded_story_is_absent_in_every_version(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """v1 completed + v2 completed, both with tasks: neither version's tasks return.
+
+        The exclusion rides in the ``WHERE`` on ``tasks.user_story_id``, so it
+        holds across every version of the excluded story at once — no Python
+        filter re-checks it row by row.
+        """
+        repo = SQLAlchemyTaskRepository(db_session)
+        project = await _seed_context_project(db_session, workspace_id, "Excluded story")
+        excluded = await _seed_story_in(db_session, project, "being-decomposed")
+        other = await _seed_story_in(db_session, project, "other")
+        excluded_v1 = await seed_extraction(
+            db_session, excluded.id, status=ExtractionStatus.COMPLETED
+        )
+        excluded_v2 = await seed_extraction(
+            db_session, excluded.id, status=ExtractionStatus.COMPLETED
+        )
+        await _seed_task(db_session, excluded.id, "excluded-v1", extraction=excluded_v1)
+        await _seed_task(db_session, excluded.id, "excluded-v2", extraction=excluded_v2)
+        other_v = await seed_extraction(db_session, other.id, status=ExtractionStatus.COMPLETED)
+        await _seed_task(db_session, other.id, "other-task", extraction=other_v)
+
+        rows = await repo.list_for_context(project.id, exclude_story_id=excluded.id)
+
+        assert [r.title for r in rows] == ["other-task"]
+        assert all(r.user_story_id == other.id for r in rows)
+
+    @pytest.mark.asyncio
+    async def test_an_active_mark_hides_the_task_and_revoking_restores_it(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """A task with an active mark is absent; the same task returns after revoke.
+
+        The mark is created and revoked through the invalidation repository —
+        the same ``create``/``revoke`` path the mark endpoints drive — so the
+        read answers the production validity rule, not a fixture shorthand.
+        """
+        repo = SQLAlchemyTaskRepository(db_session)
+        invalidations = SQLAlchemyTaskInvalidationRepository(db_session)
+        project = await _seed_context_project(db_session, workspace_id, "Marked task")
+        excluded = await _seed_story_in(db_session, project, "being-decomposed")
+        marked_story = await _seed_story_in(db_session, project, "marked")
+        plain = await _seed_story_in(db_session, project, "plain")
+        marked_v = await seed_extraction(
+            db_session, marked_story.id, status=ExtractionStatus.COMPLETED
+        )
+        plain_v = await seed_extraction(db_session, plain.id, status=ExtractionStatus.COMPLETED)
+        marked_task = await _seed_task(
+            db_session, marked_story.id, "marked-task", extraction=marked_v
+        )
+        await _seed_task(db_session, plain.id, "plain-task", extraction=plain_v)
+
+        mark = await _mark(db_session, marked_task.id)
+
+        rows = await repo.list_for_context(project.id, exclude_story_id=excluded.id)
+        assert [r.title for r in rows] == ["plain-task"]
+
+        await invalidations.revoke(mark.id, revoked_by=uuid4(), revoked_at=datetime.now(UTC))
+
+        rows = await repo.list_for_context(project.id, exclude_story_id=excluded.id)
+        assert [r.title for r in rows] == ["marked-task", "plain-task"]
+
+    @pytest.mark.asyncio
+    async def test_a_superseded_versions_tasks_are_absent_when_a_newer_completed_exists(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """v2 completed above v1 completed: only v2's task is current.
+
+        Currency is the same derived rule the task reads carry — ``status ==
+        completed`` plus no higher-numbered completed version — never stored.
+        """
+        repo = SQLAlchemyTaskRepository(db_session)
+        project = await _seed_context_project(db_session, workspace_id, "Superseded")
+        versioned = await _seed_story_in(db_session, project, "versioned")
+        other = await _seed_story_in(db_session, project, "other")
+        v1 = await seed_extraction(db_session, versioned.id, status=ExtractionStatus.COMPLETED)
+        v2 = await seed_extraction(db_session, versioned.id, status=ExtractionStatus.COMPLETED)
+        await _seed_task(db_session, versioned.id, "v1-task", extraction=v1)
+        await _seed_task(db_session, versioned.id, "v2-task", extraction=v2)
+        other_v = await seed_extraction(db_session, other.id, status=ExtractionStatus.COMPLETED)
+        await _seed_task(db_session, other.id, "other-task", extraction=other_v)
+
+        rows = await repo.list_for_context(project.id, exclude_story_id=other.id)
+
+        assert [r.title for r in rows] == ["v2-task"]
+
+    @pytest.mark.asyncio
+    async def test_a_pending_version_above_a_completed_one_leaves_it_current(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """A ``pending`` v3 does not supersede a completed v2: v2's tasks stay current.
+
+        Only a *completed* higher version retires the tasks below it — a run
+        still in flight has produced nothing to replace them with.
+        """
+        repo = SQLAlchemyTaskRepository(db_session)
+        project = await _seed_context_project(db_session, workspace_id, "Pending above")
+        versioned = await _seed_story_in(db_session, project, "versioned")
+        other = await _seed_story_in(db_session, project, "other")
+        v1 = await seed_extraction(db_session, versioned.id, status=ExtractionStatus.COMPLETED)
+        v2 = await seed_extraction(db_session, versioned.id, status=ExtractionStatus.COMPLETED)
+        await seed_extraction(db_session, versioned.id, status=ExtractionStatus.PENDING)
+        await _seed_task(db_session, versioned.id, "v1-task", extraction=v1)
+        await _seed_task(db_session, versioned.id, "v2-task", extraction=v2)
+        other_v = await seed_extraction(db_session, other.id, status=ExtractionStatus.COMPLETED)
+        await _seed_task(db_session, other.id, "other-task", extraction=other_v)
+
+        rows = await repo.list_for_context(project.id, exclude_story_id=other.id)
+
+        assert [r.title for r in rows] == ["v2-task"]
+
+    @pytest.mark.asyncio
+    async def test_the_order_is_deterministic_oldest_first(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """Two calls over the same state return the same ``created_at, id`` order.
+
+        Determinism is what makes two runs over an unchanged project compose
+        byte-identical context blocks.
+        """
+        repo = SQLAlchemyTaskRepository(db_session)
+        project = await _seed_context_project(db_session, workspace_id, "Ordered")
+        story = await _seed_story_in(db_session, project, "ordered")
+        unrelated = uuid4()
+        version = await seed_extraction(db_session, story.id, status=ExtractionStatus.COMPLETED)
+        await _seed_task(
+            db_session,
+            story.id,
+            "newest",
+            extraction=version,
+            created_at=datetime(2026, 1, 3),
+        )
+        await _seed_task(
+            db_session,
+            story.id,
+            "oldest",
+            extraction=version,
+            created_at=datetime(2026, 1, 1),
+        )
+        await _seed_task(
+            db_session,
+            story.id,
+            "middle",
+            extraction=version,
+            created_at=datetime(2026, 1, 2),
+        )
+
+        one = await repo.list_for_context(project.id, exclude_story_id=unrelated)
+        two = await repo.list_for_context(project.id, exclude_story_id=unrelated)
+
+        assert [r.title for r in one] == ["oldest", "middle", "newest"]
+        assert one == two
+
+    @pytest.mark.asyncio
+    async def test_rows_carry_title_status_and_owning_story(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """The projection is exactly what the prompt block needs, keyed per task."""
+        repo = SQLAlchemyTaskRepository(db_session)
+        project = await _seed_context_project(db_session, workspace_id, "Projection")
+        story = await _seed_story_in(db_session, project, "projected")
+        version = await seed_extraction(db_session, story.id, status=ExtractionStatus.COMPLETED)
+        task = await _seed_task(db_session, story.id, "projected-task", extraction=version)
+
+        rows = await repo.list_for_context(project.id, exclude_story_id=uuid4())
+
+        assert [(r.title, r.status, r.user_story_id) for r in rows] == [
+            ("projected-task", task.status, story.id)
+        ]
+        assert rows[0].status is TaskStatus.BACKLOG
+
+    @pytest.mark.asyncio
+    async def test_matches_the_current_version_read_the_api_serves(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """Cross-check: the context read equals (b)'s current-version page read.
+
+        The currency rule is now expressed in a third place, so a test ties the
+        shapes: ``list_for_context(project)`` must equal the union of the
+        current-version rows ``list_page(workspace_id=...)`` — the same read
+        ``GET /tasks?workspace_id=`` serves — returns for the project's
+        stories, over a two-version, one-invalid-mark fixture.
+
+        The mark sits on a *superseded* version's task on purpose: both reads
+        drop that version by currency, so their scopes coincide and this test
+        isolates the currency rule. The mark's own effect on the context read
+        is the active-mark case above. The excluded story's rows are dropped
+        from the page in the test only to align the two scopes — the production
+        read puts that exclusion in the ``WHERE``.
+        """
+        repo = SQLAlchemyTaskRepository(db_session)
+        project = await _seed_context_project(db_session, workspace_id, "Cross-check")
+        two_versioned = await _seed_story_in(db_session, project, "two-versioned")
+        plain = await _seed_story_in(db_session, project, "plain")
+        excluded = await _seed_story_in(db_session, project, "being-decomposed")
+        v1 = await seed_extraction(db_session, two_versioned.id, status=ExtractionStatus.COMPLETED)
+        v2 = await seed_extraction(db_session, two_versioned.id, status=ExtractionStatus.COMPLETED)
+        v1_plain = await _seed_task(db_session, two_versioned.id, "v1-plain", extraction=v1)
+        v1_marked = await _seed_task(db_session, two_versioned.id, "v1-marked", extraction=v1)
+        await _seed_task(db_session, two_versioned.id, "v2-task", extraction=v2)
+        plain_v = await seed_extraction(db_session, plain.id, status=ExtractionStatus.COMPLETED)
+        await _seed_task(db_session, plain.id, "plain-task", extraction=plain_v)
+        excluded_v = await seed_extraction(
+            db_session, excluded.id, status=ExtractionStatus.COMPLETED
+        )
+        await _seed_task(db_session, excluded.id, "excluded-task", extraction=excluded_v)
+        await _mark(db_session, v1_marked.id, "Too coarse to implement")
+        assert v1_plain.id  # the superseded task stays unmarked
+
+        context_rows = await repo.list_for_context(project.id, exclude_story_id=excluded.id)
+        page, _total = await repo.list_page(workspace_id=workspace_id, limit=100, offset=0)
+
+        expected = sorted(t.title for t in page if t.user_story_id != excluded.id)
+        assert expected == ["plain-task", "v2-task"], expected
+        assert sorted(r.title for r in context_rows) == expected
+
+    def test_signature_carries_no_limit_or_offset(self) -> None:
+        """Neither the port nor the implementation exposes a page window."""
+        for target in (
+            TaskRepository.list_for_context,
+            SQLAlchemyTaskRepository.list_for_context,
+        ):
+            self._assert_no_window(target)

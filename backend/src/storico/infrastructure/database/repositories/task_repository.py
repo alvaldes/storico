@@ -13,10 +13,11 @@ from sqlalchemy.orm import aliased
 from storico.domain.entities import EntityNotFound, RepositoryError, Task
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.task import TaskStatus
-from storico.domain.ports import TaskRepository
+from storico.domain.ports import TaskContextRow, TaskRepository
 from storico.infrastructure.database.models import (
     ExtractionModel,
     ProjectModel,
+    TaskInvalidationModel,
     TaskModel,
     UserStoryModel,
 )
@@ -185,6 +186,48 @@ class SQLAlchemyTaskRepository(TaskRepository):
             self._session, with_total(stmt), count_stmt, limit=limit, offset=offset
         )
         return [self._to_domain(model) for model, _total in rows], total
+
+    async def list_for_context(
+        self, project_id: UUID, *, exclude_story_id: UUID
+    ) -> list[TaskContextRow]:
+        """Current-version, valid tasks of the project except one story, unpaginated.
+
+        One statement, no ``LIMIT``: the story → project walk (``task →``
+        ``story``), the currency predicate reused from ``_current_version_only``
+        — the same "no higher-numbered completed version" shape (b)'s page and
+        export reads carry, so currency is never spelled twice in this file —
+        the active-mark exclusion (``NOT EXISTS`` a ``task_invalidations`` row
+        with ``revoked_at IS NULL``, the predicate (a)'s partial unique index
+        backs), and the excluded story. All four live in the ``WHERE``: a
+        Python filter would reintroduce the silent truncation the unbounded
+        read exists to prevent. Only the three columns the prompt block reads
+        are selected, and the ``ORDER BY`` is the ascending ``created_at, id``
+        the port documents.
+        """
+        stmt = (
+            select(TaskModel.title, TaskModel.status, TaskModel.user_story_id)
+            .join(UserStoryModel, UserStoryModel.id == TaskModel.user_story_id)
+            .where(
+                self._current_version_only(UserStoryModel.project_id == project_id),
+                TaskModel.user_story_id != exclude_story_id,
+                ~exists(
+                    select(1).where(
+                        TaskInvalidationModel.task_id == TaskModel.id,
+                        TaskInvalidationModel.revoked_at.is_(None),
+                    )
+                ),
+            )
+            .order_by(TaskModel.created_at, TaskModel.id)
+        )
+        result = await self._session.execute(stmt)
+        return [
+            TaskContextRow(
+                title=row.title,
+                status=TaskStatus(row.status),
+                user_story_id=row.user_story_id,
+            )
+            for row in result
+        ]
 
     async def list_by_story(self, user_story_id: UUID) -> list[Task]:
         stmt = select(TaskModel).where(TaskModel.user_story_id == user_story_id)

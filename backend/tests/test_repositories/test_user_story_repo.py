@@ -1,5 +1,6 @@
 """Tests for SQLAlchemyUserStoryRepository."""
 
+import inspect
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from storico.domain.entities import EntityNotFound, Project, RepositoryError, UserStory
 from storico.domain.entities.story_deletion import StoryDeletion
+from storico.domain.ports import UserStoryRepository
 from storico.infrastructure.database.models import StoryDeletionModel
 from storico.infrastructure.database.repositories import (
     SQLAlchemyProjectRepository,
@@ -672,3 +674,106 @@ async def test_delete_with_record_round_trips_identity_and_version_numbers(
     assert saved.version_numbers == [1, 2]
     assert saved.deleted_by == deleted_by
     assert saved.deleted_at.replace(tzinfo=UTC) == deleted_at
+
+
+class TestListForContext:
+    """The prompt-context read: every story of one project except one, unpaginated.
+
+    The context block is not a paginated resource: the paginator's window
+    (default 20, cap 100) would drop rows while the composed prompt claimed to
+    carry the whole project — silent truncation. So the read is deliberately
+    unbounded, the exclusion rides in the ``WHERE`` (never in a Python filter),
+    and the signature carries no ``limit``/``offset`` to reopen the window.
+    """
+
+    @staticmethod
+    def _assert_no_window(target: object) -> None:
+        """Pin the signature: no ``limit``/``offset``, and a required keyword-only exclusion.
+
+        Same inspection pattern as ``test_unit/test_vector_store.py`` — asserted
+        over both the port method and the SQLAlchemy implementation, so neither
+        half can grow a page window or make the exclusion optional.
+        """
+        signature = inspect.signature(target)  # type: ignore[arg-type]
+        assert "limit" not in signature.parameters, signature
+        assert "offset" not in signature.parameters, signature
+        exclude = signature.parameters["exclude_story_id"]
+        assert exclude.kind is inspect.Parameter.KEYWORD_ONLY, signature
+        assert exclude.default is inspect.Parameter.empty, signature
+
+    @pytest.mark.asyncio
+    async def test_returns_the_other_stories_and_never_the_excluded_one(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """Three stories, one excluded: exactly the two others come back.
+
+        The rows are the two-column projection (``id``, ``raw_text``) — the
+        prompt needs the text and the identity, nothing else.
+        """
+        repo = SQLAlchemyUserStoryRepository(db_session)
+        project = await _seed_project(db_session, workspace_id, "Context")
+        s1 = await repo.save(_story(project.id, "first"))
+        s2 = await repo.save(_story(project.id, "being-decomposed"))
+        s3 = await repo.save(_story(project.id, "third"))
+
+        rows = await repo.list_for_context(project.id, exclude_story_id=s2.id)
+
+        assert [(r.id, r.raw_text) for r in rows] == [
+            (s1.id, s1.raw_text),
+            (s3.id, s3.raw_text),
+        ]
+        assert all(r.id != s2.id for r in rows)
+
+    @pytest.mark.asyncio
+    async def test_orders_oldest_first_and_is_deterministic(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """Two calls over the same state return the same ``created_at, id`` order.
+
+        The order is part of the statement (ascending — the prompt reads the
+        project the way it was built), and determinism is what makes two runs
+        over an unchanged project compose identical context blocks.
+        """
+        repo = SQLAlchemyUserStoryRepository(db_session)
+        project = await _seed_project(db_session, workspace_id, "Ordered context")
+        first = await repo.save(_story(project.id, "newest", created_at=datetime(2026, 1, 3)))
+        excluded = await repo.save(
+            _story(project.id, "being-decomposed", created_at=datetime(2026, 1, 1))
+        )
+        third = await repo.save(_story(project.id, "middle", created_at=datetime(2026, 1, 2)))
+
+        one = await repo.list_for_context(project.id, exclude_story_id=excluded.id)
+        two = await repo.list_for_context(project.id, exclude_story_id=excluded.id)
+
+        assert [r.id for r in one] == [third.id, first.id]
+        assert one == two
+
+    @pytest.mark.asyncio
+    async def test_a_120_story_project_returns_119_past_the_page_cap(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """120 stories minus the excluded one: 119 rows, past the API's cap of 100.
+
+        ``list_page`` would have returned at most 100 (its cap) and dropped the
+        rest silently — the truncation this unbounded read exists to prevent.
+        """
+        repo = SQLAlchemyUserStoryRepository(db_session)
+        project = await _seed_project(db_session, workspace_id, "Wide")
+        stories = await repo.save_many(
+            [_story(project.id, f"story-{index}") for index in range(120)]
+        )
+        excluded = stories[0]
+
+        rows = await repo.list_for_context(project.id, exclude_story_id=excluded.id)
+
+        assert len(rows) == 119
+        assert {r.id for r in rows} == {s.id for s in stories if s.id != excluded.id}
+
+    @pytest.mark.asyncio
+    async def test_signature_carries_no_limit_or_offset(self) -> None:
+        """Neither the port nor the implementation exposes a page window."""
+        for target in (
+            UserStoryRepository.list_for_context,
+            SQLAlchemyUserStoryRepository.list_for_context,
+        ):
+            self._assert_no_window(target)

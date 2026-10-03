@@ -212,7 +212,7 @@ Runner for this phase:
 STRICT TDD order: RED first, then GREEN, then TRIANGULATE, then REFACTOR. If the `ask-on-risk` pause
 asks for the split, parts i (1.1–1.4), ii (1.5–1.10) and iii (1.11–1.15) each end green.
 
-- [ ] 1.1 RED — `backend/tests/test_repositories/test_user_story_repo.py`: add the failing
+- [x] 1.1 RED — `backend/tests/test_repositories/test_user_story_repo.py`: add the failing
       `list_for_context` cases. A project with three stories returns the two others for a given
       `exclude_story_id`, never the excluded one; two calls over the same project state return the
       same order (`created_at, id`); a 120-story project returns 119 — past the API's page cap of 100,
@@ -221,7 +221,7 @@ asks for the split, parts i (1.1–1.4), ii (1.5–1.10) and iii (1.11–1.15) e
       implementation (the pattern at `backend/tests/test_unit/test_vector_store.py:157-166`). Prove RED
       with
       `cd backend && conda run -n storico python -m pytest tests/test_repositories/test_user_story_repo.py -m "not integration"`.
-- [ ] 1.2 RED — `backend/tests/test_repositories/test_task_repo.py`: add the failing
+- [x] 1.2 RED — `backend/tests/test_repositories/test_task_repo.py`: add the failing
       `list_for_context` cases. The excluded story's tasks are absent **in every one of its versions**
       (v1 completed + v2 completed, both sets of tasks in the fixture); a task carrying an active mark
       is absent; the same task is present once its mark is revoked; a superseded version's tasks are
@@ -231,13 +231,13 @@ asks for the split, parts i (1.1–1.4), ii (1.5–1.10) and iii (1.11–1.15) e
       one-invalid-mark fixture (the currency rule reported in one place); deterministic order; no
       `limit`/`offset` in the signature. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_repositories/test_task_repo.py -m "not integration"`.
-- [ ] 1.3 GREEN — `backend/src/storico/domain/ports/user_story_repository.py` and
+- [x] 1.3 GREEN — `backend/src/storico/domain/ports/user_story_repository.py` and
       `backend/src/storico/domain/ports/task_repository.py`: add the frozen slotted
       `StoryContextRow(id, raw_text)` and `TaskContextRow(title, status, user_story_id)` beside their
       ports, plus `list_for_context(project_id, *, exclude_story_id)` on each, with the docstring
       stating that the read is deliberately unbounded and the exclusion rides in the `WHERE`.
       Re-export both row types from `backend/src/storico/domain/ports/__init__.py`.
-- [ ] 1.4 GREEN — `backend/src/storico/infrastructure/database/repositories/user_story_repository.py`:
+- [x] 1.4 GREEN — `backend/src/storico/infrastructure/database/repositories/user_story_repository.py`:
       the two-column projection `select(UserStoryModel.id, UserStoryModel.raw_text).where(project_id
       == :p, id != :excluded).order_by(created_at, id)`;
       `backend/src/storico/infrastructure/database/repositories/task_repository.py`: the one statement
