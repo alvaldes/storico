@@ -246,7 +246,7 @@ asks for the split, parts i (1.1–1.4), ii (1.5–1.10) and iii (1.11–1.15) e
       a higher-numbered completed version of the same story, `NOT EXISTS` a
       `task_invalidations` row with `revoked_at IS NULL`, `tasks.user_story_id != :excluded` — with
       **both** exclusions in the `WHERE` and no Python filter.
-- [ ] 1.5 RED — `backend/tests/test_unit/test_prompt_manager.py`: add the failing template cases
+- [x] 1.5 RED — `backend/tests/test_unit/test_prompt_manager.py`: add the failing template cases
       against the rendered prompt only (no database). The prompt carries the `## Project Context`
       block with the name, the description, each other story's text and each task's title with its
       owning story id; the block order is `## Project Context` → `## Do Not Produce These Tasks
@@ -255,12 +255,12 @@ asks for the split, parts i (1.1–1.4), ii (1.5–1.10) and iii (1.11–1.15) e
       count; a workspace `instruction_template` that references only `{{ user_story }}` renders
       **neither** new block (C8's opt-out half). Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_unit/test_prompt_manager.py -m "not integration"`.
-- [ ] 1.6 GREEN — `backend/src/storico/infrastructure/llm/prompts/task_generation.j2`: add the
+- [x] 1.6 GREEN — `backend/src/storico/infrastructure/llm/prompts/task_generation.j2`: add the
       `## Project Context` block and the `## Do Not Produce These Tasks (Previously Marked Invalid)`
       block, both in English, both guarded by `{% if %}` on their variables, in the fixed order; leave
       the format instructions, the existing `{% if examples %}` section and `{{user_story}}`
       untouched.
-- [ ] 1.7 RED — `backend/tests/test_api/test_extraction.py`: add the failing runner-level context
+- [x] 1.7 RED — `backend/tests/test_api/test_extraction.py`: add the failing runner-level context
       cases — the rendered prompt contains the project name and description, each other story's
       `raw_text`, and each existing task's title with its owning story; a description edit after v1
       does not change v1's stored prompt while v2's carries the new one; two runs over an unchanged
@@ -268,21 +268,21 @@ asks for the split, parts i (1.1–1.4), ii (1.5–1.10) and iii (1.11–1.15) e
       without it fails). These are RED today because `render()` takes no context and
       `ProjectContext` does not exist. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_extraction.py -m "not integration"`.
-- [ ] 1.8 GREEN — `backend/src/storico/domain/services/extraction_service.py`: add the frozen slotted
+- [x] 1.8 GREEN — `backend/src/storico/domain/services/extraction_service.py`: add the frozen slotted
       `ProjectContext(name, description, other_stories, existing_tasks, negative_examples=(),
       negative_examples_omitted=0)` with `as_template_variables()` doing the `UUID → str` /
       `TaskStatus → str` conversion at the boundary; `render(...)` gains the **required** keyword-only
       `context: ProjectContext`; `prompt_kwargs` becomes `user_story`, `project_context`,
       `negative_examples`, `negative_examples_omitted` and `few_shots` (plus the unchanged `examples`
       when there are examples); `RenderedPrompt` itself is unchanged.
-- [ ] 1.9 GREEN — `backend/src/storico/infrastructure/tasks/extraction_task.py`: in `_run_extraction`,
+- [x] 1.9 GREEN — `backend/src/storico/infrastructure/tasks/extraction_task.py`: in `_run_extraction`,
       between the story load and the `render()` call, read the project row through the existing
       `ProjectRepository.find_by_id(story.project_id)` for name and description (ignoring the
       `workspace_id` that comes back), call both new port methods with
       `exclude_story_id=story.id`, build `ProjectContext` and pass `context=` into `render()`. Until
       task 2.5 wires the marks read, `negative_examples` is empty and `negative_examples_omitted`
       is `0` — the block ships but stays empty, which is why D7's requirement belongs to WU2.
-- [ ] 1.10 GREEN — the required-argument churn at every remaining `render()` / `extract()` call site:
+- [x] 1.10 GREEN — the required-argument churn at every remaining `render()` / `extract()` call site:
       add one shared `simple_context()` builder to `backend/tests/_helpers.py` and use it in
       `backend/tests/test_services/test_extraction_service.py`,
       `backend/tests/test_services/test_workspace_prompt_resolution.py` (**the call site neither

@@ -25,7 +25,7 @@ from storico.domain.ports import (
 )
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.infrastructure.database.repositories import SQLAlchemyExtractionRepository
-from tests._helpers import seed_extraction
+from tests._helpers import seed_extraction, simple_context
 
 
 class TestExtractionService:
@@ -74,7 +74,7 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "As a user, I want X"
 
-        rendered = await deps["service"].render(mock_story)
+        rendered = await deps["service"].render(mock_story, context=simple_context())
         result_tasks, raw = await deps["service"].generate(rendered, LLMConfig(model="test"))
         assert len(result_tasks) == 1
         assert result_tasks[0].summary == "Task one"
@@ -92,11 +92,15 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "As a user, I want X"
 
-        await deps["service"].render(mock_story)
+        await deps["service"].render(mock_story, context=simple_context())
 
         deps["prompt_manager"].render_instruction.assert_called_once_with(
             None,
             user_story="As a user, I want X",
+            project_context=simple_context().as_template_variables(),
+            negative_examples=[],
+            negative_examples_omitted=0,
+            few_shots=[],
         )
 
     @pytest.mark.asyncio
@@ -111,7 +115,9 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        rendered = await deps["service"].render(mock_story, system_prompt="SYSTEM")
+        rendered = await deps["service"].render(
+            mock_story, system_prompt="SYSTEM", context=simple_context()
+        )
         await deps["service"].generate(rendered, LLMConfig(model="test"))
 
         # Verify the system prompt is passed separately, not concatenated
@@ -136,11 +142,16 @@ class TestExtractionService:
         await deps["service"].render(
             mock_story,
             instruction_template="Custom: {{user_story}}",
+            context=simple_context(),
         )
 
         deps["prompt_manager"].render_instruction.assert_called_once_with(
             "Custom: {{user_story}}",
             user_story="Story",
+            project_context=simple_context().as_template_variables(),
+            negative_examples=[],
+            negative_examples_omitted=0,
+            few_shots=[],
         )
 
     # ── render() + generate() — error handling ─────────────────────
@@ -157,7 +168,7 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        rendered = await deps["service"].render(mock_story)
+        rendered = await deps["service"].render(mock_story, context=simple_context())
         with pytest.raises(LLMConnectionError):
             await deps["service"].generate(rendered, LLMConfig(model="test"))
 
@@ -174,7 +185,7 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        rendered = await deps["service"].render(mock_story)
+        rendered = await deps["service"].render(mock_story, context=simple_context())
         with pytest.raises(ParseError):
             await deps["service"].generate(rendered, LLMConfig(model="test"))
 
@@ -225,7 +236,7 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        rendered = await deps["service"].render(mock_story)
+        rendered = await deps["service"].render(mock_story, context=simple_context())
         result_tasks, raw = await deps["service"].generate(rendered, LLMConfig(model="test"))
         assert len(result_tasks) == 1
         # Vector store should not be referenced at all
@@ -258,7 +269,7 @@ class TestExtractionService:
 
         # RAG retrieval requires a workspace scope; this call exercises the
         # scoped-search path end to end.
-        await deps["service"].render(mock_story, workspace_id=uuid4())
+        await deps["service"].render(mock_story, workspace_id=uuid4(), context=simple_context())
 
         # Verify search_similar was called
         deps["vector_store"].search_similar.assert_called_once()
@@ -282,7 +293,9 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        rendered = await deps["service"].render(mock_story, workspace_id=uuid4())
+        rendered = await deps["service"].render(
+            mock_story, workspace_id=uuid4(), context=simple_context()
+        )
         result_tasks, raw = await deps["service"].generate(rendered, LLMConfig(model="test"))
         assert len(result_tasks) == 1
         # Should render WITHOUT examples kwarg
@@ -315,7 +328,7 @@ class TestExtractionService:
         mock_story.id = uuid4()
         mock_story.raw_text = "Story"
 
-        rendered = await deps["service"].render(mock_story)
+        rendered = await deps["service"].render(mock_story, context=simple_context())
         result_tasks, raw = await deps["service"].generate(rendered, LLMConfig(model="test"))
 
         assert len(result_tasks) == 1

@@ -6,7 +6,9 @@ Tests the workspace-scoped routes at
 
 import asyncio
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
@@ -26,6 +28,7 @@ from storico.domain.entities import (
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
+from storico.domain.services.extraction_service import ExtractionService
 from storico.infrastructure.crypto import FernetCipher
 from storico.infrastructure.database.models import (
     ExtractionModel,
@@ -34,6 +37,7 @@ from storico.infrastructure.database.models import (
 )
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
+    SQLAlchemyProjectRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
@@ -42,8 +46,9 @@ from storico.infrastructure.database.repositories import (
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
 )
+from storico.infrastructure.llm import PromptManager, TaskParser
 from storico.infrastructure.tasks import extraction_task
-from tests._helpers import seed_extraction
+from tests._helpers import seed_extraction, seed_task
 
 _MASTER_KEY = Fernet.generate_key().decode("ascii")
 
@@ -1598,3 +1603,217 @@ class TestVersionedTaskRowsOnTheLivePath:
         assert {row.id for row in v2_rows}.isdisjoint({snapshot[0] for snapshot in before})
         assert current is not None and current.version_number == 2
         assert len(story_read) == 3
+
+
+# ── WU1 1.7 — the project enters the prompt on the live runner path ─────────
+
+
+def _context_block(prompt_rendered: str) -> str:
+    """The text between the context header and the story line, for block-level comparison."""
+    start = prompt_rendered.index("## Project Context")
+    end = prompt_rendered.index("User story:", start)
+    return prompt_rendered[start:end]
+
+
+@pytest.mark.unit
+class TestExtractionPromptCarriesTheProject:
+    """The runner composes the project into the prompt it renders (WU1 1.7).
+
+    The subject is the stored ``prompt_rendered`` — the context block the
+    provider actually received is readable from the row, which is what makes
+    these assertions possible without re-rendering anything.
+    """
+
+    async def _seed_pending(self, factory, story_id: UUID) -> Extraction:
+        """Birth one pending extraction through the allocation path."""
+        async with factory() as session:
+            return await seed_extraction(session, story_id, model_used="llama3.2")
+
+    async def _run(
+        self,
+        monkeypatch,
+        test_engine: AsyncEngine,
+        pending: Extraction,
+        story_id: UUID,
+        workspace_id: UUID,
+        llm: LLMPort,
+    ) -> None:
+        """Run the real background task against the test engine with a fake LLM."""
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        # The subject here is the rendered prompt, not retrieval — see the helper.
+        _make_the_vector_store_unavailable(monkeypatch)
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=story_id,
+            workspace_id=workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_context_block_carries_the_project(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The prompt names the project, the other stories and their current tasks."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(stories=2)
+        other_story = seeded.story_ids[0]
+        story_id = seeded.story_ids[1]
+
+        async with factory() as session:
+            completed = await seed_extraction(
+                session,
+                other_story,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            await seed_task(
+                session, other_story, "Add password reset endpoint", extraction=completed
+            )
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            row = (await _extraction_rows(session, story_id))[0]
+
+        assert row.prompt_rendered is not None
+        assert "## Project Context" in row.prompt_rendered
+        assert "Seeded Project" in row.prompt_rendered
+        # The other story's text and its task paired with the owning story id.
+        assert (
+            "As a user, I want to use seeded feature 0 so that the seeded chain is addressable"
+            in row.prompt_rendered
+        )
+        assert "Add password reset endpoint" in row.prompt_rendered
+        assert f"(story: {other_story})" in row.prompt_rendered
+        # The story being decomposed appears exactly once — as the story, never as context.
+        assert row.prompt_rendered.count("use seeded feature 1") == 1
+
+    @pytest.mark.asyncio
+    async def test_a_description_edit_after_v1_does_not_change_v1s_stored_prompt(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """v1's stored prompt keeps the description it was rendered with; v2's carries the new one.
+
+        The snapshot is what makes the divergence readable: two rows, each
+        holding the project state of its own render moment.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_ids[0]
+
+        async with factory() as session:
+            project = await SQLAlchemyProjectRepository(session).find_by_id(seeded.project_id)
+            assert project is not None
+            await SQLAlchemyProjectRepository(session).save(
+                replace(project, description="Original description")
+            )
+
+        v1 = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch, test_engine, v1, story_id, seeded.workspace_id, _AnsweringLLM(_RESPONSE_V1)
+        )
+
+        async with factory() as session:
+            project = await SQLAlchemyProjectRepository(session).find_by_id(seeded.project_id)
+            assert project is not None
+            await SQLAlchemyProjectRepository(session).save(
+                replace(project, description="Edited description")
+            )
+
+        v2 = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch, test_engine, v2, story_id, seeded.workspace_id, _AnsweringLLM(_RESPONSE_V2)
+        )
+
+        async with factory() as session:
+            rows = await _extraction_rows(session, story_id)
+
+        assert [row.version_number for row in rows] == [1, 2]
+        assert rows[0].prompt_rendered is not None
+        assert rows[1].prompt_rendered is not None
+        assert "Original description" in rows[0].prompt_rendered
+        assert "Edited description" not in rows[0].prompt_rendered
+        assert "Edited description" in rows[1].prompt_rendered
+        assert "Original description" not in rows[1].prompt_rendered
+
+    @pytest.mark.asyncio
+    async def test_two_runs_over_unchanged_project_state_compose_identical_blocks(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """Same project state → byte-identical context blocks in both stored prompts."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(stories=2)
+        other_story = seeded.story_ids[0]
+        story_id = seeded.story_ids[1]
+
+        async with factory() as session:
+            completed = await seed_extraction(
+                session,
+                other_story,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            await seed_task(
+                session, other_story, "Add password reset endpoint", extraction=completed
+            )
+
+        first = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            first,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+        second = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            second,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V2),
+        )
+
+        async with factory() as session:
+            rows = await _extraction_rows(session, story_id)
+
+        assert [row.version_number for row in rows] == [1, 2]
+        assert rows[0].prompt_rendered is not None
+        assert rows[1].prompt_rendered is not None
+        assert _context_block(rows[0].prompt_rendered) == _context_block(rows[1].prompt_rendered)
+
+    @pytest.mark.asyncio
+    async def test_render_refuses_to_run_without_a_context(self) -> None:
+        """The ``context`` argument is required — a call without it fails.
+
+        No default: a caller able to omit it could render 0.8.0's two-variable
+        prompt while the row claimed to be a 0.9.0 version. The type carries the
+        requirement, so the failure is a ``TypeError`` at the call itself.
+        """
+        service = ExtractionService(
+            llm_port=AsyncMock(),
+            prompt_manager=PromptManager(),
+            task_parser=TaskParser(),
+        )
+        story = SimpleNamespace(raw_text="As a user, I want to log in")
+
+        with pytest.raises(TypeError):
+            await service.render(
+                story,
+                system_prompt=None,
+                instruction_template=None,
+                workspace_id=None,
+                few_shot_config=None,
+            )

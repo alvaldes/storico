@@ -3,21 +3,30 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from storico.domain.entities.exceptions import LLMError
+from storico.domain.entities.task import TaskStatus
 from storico.domain.ports import (
     ExtractionExample,
     LLMConfig,
     LLMPort,
     ParsedTask,
+    StoryContextRow,
+    TaskContextRow,
     VectorStorePort,
 )
 from storico.infrastructure.llm.prompt_manager import PromptManager
 from storico.infrastructure.llm.task_parser import TaskParser
 
 from .extraction_judge_service import LLMJudgeService
+
+if TYPE_CHECKING:
+    # WU2 lands this module with the negative-example composer; the field is
+    # always empty until then, so the runtime annotation stays a string.
+    from storico.domain.services.negative_examples import NegativeExample
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +42,53 @@ class FewShotConfig:
     enabled: bool = True
     limit: int = 3
     threshold: float = 0.85
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectContext:
+    """The project state one prompt render is composed from.
+
+    Built by the runner between the story load and the ``render()`` call from
+    the project row and the two unbounded context reads; consumed by
+    ``render()`` as one value so this service stays repository-free. Every
+    value that reaches ``as_template_variables()`` is JSON-native, because the
+    same dictionary is what ``RenderedPrompt.template_variables`` carries and
+    what the version's snapshot records.
+    """
+
+    name: str  # project name at render time
+    description: str  # description at render time
+    other_stories: tuple[StoryContextRow, ...]  # the project's OTHER stories, id + raw_text
+    existing_tasks: tuple[TaskContextRow, ...]  # current-version, valid tasks only
+    negative_examples: tuple[NegativeExample, ...] = ()  # composed by WU2; empty until then
+    negative_examples_omitted: int = 0
+
+    def as_template_variables(self) -> dict[str, object]:
+        """Project the context into the JSON-native shape the template reads.
+
+        The boundary conversion: ``UUID → str`` and ``TaskStatus → str`` happen
+        here and nowhere else, so everything that reaches the template and the
+        snapshot is directly serializable.
+        """
+        return {
+            "name": self.name,
+            "description": self.description,
+            "other_stories": [
+                {"id": str(story.id), "raw_text": story.raw_text} for story in self.other_stories
+            ],
+            "existing_tasks": [
+                {
+                    "user_story_id": str(task.user_story_id),
+                    "title": task.title,
+                    "status": (
+                        task.status.value
+                        if isinstance(task.status, TaskStatus)
+                        else str(task.status)
+                    ),
+                }
+                for task in self.existing_tasks
+            ],
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +155,7 @@ class ExtractionService:
         instruction_template: str | None = None,
         workspace_id: UUID | None = None,
         few_shot_config: FewShotConfig | None = None,
+        context: ProjectContext,
     ) -> RenderedPrompt:
         """Compose the prompt the provider will receive, without contacting it.
 
@@ -119,6 +176,10 @@ class ExtractionService:
             workspace_id: Workspace the extraction belongs to (for scoped retrieval).
             few_shot_config: Workspace few-shot retrieval config. ``None``
                 falls back to the service-level default.
+            context: The project state this prompt is composed from — required,
+                with no default: a caller able to omit it could render the
+                two-variable prompt of 0.8.0 while the row claimed to be a
+                0.9.0 version. The type carries the requirement.
 
         Returns:
             The frozen ``RenderedPrompt`` — ``text`` is what the provider receives.
@@ -146,8 +207,19 @@ class ExtractionService:
                 },
             )
 
-        # Render with or without examples
-        prompt_kwargs: dict[str, object] = {"user_story": raw_text}
+        # Render with or without examples. ``prompt_kwargs`` IS
+        # ``RenderedPrompt.template_variables``: the same dictionary the
+        # template receives is what the snapshot records, so the two cannot
+        # drift. ``negative_examples`` is rendered, never snapshotted — the
+        # block itself is in ``prompt_rendered`` and re-derivable from the
+        # marks; WU2 replaces the raw list with the composed rendering.
+        prompt_kwargs: dict[str, object] = {
+            "user_story": raw_text,
+            "project_context": context.as_template_variables(),
+            "negative_examples": list(context.negative_examples),
+            "negative_examples_omitted": context.negative_examples_omitted,
+            "few_shots": [asdict(example) for example in examples],
+        }
         if examples:
             prompt_kwargs["examples"] = self._format_examples(examples)
 

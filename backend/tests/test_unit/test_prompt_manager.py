@@ -133,3 +133,126 @@ class TestPromptManager:
         with pytest.raises(PromptTemplateNotFound) as exc_info:
             self.manager.render("missing_template.j2")
         assert "missing_template.j2" in str(exc_info.value)
+
+
+_OTHER_STORY_ID = "11111111-1111-1111-1111-111111111111"
+
+
+def _context_variables() -> dict[str, object]:
+    """The ``project_context`` shape ``render()`` hands the template (JSON-native).
+
+    The same dictionary ``ProjectContext.as_template_variables()`` returns in
+    production; built literally here so these cases stay template-only (no
+    database, no service).
+    """
+    return {
+        "name": "Payments Platform",
+        "description": "Everything the money touches",
+        "other_stories": [
+            {
+                "id": _OTHER_STORY_ID,
+                "raw_text": "As a user, I want to reset my password so that I can log back in",
+            }
+        ],
+        "existing_tasks": [
+            {
+                "user_story_id": _OTHER_STORY_ID,
+                "title": "Add password reset endpoint",
+                "status": "done",
+            }
+        ],
+    }
+
+
+class TestTaskGenerationContextBlocks:
+    """task_generation.j2 carries the project context and negative-example blocks (WU1 1.5).
+
+    Rendered-prompt cases only: the subject is what the default template does
+    with the five ``template_variables`` entries, not who composed them.
+    """
+
+    def setup_method(self) -> None:
+        self.manager = PromptManager()
+
+    def _render(self, **overrides: object) -> str:
+        """Render the default template with the full 0.9.0 variable set."""
+        base: dict[str, object] = {
+            "user_story": "As a user, I want to log in",
+            "project_context": _context_variables(),
+            "negative_examples": [],
+            "negative_examples_omitted": 0,
+            "few_shots": [],
+        }
+        base.update(overrides)
+        return self.manager.render_instruction(None, **base)
+
+    def test_the_context_block_carries_the_project(self) -> None:
+        """The block names the project, its description, the other story and its tasks."""
+        result = self._render()
+
+        assert "## Project Context" in result
+        assert "Payments Platform" in result
+        assert "Everything the money touches" in result
+        assert "As a user, I want to reset my password so that I can log back in" in result
+        assert "Add password reset endpoint" in result
+        # Each task is paired with the story it came from.
+        assert f"(story: {_OTHER_STORY_ID})" in result
+
+    def test_the_block_order_is_context_negative_few_shot_story(self) -> None:
+        """Context, then the negative block, then few-shots, then the story."""
+        result = self._render(
+            negative_examples=[
+                {"title": "Implement login retry", "reason": "duplicates", "version_number": 1}
+            ],
+            few_shots=[{"user_story_text": "Previous story"}],
+            examples="Example 1:\nUser story: Previous story\nTasks:\n1. Task A",
+        )
+
+        context_at = result.index("## Project Context")
+        negative_at = result.index("## Do Not Produce These Tasks (Previously Marked Invalid)")
+        few_shot_at = result.index("## Few-Shot Examples")
+        story_at = result.index("User story:")
+        assert context_at < negative_at < few_shot_at < story_at
+
+    def test_the_negative_block_lists_marks_and_announces_omissions(self) -> None:
+        """Each mark reads ``- title — reason: reason (version N)`` and the omission is announced."""
+        result = self._render(
+            negative_examples=[
+                {
+                    "title": "Implement login retry",
+                    "reason": "duplicates the auth task",
+                    "version_number": 1,
+                }
+            ],
+            negative_examples_omitted=2,
+        )
+
+        assert "## Do Not Produce These Tasks (Previously Marked Invalid)" in result
+        assert "- Implement login retry — reason: duplicates the auth task (version 1)" in result
+        assert "2 older marks were omitted." in result
+
+    def test_no_negative_block_when_nothing_is_marked(self) -> None:
+        """No marks (the WU1 production state) → the block and the sentence are absent."""
+        result = self._render()
+
+        assert "## Do Not Produce These Tasks (Previously Marked Invalid)" not in result
+        assert "older marks were omitted" not in result
+
+    def test_a_workspace_template_without_the_variables_renders_neither_block(self) -> None:
+        """A template referencing only ``{{ user_story }}`` renders neither new block.
+
+        C8's opt-out half: Jinja ignores the extra kwargs, so a workspace-authored
+        template keeps the provider's input free of both blocks.
+        """
+        result = self.manager.render_instruction(
+            "Story: {{user_story}}",
+            user_story="As a user, I want to log in",
+            project_context=_context_variables(),
+            negative_examples=[],
+            negative_examples_omitted=0,
+            few_shots=[],
+        )
+
+        assert result == "Story: As a user, I want to log in"
+        assert "## Project Context" not in result
+        assert "## Do Not Produce These Tasks (Previously Marked Invalid)" not in result

@@ -15,7 +15,21 @@ Each numbered task MUST have `summary:` and `description:` on SEPARATE lines. Do
 
 CRITICAL: Use ONLY plain text. Do NOT use markdown formatting like **bold**, *italics*, or backticks. Write `summary:` and `description:` as plain text without any surrounding markers.
 
-{% if examples %}
+{% if project_context %}
+## Project Context
+
+Project: {{ project_context.name }}
+Description: {{ project_context.description }}
+{% for story in project_context.other_stories %}- {{ story.raw_text }}
+{% endfor %}{% for task in project_context.existing_tasks %}- {{ task.title }} (story: {{ task.user_story_id }})
+{% endfor %}{% endif %}{% if negative_examples %}
+## Do Not Produce These Tasks (Previously Marked Invalid)
+
+A reviewer marked these tasks invalid in earlier versions of this story. Do not produce them again:
+{% for example in negative_examples %}- {{ example.title }} — reason: {{ example.reason }} (version {{ example.version_number }})
+{% endfor %}{% if negative_examples_omitted %}
+{{ negative_examples_omitted }} older marks were omitted.
+{% endif %}{% endif %}{% if examples %}
 ## Few-Shot Examples
 {{ examples }}
 

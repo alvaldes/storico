@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from storico.domain.entities.extraction import Extraction, ExtractionStatus
 from storico.domain.entities.task import Task
 from storico.domain.entities.workspace import Workspace
+from storico.domain.services.extraction_service import ProjectContext
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository as ExtractionRepository,
 )
@@ -133,3 +134,26 @@ async def seed_task(
         )
     task = Task(user_story_id=story_id, extraction_id=extraction.id, title=title, **kwargs)  # type: ignore[arg-type]
     return await TaskRepository(session).save(task)
+
+
+def simple_context(**overrides: object) -> ProjectContext:
+    """A minimal ``ProjectContext`` for ``render()``/``extract()`` call sites.
+
+    ``render()``'s ``context`` argument is required with no default — the type
+    carries the requirement that every rendered prompt was composed from real
+    project state — so every test call site must supply one. Call sites that
+    assert nothing about the context use this builder; cases that assert on the
+    composed block build their own ``ProjectContext`` with the rows they need.
+
+    Keyword overrides pass straight through: ``other_stories``/``existing_tasks``
+    take tuples of ``StoryContextRow``/``TaskContextRow``, ``negative_examples``
+    stays empty (WU2 composes it).
+    """
+    defaults: dict[str, object] = {
+        "name": "Test Project",
+        "description": "A test project description",
+        "other_stories": (),
+        "existing_tasks": (),
+    }
+    defaults.update(overrides)
+    return ProjectContext(**defaults)  # type: ignore[arg-type]

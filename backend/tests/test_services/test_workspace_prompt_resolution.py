@@ -15,6 +15,7 @@ from storico.infrastructure.llm.prompt_manager import (
     SYSTEM_PROMPT_TASK_GENERATION,
     PromptManager,
 )
+from tests._helpers import simple_context
 
 
 class TestResolveWorkspacePrompt:
@@ -141,6 +142,7 @@ class TestPipelineUsesWorkspacePrompt:
             story,
             system_prompt=resolved.system_prompt,
             instruction_template=resolved.instruction_template,
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test"))
 

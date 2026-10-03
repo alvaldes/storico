@@ -15,6 +15,7 @@ from storico.api.schemas.workspace_prompt import PromptRequest, PromptResponse
 from storico.domain.ports import ExtractionExample, LLMConfig, ParsedTask
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.infrastructure.llm.prompt_manager import PromptManager
+from tests._helpers import simple_context
 
 
 @pytest.fixture
@@ -65,6 +66,7 @@ class TestExtractionFlowWithFewShot:
             instruction_template=None,
             workspace_id=uuid4(),
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test-model"))
 
@@ -92,6 +94,7 @@ class TestExtractionFlowWithFewShot:
             user_story,
             workspace_id=uuid4(),
             few_shot_config=FewShotConfig(enabled=False),
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test-model"))
 
