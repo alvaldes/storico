@@ -23,9 +23,11 @@ from storico.domain.entities import (
     LLMConnectionError,
     User,
     WorkspaceMember,
+    WorkspacePrompt,
     WorkspaceRole,
 )
 from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.entities.task_invalidation import TaskInvalidation
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
 from storico.domain.services.extraction_service import ExtractionService
@@ -38,17 +40,19 @@ from storico.infrastructure.database.models import (
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
+    SQLAlchemyTaskInvalidationRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
     SQLAlchemyWorkspaceLLMConfigRepository,
+    SQLAlchemyWorkspacePromptRepository,
 )
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
 )
 from storico.infrastructure.llm import PromptManager, TaskParser
 from storico.infrastructure.tasks import extraction_task
-from tests._helpers import seed_extraction, seed_task
+from tests._helpers import seed_extraction, seed_task, simple_context
 
 _MASTER_KEY = Fernet.generate_key().decode("ascii")
 
@@ -1699,6 +1703,189 @@ class TestExtractionPromptCarriesTheProject:
         assert row.prompt_rendered.count("use seeded feature 1") == 1
 
     @pytest.mark.asyncio
+    async def test_a_storys_own_completed_tasks_never_enter_its_own_context_block(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """WU1 1.11 — a story's own previous run is not its own context.
+
+        The story being decomposed carries a completed v1 that produced
+        "Implement login retry"; the v2 prompt about to run must not carry that
+        title in its existing-tasks block, while a *different* story's "Set up
+        database schema" is positive context and is paired with its owning
+        story id. The story's own raw text appears exactly once in the whole
+        prompt — as the story to decompose, never as context.
+
+        Read-level half: the exclusion-in-``WHERE`` fact this end-to-end case
+        rides on is already pinned by
+        ``test_repositories/test_task_repo.py::TestListForContext::
+        test_the_excluded_story_is_absent_in_every_version`` (v1 + v2 tasks of
+        the excluded story, neither returns), so nothing is duplicated here.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(stories=2)
+        other_story = seeded.story_ids[0]
+        story_id = seeded.story_ids[1]
+
+        async with factory() as session:
+            own_v1 = await seed_extraction(
+                session,
+                story_id,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            await seed_task(session, story_id, "Implement login retry", extraction=own_v1)
+            other_v = await seed_extraction(
+                session,
+                other_story,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            await seed_task(session, other_story, "Set up database schema", extraction=other_v)
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            rows = await _extraction_rows(session, story_id)
+        row = next(r for r in rows if r.id == pending.id)
+
+        assert row.prompt_rendered is not None
+        # The other story's task is positive context, paired with its story.
+        assert "Set up database schema" in row.prompt_rendered
+        assert f"(story: {other_story})" in row.prompt_rendered
+        # The story's own completed v1 task never enters its own block.
+        assert "Implement login retry" not in row.prompt_rendered
+        # Its raw text appears exactly once — as the story to decompose.
+        assert row.prompt_rendered.count("use seeded feature 1") == 1
+
+    @pytest.mark.asyncio
+    async def test_an_invalid_task_leaves_every_context_block_and_returns_after_revoke(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """WU1 1.12 — an invalid task is positive context for nobody, until revoked.
+
+        A task of story A carries an active mark: it is absent from the
+        existing-tasks block of *every* other story's prompt (two different
+        stories are decomposed here), while each of their own valid tasks stays.
+        Once the mark is revoked while A's version is still current, the task
+        returns to the blocks; the decomposing story's own task stays excluded,
+        because the own-story exclusion and the validity rule are independent
+        ``WHERE`` terms. Story A is never itself decomposed: a completed run for
+        it would mint a newer version and retire the marked task by currency,
+        which is the read-level case below, not this one.
+
+        Read-level half: the hide/restore fact is already pinned by
+        ``test_repositories/test_task_repo.py::TestListForContext::
+        test_an_active_mark_hides_the_task_and_revoking_restores_it``, created
+        and revoked through the same invalidation repository used here.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(stories=3)
+        marked_story = seeded.story_ids[0]
+        first_decomposed = seeded.story_ids[1]
+        second_decomposed = seeded.story_ids[2]
+
+        async with factory() as session:
+            marked_v = await seed_extraction(
+                session,
+                marked_story,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            marked_task = await seed_task(
+                session, marked_story, "Implement login retry", extraction=marked_v
+            )
+            for story_id, title in (
+                (first_decomposed, "Configure the billing database"),
+                (second_decomposed, "Build the history UI component"),
+            ):
+                version = await seed_extraction(
+                    session,
+                    story_id,
+                    status=ExtractionStatus.COMPLETED,
+                    completed_at=datetime.now(UTC),
+                )
+                await seed_task(session, story_id, title, extraction=version)
+            mark = await SQLAlchemyTaskInvalidationRepository(session).create(
+                TaskInvalidation(task_id=marked_task.id, reason="Duplicates the auth task")
+            )
+
+        # While the mark is active: no story's prompt carries the marked task.
+        # The first decomposing story's block still carries the other story's
+        # valid seeded task; the second one's block carries the first story's
+        # run-output tasks (its seeded v1 was superseded by its own run).
+        for story_id in (first_decomposed, second_decomposed):
+            pending = await self._seed_pending(factory, story_id)
+            await self._run(
+                monkeypatch,
+                test_engine,
+                pending,
+                story_id,
+                seeded.workspace_id,
+                _AnsweringLLM(_RESPONSE_V1),
+            )
+
+        async with factory() as session:
+            while_marked = {
+                story_id: {
+                    row.version_number: row for row in await _extraction_rows(session, story_id)
+                }
+                for story_id in (first_decomposed, second_decomposed)
+            }
+        first_while_marked = while_marked[first_decomposed][max(while_marked[first_decomposed])]
+        assert first_while_marked.prompt_rendered is not None
+        assert "Implement login retry" not in first_while_marked.prompt_rendered
+        assert "Build the history UI component" in first_while_marked.prompt_rendered
+        # Its own valid task stays out of its own block.
+        assert "Configure the billing database" not in first_while_marked.prompt_rendered
+        second_while_marked = while_marked[second_decomposed][max(while_marked[second_decomposed])]
+        assert second_while_marked.prompt_rendered is not None
+        assert "Implement login retry" not in second_while_marked.prompt_rendered
+        assert "Write the migration" in second_while_marked.prompt_rendered
+
+        # Revoke while the marked task's version is still current (story A has
+        # no newer completed version), through the same write path the
+        # endpoint drives.
+        async with factory() as session:
+            await SQLAlchemyTaskInvalidationRepository(session).revoke(
+                mark.id, revoked_by=uuid4(), revoked_at=datetime.now(UTC)
+            )
+
+        pending = await self._seed_pending(factory, first_decomposed)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            first_decomposed,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V2),
+        )
+
+        async with factory() as session:
+            after = {
+                row.version_number: row for row in await _extraction_rows(session, first_decomposed)
+            }
+        restored = after[max(after)]
+        assert restored.prompt_rendered is not None
+        # The task returns as positive context, paired with its owning story.
+        assert "Implement login retry" in restored.prompt_rendered
+        assert f"(story: {marked_story})" in restored.prompt_rendered
+        # The other story's current-version tasks never left (its seeded v1 was
+        # superseded by its own run, so the run output is what is current).
+        assert "Write the migration" in restored.prompt_rendered
+        # The own-story exclusion is independent of validity: the decomposing
+        # story's own task stays out of its own block even though it is valid.
+        assert "Configure the billing database" not in restored.prompt_rendered
+        assert restored.prompt_rendered.count("use seeded feature 1") == 1
+
+    @pytest.mark.asyncio
     async def test_a_description_edit_after_v1_does_not_change_v1s_stored_prompt(
         self, test_engine: AsyncEngine, monkeypatch, seed_workspace
     ) -> None:
@@ -1817,3 +2004,146 @@ class TestExtractionPromptCarriesTheProject:
                 workspace_id=None,
                 few_shot_config=None,
             )
+
+
+@pytest.mark.unit
+class TestWorkspaceTemplateOptOutAtTheRecord:
+    """WU1 1.13 — a workspace template that references only ``{{ user_story }}``.
+
+    The spec blesses the opt-out, and the detection contract is the version's
+    own record: what the provider received is ``prompt_rendered``'s to say, and
+    what was composed lives beside it on the same row — readable afterwards by
+    comparing the stored facts, never by re-rendering anything. No runtime
+    warning exists or should: it would fire on every run of a workspace that
+    chose the opt-out.
+
+    At this head the runner's snapshot (``prompt_config``) records the
+    composed *config* (``validate``, ``system_prompt``); filling it from
+    ``RenderedPrompt.template_variables`` with the context keys is WU2 task
+    2.5's write, so the full snapshot-vs-rendered comparison this class
+    documents becomes assertable there (2.6 reads
+    ``prompt_config["negative_examples_omitted"]`` back from the row).
+    """
+
+    async def _seed_pending(self, factory, story_id: UUID) -> Extraction:
+        """Birth one pending extraction through the allocation path."""
+        async with factory() as session:
+            return await seed_extraction(session, story_id, model_used="llama3.2")
+
+    async def _run(
+        self,
+        monkeypatch,
+        test_engine: AsyncEngine,
+        pending: Extraction,
+        story_id: UUID,
+        workspace_id: UUID,
+        llm: LLMPort,
+    ) -> None:
+        """Run the real background task against the test engine with a fake LLM."""
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        # The subject here is the stored record, not retrieval — see the helper.
+        _make_the_vector_store_unavailable(monkeypatch)
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=story_id,
+            workspace_id=workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_opt_out_run_completes_and_the_row_records_what_each_fact_saw(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The run completes; the stored prompt shows the provider got neither block.
+
+        The other story's data exists in the project when the prompt is
+        composed — the row proves the provider never saw it — and the
+        snapshot's composed config is still on the row, read back from the
+        record and not from any render call.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(stories=2)
+        other_story = seeded.story_ids[0]
+        story_id = seeded.story_ids[1]
+
+        async with factory() as session:
+            completed = await seed_extraction(
+                session,
+                other_story,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            await seed_task(
+                session, other_story, "Add password reset endpoint", extraction=completed
+            )
+            await SQLAlchemyWorkspacePromptRepository(session).upsert(
+                WorkspacePrompt(
+                    workspace_id=seeded.workspace_id,
+                    system_prompt="Opted-out system prompt",
+                    instruction_template="Break down: {{user_story}}",
+                )
+            )
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            row = (await _extraction_rows(session, story_id))[0]
+
+        assert row.status is ExtractionStatus.COMPLETED
+        assert row.prompt_rendered is not None
+        assert "use seeded feature 1" in row.prompt_rendered
+        # Neither new block reached the provider.
+        assert "## Project Context" not in row.prompt_rendered
+        assert (
+            "## Do Not Produce These Tasks (Previously Marked Invalid)" not in row.prompt_rendered
+        )
+        # The context data existed in the project; the opt-out kept it out.
+        assert "use seeded feature 0" not in row.prompt_rendered
+        assert "Add password reset endpoint" not in row.prompt_rendered
+        # The snapshot's composed config, read back from the row: the system
+        # prompt was composed and delivered separately, whatever the template
+        # chose to interpolate.
+        assert (row.prompt_config or {}).get("system_prompt") == "Opted-out system prompt"
+
+    @pytest.mark.asyncio
+    async def test_the_opt_out_templates_variables_still_carry_the_composed_context(self) -> None:
+        """``RenderedPrompt.template_variables`` carries the keys the template ignores.
+
+        Jinja renders unknown kwargs as unused — the composed context is not
+        lost at the render boundary, it is only absent from the rendered text.
+        The template half of this contract (the rendered text) is pinned by
+        ``test_unit/test_prompt_manager.py::TestTaskGenerationContextBlocks::
+        test_a_workspace_template_without_the_variables_renders_neither_block``.
+        """
+        service = ExtractionService(
+            llm_port=AsyncMock(),
+            prompt_manager=PromptManager(),
+            task_parser=TaskParser(),
+        )
+        story = SimpleNamespace(raw_text="As a user, I want to log in")
+
+        rendered = await service.render(
+            story,
+            system_prompt=None,
+            instruction_template="Break down: {{user_story}}",
+            workspace_id=None,
+            few_shot_config=None,
+            context=simple_context(),
+        )
+
+        assert rendered.instruction == "Break down: As a user, I want to log in"
+        assert "## Project Context" not in rendered.text
+        # The composed context is in the variables, unused by this template.
+        assert rendered.template_variables["project_context"]["name"] == "Test Project"
+        assert rendered.template_variables["negative_examples_omitted"] == 0
+        assert rendered.template_variables["negative_examples"] == []
