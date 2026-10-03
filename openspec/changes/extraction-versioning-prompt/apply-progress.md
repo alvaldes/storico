@@ -483,3 +483,107 @@ substitution.
 - 1.13's full two-stored-facts comparison is split across this tranche (row fact 1, boundary fact 2)
   and WU2 (2.5's snapshot write, 2.6's row-level read-back); a reviewer of WU2 should re-read this
   section before judging 2.6's coverage.
+
+## W2-T1 — the negative-example composer and its unit table (tasks 2.1–2.2)
+
+The first part-i tranche of WU2 under the amended 2026-10-03 boundaries: **part i = 2.1–2.2 only** —
+the pure composer and its unit table. No wiring: `ProjectContext.negative_examples` stays the
+always-empty tuple WU1 shipped, `extraction_service.py`, `extraction_task.py`, the Jinja template and
+the normalizer are untouched, and 2.3–2.11 remain unchecked.
+
+### Consumed branch / baseline facts
+
+- Branch `feat/extraction-versioning-prompt-wu2a`, tip `8f2b366` (not switched, not staged, not
+  committed by this unit). Pre-existing untracked `.claude/skills/` and `backend/.gitignore` observed
+  and preserved.
+- Measured baseline before any edit (parent-supplied, re-confirmed by the full-suite run below):
+  1231 passed, 39 deselected; ruff check clean; ruff format 270 files clean.
+
+### RED (task 2.1) — observed failure kinds and counts
+
+Command:
+`cd backend && conda run -n storico python -m pytest tests/test_unit/test_negative_examples.py -m "not integration"`.
+
+- First observed RED: **collection error, 1 error** —
+  `ModuleNotFoundError: No module named 'storico.domain.services.negative_examples'` (the import in
+  the test file is the failing act; nothing else in the suite was touched).
+- The RED table then written is **7 test functions**, all of which failed for that one import reason
+  before the module existed (module-level import, so the whole file fails together — the RED shape of
+  a new-module unit).
+
+### GREEN (task 2.2) — the composer as built
+
+`backend/src/storico/domain/services/negative_examples.py` **New**: `MAX_NEGATIVE_EXAMPLES = 20` as a
+module constant (no column, no `workspace_prompts` field, no parameter — a workspace knob would let a
+workspace silently re-break D19), frozen slotted `NegativeExample(title, reason, version_number,
+marked_at)` and `NegativeExampleBlock(examples, omitted)` with `as_template_variables()`, and
+`compose_negative_examples(candidates) -> NegativeExampleBlock` as sort → dedupe → cap → omitted.
+
+- **The sort is total**, not merely sorted: `marked_at DESC` → `version_number DESC` →
+  `normalize_task_title(title)` → `reason`, implemented as one tuple key
+  (`-marked_at.timestamp()`, `-version_number`, normalized title, reason). Proven by the tie-heavy
+  fixture: 8 candidates all sharing one `marked_at` compose **byte-identically twice**
+  (`json.dumps(block.as_template_variables())` equal across two compositions), and additionally a
+  **reversed copy of the same input** composes byte-identically to the original — input order cannot
+  leak into the snapshotted text.
+- **Dedupe-before-cap**: a single pass over the ranked list dedupes on
+  `(normalize_task_title(title), reason)` keeping the first seen — which, in `marked_at DESC` order,
+  **is the most recent** of each pair; the same normalized title with a different reason is two
+  entries (asserted). `omitted = deduped_total - taken`, so it counts only what the cap dropped,
+  never what dedupe collapsed: the 5-candidate case contains a duplicate pair (deduped total 4,
+  under the cap) and asserts `len(examples) == 4, omitted == 0`; the 21-distinct case asserts
+  `len == 20, omitted == 1` with `examples[0].title == "Task number 20"` (most recent first).
+- **`as_template_variables()` is JSON-native end to end**: `marked_at` serializes via
+  `isoformat()` (asserted to be a `str` equal to the source timestamp's ISO form; title, reason and
+  version number pass through), and the whole list survives `json.dumps` — asserted directly.
+- **Import identity, how proved**: two assertions. (1) Identity of objects —
+  `negative_examples.normalize_task_title is task_title_normalizer.normalize_task_title` on the
+  module's own namespace, so a re-export under a different spelling or a local copy fails it.
+  (2) Source check — `inspect.getsource` of the module must contain no `casefold`, no `lower(`, no
+  `\s` regex and no `re.compile`: no second casefold or whitespace spelling can live there. Both live
+  in `test_module_reuses_the_normalizer_and_defines_no_second_one`.
+- No session, no I/O, no repository, no new mark read: the module's imports are
+  `TaskInvalidationCandidate` (b's port type, consumed not redefined) and `normalize_task_title`.
+
+### TRIANGULATE (folded into the RED table, per the plan's composer coverage C5/C6)
+
+Covered as separate cases: dedupe-with-different-reason-stays-two; the reversed-input byte-identity;
+the post-dedupe `omitted == 0`; the empty input (`examples == ()`, `omitted == 0`); the JSON-native
+shape. No refactor round was needed — the module landed at its final shape.
+
+### Files changed (this unit — `git diff --numstat` 2/2 tracked, plus two new untracked files)
+
+- `backend/src/storico/domain/services/negative_examples.py` — **New**, 104 lines (untracked, outside
+  `git diff --numstat`)
+- `backend/tests/test_unit/test_negative_examples.py` — **New**, 172 lines (untracked, outside
+  `git diff --numstat`)
+- `openspec/changes/extraction-versioning-prompt/tasks.md` (+2/−2 — checkboxes 2.1 and 2.2 only)
+- `openspec/changes/extraction-versioning-prompt/apply-progress.md` — this section appended, earlier
+  sections verbatim
+
+Unit changed-line count: **276 added lines** (104 + 172 code/test, both untracked so invisible to
+`git diff --numstat`) + 4 tracked changed lines in the two SDD artifacts (`--numstat`: 2/2).
+
+### Verification (each run after the manual format edits, in this order)
+
+- `cd backend && conda run -n storico python -m pytest tests/test_unit/test_negative_examples.py -m "not integration" -q` → **7 passed**
+- `cd backend && conda run -n storico python -m pytest tests/test_unit tests/test_api/test_extraction.py -m "not integration" -q` → **540 passed**
+- `cd backend && conda run -n storico python -m pytest -m "not integration" -q` → **1238 passed, 39 deselected** — delta against the 1231 baseline is exactly the 7 new test functions
+- `cd backend && conda run -n storico python -m ruff check src tests` → **All checks passed!**
+- `cd backend && conda run -n storico python -m ruff format --check src tests` → **272 files already formatted**
+
+Formatting note: the two new files needed reformatting on the first `ruff format --check` (three
+over-long lambda/assert spellings). The formatter was **not** run (task letter forbids formatters);
+the exact changes ruff's `--diff` output showed were applied by hand, then re-verified clean.
+
+### Remaining unchecked tasks
+
+- 2.3–2.11 (part ii = 2.3–2.6, part iii = 2.7–2.11): all still `[ ]`, including the dated amendment
+  under the Phase 2 header, untouched.
+- Phases 3–5: untouched.
+
+### Risks
+
+- None observed: the unit is pure and additive; the full-suite delta is exactly the 7 new tests, and
+  no existing assertion was touched. Part (ii) still has to wire the composer's output into
+  `ProjectContext` — until then the block renders empty and the composer has no production caller.
