@@ -102,9 +102,10 @@ LLM_RESPONSE = "1. summary: Probe task\ndescription: Probe description."
 
 @dataclass(frozen=True, slots=True)
 class Story:
-    """Minimal user-story stand-in — ``extract`` only reads ``raw_text``."""
+    """Minimal user-story stand-in — ``extract`` reads ``raw_text`` and ``id``."""
 
     raw_text: str
+    id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,11 +255,17 @@ async def _extract(
     workspace_id: uuid.UUID,
     few_shot_config: FewShotConfig,
 ) -> tuple[list[ParsedTask], str]:
-    """Run the real prompt pipeline and return the parsed tasks and the prompt."""
+    """Run the real prompt pipeline and return the parsed tasks and the prompt.
+
+    The story carries a fresh id that matches no stored point: these cases pin
+    workspace scoping, thresholds and the limit, not the self-exclusion, so the
+    ``exclude_story_id`` rule must not remove any fixture point from play. (A
+    story with no id would fail closed and skip retrieval entirely.)
+    """
     llm = RecordingLLM()
     service = _build_service(llm, vector_store)
     rendered = await service.render(
-        Story(raw_text=story_text),
+        Story(raw_text=story_text, id=str(uuid.uuid4())),
         workspace_id=workspace_id,
         few_shot_config=few_shot_config,
         context=simple_context(),
@@ -340,7 +347,11 @@ class TestLiveRetrieval:
         )
 
         hits = await live_store.adapter.search_similar(
-            STORY_SIMILAR, limit=3, threshold=0.85, workspace_id=workspace_id
+            STORY_SIMILAR,
+            limit=3,
+            threshold=0.85,
+            workspace_id=workspace_id,
+            exclude_story_id=str(uuid.uuid4()),
         )
 
         assert len(hits) == 1
@@ -359,12 +370,20 @@ class TestLiveRetrieval:
         await _store_live(live_store.adapter, workspace_id=workspace_a, user_story_text=STORY_QUERY)
 
         in_a = await live_store.adapter.search_similar(
-            STORY_QUERY, limit=3, threshold=0.85, workspace_id=workspace_a
+            STORY_QUERY,
+            limit=3,
+            threshold=0.85,
+            workspace_id=workspace_a,
+            exclude_story_id=str(uuid.uuid4()),
         )
         assert len(in_a) == 1, "the point must be reachable from its own workspace"
 
         in_b = await live_store.adapter.search_similar(
-            STORY_QUERY, limit=3, threshold=0.85, workspace_id=workspace_b
+            STORY_QUERY,
+            limit=3,
+            threshold=0.85,
+            workspace_id=workspace_b,
+            exclude_story_id=str(uuid.uuid4()),
         )
         assert in_b == [], "a workspace must never see another workspace's stored story"
 
@@ -379,7 +398,11 @@ class TestLiveRetrieval:
         )
 
         hits = await live_store.adapter.search_similar(
-            STORY_UNRELATED, limit=3, threshold=0.85, workspace_id=workspace_id
+            STORY_UNRELATED,
+            limit=3,
+            threshold=0.85,
+            workspace_id=workspace_id,
+            exclude_story_id=str(uuid.uuid4()),
         )
 
         assert hits == []
@@ -392,7 +415,11 @@ class TestLiveRetrieval:
             await _store_live(live_store.adapter, workspace_id=workspace_id, user_story_text=story)
 
         hits = await live_store.adapter.search_similar(
-            STORY_QUERY, limit=2, threshold=0.5, workspace_id=workspace_id
+            STORY_QUERY,
+            limit=2,
+            threshold=0.5,
+            workspace_id=workspace_id,
+            exclude_story_id=str(uuid.uuid4()),
         )
 
         assert len(hits) == 2
@@ -442,7 +469,11 @@ class TestLiveStoredPoint:
         assert point.payload["workspace_id"] == str(workspace_id)
 
         hits = await live_store.adapter.search_similar(
-            STORY_QUERY, limit=3, threshold=0.5, workspace_id=workspace_id
+            STORY_QUERY,
+            limit=3,
+            threshold=0.5,
+            workspace_id=workspace_id,
+            exclude_story_id=str(uuid.uuid4()),
         )
         assert len(hits) == 1, "the stored point must be retrievable from its own workspace"
         assert hits[0].user_story_text == STORY_QUERY
@@ -600,7 +631,11 @@ class TestDegradation:
         adapter = _dead_adapter(settings, embedding_port)
 
         hits = await adapter.search_similar(
-            STORY_QUERY, limit=3, threshold=0.85, workspace_id=uuid.uuid4()
+            STORY_QUERY,
+            limit=3,
+            threshold=0.85,
+            workspace_id=uuid.uuid4(),
+            exclude_story_id=str(uuid.uuid4()),
         )
 
         assert hits == []

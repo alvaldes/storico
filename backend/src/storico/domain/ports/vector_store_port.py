@@ -29,6 +29,7 @@ class VectorStorePort(ABC):
         threshold: float = 0.85,
         *,
         workspace_id: UUID,
+        exclude_story_id: str,
     ) -> list[ExtractionExample]:
         """Search for similar extractions by embedding the input text.
 
@@ -38,6 +39,13 @@ class VectorStorePort(ABC):
         prompt — so omitting the scope is deliberately not expressible. Callers
         that cannot supply one must fail closed and skip retrieval.
 
+        The search is also always excluded from the story being extracted:
+        ``exclude_story_id`` is the story whose previous versions must never be
+        retrieved as their own few-shot examples. Both exclusions are
+        unconditional rules of retrieval, and **no caller may opt out** — the
+        parameter has no default, so a retrieval that cannot state which story
+        it is must not run at all.
+
         Args:
             text: User story text to search by.
             limit: Maximum number of results to return.
@@ -45,6 +53,9 @@ class VectorStorePort(ABC):
             workspace_id: Workspace to scope the search to. Required; only
                 examples stored for that workspace are returned, and points
                 without a matching ``workspace_id`` payload are excluded.
+            exclude_story_id: Story the retrieval must exclude. Required; the
+                caller forwards the id of the story being extracted (string
+                form, as stored in the point payload).
 
         Returns:
             List of similar ExtractionExample results.

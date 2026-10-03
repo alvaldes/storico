@@ -974,3 +974,130 @@ the amendment blockquote records this. 3.4, 3.6–3.11 and every later phase unt
   intact because `store_extraction`'s new keywords are additive at the call sites this part owns (`_store_rag`).
 - No `-m integration` run (no Docker here — 3.9 owns the live-Qdrant proof); the integration file's
   `store_extraction` call sites are untouched and are part of the later read-side/3.9 churn.
+
+## W3-B — WU3 part (ii), the read side (2026-10-03)
+
+Branch `feat/extraction-versioning-prompt-wu3b`, tip at start `737886e` (W3-A's commit). Consumed
+baseline facts from the parent task: part (i) merged into this branch as the ten-key payload +
+indexes + `set_has_invalid_tasks` + the `version_number` thread; measured baseline at this head
+**1269 passed, 39 deselected**, ruff check clean, 272 files formatted; four concrete
+`VectorStorePort` subclasses, each implementing `search_similar`, so the signature change breaks all
+four. No Docker here, so no `-m integration` run (3.9 owns the live cases).
+
+### RED (observed, four functions, one run)
+
+`cd backend && conda run -n storico python -m pytest <the four new tests> -m "not integration" -q` →
+**4 failed in 0.29s**, with these failure kinds:
+
+1. `test_search_similar_carries_the_fail_closed_validity_filter` — `TypeError:
+   QdrantAdapter.search_similar() got an unexpected keyword argument 'exclude_story_id'` (the call
+   could not even be issued against the old signature).
+2. `test_search_similar_requires_exclude_story_id` — `AssertionError: VectorStorePort.search_similar
+   must require keyword-only exclude_story_id` (signature pin, port + adapter, pattern of the
+   `workspace_id` pin at the old `:157-166`).
+3. `test_extract_rag_enabled_without_story_id_skips_search` — `Expected 'search_similar' to not have
+   been called. Called 1 times.` (no fail-closed branch existed; the retrieval ran unexcludable).
+4. `test_version_number_is_a_required_int` — `assert None is inspect.Parameter.empty` (the runner's
+   `version_number` still defaulted to `None`).
+
+Intermediate observation (the shape failure the parent asked for): with only the parameter added to
+port + adapter — filter untouched — case 1 failed on the shape assertion itself:
+`assert ['workspace_id'] == ['workspace_id', 'has_invalid_tasks']` — **the built filter carried no
+`must_not` and no validity condition**.
+
+### GREEN (the filter's exact shape, quoted from the recorded call)
+
+`_build_workspace_filter(workspace_id, exclude_story_id)` now builds, as recorded by the mocked
+`query_points` and asserted key-by-key:
+
+- `must = [FieldCondition(key="workspace_id", match=MatchValue(value=str(workspace_id))),
+  FieldCondition(key="has_invalid_tasks", match=MatchValue(value=False))]`
+- `must_not = [FieldCondition(key="user_story_id", match=MatchValue(value=str(exclude_story_id)))]`
+
+**Why the validity rule is a positive `must` on `False`, never a `must_not` on `True`:** `must_not`
+on `True` still admits a point with **no** `has_invalid_tasks` key at all — `must_not` only removes
+points that match, and a point written before this slice existed does not match (the key is absent),
+so it sails through the validity rule and is retrieved as if it were valid. `must` on `False` is
+fail-closed: a legacy point without the key matches neither branch and is never retrieved. The test
+asserts the shape (`[c.key for c in must] == ["workspace_id", "has_invalid_tasks"]`, `must[1].match.value
+is False`, `must_not` keys `== ["user_story_id"]`), not just the outcome.
+
+`search_similar` gains keyword-only `exclude_story_id: str` with **no default** on both the port
+(docstring: both exclusions are unconditional rules of retrieval; **no caller may opt out**) and the
+adapter, pinned by `inspect.signature` on both targets.
+
+### The fail-closed branch (`_fetch_rag_examples`)
+
+`render()` reads `getattr(user_story, "id", None)` and stringifies it at the boundary;
+`_fetch_rag_examples(text, story_id, workspace_id, few_shot_config)` **fails closed when the story has
+no id**: skip retrieval, warn once with `extra={"reason": "missing_story_id"}`, mirroring the existing
+`missing_workspace_id` branch. A retrieval that cannot state which story to exclude must not run at
+all. The test asserts search not called, no `examples` kwarg, and exactly one warning record carrying
+the reason.
+
+### The `version_number`-required honesty fix (part (i)'s named debt)
+
+`run_background_extraction`'s `version_number` is now `version_number: int` — required, no default.
+Because a required parameter cannot follow one with a default, it moved ahead of `temperature`
+(`model, version_number, temperature=DEFAULT_TEMPERATURE, ...`); every caller passes keywords, so no
+positional caller breaks. `_run_extraction` and `_store_rag` annotations tightened to `int` too, so
+`None` cannot reach the RAG payload's `version_number` key through any internal hop.
+
+**Call sites moved: 23** — `tests/test_api/test_extraction.py` **11**, `tests/test_unit/
+test_extraction_failure_paths.py` **7**, `tests/test_services/test_extraction_service.py` **5** —
+each now passing `version_number=1`. The production caller (`api/routes/extraction.py`) already
+passed it (part (i), seam 3) and needed no change.
+
+### Churn inventory (every call site supplies the exclusion)
+
+- `tests/test_unit/test_vector_store.py` — **10** existing `search_similar` sites + new
+  `self.story_id` in `setup_method`.
+- `tests/test_integration/test_few_shot_rag_qdrant.py` — **7** `search_similar` sites, each passing a
+  fresh `exclude_story_id=str(uuid.uuid4())` (the fixture points carry no matching `user_story_id`, so
+  the exclusion removes nothing these cases rely on); the `_extract` helper's `Story` stand-in gained
+  an `id` field and passes a fresh uuid so the service's fail-closed branch does not skip retrieval in
+  the live few-shot case.
+- Fakes gaining the keyword-only parameter (classes stay instantiable): `test_api/test_stories.py`
+  `_RecordingDeletionStore` + `_RaisingVectorStore`, `test_api/test_extraction.py`
+  `_RecordingVectorStore` + `_ExamplesVectorStore` (subclass), `test_services/test_extraction_service.py`
+  `_RecordingVectorStore`.
+- `tests/test_unit/test_few_shot_retrieval.py` — **2** `assert_called_once_with` sites now expect
+  `exclude_story_id=str(story.id)` (the service stringifies at the boundary).
+- `tests/test_extraction_flow_few_shot.py` — inspected, no churn needed: its store is an `AsyncMock`
+  and no assertion names the search kwargs.
+
+### Files and counts (`git diff --numstat` at this head, adds/dels)
+
+- Source: `vector_store_port.py` (11/0), `qdrant_adapter.py` (38/11), `extraction_service.py` (23/3),
+  `extraction_task.py` (11/8) — **83/22**.
+- Tests: `test_unit/test_vector_store.py` (118/8), `test_services/test_extraction_service.py` (55/0),
+  `test_integration/test_few_shot_rag_qdrant.py` (45/10), `test_unit/test_extraction_failure_paths.py`
+  (26/0), `test_api/test_extraction.py` (13/0), `test_api/test_stories.py` (4/2),
+  `test_unit/test_few_shot_retrieval.py` (2/0) — **263/20**.
+- Code+test `--numstat` total: **346+/42−**; with `tasks.md` (14/5) and this file, **360+/47−**.
+
+### Verification (all observed, in order, at the final state)
+
+- `cd backend && conda run -n storico python -m pytest tests/test_unit/test_vector_store.py tests/test_unit/test_few_shot_retrieval.py tests/test_api/test_tasks.py -m "not integration" -q` → **115 passed, 4 warnings** (W3-A's run of the same runner: 113 — delta = this part's new functions)
+- `cd backend && conda run -n storico python -m pytest tests/test_unit tests/test_api tests/test_services -m "not integration" -q` → **976 passed, 4 warnings**
+- `cd backend && conda run -n storico python -m pytest -m "not integration" -q` → **1273 passed, 39 deselected** (delta vs 1269 = exactly the 4 new functions)
+- `cd backend && conda run -n storico python -m ruff check src tests` → **All checks passed!**
+- `cd backend && conda run -n storico python -m ruff format --check src tests` → **272 files already formatted** (three files needed reformatting once; the diff was hand-applied, the formatter never ran)
+
+### Checkbox rule applied (`tasks.md`)
+
+**3.1, 3.2, 3.3, 3.4 `[x]`** — every read-side letter each names is complete. 3.5 stays `[x]` (W3-A).
+**3.6–3.9 and every later phase untouched, all `[ ]`** — verified by re-reading the file after the
+edits. A dated follow-up under the WU3 amendment blockquote records this part boundary.
+
+### Disclosed notes for the reviewer
+
+- Part (i)'s cases (ten-key payload, three indexes, the setter, the `version_number` thread) were not
+  re-written, weakened or restructured — every pre-existing assertion stands; the only changes to
+  existing tests are the added required arguments and `self.story_id`.
+- The integration file's `store_extraction` call sites (`_store_live`, etc.) still do not pass
+  `project_id`/`version_number` — part (i) left them for the live-Qdrant churn and **3.9 owns them**;
+  they are deselected in every run above.
+- The two live-search semantics decisions in `test_few_shot_rag_qdrant.py` (fresh-uuid exclusions,
+  `Story.id` on the `_extract` helper) are judgment calls within the churn mandate; 3.9 should
+  re-read them when it adds the live exclusion cases.

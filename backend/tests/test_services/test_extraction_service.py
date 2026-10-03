@@ -6,6 +6,7 @@ prompts and generates tasks only; persistence lives in the background task,
 whose invariants are exercised in ``TestRunnerPersistencePath`` below.
 """
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
@@ -339,6 +340,54 @@ class TestExtractionService:
         call_kwargs = deps["prompt_manager"].render_instruction.call_args[1]
         assert "examples" not in call_kwargs
 
+    @pytest.mark.asyncio
+    async def test_extract_rag_enabled_without_story_id_skips_search(
+        self, setup_with_rag, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A RAG-enabled extraction whose story has no id fails closed.
+
+        A retrieval that cannot state which story to exclude must not run at
+        all: without ``exclude_story_id`` the search could return the story's
+        own previous run as its own few-shot example. Skipping retrieval —
+        mirroring the missing-``workspace_id`` branch above — is strictly
+        better than retrieving unexcludable, and the skip is observable:
+        exactly one warning carrying ``reason="missing_story_id"``.
+        """
+        deps = setup_with_rag
+        deps["vector_store"].search_similar.return_value = [
+            ExtractionExample(
+                user_story_text="Story from an earlier run",
+                tasks_summary="1. Task A",
+                model_used="test",
+                confidence_score=0.9,
+                similarity_score=0.95,
+            )
+        ]
+        deps["prompt_manager"].render_instruction.return_value = "Instruction"
+        deps["llm_port"].generate.return_value = LLMResponse(text="1. summary: T\ndescription: D")
+        deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
+
+        # A story stand-in with no ``id`` attribute at all.
+        mock_story = SimpleNamespace(raw_text="Story")
+
+        with caplog.at_level(logging.WARNING, logger="storico.domain.services.extraction_service"):
+            rendered = await deps["service"].render(
+                mock_story, workspace_id=uuid4(), context=simple_context()
+            )
+        result = await deps["service"].generate(rendered, LLMConfig(model="test"))
+
+        assert len(result.tasks) == 1
+        deps["vector_store"].search_similar.assert_not_called()
+        call_kwargs = deps["prompt_manager"].render_instruction.call_args[1]
+        assert "examples" not in call_kwargs
+
+        warnings = [
+            record
+            for record in caplog.records
+            if getattr(record, "reason", None) == "missing_story_id"
+        ]
+        assert len(warnings) == 1
+
 
 # ── The live persistence path (the runner) ──────────────────────────
 
@@ -409,6 +458,7 @@ class _RecordingVectorStore(VectorStorePort):
         threshold: float = 0.85,
         *,
         workspace_id: UUID,  # noqa: ARG002
+        exclude_story_id: str,  # noqa: ARG002
     ) -> list:
         return []
 
@@ -481,6 +531,7 @@ class TestRunnerPersistencePath:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -516,6 +567,7 @@ class TestRunnerPersistencePath:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -546,6 +598,7 @@ class TestRunnerPersistencePath:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             validate=True,
             max_retries=0,
         )
@@ -578,6 +631,7 @@ class TestRunnerPersistencePath:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             validate=True,
             max_retries=0,
         )
@@ -612,6 +666,7 @@ class TestRunnerPersistencePath:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 

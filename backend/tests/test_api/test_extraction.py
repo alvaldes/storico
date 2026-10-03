@@ -97,6 +97,7 @@ class _RecordingVectorStore(VectorStorePort):
         threshold: float = 0.85,
         *,
         workspace_id: UUID,  # noqa: ARG002
+        exclude_story_id: str,  # noqa: ARG002
     ) -> list:
         return []
 
@@ -251,6 +252,7 @@ class TestExtractEndpoint:
             story_id=story_id,
             workspace_id=ws_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -307,6 +309,7 @@ class TestExtractEndpoint:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -365,6 +368,7 @@ class TestExtractEndpoint:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.1:8b",
+            version_number=1,
             max_retries=0,
         )
 
@@ -1121,6 +1125,7 @@ class TestVersioningTriangulation:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -1506,6 +1511,7 @@ class TestVersionedTaskRowsOnTheLivePath:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=max_retries,
         )
 
@@ -1695,6 +1701,7 @@ class TestExtractionPromptCarriesTheProject:
             story_id=story_id,
             workspace_id=workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -2084,6 +2091,7 @@ class _ExamplesVectorStore(_RecordingVectorStore):
         threshold: float = 0.85,
         *,
         workspace_id: UUID,  # noqa: ARG002
+        exclude_story_id: str,  # noqa: ARG002
     ) -> list[ExtractionExample]:
         return self._examples[:limit]
 
@@ -2121,6 +2129,7 @@ class TestNegativeExampleBlockOnTheLivePath:
             story_id=story_id,
             workspace_id=workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -2470,6 +2479,7 @@ class TestTheSnapshotRecordsWhatWasComposed:
             story_id=story_id,
             workspace_id=workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -2780,6 +2790,7 @@ class TestTheSnapshotRecordsWhatWasComposed:
             story_id=story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -2903,6 +2914,7 @@ class TestUsageRecordingOnTheLivePath:
             story_id=story_id,
             workspace_id=workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -3116,6 +3128,7 @@ class TestWorkspaceTemplateOptOutAtTheRecord:
             story_id=story_id,
             workspace_id=workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 

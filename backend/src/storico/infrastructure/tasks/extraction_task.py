@@ -74,8 +74,8 @@ async def run_background_extraction(
     story_id: UUID,
     workspace_id: UUID,
     model: str,
+    version_number: int,
     temperature: float = DEFAULT_TEMPERATURE,
-    version_number: int | None = None,
     validate: bool = False,
     provider: str = "ollama",
     api_key: str | None = None,
@@ -103,10 +103,12 @@ async def run_background_extraction(
             resolves it once against ``DEFAULT_TEMPERATURE``); there is no ``None``
             here, so the declared temperature and the temperature used cannot drift.
         version_number: The version number the route minted and returned in its 202
-            body (D22), so a retry reuses the number instead of minting another. Only
-            the route passes it; direct in-process invocations that predate versioning
-            (the recovery/test paths) may omit it, and the RAG point then records it
-            as absent.
+            body (D22), so a retry reuses the number instead of minting another.
+            Required, with no default: the port's ``store_extraction`` records it
+            into the RAG payload as an ``int``, so a ``None`` default here would
+            let a direct in-process caller thread ``None`` into the payload key.
+            (Reordered ahead of ``temperature`` because a required parameter
+            cannot follow one with a default; every caller passes keywords.)
         validate: Whether to run LLM-as-a-Judge validation.
         provider: Workspace provider name.  ``"ollama"``, ``"gemini"``,
             ``"openai"``, and ``"anthropic"`` have dedicated adapters; any
@@ -289,8 +291,8 @@ async def _run_extraction(
     story_id: UUID,
     workspace_id: UUID,
     model: str,
+    version_number: int,
     temperature: float,
-    version_number: int | None,
     validate: bool,
     provider: str = "ollama",
     api_key: str | None = None,
@@ -598,7 +600,7 @@ async def _store_rag(
     model_used: str,
     confidence_score: float | None,
     project_id: UUID,
-    version_number: int | None,
+    version_number: int,
 ) -> None:
     """Store extraction result in vector store for future RAG searches.
 
@@ -608,7 +610,8 @@ async def _store_rag(
     ``project_id`` is the story's project and ``version_number`` is the route-minted run
     number threaded from the 202 body (D22) — both write straight through to
     ``store_extraction`` so the point can be scoped and tied to its run; the port requires
-    them, and the route path always supplies a real number.
+    them, and the runner's ``version_number`` is a required ``int`` with no default, so
+    a ``None`` can never reach the payload key through this path.
     """
     if vector_store is None:
         logger.debug("RAG store skipped: no vector store available")

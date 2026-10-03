@@ -467,8 +467,17 @@ filter, or every existing point silently becomes unretrievable.
 > 3.6, which replaces it with the recording fake. Evidence in `apply-progress.md` (W3-A).
 >>
 > The task numbers below stay as the planning record; each new part cites the tasks it carries.
+>
+> **[WU3 part (ii) — read side landed 2026-10-03]** **3.1, 3.2, 3.3 and 3.4 are `[x]`**: part (ii) carried
+> the read halves their letters name — `search_similar`'s required keyword-only `exclude_story_id` on
+> port and adapter (signature-pinned), the `must`/`must_not` filter with the validity rule as a positive
+> `must` on `False` (fail-closed against points written before this slice), `_fetch_rag_examples`' story
+> id and its `missing_story_id` fail-closed branch, and the full call-site churn across the four fakes
+> and every search/runner site — plus the honesty fix part (i) named: `run_background_extraction`'s
+> `version_number` is now a required `int` with no default, so `None` cannot reach the RAG payload.
+> Evidence in `apply-progress.md` (W3-B). 3.6–3.9 remain the later parts.
 
-- [ ] 3.1 RED — `backend/tests/test_unit/test_vector_store.py`: add the failing filter, payload and
+- [x] 3.1 RED — `backend/tests/test_unit/test_vector_store.py`: add the failing filter, payload and
       index cases against the fake client. `search_similar` requires the new keyword
       `exclude_story_id` on both the port and the adapter (signature inspection at
       `test_vector_store.py:157-166`); the built filter is
@@ -483,7 +492,7 @@ filter, or every existing point silently becomes unretrievable.
       `set_payload(points=[extraction_id], payload={"has_invalid_tasks": …}, wait=True)`.
       Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_unit/test_vector_store.py -m "not integration"`.
-- [ ] 3.2 GREEN — `backend/src/storico/domain/ports/vector_store_port.py`: `search_similar` gains the
+- [x] 3.2 GREEN — `backend/src/storico/domain/ports/vector_store_port.py`: `search_similar` gains the
       required `exclude_story_id`, its docstring stating that **both** exclusions are unconditional
       rules of retrieval and that no caller may opt out; `store_extraction` gains the required
       keyword-only `project_id` and `version_number`; add the abstract
@@ -491,14 +500,14 @@ filter, or every existing point silently becomes unretrievable.
       addresses the point id that **is** the extraction id, that a missing point is a no-op, and that
       — unlike `search_similar`/`store_extraction` — it **raises** `VectorStoreError` because its
       caller must not proceed on an unverified result.
-- [ ] 3.3 GREEN — `backend/src/storico/infrastructure/vector/qdrant_adapter.py`: replace
+- [x] 3.3 GREEN — `backend/src/storico/infrastructure/vector/qdrant_adapter.py`: replace
       `_build_workspace_filter`'s single positive condition with the `must`/`must_not` expression;
       add the three payload keys; generalise `_ensure_workspace_payload_index` into
       `_ensure_payload_indexes` looping over `("workspace_id", "project_id", "has_invalid_tasks")`
       behind one flag, called from `_get_client` right after the collection is ensured, still logging
       a failure without failing the request; implement the setter with `client.set_payload(...,
       wait=True)` wrapping driver failures in `VectorStoreError`.
-- [ ] 3.4 GREEN — `backend/src/storico/domain/services/extraction_service.py`: `_fetch_rag_examples`
+- [x] 3.4 GREEN — `backend/src/storico/domain/services/extraction_service.py`: `_fetch_rag_examples`
       takes the story id and forwards `exclude_story_id`; it **fails closed** when the story has no
       id (skip retrieval, warn with `reason="missing_story_id"`), mirroring the existing
       missing-`workspace_id` branch at `:186-197`. Move the remaining callers: the ~10 sites in

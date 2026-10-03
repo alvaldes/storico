@@ -447,7 +447,8 @@ class _RecordingDeletionStore(VectorStorePort):
         limit: int = 3,
         threshold: float = 0.85,
         *,
-        workspace_id: UUID,
+        workspace_id: UUID,  # noqa: ARG002
+        exclude_story_id: str,  # noqa: ARG002
     ) -> list:
         return []
 
@@ -472,7 +473,8 @@ class _RaisingVectorStore(VectorStorePort):
         limit: int = 3,
         threshold: float = 0.85,
         *,
-        workspace_id: UUID,
+        workspace_id: UUID,  # noqa: ARG002
+        exclude_story_id: str,  # noqa: ARG002
     ) -> list:
         return []
 

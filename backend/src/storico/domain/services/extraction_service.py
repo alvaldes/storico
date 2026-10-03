@@ -186,11 +186,19 @@ class ExtractionService:
             The frozen ``RenderedPrompt`` — ``text`` is what the provider receives.
         """
         raw_text = getattr(user_story, "raw_text", str(user_story))
+        # The exclusion rides on the story's identity: the story being extracted
+        # must never be retrieved as its own few-shot example. A story object
+        # without an id cannot state what to exclude, and the retrieval fails
+        # closed below rather than running unexcludable.
+        story_id = getattr(user_story, "id", None)
+        story_id_str = str(story_id) if story_id is not None else None
 
         resolved_config = few_shot_config or self._few_shot_config
 
         # Retrieve workspace-scoped few-shot examples (best-effort)
-        examples = await self._fetch_rag_examples(raw_text, workspace_id, resolved_config)
+        examples = await self._fetch_rag_examples(
+            raw_text, story_id_str, workspace_id, resolved_config
+        )
 
         if examples:
             # Observability only: numbers and the workspace id, never user
@@ -280,14 +288,15 @@ class ExtractionService:
     async def _fetch_rag_examples(
         self,
         text: str,
+        story_id: str | None,
         workspace_id: UUID | None,
         few_shot_config: FewShotConfig,
     ) -> list[ExtractionExample]:
         """Search for similar past extractions, workspace-scoped and best-effort.
 
         Returns an empty list when retrieval is disabled, no vector store is
-        configured, the extraction has no workspace scope, or the search fails
-        — extraction never fails on retrieval.
+        configured, the extraction has no workspace scope, the story has no id
+        to exclude, or the search fails — extraction never fails on retrieval.
         """
         if not few_shot_config.enabled:
             logger.debug("Few-shot retrieval disabled, skipping search")
@@ -304,12 +313,23 @@ class ExtractionService:
                 extra={"reason": "missing_workspace_id"},
             )
             return []
+        if story_id is None:
+            # Fail closed. Without the story id the search cannot carry the
+            # ``exclude_story_id`` rule, so it could return the story's own
+            # previous run as its own few-shot example. Skipping retrieval is
+            # strictly better than retrieving unexcludable.
+            logger.warning(
+                "Few-shot retrieval skipped: story has no id to exclude",
+                extra={"reason": "missing_story_id"},
+            )
+            return []
         try:
             return await self._vector_store.search_similar(
                 text=text,
                 limit=few_shot_config.limit,
                 threshold=few_shot_config.threshold,
                 workspace_id=workspace_id,
+                exclude_story_id=story_id,
             )
         except Exception as exc:
             logger.warning(

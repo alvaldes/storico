@@ -144,19 +144,42 @@ class QdrantAdapter(VectorStorePort):
         except Exception as e:
             logger.warning("Failed to ensure payload indexes: %s", e)
 
-    def _build_workspace_filter(self, workspace_id: UUID) -> qdrant_models.Filter:
-        """Build a Qdrant filter that restricts results to a workspace.
+    def _build_workspace_filter(
+        self, workspace_id: UUID, exclude_story_id: str
+    ) -> qdrant_models.Filter:
+        """Build the unified exclusion expression every search is issued with.
 
-        Legacy points without a ``workspace_id`` payload are excluded because
-        the filter matches on the field value.
+        Three conditions, all of them unconditional rules of retrieval:
+
+        - ``must`` ``workspace_id`` — workspace isolation; legacy points without
+          the payload key are excluded because the filter matches the value.
+        - ``must`` ``has_invalid_tasks == False`` — the validity rule, expressed
+          as a **positive ``must`` on ``False``, never a ``must_not`` on
+          ``True``. ``must_not`` on ``True`` still admits a point with no
+          ``has_invalid_tasks`` key at all, so a point written before this
+          slice existed would sail through the validity rule and be retrieved
+          as if it were valid. ``must`` on ``False`` is fail-closed: a legacy
+          point without the key matches neither branch and is never retrieved.
+        - ``must_not`` ``user_story_id`` — the story's own point, so a story is
+          never retrieved as its own few-shot example.
         """
         return qdrant_models.Filter(
             must=[
                 qdrant_models.FieldCondition(
                     key="workspace_id",
                     match=qdrant_models.MatchValue(value=str(workspace_id)),
-                )
-            ]
+                ),
+                qdrant_models.FieldCondition(
+                    key="has_invalid_tasks",
+                    match=qdrant_models.MatchValue(value=False),
+                ),
+            ],
+            must_not=[
+                qdrant_models.FieldCondition(
+                    key="user_story_id",
+                    match=qdrant_models.MatchValue(value=str(exclude_story_id)),
+                ),
+            ],
         )
 
     async def search_similar(
@@ -166,12 +189,16 @@ class QdrantAdapter(VectorStorePort):
         threshold: float = 0.85,
         *,
         workspace_id: UUID,
+        exclude_story_id: str,
     ) -> list[ExtractionExample]:
         """Search for similar extractions by embedding the input text.
 
-        The query always carries a ``workspace_id`` filter, so a search can
-        never widen into a cross-workspace read. Graceful degradation: returns
-        empty list on any failure.
+        The query always carries the unified exclusion expression — the
+        ``workspace_id`` scope, the fail-closed ``has_invalid_tasks == False``
+        validity condition, and the ``user_story_id`` ``must_not`` — so a search
+        can never widen into a cross-workspace read, never return an
+        invalid-marked extraction, and never return the story's own run. Graceful
+        degradation: returns empty list on any failure.
         """
         # Generate embedding
         embedding = await self._embedding_port.embed(text)
@@ -185,7 +212,7 @@ class QdrantAdapter(VectorStorePort):
 
         # Search
         try:
-            query_filter = self._build_workspace_filter(workspace_id)
+            query_filter = self._build_workspace_filter(workspace_id, exclude_story_id)
             search_result = await client.query_points(
                 collection_name=self._collection_name,
                 query=embedding,
