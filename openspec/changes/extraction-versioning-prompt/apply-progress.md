@@ -855,3 +855,122 @@ first (`'record_usage'` in the actual set, absent from the expected set), then G
 `tasks.md` state re-read after the edits: **2.7–2.11 `[x]`**, nothing else in Phase 2 touched, and
 every Phase 3 item (`3.1`–`3.9` and the rest) stays `[ ]`. No commit, stage, push or branch switch
 was performed; the parent commits.
+
+## W3-A — WU3 part (i), the write side (write halves of 3.1/3.2/3.3, and 3.5; branch `feat/extraction-versioning-prompt-wu3a`, head `4b73db8`)
+
+### Consumed branch/baseline facts
+
+- Branch `feat/extraction-versioning-prompt-wu3a` was already checked out at tip `4b73db8` ("docs(openspec):
+  move WU3's parts onto the write/read axis, before its first tranche"); no branch switch, no commit,
+  no stage — the parent commits. Pre-existing untracked `.claude/skills/` and `backend/.gitignore` left untouched.
+- Measured baseline at that head (parent-provided and re-confirmed implicitly by the clean full-suite runs):
+  **1263 passed, 39 deselected** (`-m "not integration"`); `ruff check src tests` clean; `ruff format --check
+  src tests` → 272 files. **No known environmental failures.**
+- Pinned `qdrant_client` (requirement `qdrant-client>=1.11.0`) exposes `PayloadSchemaType.BOOL` in the
+  installed env — verified with `python -c "from qdrant_client.http import models; print([m.name for m in
+  models.PayloadSchemaType])"` before writing the index code, so **the literal `KEYWORD` fallback was not
+  needed**.
+
+### RED (write-half cases in `backend/tests/test_unit/test_vector_store.py` only — no read-side cases written)
+
+`cd backend && conda run -n storico python -m pytest tests/test_unit/test_vector_store.py -m "not integration" -q`
+→ **7 failed, 22 passed**, failure kinds:
+
+- `test_store_extraction_payload_has_all_fields` (grown, not rewritten): `TypeError: QdrantAdapter.store_extraction()
+  got an unexpected keyword argument 'project_id'`
+- `test_lazy_init_creates_the_three_payload_indexes_with_their_schemas` (new): `AssertionError` — only
+  `workspace_id` was ensured, `project_id`/`has_invalid_tasks` missing
+- 5 × new `set_has_invalid_tasks` cases: `AttributeError: 'QdrantAdapter' object has no attribute
+  'set_has_invalid_tasks'`
+
+### GREEN numbers
+
+- `tests/test_unit/test_vector_store.py` → **29 passed** (23 prior + **6 new test functions**: 1 index-schema +
+  5 setter; the pinned payload test grows in place and adds no function)
+- Phase runner (`test_vector_store.py + test_few_shot_retrieval.py + test_api/test_tasks.py`, `-m "not integration"`)
+  → **113 passed**
+- Churned suites (`test_api/test_extraction.py + test_api/test_stories.py + test_services/test_extraction_service.py`)
+  → **125 passed**
+- Full suite `-m "not integration"` → **1269 passed, 39 deselected** — the delta against the 1263 baseline is
+  **exactly the 6 new test functions**; nothing removed, no pre-existing test changed count.
+
+### The ten payload keys (upsert in `qdrant_adapter.store_extraction`)
+
+`user_story_text`, `tasks_summary`, `model_used`, `workspace_id`, **`project_id`** (`str(project_id)`),
+**`version_number`** (int, the route-minted run number), **`has_invalid_tasks=False`** (a point is born valid;
+only `set_has_invalid_tasks` flips it), `confidence_score`, `user_story_id`, `created_at`.
+
+### Index schema the pinned client accepted (`_ensure_payload_indexes`, one flag, called from `_get_client` right after the collection is ensured)
+
+| Field | Schema accepted |
+| --- | --- |
+| `workspace_id` | `PayloadSchemaType.KEYWORD` |
+| `project_id` | `PayloadSchemaType.KEYWORD` |
+| `has_invalid_tasks` | `PayloadSchemaType.BOOL` — accepted; no fallback needed (verified against the installed client's enum before implementation) |
+
+Every request carries `wait=True`; a failure is logged without failing the request. The two existing
+index tests grew with the behavior (`create_payload_index.assert_called_once()` → the three ensured field
+names are asserted; `test_lazy_init_creates_collection_and_index` additionally pins the last call's
+`field_schema == BOOL`) — no existing assertion was weakened or deleted.
+
+### `set_has_invalid_tasks` — the three documented behaviours (port docstring, mirrored in the adapter)
+
+1. It addresses the point id that **is** the extraction id (`store_extraction` upserts with `id=extraction_id`;
+   `set_payload(points=[extraction_id], payload={"has_invalid_tasks": …}, wait=True)` — a merge, not a re-embed).
+2. A **missing point is a no-op**, not an error (nothing stored → nothing retrievable → nothing to flag);
+   proved at the unit level as "the call is issued unconditionally, success is quiet" — the real-Qdrant proof
+   is 3.9's.
+3. Unlike `search_similar`/`store_extraction`, it **raises `VectorStoreError`** (client unavailable or driver
+   failure), because its caller is a destructive-adjacent operation — the mark handlers' refresh, which runs
+   before the relational write — that must not proceed on an unverified result.
+
+### The four fakes that gained the inert stub (one-line comment naming task 3.6 as the replacer)
+
+- `backend/tests/test_services/test_extraction_service.py` — `_RecordingVectorStore`
+- `backend/tests/test_api/test_stories.py` — `_RecordingDeletionStore`
+- `backend/tests/test_api/test_stories.py` — `_RaisingVectorStore`
+- `backend/tests/test_api/test_extraction.py` — `_RecordingVectorStore`
+
+No recording behaviour was built here; 3.6 replaces the stubs.
+
+### The `version_number` thread (seam 3) — two hops, and where the value comes from
+
+1. **Route → runner** (`api/routes/extraction.py`): the value is `pending.version_number` — the number
+   `create_next_version` minted and the 202 body already returns — passed into `run_background_extraction`
+   (new keyword, default `None` so direct in-process invocations that predate versioning stay valid; D22:
+   a retry reuses the number instead of minting another).
+2. **Runner → `_run_extraction` → `_store_rag` → `store_extraction`**: `_run_extraction` forwards it alongside
+   the temperature, and `_store_rag` (new required `project_id=story.project_id`, `version_number`) writes
+   both straight through to the port.
+
+### Checkbox rule applied (`tasks.md`)
+
+**3.5 `[x]`** (whole letter is write-side). **3.1, 3.2, 3.3 left `[ ]`** — write halves complete, but each
+letter also covers part (ii)'s read side (3.1's filter/signature cases, 3.2's required `exclude_story_id`,
+3.3's `must`/`must_not` filter), and a checkbox is a claim about the task's whole letter. A dated note under
+the amendment blockquote records this. 3.4, 3.6–3.11 and every later phase untouched.
+
+### Files (this unit; `git diff --numstat` adds/dels)
+
+- `backend/src/storico/domain/ports/vector_store_port.py` (36/1), `backend/src/storico/infrastructure/vector/qdrant_adapter.py` (95/20),
+  `backend/src/storico/infrastructure/tasks/extraction_task.py` (18/0), `backend/src/storico/api/routes/extraction.py` (4/0) — 153 src additions.
+- Tests: `backend/tests/test_unit/test_vector_store.py` (234/4), `backend/tests/test_api/test_stories.py` (10/0),
+  `backend/tests/test_api/test_extraction.py` (5/0), `backend/tests/test_services/test_extraction_service.py` (5/0).
+- `tasks.md` (1 checkbox + the dated note), this file. **Code+test `--numstat` total: 407+/25−** (line count, not
+  review-weight; most test additions are the six new test functions).
+
+### Verification (all observed, in order, at the final state)
+
+- `cd backend && conda run -n storico python -m pytest tests/test_unit/test_vector_store.py -m "not integration" -q` → **29 passed**
+- `cd backend && conda run -n storico python -m pytest tests/test_unit/test_vector_store.py tests/test_unit/test_few_shot_retrieval.py tests/test_api/test_tasks.py -m "not integration" -q` → **113 passed, 4 warnings**
+- `cd backend && conda run -n storico python -m pytest -m "not integration" -q` → **1269 passed, 39 deselected** (delta vs 1263 = exactly the 6 new functions)
+- `cd backend && conda run -n storico python -m ruff check src tests` → **All checks passed!**
+- `cd backend && conda run -n storico python -m ruff format --check src tests` → **272 files already formatted** (three files this unit touched needed reformatting once; the diff was hand-applied, the formatter never ran repo-wide)
+
+### Disclosed notes for the reviewer
+
+- The read side was not touched: `search_similar`'s signature, `_build_workspace_filter`, `_fetch_rag_examples`
+  and every read-side call site are exactly as they were; the write half is green with the old read signature
+  intact because `store_extraction`'s new keywords are additive at the call sites this part owns (`_store_rag`).
+- No `-m integration` run (no Docker here — 3.9 owns the live-Qdrant proof); the integration file's
+  `store_extraction` call sites are untouched and are part of the later read-side/3.9 churn.

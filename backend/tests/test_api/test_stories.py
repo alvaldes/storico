@@ -454,6 +454,11 @@ class _RecordingDeletionStore(VectorStorePort):
     async def store_extraction(self, **kwargs: object) -> bool:  # noqa: ARG002
         return True
 
+    async def set_has_invalid_tasks(self, *, extraction_id: str, has_invalid_tasks: bool) -> None:
+        # Deliberately inert no-op: task 3.6 replaces this stub with a recording
+        # fake once the mark handlers call it.
+        return None
+
     async def delete_by_story(self, *, workspace_id: UUID, user_story_id: str) -> None:
         self.deletions.append({"workspace_id": workspace_id, "user_story_id": user_story_id})
 
@@ -473,6 +478,11 @@ class _RaisingVectorStore(VectorStorePort):
 
     async def store_extraction(self, **kwargs: object) -> bool:  # noqa: ARG002
         return True
+
+    async def set_has_invalid_tasks(self, *, extraction_id: str, has_invalid_tasks: bool) -> None:
+        # Deliberately inert no-op: task 3.6 replaces this stub with a recording
+        # fake once the mark handlers call it.
+        return None
 
     async def delete_by_story(  # noqa: ARG002
         self,

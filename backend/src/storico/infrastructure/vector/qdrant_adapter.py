@@ -20,18 +20,21 @@ class QdrantAdapter(VectorStorePort):
 
     Features:
     - Lazy async client initialization (first use, not constructor)
-    - Auto-creates collection on first use if missing, and ensures a keyword
-      payload index on ``workspace_id`` so filtered searches stay fast.
+    - Auto-creates collection on first use if missing, and ensures payload
+      indexes on the three filtered fields (``workspace_id``, ``project_id``,
+      ``has_invalid_tasks``) so filtered searches stay fast.
     - Workspace isolation: every search sends a ``workspace_id`` filter and
       every stored point carries ``workspace_id`` in its payload.
     - Graceful degradation: empty results on failure — except the destructive
-      cleanup ``delete_by_story``, which raises ``VectorStoreError`` because its
-      caller must not proceed on an unverified cleanup.
+      operations ``delete_by_story`` and ``set_has_invalid_tasks``, which raise
+      ``VectorStoreError`` because their callers must not proceed on an
+      unverified result.
 
     Collection schema (storico_extractions):
         - vector: ``vector_size``d float array
         - payload: user_story_text, tasks_summary, model_used,
-                   confidence_score, created_at, user_story_id, workspace_id
+                   confidence_score, created_at, user_story_id, workspace_id,
+                   project_id, version_number, has_invalid_tasks
     """
 
     def __init__(
@@ -50,7 +53,7 @@ class QdrantAdapter(VectorStorePort):
         self._vector_size = vector_size
         self._distance = distance
         self._client: AsyncQdrantClient | None = None
-        self._index_ensured = False
+        self._indexes_ensured = False
 
     def _check_dimensions(self) -> None:
         """Fail fast when the embedding dimensions do not match the collection.
@@ -97,33 +100,49 @@ class QdrantAdapter(VectorStorePort):
                 )
                 logger.info("Created Qdrant collection '%s'", self._collection_name)
 
-            await self._ensure_workspace_payload_index(self._client)
+            await self._ensure_payload_indexes(self._client)
             return self._client
         except Exception as e:
             logger.warning("Failed to initialize Qdrant client: %s", e)
             self._client = None
             return None
 
-    async def _ensure_workspace_payload_index(self, client: AsyncQdrantClient) -> None:
-        """Create the keyword payload index on ``workspace_id`` once.
+    async def _ensure_payload_indexes(self, client: AsyncQdrantClient) -> None:
+        """Create the payload indexes on the three filtered fields, once.
+
+        ``workspace_id`` and ``project_id`` are stored as strings (``KEYWORD``);
+        ``has_invalid_tasks`` is a JSON boolean, given ``PayloadSchemaType.BOOL``
+        — the schema the pinned ``qdrant_client`` accepts (verified against the
+        installed client's ``PayloadSchemaType`` enum, so no literal ``KEYWORD``
+        fallback was needed).
 
         Idempotent: after the first success the flag is set so repeated lazy
-        inits do not re-issue the index request. A failure is logged but is not
+        inits do not re-issue the index requests. A failure is logged but is not
         fatal — searches still work, just without the index acceleration.
         """
-        if self._index_ensured:
+        if self._indexes_ensured:
             return
+        fields = (
+            ("workspace_id", qdrant_models.PayloadSchemaType.KEYWORD),
+            ("project_id", qdrant_models.PayloadSchemaType.KEYWORD),
+            ("has_invalid_tasks", qdrant_models.PayloadSchemaType.BOOL),
+        )
         try:
-            await client.create_payload_index(
-                collection_name=self._collection_name,
-                field_name="workspace_id",
-                field_schema=qdrant_models.PayloadSchemaType.KEYWORD,
-                wait=True,
+            for field_name, field_schema in fields:
+                await client.create_payload_index(
+                    collection_name=self._collection_name,
+                    field_name=field_name,
+                    field_schema=field_schema,
+                    wait=True,
+                )
+            self._indexes_ensured = True
+            logger.info(
+                "Ensured payload indexes on %s for '%s'",
+                [name for name, _ in fields],
+                self._collection_name,
             )
-            self._index_ensured = True
-            logger.info("Ensured payload index on 'workspace_id' for '%s'", self._collection_name)
         except Exception as e:
-            logger.warning("Failed to ensure workspace_id payload index: %s", e)
+            logger.warning("Failed to ensure payload indexes: %s", e)
 
     def _build_workspace_filter(self, workspace_id: UUID) -> qdrant_models.Filter:
         """Build a Qdrant filter that restricts results to a workspace.
@@ -203,13 +222,19 @@ class QdrantAdapter(VectorStorePort):
         tasks_summary: str,
         model_used: str,
         workspace_id: UUID,
+        project_id: UUID,
+        version_number: int,
         confidence_score: float | None = None,
         user_story_id: str = "",
     ) -> bool:
         """Store an extraction with its embedding for future RAG searches.
 
         ``workspace_id`` is written into the point payload so the point is
-        discoverable by workspace-scoped searches.
+        discoverable by workspace-scoped searches, alongside ``project_id`` and
+        ``version_number`` (the route-minted run number, D22). A point is born
+        valid: ``has_invalid_tasks`` is written ``False`` here — a task cannot
+        be marked before it exists, and the point is stored after its run's
+        tasks — and only ``set_has_invalid_tasks`` flips it later.
 
         Returns ``True`` only when Qdrant accepted the point; every skip or
         failure path returns ``False`` (graceful degradation, never raises).
@@ -264,6 +289,9 @@ class QdrantAdapter(VectorStorePort):
                             "tasks_summary": tasks_summary,
                             "model_used": model_used,
                             "workspace_id": str(workspace_id),
+                            "project_id": str(project_id),
+                            "version_number": version_number,
+                            "has_invalid_tasks": False,
                             "confidence_score": confidence_score,
                             "user_story_id": user_story_id,
                             "created_at": datetime.now(UTC).isoformat(),
@@ -351,3 +379,50 @@ class QdrantAdapter(VectorStorePort):
                 },
             )
             raise VectorStoreError(f"Qdrant delete_by_story failed: {e}") from e
+
+    async def set_has_invalid_tasks(self, *, extraction_id: str, has_invalid_tasks: bool) -> None:
+        """Set the validity flag on the point whose id IS ``extraction_id``.
+
+        No search is involved: ``store_extraction`` upserts with
+        ``id=extraction_id``, so the point is addressable by the extraction id
+        directly. A point that does not exist is a no-op — nothing was ever
+        stored, so nothing can be retrieved, so there is nothing to flag and
+        not an error.
+
+        Unlike ``store_extraction``/``search_similar`` — which degrade gracefully
+        and never raise — this method raises ``VectorStoreError`` on failure: its
+        caller is a destructive-adjacent operation (the mark handlers' refresh,
+        which runs before the relational write per the accepted ``(correction)``)
+        that must not proceed — and must not persist the mark — on an unverified
+        result.
+
+        ``set_payload`` without a ``key`` merges the mapping into the stored
+        payload, so the other nine payload keys survive; this is not a re-embed
+        and not a re-upsert. ``wait=True`` makes the flag observable when the
+        call returns.
+
+        Raises:
+            VectorStoreError: when the client is unavailable or the flag write fails.
+        """
+        client = await self._get_client()
+        if client is None:
+            raise VectorStoreError("Qdrant client unavailable; validity flag cannot be verified")
+
+        try:
+            await client.set_payload(
+                collection_name=self._collection_name,
+                payload={"has_invalid_tasks": has_invalid_tasks},
+                points=[extraction_id],
+                wait=True,
+            )
+        except Exception as e:
+            logger.error(
+                "Qdrant set_payload failed; validity flag not verified: %s",
+                e,
+                extra={
+                    "extraction_id": extraction_id,
+                    "collection": self._collection_name,
+                    "reason": "set_payload_failed",
+                },
+            )
+            raise VectorStoreError(f"Qdrant set_has_invalid_tasks failed: {e}") from e

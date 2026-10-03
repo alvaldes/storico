@@ -418,6 +418,11 @@ class _RecordingVectorStore(VectorStorePort):
         self.stored.append(kwargs)
         return True
 
+    async def set_has_invalid_tasks(self, *, extraction_id: str, has_invalid_tasks: bool) -> None:
+        # Deliberately inert no-op: task 3.6 replaces this stub with a recording
+        # fake once the mark handlers call it.
+        return None
+
     async def delete_by_story(
         self,
         *,

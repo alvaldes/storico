@@ -75,6 +75,7 @@ async def run_background_extraction(
     workspace_id: UUID,
     model: str,
     temperature: float = DEFAULT_TEMPERATURE,
+    version_number: int | None = None,
     validate: bool = False,
     provider: str = "ollama",
     api_key: str | None = None,
@@ -101,6 +102,11 @@ async def run_background_extraction(
         temperature: Generation temperature, already resolved by the caller (the route
             resolves it once against ``DEFAULT_TEMPERATURE``); there is no ``None``
             here, so the declared temperature and the temperature used cannot drift.
+        version_number: The version number the route minted and returned in its 202
+            body (D22), so a retry reuses the number instead of minting another. Only
+            the route passes it; direct in-process invocations that predate versioning
+            (the recovery/test paths) may omit it, and the RAG point then records it
+            as absent.
         validate: Whether to run LLM-as-a-Judge validation.
         provider: Workspace provider name.  ``"ollama"``, ``"gemini"``,
             ``"openai"``, and ``"anthropic"`` have dedicated adapters; any
@@ -120,6 +126,7 @@ async def run_background_extraction(
                 workspace_id=workspace_id,
                 model=model,
                 temperature=temperature,
+                version_number=version_number,
                 validate=validate,
                 provider=provider,
                 api_key=api_key,
@@ -283,6 +290,7 @@ async def _run_extraction(
     workspace_id: UUID,
     model: str,
     temperature: float,
+    version_number: int | None,
     validate: bool,
     provider: str = "ollama",
     api_key: str | None = None,
@@ -523,6 +531,8 @@ async def _run_extraction(
             workspace_id,
             model_used=model,
             confidence_score=confidence,
+            project_id=story.project_id,
+            version_number=version_number,
         )
 
         # 8. Transition UserStory to EXTRACTED (from EXTRACTING)
@@ -587,12 +597,18 @@ async def _store_rag(
     workspace_id: UUID,
     model_used: str,
     confidence_score: float | None,
+    project_id: UUID,
+    version_number: int | None,
 ) -> None:
     """Store extraction result in vector store for future RAG searches.
 
     ``model_used`` and ``confidence_score`` carry the values already resolved by the
     caller (the ``model`` parameter of ``_run_extraction`` and the optional LLM-as-a-Judge
     score, respectively) so the point payload agrees with the persisted ``extractions`` row.
+    ``project_id`` is the story's project and ``version_number`` is the route-minted run
+    number threaded from the 202 body (D22) — both write straight through to
+    ``store_extraction`` so the point can be scoped and tied to its run; the port requires
+    them, and the route path always supplies a real number.
     """
     if vector_store is None:
         logger.debug("RAG store skipped: no vector store available")
@@ -607,6 +623,8 @@ async def _store_rag(
             tasks_summary=tasks_summary,
             model_used=model_used,
             workspace_id=workspace_id,
+            project_id=project_id,
+            version_number=version_number,
             confidence_score=confidence_score,
             user_story_id=str(getattr(story, "id", "")),
         )
