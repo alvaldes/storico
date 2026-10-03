@@ -1282,3 +1282,175 @@ the same one-line expected-set addition, made only once the owner said so.
   check-then-act window slice (b) already carries (`find_active_by_task` → `revoke`), now on the
   count side; closing it would need the count and the revoke in one atomic step, which `revoke`'s
   internal commit forbids. Named here and in the handler; not absorbed.
+
+## W3-D — WU3 part (iv), the live-Qdrant proof and the finished churn (2026-10-03)
+
+Branch `feat/extraction-versioning-prompt-wu3d`, tip at start `db0b5fe` (W3-C's commit). Consumed
+baseline facts from the parent task: live Qdrant reachable from this machine (`get_collections()`
+answered `['storico_extractions', 'storico_extractions_dev', 'storico_extractions_prod']`); measured
+baseline at this head **1282 passed, 39 deselected** (`-m "not integration"`), ruff check clean, 272
+files formatted; the file's 16 live cases were among the 39 deselected and had **never been run with
+the flag at this head**. No throwaway point ever touches `storico_extractions_dev`/`_prod`/legacy:
+per the file's own convention every case builds a `storico_extractions_pytest_<hex>` collection,
+deleted in teardown, so the application collections are read and written by nothing in this unit.
+
+### The finished `store_extraction` churn (part (ii)'s deferred half)
+
+Four sites in `test_few_shot_rag_qdrant.py` gained the port's required keywords — `_store_live` (the
+helper the other cases share), the two direct calls in `TestLiveStoredPoint`, and the dead-adapter
+call in `TestDegradation`. The helper grew keyword-only `user_story_id` (default `""`) and returns
+the point id, because `set_has_invalid_tasks` addresses the point id that **is** the extraction id
+and the new cases flag what they store. Existing callers are unchanged in effect; no pre-existing
+assertion was weakened, deleted or restructured.
+
+### RED (observed, before the churn)
+
+`STORICO_TEST_LIVE_QDRANT=1 cd backend && conda run -n storico python -m pytest
+tests/test_integration/test_few_shot_rag_qdrant.py -m integration -q` → **12 failed, 4 passed**, all
+12 with `TypeError: QdrantAdapter.store_extraction() missing 2 required keyword-only arguments:
+'project_id' and 'version_number'` — exactly the deferred churn; the flag made them run and fail, as
+designed. This is a TRIANGULATE task, so no production code was written to a failing test: the six
+new cases were added against already-landed production code and the churn turned the file runnable.
+
+### GREEN (observed, all six new cases against the live server, after two production fixes — see below)
+
+`STORICO_TEST_LIVE_QDRANT=1 cd backend && conda run -n storico python -m pytest
+tests/test_integration/test_few_shot_rag_qdrant.py -m integration -q` → **22 passed, 6 warnings**
+(16 pre-existing cases + 6 new). Without the flag the same file reports **22 skipped** — the honest
+skip count.
+
+The six cases (new class `TestLiveValidityAndExclusionFilter`, plus one case in
+`TestLiveCollectionContract`):
+
+1. **Own-story exclusion** — the point stored with `user_story_id = story_id` is not returned when
+   the search excludes `story_id`; the control search with a different exclusion returns the point,
+   so the miss is the `must_not`, not the index.
+2. **Active-mark exclusion** — a point flagged `True` via `set_has_invalid_tasks` is not returned;
+   after the setter writes `False` (the revoke path) the point is retrievable again.
+3. **`limit=1` with both contaminated points above the threshold** — the story's own point (must_not)
+   and a flagged point (validity `must`) are both excluded and the valid point is the one returned:
+   exclusions happen before the limit, so neither consumed it.
+4. **Fail-closed (the case a fake client cannot give)** — the point without the key is created by
+   upserting the **pre-slice payload shape** (the seven legacy keys: user_story_text, tasks_summary,
+   model_used, workspace_id, confidence_score, user_story_id, created_at — and **no**
+   `has_invalid_tasks`) directly through the inspector client, the shape every point written before
+   this slice still has. The case first proves its own precondition by scroll (two points, the legacy
+   one's payload genuinely lacks the key), then asserts the search returns only the valid point. A
+   `must_not`-on-`True` validity rule would have admitted the legacy point; the positive `must` on
+   `False` does not.
+5. **`payload_schema` carries all three indexes** — measured on the throwaway collection after one
+   live store: `workspace_id` and `project_id` as `KEYWORD`, `has_invalid_tasks` as `BOOL`
+   (`PayloadIndexInfo.data_type` asserted per field, not just key presence).
+6. **Cross-slice coexistence (seam 2)** — a point whose payload carries the new keys
+   (`project_id` non-empty, `version_number` present, precondition-asserted by scroll) and whose
+   flag is `True` is removed by (b)'s `delete_by_story` without raising; the scroll is then empty,
+   and a further `set_has_invalid_tasks` on the deleted point is a no-op — no error, no
+   resurrection.
+
+### What the live run exposed — two production defects, both real, both fixed in this unit
+
+1. **`user_story_id` has no payload index, and the live server refuses the filter without one.**
+   Every `search_similar` at this head failed against Qdrant Cloud with `UnexpectedResponse: 400 —
+   Bad request: Index required but not found for "user_story_id" of one of the following types:
+   [keyword, uuid]`, which graceful degradation turned into `[]` — the D10 exclusions would have
+   silently disabled all few-shot retrieval in production, with unit tests green. The same 400 kills
+   `delete_by_story` (it filters on `workspace_id` + `user_story_id`) by raising
+   `VectorStoreError`. **Production fix applied in this unit**: `_ensure_payload_indexes` now also
+   creates a `KEYWORD` index on `user_story_id` (the filter's fourth field — the design's "three
+   filtered fields" count never included the `must_not` field). **This fix breaks three pinned
+   assertions in `backend/tests/test_unit/test_vector_store.py`** — a file this unit is forbidden to
+   edit (`test_lazy_init_creates_collection_and_index`,
+   `test_existing_collection_skips_create_but_ensures_index`,
+   `test_lazy_init_creates_the_three_payload_indexes_with_their_schemas`, each pinning the exact
+   three-index set) — so the pin update is escalated to the parent as an interaction, not absorbed
+   silently.
+2. **`set_has_invalid_tasks` on a deleted point raised instead of no-op'ing.** Part (iii)'s unit case
+   documented the assumption "Qdrant's `set_payload` over zero matched points changes nothing and
+   returns normally (that a real Qdrant behaves this way is 3.9's live proof)" — the live run
+   falsified it: the server answers `404 — Not found: No point with id ... found`, the adapter
+   wrapped it in `VectorStoreError`, and the mark endpoints would answer 503 on a mark/refresh of an
+   extraction whose point was already deleted by story cleanup. **Production fix applied in this
+   unit** (within the allowed surface): the setter catches `UnexpectedResponse` whose body carries
+   `No point with id` and returns (the documented no-op, now shape-matched); every other failure —
+   including the `RuntimeError` the unit's driver-failure case raises — still wraps in
+   `VectorStoreError`. The setter's unit cases (call shape `points=[extraction_id]`, quiet mock
+   success, driver failure) all stay green. The adapter docstring records the measured behaviour.
+
+### Verification (all observed, in order, at the final state)
+
+- `STORICO_TEST_LIVE_QDRANT=1 cd backend && conda run -n storico python -m pytest
+  tests/test_integration/test_few_shot_rag_qdrant.py -m integration -q` → **22 passed, 6 warnings**
+- `cd backend && conda run -n storico python -m pytest tests/test_integration/test_few_shot_rag_qdrant.py
+  -m integration -q` (no flag) → **22 skipped**
+- `cd backend && conda run -n storico python -m pytest -m "not integration" -q` → **1279 passed,
+  3 failed** — the three index pins named above, the deliberate cost of the live-proven index fix;
+  escalated, not absorbed
+- `cd backend && conda run -n storico python -m ruff check src tests` → **All checks passed!**
+- `cd backend && conda run -n storico python -m ruff format --check src tests` → both changed files
+  already formatted (diff hand-checked with `--diff`; the formatter never ran)
+
+### Files changed (this unit — `git diff --numstat` at the final state: **465+/4−** total,
+### **318+/3−** code+tests)
+
+- `backend/src/storico/infrastructure/vector/qdrant_adapter.py` (+34/−0 — the `user_story_id`
+  index, the setter's no-op catch, the measured-behaviour docstring)
+- `backend/tests/test_integration/test_few_shot_rag_qdrant.py` (+284/−3 — the churn plus the six
+  cases and their two helpers)
+- `openspec/changes/extraction-versioning-prompt/tasks.md` (+13/−1 — the 3.9 checkbox + the dated
+  part-(iv) note)
+- `openspec/changes/extraction-versioning-prompt/apply-progress.md` (+134/−0) — this section
+  appended, earlier sections verbatim
+
+### Remaining unchecked tasks
+
+- None in Phase 3 — **3.9 `[x]` completes Phase 3.** Phase 4 and Phase 5 untouched (`[ ]`
+  throughout, verified by re-reading `tasks.md`).
+
+### Risks
+
+- **The three unit index pins are red at this head.** They assert the exact three-index set that
+  parts (i)–(iii) reviewed; the live-proven fix requires a fourth. The parent owns
+  `test_vector_store.py` and the resolution (update the pins, or reject the fix and keep the 400
+  degradation). Until resolved, `-m "not integration"` is red and the live suite is the green one.
+- The no-op catch matches the server's error body (`"No point with id"`) rather than a typed code;
+  a Qdrant version that rewords the message would reintroduce the raise. Named rather than silently
+  absorbed — the alternative (a `retrieve` pre-read) changes the pinned call shape and adds a round
+  trip to every refresh.
+
+### Close-out: the pins moved under explicit authorization (2026-10-03, parent Option 2)
+
+**What moved.** `backend/tests/test_unit/test_vector_store.py` was added to this unit's surfaces
+for the pin only, and exactly that was done: the three index assertions now expect the four-index
+set (`workspace_id`, `project_id`, `user_story_id` as `KEYWORD`; `has_invalid_tasks` as `BOOL`),
+the two count-bearing docstring phrases say "four", the count-bearing comments alongside the
+changed assertions follow them, and the dedicated test's name followed its own convention —
+`test_lazy_init_creates_the_three_payload_indexes_with_their_schemas` →
+`test_lazy_init_creates_the_four_payload_indexes_with_their_schemas` (a rename, never a new test;
+the file's test count is unchanged). RED was observed first — exactly those three tests failed
+against the four-index adapter — then GREEN (**31 passed** in the file).
+
+**The design's own index list was incomplete.** Recorded here next to the fix because the next
+reader will look at the design's table first: the design named **three** fields for
+`_ensure_payload_indexes`, while the filter it ships also filters on `user_story_id` (the D10
+`must_not` exclusion) — the missing index is precisely what the live run caught as `400 Index
+required but not found`. The design table stands as the planning record; the four-index set in the
+adapter, the integration test and now the unit pin is the corrected truth.
+
+**The second defect's semantics: shape-verified, not assumed.** The contract said no-op, the unit
+case had assumed the server would be quiet on a zero-match `set_payload`, and the live server was
+not (`404 "No point with id"`). The mocked "no-op" is therefore **shape-verified**: the setter
+catches the measured error body and returns, and the behaviour is pinned by the adapter's
+docstring and the kept unit cases. The re-wording risk stands as named in Risks: a Qdrant version
+that rewords `No point with id` would reintroduce the raise; the alternative (a pre-read before
+every refresh) changes the pinned call shape and adds a round trip, so the string match is the
+accepted trade-off, disclosed rather than absorbed.
+
+### Final verification (all observed, after the pin edit, in the parent's order)
+
+| Command | Result |
+| --- | --- |
+| `cd backend && conda run -n storico python -m pytest -m "not integration" -q` | **1282 passed, 45 deselected** — the passed count is exactly the parent's target (pre-pin 1279 passed + 3 failed, all green now); deselected moved 39 → **45** because this unit itself added 6 new integration-marked cases (counted from the diff), which a `-m "not integration"` run now deselects; no test count changed (the rename is a rename) |
+| `cd backend && STORICO_TEST_LIVE_QDRANT=1 conda run -n storico python -m pytest tests/test_integration/test_few_shot_rag_qdrant.py -m integration -q` | **22 passed** — green with the flag (the parent's literal `VAR=1 cd … && conda run` form scopes the variable to the `cd` in POSIX shell, so the assignment rides `conda run` instead) |
+| `cd backend && conda run -n storico python -m pytest tests/test_integration/test_few_shot_rag_qdrant.py -m integration -q` (no flag) | **22 skipped** — the honest skip count; nothing ran against a live server |
+| `cd backend && conda run -n storico python -m ruff check src tests` | **All checks passed!** |
+| `cd backend && conda run -n storico python -m ruff format --check src tests` | **272 files already formatted** |

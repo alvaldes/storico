@@ -8,6 +8,7 @@ from uuid import UUID
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qdrant_models
+from qdrant_client.http.exceptions import UnexpectedResponse
 
 from storico.domain.entities.exceptions import VectorStoreError
 from storico.domain.ports import EmbeddingPort, ExtractionExample, VectorStorePort
@@ -125,6 +126,7 @@ class QdrantAdapter(VectorStorePort):
         fields = (
             ("workspace_id", qdrant_models.PayloadSchemaType.KEYWORD),
             ("project_id", qdrant_models.PayloadSchemaType.KEYWORD),
+            ("user_story_id", qdrant_models.PayloadSchemaType.KEYWORD),
             ("has_invalid_tasks", qdrant_models.PayloadSchemaType.BOOL),
         )
         try:
@@ -428,6 +430,12 @@ class QdrantAdapter(VectorStorePort):
         and not a re-upsert. ``wait=True`` makes the flag observable when the
         call returns.
 
+        Measured against the live server (3.9's run): ``set_payload`` aimed at
+        an explicit point id that does not exist does **not** return quietly —
+        the server answers 404 ``No point with id ...``. That one response is
+        the documented no-op and is swallowed here; every other failure still
+        raises.
+
         Raises:
             VectorStoreError: when the client is unavailable or the flag write fails.
         """
@@ -442,6 +450,32 @@ class QdrantAdapter(VectorStorePort):
                 points=[extraction_id],
                 wait=True,
             )
+        except UnexpectedResponse as e:
+            if "No point with id" in str(e):
+                # A point that does not exist is nothing to flag: nothing was
+                # ever stored, so nothing can be retrieved, so there is nothing
+                # for a future search to be contaminated by. The mocked unit
+                # case assumed a quiet success; the live server measured in 3.9
+                # answers 404 instead, so the no-op is honoured here, by shape.
+                logger.info(
+                    "set_has_invalid_tasks on an absent point; no-op",
+                    extra={
+                        "extraction_id": extraction_id,
+                        "collection": self._collection_name,
+                        "reason": "point_absent",
+                    },
+                )
+                return
+            logger.error(
+                "Qdrant set_payload failed; validity flag not verified: %s",
+                e,
+                extra={
+                    "extraction_id": extraction_id,
+                    "collection": self._collection_name,
+                    "reason": "set_payload_failed",
+                },
+            )
+            raise VectorStoreError(f"Qdrant set_has_invalid_tasks failed: {e}") from e
         except Exception as e:
             logger.error(
                 "Qdrant set_payload failed; validity flag not verified: %s",

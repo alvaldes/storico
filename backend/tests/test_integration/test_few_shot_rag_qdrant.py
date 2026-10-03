@@ -39,6 +39,7 @@ import os
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
@@ -203,22 +204,73 @@ async def _store_live(
     workspace_id: uuid.UUID,
     user_story_text: str,
     tasks_summary: str = TASKS_SUMMARY,
-) -> None:
+    user_story_id: str = "",
+) -> str:
     """Store one live point and assert the server accepted it.
 
     The point id is a real ``uuid4``: Qdrant accepts only an unsigned integer or
     a UUID, and the ``"<uuid>:<index>"`` shape was an actual defect that every
-    mocked test stayed green against.
+    mocked test stayed green against. ``project_id`` and ``version_number``
+    carry fresh values per point — they are required keywords of the port, and
+    the filter semantics under test here do not depend on them. Returns the
+    point id, which is the extraction id ``set_has_invalid_tasks`` addresses.
     """
+    point_id = str(uuid.uuid4())
     stored = await adapter.store_extraction(
-        extraction_id=str(uuid.uuid4()),
+        extraction_id=point_id,
         user_story_text=user_story_text,
         tasks_summary=tasks_summary,
         model_used="pytest-live",
         workspace_id=workspace_id,
+        project_id=uuid.uuid4(),
+        version_number=1,
+        user_story_id=user_story_id,
         confidence_score=0.9,
     )
     assert stored is True, "the live vector store rejected the point"
+    return point_id
+
+
+async def _store_point_without_validity_flag(
+    live_store: LiveVectorStore,
+    embedding_port: EmbeddingPort,
+    *,
+    workspace_id: uuid.UUID,
+    user_story_text: str,
+) -> str:
+    """Upsert a pre-slice point whose payload has no ``has_invalid_tasks`` key.
+
+    The production write path can no longer produce such a point — it always
+    writes the flag ``False`` — so the fail-closed case writes the legacy shape
+    directly through the inspector client: the seven payload keys a point
+    carried before this slice existed, and no validity flag. This is the exact
+    shape a point written before the slice would still have in the collection,
+    and the shape a ``must_not``-on-``True`` validity rule would wrongly admit.
+    Returns the point id.
+    """
+    point_id = str(uuid.uuid4())
+    embedding = await embedding_port.embed(user_story_text)
+    assert embedding, "the live embedding provider returned no vector for the legacy point"
+    await live_store.inspector.upsert(
+        collection_name=live_store.collection_name,
+        points=[
+            qdrant_models.PointStruct(
+                id=point_id,
+                vector=embedding,
+                payload={
+                    "user_story_text": user_story_text,
+                    "tasks_summary": TASKS_SUMMARY,
+                    "model_used": "pytest-live-legacy",
+                    "workspace_id": str(workspace_id),
+                    "confidence_score": 0.9,
+                    "user_story_id": "",
+                    "created_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        ],
+        wait=True,
+    )
+    return point_id
 
 
 def _build_service(llm: RecordingLLM, vector_store: VectorStorePort) -> ExtractionService:
@@ -332,6 +384,31 @@ class TestLiveCollectionContract:
         assert vectors.distance == qdrant_models.Distance.COSINE
         assert "workspace_id" in info.payload_schema
 
+    @pytest.mark.asyncio(loop_scope="module")
+    async def test_live_collection_payload_schema_carries_all_three_indexes(
+        self, live_store: LiveVectorStore
+    ) -> None:
+        """After one live store: KEYWORD on both id fields, BOOL on the flag."""
+        await _store_live(
+            live_store.adapter, workspace_id=uuid.uuid4(), user_story_text=STORY_QUERY
+        )
+
+        info = await live_store.inspector.get_collection(live_store.collection_name)
+        assert {"workspace_id", "project_id", "has_invalid_tasks"} <= set(info.payload_schema), (
+            f"the collection's payload_schema is missing a filtered-field index: "
+            f"{sorted(info.payload_schema)}"
+        )
+        assert (
+            info.payload_schema["workspace_id"].data_type == qdrant_models.PayloadSchemaType.KEYWORD
+        )
+        assert (
+            info.payload_schema["project_id"].data_type == qdrant_models.PayloadSchemaType.KEYWORD
+        )
+        assert (
+            info.payload_schema["has_invalid_tasks"].data_type
+            == qdrant_models.PayloadSchemaType.BOOL
+        )
+
 
 class TestLiveRetrieval:
     """Workspace-scoped retrieval against the real server."""
@@ -386,6 +463,204 @@ class TestLiveRetrieval:
             exclude_story_id=str(uuid.uuid4()),
         )
         assert in_b == [], "a workspace must never see another workspace's stored story"
+
+
+class TestLiveValidityAndExclusionFilter:
+    """The fail-closed retrieval rules, proved against a real Qdrant index.
+
+    A fake client can assert the filter's *shape*; only a real server proves the
+    *semantics*: that a positive ``must`` on ``has_invalid_tasks == False``
+    actually excludes a flagged point, that a payload missing the key entirely
+    is never read as valid (fail-closed), that the ``must_not`` on
+    ``user_story_id`` keeps a story out of its own few-shot examples, and that
+    an excluded point does not consume ``limit``.
+    """
+
+    @pytest.mark.asyncio(loop_scope="module")
+    async def test_own_story_previous_point_is_not_returned(
+        self, live_store: LiveVectorStore
+    ) -> None:
+        """The story's own previous point is invisible to its re-extraction."""
+        workspace_id = uuid.uuid4()
+        story_id = str(uuid.uuid4())
+        await _store_live(
+            live_store.adapter,
+            workspace_id=workspace_id,
+            user_story_text=STORY_QUERY,
+            user_story_id=story_id,
+        )
+
+        own = await live_store.adapter.search_similar(
+            STORY_SIMILAR,
+            limit=3,
+            threshold=0.85,
+            workspace_id=workspace_id,
+            exclude_story_id=story_id,
+        )
+        assert own == [], "a story must never be retrieved as its own few-shot example"
+
+        # Control: the identical point IS reachable when the exclusion names a
+        # different story — the miss above was the must_not, not the index.
+        other = await live_store.adapter.search_similar(
+            STORY_SIMILAR,
+            limit=3,
+            threshold=0.85,
+            workspace_id=workspace_id,
+            exclude_story_id=str(uuid.uuid4()),
+        )
+        assert len(other) == 1
+        assert other[0].user_story_text == STORY_QUERY
+
+    @pytest.mark.asyncio(loop_scope="module")
+    async def test_marked_extraction_is_not_returned(self, live_store: LiveVectorStore) -> None:
+        """A point flagged by the setter is excluded; the revoke restores it."""
+        workspace_id = uuid.uuid4()
+        point_id = await _store_live(
+            live_store.adapter, workspace_id=workspace_id, user_story_text=STORY_QUERY
+        )
+
+        await live_store.adapter.set_has_invalid_tasks(
+            extraction_id=point_id, has_invalid_tasks=True
+        )
+        marked = await live_store.adapter.search_similar(
+            STORY_SIMILAR,
+            limit=3,
+            threshold=0.85,
+            workspace_id=workspace_id,
+            exclude_story_id=str(uuid.uuid4()),
+        )
+        assert marked == [], "a point carrying an active mark must never be retrieved"
+
+        await live_store.adapter.set_has_invalid_tasks(
+            extraction_id=point_id, has_invalid_tasks=False
+        )
+        revoked = await live_store.adapter.search_similar(
+            STORY_SIMILAR,
+            limit=3,
+            threshold=0.85,
+            workspace_id=workspace_id,
+            exclude_story_id=str(uuid.uuid4()),
+        )
+        assert len(revoked) == 1
+        assert revoked[0].user_story_text == STORY_QUERY
+
+    @pytest.mark.asyncio(loop_scope="module")
+    async def test_limit_one_with_two_contaminated_points_returns_the_valid_one(
+        self, live_store: LiveVectorStore
+    ) -> None:
+        """With limit=1 and both excluded points above the threshold, the valid
+        point is the one returned — an exclusion happens before the limit, so a
+        contaminated point never consumes it."""
+        workspace_id = uuid.uuid4()
+        story_id = str(uuid.uuid4())
+        valid_text = STORY_VARIANTS[0]
+        # Contaminated point 1: the story's own previous point (must_not).
+        await _store_live(
+            live_store.adapter,
+            workspace_id=workspace_id,
+            user_story_text=STORY_QUERY,
+            user_story_id=story_id,
+        )
+        # Contaminated point 2: an active mark (must has_invalid_tasks == False).
+        flagged_id = await _store_live(
+            live_store.adapter, workspace_id=workspace_id, user_story_text=STORY_SIMILAR
+        )
+        await live_store.adapter.set_has_invalid_tasks(
+            extraction_id=flagged_id, has_invalid_tasks=True
+        )
+        await _store_live(live_store.adapter, workspace_id=workspace_id, user_story_text=valid_text)
+
+        hits = await live_store.adapter.search_similar(
+            STORY_QUERY,
+            limit=1,
+            threshold=0.85,
+            workspace_id=workspace_id,
+            exclude_story_id=story_id,
+        )
+
+        assert len(hits) == 1, "neither excluded point may consume the limit"
+        assert hits[0].user_story_text == valid_text
+
+    @pytest.mark.asyncio(loop_scope="module")
+    async def test_point_without_validity_flag_is_excluded_while_a_valid_point_is_returned(
+        self, live_store: LiveVectorStore, embedding_port: EmbeddingPort
+    ) -> None:
+        """Fail-closed: a payload with no ``has_invalid_tasks`` key is not valid.
+
+        This is the proof a fake client cannot give: against a mocked SDK the
+        filter's shape is all there is, but here a point whose payload simply
+        lacks the key — the shape every pre-slice point still has — is written
+        into a real index and must not be read as valid.
+        """
+        workspace_id = uuid.uuid4()
+        # The valid point is stored first: the adapter's lazy init creates the
+        # collection (and its indexes), which the direct legacy upsert below
+        # then targets — the inspector client never creates collections.
+        valid_text = STORY_VARIANTS[0]
+        await _store_live(live_store.adapter, workspace_id=workspace_id, user_story_text=valid_text)
+        legacy_id = await _store_point_without_validity_flag(
+            live_store,
+            embedding_port,
+            workspace_id=workspace_id,
+            user_story_text=STORY_QUERY,
+        )
+
+        # Precondition: the legacy point really is in the collection, and its
+        # payload really lacks the key — otherwise the outcome proves nothing.
+        points = await _scroll_all(live_store)
+        assert len(points) == 2, f"expected the legacy point and the valid one, got {len(points)}"
+        legacy_payload = next(p.payload for p in points if str(p.id) == legacy_id)
+        assert legacy_payload is not None
+        assert "has_invalid_tasks" not in legacy_payload
+
+        hits = await live_store.adapter.search_similar(
+            STORY_QUERY,
+            limit=3,
+            threshold=0.85,
+            workspace_id=workspace_id,
+            exclude_story_id=str(uuid.uuid4()),
+        )
+        assert len(hits) == 1, "a point without the validity flag must fail closed"
+        assert hits[0].user_story_text == valid_text
+
+    @pytest.mark.asyncio(loop_scope="module")
+    async def test_delete_by_story_removes_a_flagged_point_and_refresh_then_is_a_noop(
+        self, live_store: LiveVectorStore
+    ) -> None:
+        """Cross-slice coexistence: (b)'s cleanup removes a flagged point that
+        carries the new payload keys, and the point-id refresh on the deleted
+        point is a no-op, not an error and not a resurrection.
+        """
+        workspace_id = uuid.uuid4()
+        story_id = str(uuid.uuid4())
+        point_id = await _store_live(
+            live_store.adapter,
+            workspace_id=workspace_id,
+            user_story_text=STORY_QUERY,
+            user_story_id=story_id,
+        )
+        await live_store.adapter.set_has_invalid_tasks(
+            extraction_id=point_id, has_invalid_tasks=True
+        )
+
+        points = await _scroll_all(live_store)
+        assert len(points) == 1
+        assert points[0].payload is not None
+        assert points[0].payload["has_invalid_tasks"] is True, (
+            "precondition: the point carries an active mark"
+        )
+        assert points[0].payload["project_id"], "precondition: the payload carries the new keys"
+        assert "version_number" in points[0].payload
+
+        # (b)'s destructive cleanup must remove the point regardless of the flag.
+        await live_store.adapter.delete_by_story(workspace_id=workspace_id, user_story_id=story_id)
+        assert await _scroll_all(live_store) == []
+
+        # ...and the refresh on the now-deleted point is a no-op, not an error.
+        await live_store.adapter.set_has_invalid_tasks(
+            extraction_id=point_id, has_invalid_tasks=True
+        )
+        assert await _scroll_all(live_store) == [], "a refresh cannot resurrect a deleted point"
 
     @pytest.mark.asyncio(loop_scope="module")
     async def test_unrelated_story_below_threshold_returns_nothing(
@@ -455,6 +730,8 @@ class TestLiveStoredPoint:
             tasks_summary=TASKS_SUMMARY,
             model_used="pytest-live",
             workspace_id=workspace_id,
+            project_id=uuid.uuid4(),
+            version_number=1,
         )
         assert stored is True, "the live store rejected the point"
 
@@ -497,6 +774,8 @@ class TestLiveStoredPoint:
                 tasks_summary=TASKS_SUMMARY,
                 model_used="pytest-live",
                 workspace_id=workspace_id,
+                project_id=uuid.uuid4(),
+                version_number=1,
             )
             assert stored is True, "the live store rejected the point"
 
@@ -653,6 +932,8 @@ class TestDegradation:
             tasks_summary=TASKS_SUMMARY,
             model_used="pytest-degradation",
             workspace_id=uuid.uuid4(),
+            project_id=uuid.uuid4(),
+            version_number=1,
         )
 
         assert stored is False

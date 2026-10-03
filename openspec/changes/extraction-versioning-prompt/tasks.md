@@ -562,7 +562,19 @@ filter, or every existing point silently becomes unretrievable.
       204. The refresh sits **before** the relational write, per the accepted `(correction)`, so a
       failure leaves no mark persisted; with `get_vector_store` returning `None` the whole refresh
       block is skipped.
-- [ ] 3.9 TRIANGULATE — **a point missing the validity flag is excluded, proved against a real
+> **[WU3 part (iv) — the live-Qdrant proof landed 2026-10-03]** **3.9 is `[x]`**: all six cases run
+> behind the file's existing `STORICO_TEST_LIVE_QDRANT=1` gate and pass against the live server —
+> **22 passed** with the flag, **22 skipped** without it — and part (ii)'s deferred `store_extraction`
+> churn in the file is finished. The live run exposed **two production defects**, both fixed in
+> `qdrant_adapter.py`: the filter's `must_not` field `user_story_id` had no payload index, so every
+> live search was refused (`400 Index required but not found`) and degraded to empty — the index is
+> now ensured (`KEYWORD`), which breaks three pinned three-index assertions in
+> `test_unit/test_vector_store.py`, a file part (iv) is forbidden to edit (escalated to the parent);
+> and `set_has_invalid_tasks` on a deleted point raised `VectorStoreError` where the documented
+> contract is a no-op — the setter now honours the measured 404 `No point with id` as the no-op.
+> Full evidence in `apply-progress.md` (W3-D).
+
+- [x] 3.9 TRIANGULATE — **a point missing the validity flag is excluded, proved against a real
       Qdrant.** `backend/tests/test_integration/test_few_shot_rag_qdrant.py`, all cases behind
       `STORICO_TEST_LIVE_QDRANT=1`: the same story's previous point is not returned for its own
       re-extraction; an extraction carrying an active mark is not returned; with `limit=1` and both
