@@ -115,17 +115,30 @@ successful run and the runner's failure paths show a run whose provider failed k
 `usage` with a non-null `prompt_rendered`, and a run that died before render keeping `prompt_rendered IS
 NULL`.
 
-## 7. Data written to production by this report's benches (disclosed)
+## 7. Data written to production by this report's benches (disclosed, and then removed)
 
-The benches created real rows in production's database: the bench owner user, and one workspace + project
-per rung (`Bench 1`, `Bench 50`, `Bench 200`, `Bench 1000`) plus one additional workspace from a failed
-first attempt at the 1000 rung (**904 stories imported, no extraction** — the harness refused to continue
-when the import accepted fewer rows than the rung, which is the behaviour it should have). Their
-extractions, tasks and snapshots are the evidence in §5. **Nothing was written to production's Qdrant
-collection** (the bench pinned the dev one). The database's pre-bench state was measured first: revision
-`0029` and **every business table at zero**, so nothing pre-existing was touched. If the owner wants these
-rows gone, they are deletable per workspace; they are named here so nobody has to guess where they came
-from.
+The benches created real rows in production's database: the bench owner user, one workspace + project per
+rung, and one more per failed first attempt — **nine workspaces in all**, because the harness refused to
+continue whenever a rung did not come out as asked (the first 1000 attempt accepted 904 rows and stopped
+before the extraction, which is the behaviour it should have had). Their extractions, tasks and snapshots
+are the evidence in §5. **Nothing was written to production's Qdrant collection** (the bench pinned the
+dev one). The database's pre-bench state was measured first: revision `0029` and **every business table at
+zero**, so nothing pre-existing was touched.
+
+**The owner asked for the bench data to be removed, and it was — measured, not assumed.** The deletion was
+scoped by interlock (only workspaces whose slug begins with `bench-`, plus the bench owner user, in one
+transaction) and the counts were printed before and after:
+
+| | users | workspaces | members | prompts | llm configs | projects | stories | extractions | tasks |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| before the deletion | 1 | 9 | 9 | 4 | 9 | 9 | 3059 | 4 | 20 |
+| after the deletion | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** | **0** |
+
+The four RAG points the benches had written to the **dev** collection were removed too — **by an indexed
+field**, because the first attempt filtered on `model_used` and Qdrant refused it with the very error §3
+describes (`Index required but not found`), which is that defect proven from the other side. The collection
+is back to its pre-bench state: **0 points**. Production's own collection was never touched: **0 points,
+before and after**.
 
 ## 8. Bottom line
 
