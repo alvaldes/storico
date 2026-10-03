@@ -455,6 +455,17 @@ filter, or every existing point silently becomes unretrievable.
 > - **iii** — 3.6–3.8 (the refresh order and `count_active_for_extraction`), where **D10 closes**.
 > - **iv** — 3.9, the live-Qdrant cases (skipped locally; CI owns them).
 >
+> **[WU3 part (i) — write side landed 2026-10-03]** **3.5 is `[x]`**: its whole letter is write-side
+> work and is done (`_store_rag`'s two arguments, the `version_number` thread from the route through
+> `run_background_extraction` into `_run_extraction`). **3.1, 3.2 and 3.3 stay `[ ]`**: their write
+> halves are complete (the ten-key payload, `_ensure_payload_indexes`, `store_extraction`'s required
+> `project_id`/`version_number`, the abstract `set_has_invalid_tasks` plus its adapter implementation,
+> and the write-half RED→GREEN cases in `test_vector_store.py`), but each letter also covers read-side
+> work that belongs to part (ii) — 3.1's `search_similar` filter/signature cases, 3.2's required
+> `exclude_story_id`, 3.3's `must`/`must_not` filter — and a checkbox is a claim about the task's
+> whole letter. The four `VectorStorePort` fakes carry an inert `set_has_invalid_tasks` stub naming
+> 3.6, which replaces it with the recording fake. Evidence in `apply-progress.md` (W3-A).
+>>
 > The task numbers below stay as the planning record; each new part cites the tasks it carries.
 
 - [ ] 3.1 RED — `backend/tests/test_unit/test_vector_store.py`: add the failing filter, payload and
@@ -497,7 +508,7 @@ filter, or every existing point silently becomes unretrievable.
       `backend/tests/test_extraction_flow_few_shot.py`,
       `backend/tests/test_integration/test_few_shot_rag_qdrant.py` (~7 sites) and
       `_RecordingVectorStore` in `backend/tests/test_api/test_extraction.py:59-76`.
-- [ ] 3.5 GREEN — `backend/src/storico/infrastructure/tasks/extraction_task.py`: `_store_rag` gains
+- [x] 3.5 GREEN — `backend/src/storico/infrastructure/tasks/extraction_task.py`: `_store_rag` gains
       `project_id` and `version_number` and writes them through to `store_extraction`; thread
       `version_number` from the route through `run_background_extraction` into `_run_extraction`
       alongside the temperature (a's parameter) — **seam 3 above: (a) 2.3 and (b) 4.6 do not schedule

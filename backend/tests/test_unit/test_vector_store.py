@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+from qdrant_client.http import models as qdrant_models
 
 from storico.domain.entities.exceptions import VectorStoreError
 from storico.domain.ports import VectorStorePort
@@ -41,6 +42,7 @@ class TestQdrantAdapter:
 
     def setup_method(self) -> None:
         self.workspace_id = uuid4()
+        self.project_id = uuid4()
         self.collection = "test_storico_extractions"
         self.qdrant_url = "http://localhost:6333"
 
@@ -284,6 +286,8 @@ class TestQdrantAdapter:
             tasks_summary="1. Implement auth",
             model_used="llama3.2",
             workspace_id=self.workspace_id,
+            project_id=self.project_id,
+            version_number=1,
             confidence_score=0.85,
             user_story_id="story-456",
         )
@@ -323,6 +327,8 @@ class TestQdrantAdapter:
             tasks_summary="task list",
             model_used="llama3.2",
             workspace_id=self.workspace_id,
+            project_id=self.project_id,
+            version_number=1,
         )
 
         call_args = mock_client.upsert.call_args[1]
@@ -359,6 +365,8 @@ class TestQdrantAdapter:
                 tasks_summary="tasks",
                 model_used="test",
                 workspace_id=self.workspace_id,
+                project_id=self.project_id,
+                version_number=1,
             )
 
         # Nothing landed, so the store reports a skip rather than success.
@@ -398,6 +406,8 @@ class TestQdrantAdapter:
             tasks_summary="tasks",
             model_used="test",
             workspace_id=self.workspace_id,
+            project_id=self.project_id,
+            version_number=1,
         )
 
         # A rejected upsert is a failure, never a silent success.
@@ -437,6 +447,8 @@ class TestQdrantAdapter:
                     tasks_summary="tasks",
                     model_used="test",
                     workspace_id=self.workspace_id,
+                    project_id=self.project_id,
+                    version_number=1,
                 )
 
         # The port's contract: a skip, never a raise.
@@ -479,6 +491,8 @@ class TestQdrantAdapter:
                 tasks_summary="tasks",
                 model_used="test",
                 workspace_id=self.workspace_id,
+                project_id=self.project_id,
+                version_number=1,
             )
 
         assert stored is False
@@ -519,10 +533,18 @@ class TestQdrantAdapter:
 
         assert client is mock_client
         mock_client.create_collection.assert_called_once()
-        mock_client.create_payload_index.assert_called_once()
-        # Index is created with the keyword schema on workspace_id
+        # All three filtered fields are ensured (see the dedicated schema test
+        # below for the per-field schemas this generalised loop issues).
+        ensured = {
+            call.kwargs["field_name"] for call in mock_client.create_payload_index.call_args_list
+        }
+        assert ensured == {"workspace_id", "project_id", "has_invalid_tasks"}
+        # Index is created with the boolean schema on the last ensured field;
+        # the workspace_id/project_id keyword schemas are pinned by the
+        # dedicated three-index test below.
         idx_call = mock_client.create_payload_index.call_args[1]
-        assert idx_call["field_name"] == "workspace_id"
+        assert idx_call["field_name"] == "has_invalid_tasks"
+        assert idx_call["field_schema"] == qdrant_models.PayloadSchemaType.BOOL
 
     @pytest.mark.asyncio
     async def test_existing_collection_skips_create_but_ensures_index(self) -> None:
@@ -551,7 +573,57 @@ class TestQdrantAdapter:
 
         assert client is mock_client
         mock_client.create_collection.assert_not_called()
-        mock_client.create_payload_index.assert_called_once()
+        # The payload indexes are still ensured on an existing collection.
+        ensured = {
+            call.kwargs["field_name"] for call in mock_client.create_payload_index.call_args_list
+        }
+        assert ensured == {"workspace_id", "project_id", "has_invalid_tasks"}
+
+    @pytest.mark.asyncio
+    async def test_lazy_init_creates_the_three_payload_indexes_with_their_schemas(self) -> None:
+        """All three filtered fields get payload indexes, with per-field schemas.
+
+        The read side of WU3 filters on ``workspace_id`` and ``has_invalid_tasks``
+        and stores ``project_id``, so all three need indexes for the filtered
+        searches to stay fast — one ``_ensure_payload_indexes`` loop behind one
+        flag, called from ``_get_client`` right after the collection is ensured.
+        ``workspace_id``/``project_id`` are stored as strings (``KEYWORD``);
+        ``has_invalid_tasks`` is a JSON boolean, given ``PayloadSchemaType.BOOL``
+        — the schema the pinned ``qdrant_client`` accepts (verified against the
+        installed client's ``PayloadSchemaType`` enum, so this pins the schema
+        the running dependency actually resolves).
+        """
+        port = _make_embedding_port()
+        port.embed.return_value = [0.1, 0.2, 0.3]
+
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+
+        mock_client = AsyncMock()
+        mock_get_collections = MagicMock()
+        mock_get_collections.collections = []
+        mock_client.get_collections.return_value = mock_get_collections
+        mock_client.create_payload_index = AsyncMock()
+
+        with patch(
+            "storico.infrastructure.vector.qdrant_adapter.AsyncQdrantClient",
+            return_value=mock_client,
+        ):
+            await adapter._get_client()
+
+        calls = mock_client.create_payload_index.call_args_list
+        schemas = {call.kwargs["field_name"]: call.kwargs["field_schema"] for call in calls}
+        assert schemas == {
+            "workspace_id": qdrant_models.PayloadSchemaType.KEYWORD,
+            "project_id": qdrant_models.PayloadSchemaType.KEYWORD,
+            "has_invalid_tasks": qdrant_models.PayloadSchemaType.BOOL,
+        }
+        # Every index request waits for the index to be built before returning.
+        assert all(call.kwargs["wait"] is True for call in calls)
 
     @pytest.mark.asyncio
     async def test_dimension_mismatch_raises(self) -> None:
@@ -597,6 +669,8 @@ class TestQdrantAdapter:
                 tasks_summary="tasks",
                 model_used="test",
                 workspace_id=self.workspace_id,
+                project_id=self.project_id,
+                version_number=1,
             )
             # No client means nothing was stored.
             assert stored is False
@@ -625,6 +699,8 @@ class TestQdrantAdapter:
             tasks_summary="task list",
             model_used="llama3.2",
             workspace_id=self.workspace_id,
+            project_id=self.project_id,
+            version_number=3,
             confidence_score=0.9,
             user_story_id="story-1",
         )
@@ -638,6 +714,14 @@ class TestQdrantAdapter:
         assert payload["confidence_score"] == 0.9
         assert payload["user_story_id"] == "story-1"
         assert "created_at" in payload
+        # (c)'s three new keys — the pinned payload grows from seven to ten.
+        # ``project_id`` scopes the point to its project, ``version_number`` ties
+        # it to the run that produced it (D22: a retry reuses the number the route
+        # returned), and a point is born valid — ``has_invalid_tasks`` starts
+        # ``False`` and only the mark handlers' refresh flips it.
+        assert payload["project_id"] == str(self.project_id)
+        assert payload["version_number"] == 3
+        assert payload["has_invalid_tasks"] is False
 
     @pytest.mark.asyncio
     async def test_search_similar_maps_null_score(self) -> None:
@@ -804,3 +888,149 @@ class TestQdrantAdapter:
                     workspace_id=self.workspace_id,
                     user_story_id="story-456",
                 )
+
+    # ── set_has_invalid_tasks — the validity flag refresh ─────────────
+    #
+    # Same evidence class as the delete_by_story block above: these cases prove
+    # the calls the adapter ISSUES against a fake AsyncQdrantClient — the point
+    # id, the merged payload, wait=True, the error posture. Whether a real
+    # Qdrant actually treats a missing point as a no-op is task 3.9's live
+    # proof; a fake-client green here must never be read as that.
+
+    @pytest.mark.asyncio
+    async def test_set_has_invalid_tasks_flags_the_point_by_extraction_id(self) -> None:
+        """The refresh addresses the point whose id IS the extraction id, and waits.
+
+        ``store_extraction`` upserts with ``id=extraction_id``, so no search is
+        needed to find the point: ``set_payload`` is issued directly with
+        ``points=[extraction_id]``. The payload carries only the flag —
+        ``set_payload`` merges it into the stored payload, so the other nine
+        keys survive without a re-embed or re-upsert. ``wait=True`` makes the
+        flag observable when the call returns, which the mark handlers'
+        ordering (refresh before the relational write) depends on.
+        """
+        port = _make_embedding_port(dimensions=3)
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+
+        mock_client = AsyncMock()
+        adapter._client = mock_client
+
+        await adapter.set_has_invalid_tasks(extraction_id="ext-123", has_invalid_tasks=True)
+
+        mock_client.set_payload.assert_called_once()
+        call_kwargs = mock_client.set_payload.call_args[1]
+        assert call_kwargs["collection_name"] == self.collection
+        assert call_kwargs["points"] == ["ext-123"]
+        assert call_kwargs["payload"] == {"has_invalid_tasks": True}
+        assert call_kwargs["wait"] is True
+
+    @pytest.mark.asyncio
+    async def test_set_has_invalid_tasks_false_clears_the_flag(self) -> None:
+        """Revoking the last active mark writes ``False`` — the flag flips both ways.
+
+        The same setter serves the create path (``True``, before the mark row is
+        persisted) and the revoke path (``False``, when
+        ``count_active_for_extraction`` returns 0), so the payload value must be
+        the caller's, not a hardcoded ``True``.
+        """
+        port = _make_embedding_port(dimensions=3)
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+
+        mock_client = AsyncMock()
+        adapter._client = mock_client
+
+        await adapter.set_has_invalid_tasks(extraction_id="ext-123", has_invalid_tasks=False)
+
+        call_kwargs = mock_client.set_payload.call_args[1]
+        assert call_kwargs["payload"] == {"has_invalid_tasks": False}
+
+    @pytest.mark.asyncio
+    async def test_set_has_invalid_tasks_missing_point_is_a_noop(self) -> None:
+        """A point that was never stored is nothing to flag — not an error.
+
+        The adapter issues the call unconditionally, with no pre-read to check
+        existence: Qdrant's ``set_payload`` over zero matched points changes
+        nothing and returns normally, and that is the documented no-op — nothing
+        was ever stored, so nothing can be retrieved, so there is nothing for a
+        future search to be contaminated by. The adapter must neither raise nor
+        retry on that quiet result (that a real Qdrant behaves this way is 3.9's
+        live proof).
+        """
+        port = _make_embedding_port(dimensions=3)
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+
+        mock_client = AsyncMock()
+        mock_client.set_payload.return_value = SimpleNamespace(status="completed")
+        adapter._client = mock_client
+
+        await adapter.set_has_invalid_tasks(extraction_id="ext-ghost", has_invalid_tasks=True)
+
+        # One quiet call, no raise, no retry.
+        mock_client.set_payload.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_set_has_invalid_tasks_driver_failure_raises_vector_store_error(self) -> None:
+        """A driver failure raises VectorStoreError, not a swallow.
+
+        Unlike ``search_similar``/``store_extraction``, this method does not
+        degrade gracefully: its caller is a destructive-adjacent operation (the
+        mark handlers' refresh, which runs before the relational write) that
+        must not proceed — and must not persist the mark — on an unverified
+        result. Asserting the exact type also proves the raw driver error does
+        not escape unwrapped.
+        """
+        port = _make_embedding_port(dimensions=3)
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+
+        mock_client = AsyncMock()
+        mock_client.set_payload.side_effect = RuntimeError("Qdrant down")
+        adapter._client = mock_client
+
+        with pytest.raises(VectorStoreError, match="Qdrant down"):
+            await adapter.set_has_invalid_tasks(extraction_id="ext-1", has_invalid_tasks=True)
+
+    @pytest.mark.asyncio
+    async def test_set_has_invalid_tasks_client_unavailable_raises(self) -> None:
+        """An unavailable client raises instead of returning quietly.
+
+        Same distinction as ``delete_by_story``: "no vector store configured"
+        (part (iii)'s handlers skip the refresh entirely) is different from "a
+        configured store that cannot be reached", which raises — the mark must
+        not be persisted while the vector half of the operation is unverified.
+        """
+        port = _make_embedding_port(dimensions=3)
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+        # Force a fresh lazy init so the client is actually built (and fails) below.
+        adapter._client = None
+
+        with patch(
+            "storico.infrastructure.vector.qdrant_adapter.AsyncQdrantClient",
+            side_effect=RuntimeError("connection refused"),
+        ):
+            with pytest.raises(VectorStoreError, match="unavailable"):
+                await adapter.set_has_invalid_tasks(extraction_id="ext-1", has_invalid_tasks=True)

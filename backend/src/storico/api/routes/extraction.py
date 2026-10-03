@@ -267,6 +267,10 @@ async def extract_tasks(
             workspace_id=workspace.id,
             model=model,
             temperature=resolved_temperature,
+            # The number just minted and returned in this 202 body (D22): a retry
+            # reuses it instead of minting another, and the RAG point records
+            # which run produced it.
+            version_number=pending.version_number,
             validate=body.run_validation,
             provider=provider,
             api_key=api_key,

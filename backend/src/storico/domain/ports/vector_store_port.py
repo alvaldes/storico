@@ -61,19 +61,54 @@ class VectorStorePort(ABC):
         tasks_summary: str,
         model_used: str,
         workspace_id: UUID,
+        project_id: UUID,
+        version_number: int,
         confidence_score: float | None = None,
         user_story_id: str = "",
     ) -> bool:
         """Store an extraction with its embedding for future RAG searches.
 
         ``workspace_id`` is persisted into the point payload so every search can
-        be workspace-scoped.
+        be workspace-scoped. ``project_id`` and ``version_number`` are persisted
+        alongside it: ``project_id`` scopes the point to its project and
+        ``version_number`` ties the point to the run that produced it — the
+        number the route minted and returned in its 202 body, so a retry reuses
+        it instead of minting another (D22).
 
         Returns:
             ``True`` when the point was accepted by the vector store, ``False``
             when it was skipped or rejected (empty embedding, unavailable
             client, or a store error). Never raises — failures degrade
             gracefully.
+        """
+        ...
+
+    @abstractmethod
+    async def set_has_invalid_tasks(self, *, extraction_id: str, has_invalid_tasks: bool) -> None:
+        """Set the validity flag on the point whose id IS ``extraction_id``.
+
+        No search is involved: ``store_extraction`` upserts with
+        ``id=extraction_id``, so the point is addressable by the extraction id
+        directly. A point that does not exist is a no-op — nothing was ever
+        stored, so nothing can be retrieved, so there is nothing to flag and
+        not an error.
+
+        Unlike ``search_similar``/``store_extraction``, which degrade gracefully
+        and never raise, this method **raises** ``VectorStoreError`` on failure:
+        its caller is a destructive-adjacent operation (the task-mark handlers'
+        refresh, which runs before the relational write) that must not proceed
+        — and must not persist the mark — on an unverified result.
+
+        Args:
+            extraction_id: Identifier of the extraction whose point is flagged;
+                must equal the point id written by ``store_extraction``.
+            has_invalid_tasks: The flag value — ``True`` when the run gains an
+                active invalid-task mark, ``False`` when its last active mark is
+                revoked.
+
+        Raises:
+            VectorStoreError: when the flag could not be written (client
+                unavailable or driver failure).
         """
         ...
 
