@@ -436,6 +436,27 @@ STRICT TDD. If the pause asks for the split: parts i (3.1–3.3), ii (3.4–3.5)
 (3.9) each end green. **Order inside the unit matters:** the payload keys land before the fail-closed
 filter, or every existing point silently becomes unretrievable.
 
+> **[Amended 2026-10-03, before WU3's first tranche — the parts move onto the write/read axis]** The line
+> above splits on task numbers, and task numbers do not survive contact with two signature changes. Both
+> of this unit's port changes force their call-site churn into the same commit or the part ends **red**:
+> `store_extraction` gains required `project_id`/`version_number` (its one production caller is
+> `_store_rag`), and `search_similar` gains a required `exclude_story_id` (its one production caller is
+> `_fetch_rag_examples`, plus ~10 test sites and the recording fakes). That is the same lesson WU2's part
+> boundary learned, and the fix here is the axis this unit's own ordering note already names — **the
+> write side first, then the read side**:
+>
+> - **i (write side)** — the ten-key payload, `_ensure_payload_indexes`, `store_extraction`'s two new
+>   required keywords, `set_has_invalid_tasks`, `_store_rag`'s two new arguments and the `version_number`
+>   thread from the route. This is the half that must land first; it writes the flag that the read side
+>   will later require.
+> - **ii (read side)** — `search_similar`'s required `exclude_story_id`, the `must`/`must_not` filter, and
+>   the churn at `_fetch_rag_examples` (which also fails closed when the story has no id) plus every test
+>   call site and recording fake.
+> - **iii** — 3.6–3.8 (the refresh order and `count_active_for_extraction`), where **D10 closes**.
+> - **iv** — 3.9, the live-Qdrant cases (skipped locally; CI owns them).
+>
+> The task numbers below stay as the planning record; each new part cites the tasks it carries.
+
 - [ ] 3.1 RED — `backend/tests/test_unit/test_vector_store.py`: add the failing filter, payload and
       index cases against the fake client. `search_similar` requires the new keyword
       `exclude_story_id` on both the port and the adapter (signature inspection at
