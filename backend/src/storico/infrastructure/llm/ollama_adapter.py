@@ -10,6 +10,7 @@ from httpx import AsyncClient, ConnectError, Timeout, TimeoutException
 
 from storico.domain.entities import LLMConnectionError, LLMModelNotFoundError, LLMResponseError
 from storico.domain.ports import LLMConfig, LLMPort
+from storico.domain.ports.llm_port import LLMResponse
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class OllamaAdapter(LLMPort):
         prompt: str,
         config: LLMConfig,
         system_prompt: str | None = None,
-    ) -> str:
+    ) -> LLMResponse:
         """Send a prompt to the Ollama model and return the raw response.
 
         Args:
@@ -53,7 +54,9 @@ class OllamaAdapter(LLMPort):
                 message is included in the request.
 
         Returns:
-            Raw text response from the model.
+            The model's answer: the raw completion text plus Ollama's own token
+            counts (``prompt_eval_count``/``eval_count``, keys present only)
+            when the body reports them.
 
         Raises:
             LLMConnectionError: If the Ollama service cannot be reached.
@@ -157,9 +160,21 @@ class OllamaAdapter(LLMPort):
             },
         }
 
-    def _parse_response(self, data: dict[str, Any]) -> str:
-        """Extract message content from the Ollama chat response."""
+    def _parse_response(self, data: dict[str, Any]) -> LLMResponse:
+        """Extract message content and the provider's usage counts, verbatim."""
         try:
-            return data["message"]["content"]
+            content = data["message"]["content"]
         except (KeyError, TypeError) as e:
             raise LLMResponseError(f"Unexpected Ollama response format: {e}") from e
+        return LLMResponse(text=content, usage=self._parse_usage(data))
+
+    @staticmethod
+    def _parse_usage(data: dict[str, Any]) -> dict[str, Any] | None:
+        """Copy Ollama's top-level token counts as-is; keys present only.
+
+        Ollama reports usage as top-level fields on the ``/api/chat`` body, not
+        as a nested container, so the adapter lifts exactly the count fields
+        the body carries — values untouched, nothing derived, nothing renamed.
+        """
+        usage = {key: data[key] for key in ("prompt_eval_count", "eval_count") if key in data}
+        return usage or None

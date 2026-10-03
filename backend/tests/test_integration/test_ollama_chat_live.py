@@ -46,6 +46,7 @@ import pytest_asyncio
 
 from storico.config.settings import Settings
 from storico.domain.ports import LLMConfig
+from storico.domain.ports.llm_port import LLMResponse
 from storico.infrastructure.llm.ollama_adapter import OllamaAdapter
 
 pytestmark = [
@@ -97,7 +98,7 @@ class TestLiveChatTransport:
 
     @pytest.mark.asyncio
     async def test_generate_parses_a_real_chat_response(self, adapter: OllamaAdapter) -> None:
-        """A real ``/api/chat`` body is parsed into a non-empty string.
+        """A real ``/api/chat`` body is parsed into a non-empty LLMResponse.
 
         Before the fix this raises ``json.JSONDecodeError: Extra data: line 2
         column 1``, because the server answers with NDJSON while
@@ -107,8 +108,8 @@ class TestLiveChatTransport:
         """
         result = await adapter.generate(PROMPT, _config(), system_prompt=SYSTEM_PROMPT)
 
-        assert isinstance(result, str), f"expected a str, got {type(result).__name__}"
-        assert result.strip() != "", "the model answered but the parsed content is empty"
+        assert isinstance(result, LLMResponse), f"expected LLMResponse, got {type(result).__name__}"
+        assert result.text.strip() != "", "the model answered but the parsed content is empty"
 
     def test_the_adapter_really_sends_the_non_streaming_flag(self, settings: Settings) -> None:
         """Wire-contract assertion: the request payload opts out of streaming.

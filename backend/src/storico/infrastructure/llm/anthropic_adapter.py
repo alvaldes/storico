@@ -12,6 +12,7 @@ from anthropic import NotFoundError as AnthropicNotFoundError
 
 from storico.domain.entities import LLMConnectionError, LLMModelNotFoundError, LLMResponseError
 from storico.domain.ports import LLMConfig, LLMPort
+from storico.domain.ports.llm_port import LLMResponse
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class AnthropicAdapter(LLMPort):
         prompt: str,
         config: LLMConfig,
         system_prompt: str | None = None,
-    ) -> str:
+    ) -> LLMResponse:
         """Send a prompt to an Anthropic model and return the raw response.
 
         Args:
@@ -111,4 +112,6 @@ class AnthropicAdapter(LLMPort):
             )
             raise LLMResponseError("Anthropic returned an empty response")
 
-        return "".join(text_blocks)
+        raw_usage = getattr(response, "usage", None)
+        usage = raw_usage.model_dump() if raw_usage is not None else None
+        return LLMResponse(text="".join(text_blocks), usage=usage)

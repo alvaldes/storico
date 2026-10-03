@@ -23,6 +23,7 @@ from storico.domain.ports import (
     ParsedTask,
     VectorStorePort,
 )
+from storico.domain.ports.llm_port import LLMResponse
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.infrastructure.database.repositories import SQLAlchemyExtractionRepository
 from tests._helpers import seed_extraction, simple_context
@@ -65,7 +66,9 @@ class TestExtractionService:
         deps = setup
         deps["prompt_manager"].render_instruction.return_value = "System prompt"
         deps["prompt_manager"].render_instruction.return_value = "Instruction prompt"
-        deps["llm_port"].generate.return_value = "1. summary: Task one\ndescription: Desc"
+        deps["llm_port"].generate.return_value = LLMResponse(
+            text="1. summary: Task one\ndescription: Desc"
+        )
         deps["task_parser"].parse.return_value = [
             ParsedTask(summary="Task one", description="Desc", labels=(), dependencies=()),
         ]
@@ -75,17 +78,17 @@ class TestExtractionService:
         mock_story.raw_text = "As a user, I want X"
 
         rendered = await deps["service"].render(mock_story, context=simple_context())
-        result_tasks, raw = await deps["service"].generate(rendered, LLMConfig(model="test"))
-        assert len(result_tasks) == 1
-        assert result_tasks[0].summary == "Task one"
-        assert raw == "1. summary: Task one\ndescription: Desc"
+        result = await deps["service"].generate(rendered, LLMConfig(model="test"))
+        assert len(result.tasks) == 1
+        assert result.tasks[0].summary == "Task one"
+        assert result.raw_response == "1. summary: Task one\ndescription: Desc"
 
     @pytest.mark.asyncio
     async def test_extract_calls_prompt_manager(self, setup) -> None:
         """render() calls render_instruction with the workspace template."""
         deps = setup
         deps["prompt_manager"].render_instruction.return_value = "Instruction"
-        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["llm_port"].generate.return_value = LLMResponse(text="1. summary: T\ndescription: D")
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
 
         mock_story = MagicMock()
@@ -108,7 +111,7 @@ class TestExtractionService:
         """LLM receives the instruction as prompt and system_prompt separately."""
         deps = setup
         deps["prompt_manager"].render_instruction.return_value = "INSTRUCTION"
-        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["llm_port"].generate.return_value = LLMResponse(text="1. summary: T\ndescription: D")
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
 
         mock_story = MagicMock()
@@ -132,7 +135,7 @@ class TestExtractionService:
         """A DB instruction template is forwarded to render_instruction."""
         deps = setup
         deps["prompt_manager"].render_instruction.return_value = "Custom instruction"
-        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["llm_port"].generate.return_value = LLMResponse(text="1. summary: T\ndescription: D")
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
 
         mock_story = MagicMock()
@@ -178,7 +181,7 @@ class TestExtractionService:
         deps = setup
         deps["prompt_manager"].render_instruction.return_value = "System"
         deps["prompt_manager"].render_instruction.return_value = "Instruction"
-        deps["llm_port"].generate.return_value = "garbage output"
+        deps["llm_port"].generate.return_value = LLMResponse(text="garbage output")
         deps["task_parser"].parse.side_effect = ParseError("Could not parse")
 
         mock_story = MagicMock()
@@ -229,7 +232,7 @@ class TestExtractionService:
         deps = setup
         deps["prompt_manager"].render_instruction.return_value = "System"
         deps["prompt_manager"].render_instruction.return_value = "Instruction"
-        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["llm_port"].generate.return_value = LLMResponse(text="1. summary: T\ndescription: D")
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
 
         mock_story = MagicMock()
@@ -237,8 +240,8 @@ class TestExtractionService:
         mock_story.raw_text = "Story"
 
         rendered = await deps["service"].render(mock_story, context=simple_context())
-        result_tasks, raw = await deps["service"].generate(rendered, LLMConfig(model="test"))
-        assert len(result_tasks) == 1
+        result = await deps["service"].generate(rendered, LLMConfig(model="test"))
+        assert len(result.tasks) == 1
         # Vector store should not be referenced at all
         assert (
             not hasattr(deps["service"], "_vector_store") or deps["service"]._vector_store is None
@@ -260,7 +263,7 @@ class TestExtractionService:
         deps["vector_store"].search_similar.return_value = mock_examples
         deps["prompt_manager"].render_instruction.return_value = "System"
         deps["prompt_manager"].render_instruction.return_value = "Instruction with examples"
-        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["llm_port"].generate.return_value = LLMResponse(text="1. summary: T\ndescription: D")
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
 
         mock_story = MagicMock()
@@ -286,7 +289,7 @@ class TestExtractionService:
         deps["vector_store"].search_similar.side_effect = RuntimeError("RAG down")
         deps["prompt_manager"].render_instruction.return_value = "System"
         deps["prompt_manager"].render_instruction.return_value = "Instruction"
-        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["llm_port"].generate.return_value = LLMResponse(text="1. summary: T\ndescription: D")
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
 
         mock_story = MagicMock()
@@ -296,8 +299,8 @@ class TestExtractionService:
         rendered = await deps["service"].render(
             mock_story, workspace_id=uuid4(), context=simple_context()
         )
-        result_tasks, raw = await deps["service"].generate(rendered, LLMConfig(model="test"))
-        assert len(result_tasks) == 1
+        result = await deps["service"].generate(rendered, LLMConfig(model="test"))
+        assert len(result.tasks) == 1
         # Should render WITHOUT examples kwarg
         call_kwargs = deps["prompt_manager"].render_instruction.call_args[1]
         assert "examples" not in call_kwargs
@@ -321,7 +324,7 @@ class TestExtractionService:
             )
         ]
         deps["prompt_manager"].render_instruction.return_value = "Instruction"
-        deps["llm_port"].generate.return_value = "1. summary: T\ndescription: D"
+        deps["llm_port"].generate.return_value = LLMResponse(text="1. summary: T\ndescription: D")
         deps["task_parser"].parse.return_value = [ParsedTask(summary="T", description="D")]
 
         mock_story = MagicMock()
@@ -329,9 +332,9 @@ class TestExtractionService:
         mock_story.raw_text = "Story"
 
         rendered = await deps["service"].render(mock_story, context=simple_context())
-        result_tasks, raw = await deps["service"].generate(rendered, LLMConfig(model="test"))
+        result = await deps["service"].generate(rendered, LLMConfig(model="test"))
 
-        assert len(result_tasks) == 1
+        assert len(result.tasks) == 1
         deps["vector_store"].search_similar.assert_not_called()
         call_kwargs = deps["prompt_manager"].render_instruction.call_args[1]
         assert "examples" not in call_kwargs
@@ -355,8 +358,8 @@ class _AnsweringLLM(LLMPort):
         prompt: str,  # noqa: ARG002
         config: LLMConfig,  # noqa: ARG002
         system_prompt: str | None = None,  # noqa: ARG002
-    ) -> str:
-        return _ANSWER
+    ) -> LLMResponse:
+        return LLMResponse(text=_ANSWER)
 
 
 class _UnreachableLLM(LLMPort):
@@ -367,7 +370,7 @@ class _UnreachableLLM(LLMPort):
         prompt: str,  # noqa: ARG002
         config: LLMConfig,  # noqa: ARG002
         system_prompt: str | None = None,  # noqa: ARG002
-    ) -> str:
+    ) -> LLMResponse:
         raise LLMConnectionError("Cannot connect")
 
 

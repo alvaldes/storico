@@ -45,6 +45,27 @@ class ExtractionRepository(ABC):
         ...
 
     @abstractmethod
+    async def record_usage(
+        self,
+        extraction_id: UUID,
+        *,
+        prompt_config: dict,
+    ) -> None:
+        """Record the provider's usage container on the snapshot, after it answers.
+
+        One targeted UPDATE that names only ``prompt_config``: no rendered
+        prompt, no provider/model/temperature column, no status. Like the
+        render-time write, the caller restates the complete dictionary — the
+        six render-time keys plus ``usage`` — because the JSON column has no
+        merge. The runner calls this only when the provider reported usage;
+        a provider without one leaves the six render-time keys untouched.
+
+        Raises:
+            EntityNotFound: If no extraction row matches ``extraction_id``.
+        """
+        ...
+
+    @abstractmethod
     async def mark_completed(
         self,
         extraction_id: UUID,

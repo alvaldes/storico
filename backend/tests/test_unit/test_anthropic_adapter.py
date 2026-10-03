@@ -15,13 +15,24 @@ from storico.domain.ports import LLMConfig
 from storico.infrastructure.llm.anthropic_adapter import AnthropicAdapter
 
 
-def _mock_response(text: str | None) -> MagicMock:
-    """Build a fake messages response exposing a single text content block."""
+def _mock_response(text: str | None, usage: dict | None = None) -> MagicMock:
+    """Build a fake messages response exposing a single text content block.
+
+    ``usage`` is the dict the SDK's ``response.usage.model_dump()`` would return;
+    ``None`` builds a response with no usage object at all, like a provider that
+    omits the container.
+    """
     response = MagicMock()
     block = MagicMock()
     block.type = "text"
     block.text = text
     response.content = [block] if text is not None else []
+    if usage is None:
+        response.usage = None
+    else:
+        usage_obj = MagicMock()
+        usage_obj.model_dump.return_value = usage
+        response.usage = usage_obj
     return response
 
 
@@ -51,8 +62,33 @@ class TestAnthropicAdapter:
         adapter = AnthropicAdapter(api_key="test-key")
         result = await adapter.generate("Test prompt", self.config)
 
-        assert "Task one" in result
+        assert "Task one" in result.text
+        assert result.usage is None
         mock_client_cls.assert_called_once_with(api_key="test-key", base_url=None)
+
+    @patch("storico.infrastructure.llm.anthropic_adapter.AsyncAnthropic")
+    @pytest.mark.asyncio
+    async def test_generate_carries_the_provider_usage_container_verbatim(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        """The SDK usage object's ``model_dump()`` rides along untouched (2.7).
+
+        The Anthropic SDK exposes token usage as ``response.usage``, a pydantic
+        model with ``model_dump()``. The adapter copies that dump verbatim —
+        no renaming, no derived totals, no normalization into a common shape.
+        """
+        create = AsyncMock(
+            return_value=_mock_response(
+                "1. summary: Task one\ndescription: Do it",
+                usage={"input_tokens": 41, "output_tokens": 117},
+            )
+        )
+        mock_client_cls.return_value.messages.create = create
+
+        adapter = AnthropicAdapter(api_key="test-key")
+        result = await adapter.generate("Test prompt", self.config)
+
+        assert result.usage == {"input_tokens": 41, "output_tokens": 117}
 
     @patch("storico.infrastructure.llm.anthropic_adapter.AsyncAnthropic")
     @pytest.mark.asyncio

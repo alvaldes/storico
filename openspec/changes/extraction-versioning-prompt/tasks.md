@@ -394,7 +394,7 @@ end green.
       in between store two **different** prompts; the app's middleware list stays `[CORSMiddleware]`
       (V5's no-new-instrument shape assertion). Prove with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_extraction.py -m "not integration"`.
-- [ ] 2.7 RED — `backend/tests/test_unit/test_ollama_adapter.py`,
+- [x] 2.7 RED — `backend/tests/test_unit/test_ollama_adapter.py`,
       `test_openai_adapter.py`, `test_anthropic_adapter.py`, `test_gemini_adapter.py`: add the failing
       return-shape cases — each adapter returns an `LLMResponse` carrying the response text, and the
       provider's own usage mapping verbatim when the response contains one; a response with no usage
@@ -402,7 +402,7 @@ end green.
       `backend/tests/test_api/test_extraction.py`, `backend/tests/test_api/test_llm_test_route.py` and
       `backend/tests/test_integration/test_few_shot_rag_qdrant.py` to return `LLMResponse`. Prove RED
       with the phase runner.
-- [ ] 2.8 GREEN — `backend/src/storico/domain/ports/llm_port.py`: add the frozen slotted
+- [x] 2.8 GREEN — `backend/src/storico/domain/ports/llm_port.py`: add the frozen slotted
       `LLMResponse(text, usage=None)`, add `usage: dict | None = None` to `ExtractionResult`, and
       change `LLMPort.generate(...) -> LLMResponse`; then the four adapters
       (`ollama_adapter.py`, `openai_adapter.py`, `anthropic_adapter.py`, `gemini_adapter.py`) return
@@ -410,20 +410,20 @@ end green.
       `domain/services/extraction_judge_service.py`, the five probes in `api/routes/settings.py` and
       `extraction_service.py`; **`generate()` widens to `-> ExtractionResult`**, superseding (a) 3.4's
       two-tuple (seam 4 above) and updating the runner's iteration to `result.tasks`.
-- [ ] 2.9 GREEN — `backend/src/storico/domain/ports/extraction_repository.py` and
+- [x] 2.9 GREEN — `backend/src/storico/domain/ports/extraction_repository.py` and
       `backend/src/storico/infrastructure/database/repositories/extraction_repository.py`: add
       `record_usage(extraction_id, *, prompt_config: dict)` as a single `UPDATE` naming **only**
       `prompt_config`; `backend/src/storico/infrastructure/tasks/extraction_task.py`: after the
       provider answers, call it once with the complete dictionary plus `usage` **only when
       `result.usage is not None`** — no write, no key and no zero when the provider returned nothing.
-- [ ] 2.10 TRIANGULATE — the remaining pinned edges at the row level:
+- [x] 2.10 TRIANGULATE — the remaining pinned edges at the row level:
       `backend/tests/test_api/test_extraction.py` — a run whose prompt rendered but whose provider
       call failed keeps **every** snapshot key but `usage` and keeps a non-null `prompt_rendered`,
       while a run that died before render keeps `prompt_rendered IS NULL`; a provider returning no
       usage leaves the key absent (never zero-filled, never estimated); an invalid task's mark
       **leaves** the negative block once revoked while its version is still current. Prove with the
       phase runner.
-- [ ] 2.11 REFACTOR — confirm `ExtractionResult` has exactly one producer and one consumer, that no
+- [x] 2.11 REFACTOR — confirm `ExtractionResult` has exactly one producer and one consumer, that no
       snapshot value is computed outside `template_variables`, and that no write names a snapshot
       column; then rerun the phase runner and
       `cd backend && conda run -n storico python -m pytest tests/test_unit tests/test_api -m "not integration"`.

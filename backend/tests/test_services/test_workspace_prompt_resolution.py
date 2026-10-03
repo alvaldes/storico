@@ -11,6 +11,7 @@ from storico.application.prompts.resolve_workspace_prompt import (
     resolve_workspace_prompt,
 )
 from storico.domain.entities import WorkspacePrompt
+from storico.domain.ports.llm_port import LLMResponse
 from storico.infrastructure.llm.prompt_manager import (
     SYSTEM_PROMPT_TASK_GENERATION,
     PromptManager,
@@ -126,7 +127,7 @@ class TestPipelineUsesWorkspacePrompt:
         prompt_repo.upsert.assert_not_called()
 
         llm_port = AsyncMock()
-        llm_port.generate.return_value = "1. summary: T\ndescription: D"
+        llm_port.generate.return_value = LLMResponse(text="1. summary: T\ndescription: D")
         task_parser = MagicMock()
         task_parser.parse.return_value = [ParsedTask(summary="T", description="D")]
         service = ExtractionService(
@@ -161,7 +162,7 @@ class TestPipelineUsesWorkspacePrompt:
         from storico.domain.services.extraction_judge_service import LLMJudgeService
 
         llm_port = AsyncMock()
-        llm_port.generate.return_value = '{"approved": true, "total_score": 45}'
+        llm_port.generate.return_value = LLMResponse(text='{"approved": true, "total_score": 45}')
         prompt_manager = MagicMock()
         prompt_manager.render_judge_prompt.return_value = "Judge prompt"
         judge = LLMJudgeService(llm_port=llm_port, prompt_manager=prompt_manager)

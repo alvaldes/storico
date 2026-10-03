@@ -32,6 +32,7 @@ from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.task_invalidation import TaskInvalidation
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import ExtractionExample, LLMConfig, LLMPort, VectorStorePort
+from storico.domain.ports.llm_port import LLMResponse
 from storico.domain.services.extraction_service import ExtractionService
 from storico.infrastructure.crypto import FernetCipher
 from storico.infrastructure.database.models import (
@@ -231,7 +232,7 @@ class TestExtractEndpoint:
                 prompt: str,  # noqa: ARG002
                 config: LLMConfig,  # noqa: ARG002
                 system_prompt: str | None = None,  # noqa: ARG002
-            ) -> str:
+            ) -> LLMResponse:
                 raise LLMConnectionError("Ollama not running")
 
         monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
@@ -280,12 +281,14 @@ class TestExtractEndpoint:
                 prompt: str,  # noqa: ARG002
                 config: LLMConfig,  # noqa: ARG002
                 system_prompt: str | None = None,  # noqa: ARG002
-            ) -> str:
-                return (
-                    "1. summary: Set up the schema\n"
-                    "description: Create the tables.\n\n"
-                    "2. summary: Build the endpoint\n"
-                    "description: Expose the data.\n"
+            ) -> LLMResponse:
+                return LLMResponse(
+                    text=(
+                        "1. summary: Set up the schema\n"
+                        "description: Create the tables.\n\n"
+                        "2. summary: Build the endpoint\n"
+                        "description: Expose the data.\n"
+                    )
                 )
 
         monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
@@ -339,8 +342,10 @@ class TestExtractEndpoint:
                 prompt: str,  # noqa: ARG002
                 config: LLMConfig,  # noqa: ARG002
                 system_prompt: str | None = None,  # noqa: ARG002
-            ) -> str:
-                return "1. summary: Set up the schema\ndescription: Create the tables.\n"
+            ) -> LLMResponse:
+                return LLMResponse(
+                    text="1. summary: Set up the schema\ndescription: Create the tables.\n"
+                )
 
         store = _RecordingVectorStore()
         monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
@@ -1096,9 +1101,11 @@ class TestVersioningTriangulation:
                 prompt: str,  # noqa: ARG002
                 config: LLMConfig,
                 system_prompt: str | None = None,  # noqa: ARG002
-            ) -> str:
+            ) -> LLMResponse:
                 seen.append(config)
-                return "1. summary: Seed the schema\ndescription: Create the tables.\n"
+                return LLMResponse(
+                    text="1. summary: Seed the schema\ndescription: Create the tables.\n"
+                )
 
         monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
         monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: RecordingLLM())
@@ -1359,9 +1366,9 @@ class _AnsweringLLM(LLMPort):
         prompt: str,  # noqa: ARG002
         config: LLMConfig,  # noqa: ARG002
         system_prompt: str | None = None,  # noqa: ARG002
-    ) -> str:
+    ) -> LLMResponse:
         self.calls += 1
-        return self.answer
+        return LLMResponse(text=self.answer)
 
 
 class _RetryingAdapterLLM(_AnsweringLLM):
@@ -1379,16 +1386,44 @@ class _RetryingAdapterLLM(_AnsweringLLM):
         prompt: str,  # noqa: ARG002
         config: LLMConfig,  # noqa: ARG002
         system_prompt: str | None = None,  # noqa: ARG002
-    ) -> str:
+    ) -> LLMResponse:
         for attempt in range(3):
             self.calls += 1  # counts provider attempts, not runner calls
             try:
                 if attempt == 0:
                     raise ConnectionError("transient provider blip, the adapter retries")
-                return self.answer
+                return LLMResponse(text=self.answer)
             except ConnectionError:
                 continue  # the real adapter backs off here (1s, 2s) before retrying
         raise LLMConnectionError("unreachable: the answer always arrives on attempt 2")
+
+
+class _UsageLLM(LLMPort):
+    """An LLM boundary that answers and reports the provider's own usage container."""
+
+    def __init__(self, answer: str, usage: dict) -> None:
+        self.answer = answer
+        self.usage = usage
+
+    async def generate(
+        self,
+        prompt: str,  # noqa: ARG002
+        config: LLMConfig,  # noqa: ARG002
+        system_prompt: str | None = None,  # noqa: ARG002
+    ) -> LLMResponse:
+        return LLMResponse(text=self.answer, usage=dict(self.usage))
+
+
+class _UsagelessFailingLLM(LLMPort):
+    """An LLM boundary that dies after the render, the way a provider outage does."""
+
+    async def generate(
+        self,
+        prompt: str,  # noqa: ARG002
+        config: LLMConfig,  # noqa: ARG002
+        system_prompt: str | None = None,  # noqa: ARG002
+    ) -> LLMResponse:
+        raise LLMConnectionError("Ollama not running")
 
 
 async def _extraction_rows(session: AsyncSession, story_id: UUID) -> list[ExtractionModel]:
@@ -2339,6 +2374,64 @@ class TestNegativeExampleBlockOnTheLivePath:
         assert not [c for c in columns if "negative" in c or "cap" in c]
         assert [c for c in columns if "limit" in c] == ["few_shot_limit"]
 
+    @pytest.mark.asyncio
+    async def test_a_revoked_mark_leaves_the_composed_block_for_good(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """Revoking a mark removes it from the next composed block (2.10, edge d).
+
+        A revoked mark is not a deletion — its row keeps the who/when — but the
+        composer must stop feeding it forward: the next extraction's block
+        neither lists the task nor keeps a residue of the reason.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_id
+
+        async with factory() as session:
+            version = await seed_extraction(
+                session,
+                story_id,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            task = await seed_task(session, story_id, "Revoked marked task", extraction=version)
+            repo = SQLAlchemyTaskInvalidationRepository(session)
+            mark = await repo.create(
+                TaskInvalidation(
+                    task_id=task.id,
+                    reason="Superseded by a better task",
+                    marked_at=_MARK_BASE,
+                )
+            )
+            await repo.revoke(
+                mark.id,
+                revoked_by=uuid4(),
+                revoked_at=datetime.now(UTC),
+            )
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        assert row.prompt_rendered is not None
+        # With zero active marks the negative block is not rendered at all:
+        # neither the header nor any residue of the revoked mark appears.
+        assert (
+            "## Do Not Produce These Tasks (Previously Marked Invalid)" not in row.prompt_rendered
+        )
+        assert "Revoked marked task" not in row.prompt_rendered
+        assert "Superseded by a better task" not in row.prompt_rendered
+
 
 @pytest.mark.unit
 class TestTheSnapshotRecordsWhatWasComposed:
@@ -2766,6 +2859,211 @@ class TestTheSnapshotRecordsWhatWasComposed:
     def test_the_app_middleware_list_stays_cors_only(self, app) -> None:
         """V5's no-new-instrument shape: measurement derives from stored facts, never middleware."""
         assert [m.cls.__name__ for m in app.user_middleware] == ["CORSMiddleware"]
+
+
+@pytest.mark.unit
+class TestUsageRecordingOnTheLivePath:
+    """The provider's usage container rides onto the snapshot, verbatim (WU2 2.10).
+
+    The subject is the stored row: ``record_rendered_prompt`` freezes the six
+    render-time keys before the provider runs; ``record_usage`` rewrites the
+    snapshot with ``usage`` added only when the provider reported one — one
+    targeted UPDATE that names no other column, so the rendered prompt and the
+    birth-time columns keep their values.
+    """
+
+    _USAGE = {"prompt_eval_count": 41, "eval_count": 117}
+
+    async def _seed_pending(self, factory, story_id: UUID) -> Extraction:
+        """Birth one pending extraction through the allocation path."""
+        async with factory() as session:
+            return await seed_extraction(session, story_id, model_used="llama3.2")
+
+    async def _run(
+        self,
+        monkeypatch,
+        test_engine: AsyncEngine,
+        pending: Extraction,
+        story_id: UUID,
+        workspace_id: UUID,
+        llm: LLMPort,
+    ) -> None:
+        """Run the real background task against the test engine with a fake LLM."""
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        # The subject here is the snapshot, not retrieval — see the helper.
+        _make_the_vector_store_unavailable(monkeypatch)
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=story_id,
+            workspace_id=workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+    async def _seed_full_context(self, session, story_id: UUID, other_story: UUID) -> None:
+        """Give the snapshot every key something to say: a past task and two marks."""
+        completed = await seed_extraction(
+            session,
+            other_story,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        await seed_task(session, other_story, "Add password reset endpoint", extraction=completed)
+        for i in range(2):
+            task = await seed_task(
+                session, story_id, f"Usage marked task {i}", extraction=completed
+            )
+            await SQLAlchemyTaskInvalidationRepository(session).create(
+                TaskInvalidation(
+                    task_id=task.id,
+                    reason=f"Usage mark reason {i}",
+                    marked_at=_MARK_BASE + timedelta(minutes=i),
+                )
+            )
+
+    @pytest.mark.asyncio
+    async def test_the_usage_container_is_recorded_verbatim_on_the_snapshot(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A provider that reports usage gets the six render-time keys plus ``usage``."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(stories=2)
+        other_story = seeded.story_ids[0]
+        story_id = seeded.story_ids[1]
+
+        async with factory() as session:
+            await self._seed_full_context(session, story_id, other_story)
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _UsageLLM(_RESPONSE_V1, self._USAGE),
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        snapshot = row.prompt_config
+        assert snapshot is not None
+        assert set(snapshot.keys()) == {
+            "validate",
+            "system_prompt",
+            "few_shots",
+            "project_context",
+            "story_text",
+            "negative_examples_omitted",
+            "usage",
+        }
+        # Verbatim: the container is the provider's own dict, values untouched.
+        assert snapshot["usage"] == self._USAGE
+        json.dumps(snapshot)
+        # The render-time write that preceded it is still intact underneath.
+        assert row.prompt_rendered is not None
+        assert snapshot["story_text"].startswith("As a user, I want to use seeded feature 1")
+
+    @pytest.mark.asyncio
+    async def test_a_provider_without_usage_leaves_the_usage_key_absent(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """No usage container: the snapshot keeps exactly the six keys, no zero-fill."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(stories=2)
+        other_story = seeded.story_ids[0]
+        story_id = seeded.story_ids[1]
+
+        async with factory() as session:
+            await self._seed_full_context(session, story_id, other_story)
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        snapshot = row.prompt_config
+        assert snapshot is not None
+        assert set(snapshot.keys()) == {
+            "validate",
+            "system_prompt",
+            "few_shots",
+            "project_context",
+            "story_text",
+            "negative_examples_omitted",
+        }
+        assert "usage" not in snapshot
+
+    @pytest.mark.asyncio
+    async def test_a_provider_failure_keeps_the_render_snapshot_and_records_no_usage(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The provider died after render: the six keys and the prompt survive, no usage."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_id
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _UsagelessFailingLLM(),
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        assert row.prompt_rendered is not None, "a failed run must keep the frozen prompt"
+        snapshot = row.prompt_config
+        assert snapshot is not None, "a failed run must keep the render-time snapshot"
+        assert "usage" not in snapshot
+        assert set(snapshot.keys()) == {
+            "validate",
+            "system_prompt",
+            "few_shots",
+            "project_context",
+            "story_text",
+            "negative_examples_omitted",
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_run_that_dies_before_render_leaves_the_snapshot_columns_null(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """No render, no provider, no snapshot: both columns stay null on the row."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+
+        pending = await self._seed_pending(factory, seeded.story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            uuid4(),  # a story that does not exist: the runner dies before render
+            seeded.workspace_id,
+            _UsageLLM(_RESPONSE_V1, self._USAGE),
+        )
+
+        async with factory() as session:
+            row = next(
+                r for r in await _extraction_rows(session, seeded.story_id) if r.id == pending.id
+            )
+
+        assert row.prompt_rendered is None
+        assert row.prompt_config is None
 
 
 @pytest.mark.unit

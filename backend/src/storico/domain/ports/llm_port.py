@@ -33,12 +33,27 @@ class ParsedTask:
 
 
 @dataclass(frozen=True, slots=True)
+class LLMResponse:
+    """What a provider answered, before any parsing.
+
+    ``text`` is the raw completion the adapter extracted. ``usage`` is the
+    provider's own token-usage container, copied verbatim — no renaming, no
+    derived totals, no normalization into a common shape. ``None`` means the
+    provider sent no usage information; it never means an empty container.
+    """
+
+    text: str
+    usage: dict | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ExtractionResult:
     """Result of an extraction containing parsed tasks and metadata."""
 
     tasks: tuple[ParsedTask, ...]
     raw_response: str
     confidence_score: float | None = None
+    usage: dict | None = None
 
 
 class LLMPort(ABC):
@@ -50,8 +65,8 @@ class LLMPort(ABC):
         prompt: str,
         config: LLMConfig,
         system_prompt: str | None = None,
-    ) -> str:
-        """Send a prompt to the LLM and return the raw response text.
+    ) -> LLMResponse:
+        """Send a prompt to the LLM and return the raw response.
 
         Args:
             prompt: The instruction/user content to send.
@@ -62,7 +77,9 @@ class LLMPort(ABC):
                 system message is sent.
 
         Returns:
-            Raw text response from the LLM.
+            The provider's answer: the raw completion text plus its own usage
+            container when the provider reports one (``usage`` is ``None``
+            otherwise).
 
         Raises:
             LLMConnectionError: If the LLM service cannot be reached.

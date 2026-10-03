@@ -53,6 +53,7 @@ from storico.domain.ports import (
     ParsedTask,
     VectorStorePort,
 )
+from storico.domain.ports.llm_port import LLMResponse
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.infrastructure.llm.prompt_manager import PromptManager
 from storico.infrastructure.llm.task_parser import TaskParser
@@ -127,10 +128,10 @@ class RecordingLLM(LLMPort):
         config: LLMConfig,
         system_prompt: str | None = None,
         **kwargs: object,
-    ) -> str:
+    ) -> LLMResponse:
         """Record the prompt and return a response ``TaskParser`` can parse."""
         self.prompts.append(prompt)
-        return LLM_RESPONSE
+        return LLMResponse(text=LLM_RESPONSE)
 
 
 # loop_scope="module" keeps every async fixture and test on one event loop, for
@@ -262,9 +263,9 @@ async def _extract(
         few_shot_config=few_shot_config,
         context=simple_context(),
     )
-    tasks, _raw_response = await service.generate(rendered, LLMConfig(model="pytest-recording"))
+    result = await service.generate(rendered, LLMConfig(model="pytest-recording"))
     assert len(llm.prompts) == 1, "render must hand the provider exactly one prompt"
-    return tasks, llm.prompts[0]
+    return result.tasks, llm.prompts[0]
 
 
 def _dead_adapter(settings: Settings, embedding_port: EmbeddingPort) -> QdrantAdapter:

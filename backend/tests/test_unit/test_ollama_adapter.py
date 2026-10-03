@@ -39,7 +39,7 @@ class TestOllamaAdapter:
 
         adapter = OllamaAdapter(base_url=self.base_url, client=mock_client)
         result = await adapter.generate("Test prompt", self.config)
-        assert "Task one" in result
+        assert "Task one" in result.text
 
     @pytest.mark.asyncio
     async def test_generate_returns_full_text(self) -> None:
@@ -55,7 +55,64 @@ class TestOllamaAdapter:
 
         adapter = OllamaAdapter(base_url=self.base_url, client=mock_client)
         result = await adapter.generate("Prompt", self.config)
-        assert result == expected
+        assert result.text == expected
+
+    @pytest.mark.asyncio
+    async def test_generate_carries_the_provider_usage_container_verbatim(self) -> None:
+        """The provider's own usage counts ride along untouched (2.7).
+
+        Ollama reports token usage as top-level ``prompt_eval_count``/``eval_count``
+        fields on the ``/api/chat`` body, not as a nested container. The adapter
+        copies exactly those fields, values as returned — no renaming, no derived
+        totals, no normalization into a common shape.
+        """
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "message": {"content": "1. summary: Task one\ndescription: Do it"},
+            "prompt_eval_count": 41,
+            "eval_count": 117,
+        }
+        mock_client.post.return_value = mock_response
+
+        adapter = OllamaAdapter(base_url=self.base_url, client=mock_client)
+        result = await adapter.generate("Prompt", self.config)
+
+        assert result.usage == {"prompt_eval_count": 41, "eval_count": 117}
+
+    @pytest.mark.asyncio
+    async def test_generate_usage_carries_only_the_keys_the_provider_sent(self) -> None:
+        """A partial usage report is passed through as-is, missing keys stay missing."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "message": {"content": "1. summary: Task one\ndescription: Do it"},
+            "eval_count": 117,
+        }
+        mock_client.post.return_value = mock_response
+
+        adapter = OllamaAdapter(base_url=self.base_url, client=mock_client)
+        result = await adapter.generate("Prompt", self.config)
+
+        assert result.usage == {"eval_count": 117}
+
+    @pytest.mark.asyncio
+    async def test_generate_usage_is_none_when_the_provider_sends_no_counts(self) -> None:
+        """No usage fields on the body: ``usage`` is ``None``, never an empty dict."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "message": {"content": "1. summary: Task one\ndescription: Do it"}
+        }
+        mock_client.post.return_value = mock_response
+
+        adapter = OllamaAdapter(base_url=self.base_url, client=mock_client)
+        result = await adapter.generate("Prompt", self.config)
+
+        assert result.usage is None
 
     # ── Retries on connection error ─────────────────────────────────
 
@@ -99,7 +156,7 @@ class TestOllamaAdapter:
 
         adapter = OllamaAdapter(base_url=self.base_url, client=mock_client)
         result = await adapter.generate("Test prompt", self.config)
-        assert "Retried task" in result
+        assert "Retried task" in result.text
         assert mock_client.post.call_count == 2
 
     # ── HTTP error responses ────────────────────────────────────────

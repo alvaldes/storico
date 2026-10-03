@@ -725,3 +725,133 @@ both are changes to the new tests only.
   this is deterministic as written.
 - The two-already-true pins (middleware list, two-different-prompts) protect regression surface the
   change did not introduce; if a future diff breaks them, the cause is elsewhere, not in this unit.
+
+## W2-T3 — the `LLMResponse` / usage ripple, `record_usage` and the pinned edges (tasks 2.7–2.11)
+
+The largest atomic unit of the slice: `LLMPort.generate` changes return type from `str` to the new
+frozen slotted `LLMResponse(text, usage=None)`, and every reader moves with it. `usage` is the
+provider's **own** container, copied verbatim — no renaming, no derived totals, no normalization —
+and `None` means the provider sent nothing (never an empty dict).
+
+### RED (observed)
+
+- 2.7 first: the three new usage tests in `tests/test_unit/test_ollama_adapter.py` plus the
+  re-pointed `.text` assertions across the four adapter test files fail with
+  `ImportError: cannot import name 'LLMResponse' from 'storico.domain.ports.llm_port'` —
+  **4 collection errors, 0 tests run** (the type did not exist yet).
+- Honest deviation for 2.10: its five row-level cases were written **after** the 2.8/2.9
+  implementation landed, so no separate RED was captured for them. Their discriminating power is
+  structural instead: the `usage`-verbatim case pins the seven-key set, the no-usage case pins the
+  six-key set minus `usage`, and the died-before-render case pins both snapshot columns null.
+
+### GREEN (observed)
+
+- `LLMResponse` and `ExtractionResult.usage` land in `llm_port.py`; the port signature is
+  `generate(...) -> LLMResponse`. **Deviation from the design's re-export row:** `LLMResponse` is
+  **not** re-exported from `domain/ports/__init__.py` (that file is outside this unit's allowed
+  edit surfaces); tests import it from `storico.domain.ports.llm_port` directly.
+- Per-adapter usage containers, all copying the provider's own shape:
+  - **Ollama**: usage is lifted from the `/api/chat` body's top-level fields —
+    `{prompt_eval_count, eval_count}`, keys present only; empty → `None`.
+  - **OpenAI / Anthropic**: `response.usage.model_dump() if response.usage is not None else None`.
+  - **Gemini**: `response.usage_metadata.model_dump() if response.usage_metadata is not None else None`.
+- `.text` ripple: `extraction_judge_service.py` (judge response), the five probes in
+  `api/routes/settings.py` (lines 186/219/252/285/326, `response[:100]` → `response.text[:100]`),
+  and `extraction_service.py`, whose `generate()` now returns `ExtractionResult(tasks=tuple(...),
+  raw_response=response.text, usage=response.usage)` — superseding the two-tuple (seam 4).
+- 2.9: `record_usage(extraction_id, *, prompt_config: dict)` on the port and the SQLAlchemy impl —
+  a single `UPDATE` naming **only** `prompt_config`, mirroring `record_rendered_prompt`'s shape and
+  raising `EntityNotFound` on rowcount 0. The runner calls it once after `generate()` returns,
+  **only when `result.usage is not None`**, restating the six render-time keys plus `usage`
+  (JSON columns have no merge).
+
+### Test doubles moved with the seam
+
+`test_llm_test_route.py:39` (`Recording`), `test_extraction.py` (`UnreachableLLM`, two
+`AnsweringLLM`s, `RecordingLLM`, `_AnsweringLLM`, `_RetryingAdapterLLM`), `test_few_shot_rag_qdrant.py`
+(`RecordingLLM` + the unpack at ~line 265 → `result.tasks`), `test_extraction_service.py` (two LLMPort
+fakes + seven `AsyncMock` return values + four unpack sites), `test_extraction_failure_paths.py`
+(`_ObservingLLM`, `_ObservingAnsweringLLM`), `test_few_shot_retrieval.py`, 
+`test_workspace_prompt_resolution.py` (extraction + judge responses), `test_extraction_flow_few_shot.py`,
+and `test_ollama_chat_live.py` (re-pointed to `isinstance(result, LLMResponse)` / `.text` — **not
+executed**: it is marked integration and `-m integration` runs are out of scope).
+`test_error_envelope.py` needed **no edits** (it asserts exception names, not return shapes).
+
+### 2.10 edges (all in `TestUsageRecordingOnTheLivePath` + one in the negative-block class)
+
+- usage verbatim: the snapshot is the six render-time keys **plus** `usage`, the container equals
+  the provider's dict, `json.dumps` succeeds, and the frozen prompt is still there underneath.
+- no-usage provider: the snapshot keeps exactly the six keys — the key is absent, never zero-filled.
+- provider failure after render: `prompt_rendered` non-null, six-key snapshot kept, no `usage`.
+- died before render (nonexistent story id): both `prompt_rendered` and `prompt_config` stay null.
+- revoked mark: after `revoke(...)` the next composed block carries neither the title nor the
+  reason — and with zero active marks the block header itself is not rendered (the test asserts the
+  header's absence rather than an empty block).
+
+### 2.11 closing confirmations (by reading, then re-running)
+
+- `ExtractionResult` has exactly **one producer** (`extraction_service.py:274`) and **one consumer**
+  (`extraction_task.py:450`); `ports/__init__.py` only re-exports the name.
+- Every snapshot value is read from `rendered.template_variables` (runner lines 436-442) or arrives
+  as `result.usage`; nothing is computed outside the template.
+- Write inventory: the birth INSERT (full row), `record_rendered_prompt` (`prompt_rendered` +
+  `prompt_config`), `record_usage` (`prompt_config` only), `mark_completed` and `mark_failed`
+  (status/error columns, no snapshot column).
+
+### Verification (in this order, all observed)
+
+- `cd backend && conda run -n storico python -m pytest tests/test_unit/test_{ollama,openai,anthropic,gemini}_adapter.py -m "not integration" -q` → RED **4 errors (ImportError)**, then GREEN **42 passed**
+- `cd backend && conda run -n storico python -m pytest tests/test_api/test_extraction.py -m "not integration" -q` → **73 passed** (68 prior + 5 new)
+- `cd backend && conda run -n storico python -m pytest tests/test_unit tests/test_api -m "not integration" -q` → **940 passed**
+- `cd backend && conda run -n storico python -m pytest -m "not integration" -q` → **1262 passed, 39 deselected, 1 failed** — the delta against the 1252 baseline is exactly the 11 new test functions (6 adapter usage + 5 row-level); the 1 failure is
+  `tests/test_repositories/test_extraction_repo.py::test_the_port_exposes_no_delete_and_no_whole_row_writer`, a pinned abstract-method-set assertion on the port that **must** gain `"record_usage"` — but that file is **outside this unit's allowed edit surfaces**, so it was left for the parent (one-line addition to the expected set).
+- `cd backend && conda run -n storico python -m ruff check src tests` → **All checks passed!**
+- `cd backend && conda run -n storico python -m ruff format --check src tests` → **272 files already formatted** (5 files touched by this unit needed reformatting; the formatter was run on exactly those five paths after the check, all in-scope)
+
+### Files (this unit; `--numstat` adds/dels)
+
+- `backend/src/storico/domain/ports/llm_port.py` (20/3), `extraction_repository.py` port (21/0),
+  `llm/ollama_adapter.py` (20/5), `llm/openai_adapter.py` (5/2), `llm/anthropic_adapter.py` (5/2),
+  `llm/gemini_adapter.py` (8/3), `domain/services/extraction_service.py` (11/6),
+  `domain/services/extraction_judge_service.py` (2/2), `api/routes/settings.py` (5/5),
+  `infrastructure/database/repositories/extraction_repository.py` (28/0),
+  `infrastructure/tasks/extraction_task.py` (14/1) — 114 src additions.
+- Tests: `test_api/test_extraction.py` (313/15), the four adapter files (60/3, 43/3, 39/3, 37/1),
+  `test_services/test_extraction_service.py` (25/22), plus seven smaller double re-points.
+- `tasks.md` (5 checkboxes), this file.
+
+### Close-out: the port-surface pin moved under explicit authorization (2026-10-02, parent Option 1)
+
+`"record_usage"` was added to the expected set in
+`test_the_port_exposes_no_delete_and_no_whole_row_writer` under explicit parent authorization —
+that file was outside this unit's original surfaces, and the escalation (not a silent edit) was
+the right move. The pin exists to make a port-surface change **visible and deliberate**: an
+abstract-method-set assertion turns every widening of `ExtractionRepository` into a reviewable
+decision instead of a quiet drift — and `record_usage` is exactly such a change, sanctioned by
+2.9's design (a targeted `prompt_config`-only UPDATE, no whole-row writer). The test's other half
+(`no delete`, `no save`) is untouched, as is every other assertion in the file. Observed: RED
+first (`'record_usage'` in the actual set, absent from the expected set), then GREEN
+(`tests/test_repositories/test_extraction_repo.py` → **26 passed**).
+
+**The two disclosed deviations, confirmed as decisions for the reviewer:**
+
+1. **Formatter run on the five in-scope files this unit had touched** — the formatter was
+   deliberately applied to exactly those five paths after the check (never repo-wide); the
+   repo-wide `ruff format --check src tests` is clean at **272 files**.
+2. **`LLMResponse` is imported from `storico.domain.ports.llm_port`, not re-exported from the
+   package `__init__`** — that `__init__` is out of scope for this unit, and the repo re-exports
+   newer domain types inconsistently at best, so the module-direct import is the honest choice,
+   already recorded in the GREEN section above.
+
+### Final verification (all observed after the pin edit)
+
+| Command | Result |
+| --- | --- |
+| `cd backend && conda run -n storico python -m pytest -m "not integration" -q` | **1263 passed, 39 deselected** — reconciles against the 1252 baseline **plus exactly the 11 new test functions this unit adds** (5 in `test_api/test_extraction.py`, 6 across the four adapter files; 0 removed; the pin edit adds none) |
+| `cd backend && conda run -n storico python -m pytest tests/test_unit tests/test_api -q` | **945 passed** — the note's pre-pin 940 plus exactly the 5 final `test_extraction.py` cases (a fresh run of that file confirms **73 passed**, its own table's 68 prior + 5 new); identical **945** with `-m "not integration"`, so no marker-filter difference |
+| `cd backend && conda run -n storico python -m ruff check src tests` | All checks passed! |
+| `cd backend && conda run -n storico python -m ruff format --check src tests` | 272 files already formatted |
+
+`tasks.md` state re-read after the edits: **2.7–2.11 `[x]`**, nothing else in Phase 2 touched, and
+every Phase 3 item (`3.1`–`3.9` and the rest) stays `[ ]`. No commit, stage, push or branch switch
+was performed; the parent commits.
