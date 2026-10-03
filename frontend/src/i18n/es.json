@@ -5,7 +5,7 @@
   },
   "nav": {
     "dashboard": "Panel",
-    "cta_label": "Comienza",
+    "cta_label": "Acceder",
     "stories": "Historias de Usuario",
     "kanban": "Tablero Kanban",
     "export": "Exportar",

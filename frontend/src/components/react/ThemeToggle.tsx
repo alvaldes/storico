@@ -20,8 +20,8 @@ export function ThemeToggle({ locale = 'en' }: { locale?: Locale }) {
     <button
       onClick={mounted ? toggleTheme : undefined}
       className={cn(
-        'rounded-md p-2 transition-colors',
-        'text-(--color-text-secondary) hover:bg-(--color-surface-secondary)',
+        'rounded-md p-1.5 transition-colors cursor-pointer',
+        'text-(--color-text-secondary) hover:text-(--color-text) hover:bg-(--color-surface-secondary)',
         mounted &&
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary-500)',
       )}
