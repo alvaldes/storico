@@ -1434,4 +1434,12 @@ part (iii) asserts the boundary facts that exist today and names the deferral.
 
 **Next:** WU2 — what the version records (the negative-example composer, the snapshot dictionary, the
 `usage` types and the four adapters, `record_usage`). Its third part is the slice's largest atomic
-commit (`LLMResponse` + the `.text` ripple, ≈305 lines) and it is the unit that closes **D10**.
+commit (`LLMResponse` + the `.text` ripple, ≈305 lines). **WU2 closes `D7`**, the negative-example block
+fed by (b)'s marks read.
+
+**`D10` is WU3's, not WU2's** — worth stating because the two are easy to conflate and the hand-off
+already carried it wrong once. `D10` is the silent one: slice (b) makes marks creatable and revocable
+but nothing in it moves the vector flag, so today every mark excludes nothing from few-shot retrieval
+and **nothing goes red**. The flag (`set_has_invalid_tasks`), the fail-closed
+`must: has_invalid_tasks = false` filter, the payload keys and indexes, and the refresh calls in (b)'s
+mark handlers are **slice (c) WU3 tasks 3.1–3.13**.
