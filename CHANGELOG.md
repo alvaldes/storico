@@ -1,3 +1,20 @@
+## v0.11.0 (2026-10-03)
+
+### Feat
+
+- **api**: refresh the vector flag before the mark is written
+- **rag**: exclude the story's own point and require validity at retrieval
+- **rag**: write the ten-key payload, its indexes and the validity flag
+- **llm**: return the response and its usage, and record only what the provider reported
+- **prompt**: fill the negative block from the marks and record what composed it
+- **prompt**: compose the negative-example block from the marks
+- **prompt**: give the run its project context through one required argument
+- **api**: add the unbounded context reads the prompt will consume
+
+### Fix
+
+- **rag**: index the field the filter excludes on, and make an absent point a real no-op
+
 ## v0.10.0 (2026-10-02)
 
 ### Feat
