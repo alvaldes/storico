@@ -345,7 +345,7 @@ end green.
 > **iii = 2.7–2.11** (the `LLMResponse` / `usage` ripple, `record_usage`, and 2.10's pinned edges plus
 > 2.11's closing pass). The original line above stays as the planning record.
 
-- [ ] 2.1 RED — `backend/tests/test_unit/test_negative_examples.py` **New** (path free; confirmed
+- [x] 2.1 RED — `backend/tests/test_unit/test_negative_examples.py` **New** (path free; confirmed
       absent): the failing composer table over `TaskInvalidationCandidate` rows.
       **21 distinct candidates yield 20 taken and `omitted == 1`**, most recent `marked_at` first;
       two candidates with identical normalized title and reason dedupe to one entry, keeping the most
@@ -355,7 +355,7 @@ end green.
       `domain/services/task_title_normalizer.py` (b's file) and defines no second casefold or
       whitespace helper. Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_unit/test_negative_examples.py -m "not integration"`.
-- [ ] 2.2 GREEN — `backend/src/storico/domain/services/negative_examples.py` **New** (path free):
+- [x] 2.2 GREEN — `backend/src/storico/domain/services/negative_examples.py` **New** (path free):
       `MAX_NEGATIVE_EXAMPLES = 20` as a module constant, the frozen slotted
       `NegativeExample(title, reason, version_number, marked_at)` and
       `NegativeExampleBlock(examples, omitted)` with its JSON-native `as_template_variables()`, and
