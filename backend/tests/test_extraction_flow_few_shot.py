@@ -13,6 +13,7 @@ import pytest
 
 from storico.api.schemas.workspace_prompt import PromptRequest, PromptResponse
 from storico.domain.ports import ExtractionExample, LLMConfig, ParsedTask
+from storico.domain.ports.llm_port import LLMResponse
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.infrastructure.llm.prompt_manager import PromptManager
 from tests._helpers import simple_context
@@ -22,11 +23,13 @@ from tests._helpers import simple_context
 def mock_llm_port():
     """Mock LLM port that returns a predictable extraction response."""
     mock = AsyncMock()
-    mock.generate.return_value = (
-        "1. summary: Set up authentication database\n"
-        "description: Create tables for users and sessions.\n"
-        "2. summary: Implement login endpoint\n"
-        "description: Build POST /auth/login with credential validation."
+    mock.generate.return_value = LLMResponse(
+        text=(
+            "1. summary: Set up authentication database\n"
+            "description: Create tables for users and sessions.\n"
+            "2. summary: Implement login endpoint\n"
+            "description: Build POST /auth/login with credential validation."
+        )
     )
     return mock
 

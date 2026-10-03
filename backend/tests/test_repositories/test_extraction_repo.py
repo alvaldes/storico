@@ -437,6 +437,7 @@ def test_the_port_exposes_no_delete_and_no_whole_row_writer() -> None:
     assert abstract_methods == {
         "create_next_version",
         "record_rendered_prompt",
+        "record_usage",
         "mark_completed",
         "mark_failed",
         "find_by_id",

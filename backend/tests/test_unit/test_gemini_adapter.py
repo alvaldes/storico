@@ -15,6 +15,13 @@ from storico.infrastructure.llm.gemini_adapter import GeminiAdapter
 from storico.infrastructure.llm.ollama_adapter import OllamaAdapter
 
 
+def _usage_metadata(usage: dict) -> MagicMock:
+    """Fake ``response.usage_metadata`` whose ``model_dump()`` returns ``usage``."""
+    usage_obj = MagicMock()
+    usage_obj.model_dump.return_value = usage
+    return usage_obj
+
+
 class TestGeminiAdapter:
     """GeminiAdapter wraps the google-genai client's generate_content."""
 
@@ -27,13 +34,39 @@ class TestGeminiAdapter:
         """Successful generation returns the model text response."""
         mock_response = MagicMock()
         mock_response.text = "1. summary: Task one\ndescription: Do it"
+        mock_response.usage_metadata = None
         mock_client_cls.return_value.models.generate_content.return_value = mock_response
 
         adapter = GeminiAdapter(api_key="test-key")
         result = await adapter.generate("Test prompt", self.config)
 
-        assert "Task one" in result
+        assert "Task one" in result.text
+        assert result.usage is None
         mock_client_cls.assert_called_once_with(api_key="test-key")
+
+    @patch("storico.infrastructure.llm.gemini_adapter.genai.Client")
+    @pytest.mark.asyncio
+    async def test_generate_carries_the_provider_usage_container_verbatim(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        """The SDK usage_metadata object's ``model_dump()`` rides along untouched (2.7).
+
+        The google-genai SDK exposes token usage as ``response.usage_metadata``,
+        a pydantic model with ``model_dump()``. The adapter copies that dump
+        verbatim — no renaming, no derived totals, no normalization into a
+        common shape.
+        """
+        mock_response = MagicMock()
+        mock_response.text = "1. summary: Task one\ndescription: Do it"
+        mock_response.usage_metadata = _usage_metadata(
+            {"prompt_token_count": 41, "candidates_token_count": 117}
+        )
+        mock_client_cls.return_value.models.generate_content.return_value = mock_response
+
+        adapter = GeminiAdapter(api_key="test-key")
+        result = await adapter.generate("Test prompt", self.config)
+
+        assert result.usage == {"prompt_token_count": 41, "candidates_token_count": 117}
 
     @patch("storico.infrastructure.llm.gemini_adapter.genai.Client")
     @pytest.mark.asyncio
@@ -41,6 +74,7 @@ class TestGeminiAdapter:
         """Passed system prompt is sent via GenerateContentConfig.system_instruction."""
         mock_response = MagicMock()
         mock_response.text = "1. summary: Task one\ndescription: Do it"
+        mock_response.usage_metadata = None
         mock_client_cls.return_value.models.generate_content.return_value = mock_response
 
         adapter = GeminiAdapter(api_key="test-key")
@@ -58,6 +92,7 @@ class TestGeminiAdapter:
         """No system_instruction when system_prompt is None."""
         mock_response = MagicMock()
         mock_response.text = "ok"
+        mock_response.usage_metadata = None
         mock_client_cls.return_value.models.generate_content.return_value = mock_response
 
         adapter = GeminiAdapter(api_key="test-key")
@@ -72,6 +107,7 @@ class TestGeminiAdapter:
         """Gemini and Ollama send the exact same system prompt string."""
         mock_response = MagicMock()
         mock_response.text = "ok"
+        mock_response.usage_metadata = None
         mock_client_cls.return_value.models.generate_content.return_value = mock_response
 
         gemini = GeminiAdapter(api_key="test-key")

@@ -131,6 +131,34 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
             raise EntityNotFound("Extraction", str(extraction_id))
         await self._session.commit()
 
+    async def record_usage(
+        self,
+        extraction_id: UUID,
+        *,
+        prompt_config: dict,
+    ) -> None:
+        """Record the usage container on the snapshot — one UPDATE, only ``prompt_config``.
+
+        Mirrors ``record_rendered_prompt``'s shape but names no other column: the
+        rendered prompt, provider/model/temperature and status columns keep the
+        values written at birth/render time because this statement cannot touch
+        them.
+        """
+        stmt = (
+            update(ExtractionModel)
+            .where(ExtractionModel.id == extraction_id)
+            .values(prompt_config=prompt_config)
+        )
+        try:
+            result = await self._session.execute(stmt)
+        except SQLAlchemyError as e:
+            await self._session.rollback()
+            raise RepositoryError("Database error recording usage") from e
+        if result.rowcount == 0:
+            await self._session.rollback()
+            raise EntityNotFound("Extraction", str(extraction_id))
+        await self._session.commit()
+
     async def mark_completed(
         self,
         extraction_id: UUID,

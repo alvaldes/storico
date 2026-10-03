@@ -17,6 +17,7 @@ import pytest
 from httpx import AsyncClient
 
 from storico.config.settings import Settings
+from storico.domain.ports.llm_port import LLMResponse
 from storico.infrastructure import llm as llm_module
 
 URL = "/api/v1/llm/test"
@@ -36,8 +37,8 @@ def adapter_kwargs(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         def __init__(self, **kwargs: Any) -> None:
             built.append(kwargs)
 
-        async def generate(self, prompt: str, config: Any) -> str:  # noqa: ARG002
-            return "stub response"
+        async def generate(self, prompt: str, config: Any) -> LLMResponse:  # noqa: ARG002
+            return LLMResponse(text="stub response")
 
     for name in ("OllamaAdapter", "OpenAIAdapter", "AnthropicAdapter", "GeminiAdapter"):
         monkeypatch.setattr(llm_module, name, Recording)

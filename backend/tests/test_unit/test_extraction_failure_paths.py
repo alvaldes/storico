@@ -32,6 +32,7 @@ from storico.domain.entities import Extraction
 from storico.domain.entities.exceptions import LLMError
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.ports import LLMConfig, LLMPort
+from storico.domain.ports.llm_port import LLMResponse
 from storico.infrastructure.database.models import Base
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
@@ -219,7 +220,7 @@ class _ObservingLLM(LLMPort):
         prompt: str,  # noqa: ARG002
         config: LLMConfig,  # noqa: ARG002
         system_prompt: str | None = None,  # noqa: ARG002
-    ) -> str:
+    ) -> LLMResponse:
         await self._observe(prompt, system_prompt)
         raise LLMError("the provider refused after render")
 
@@ -232,9 +233,9 @@ class _ObservingAnsweringLLM(_ObservingLLM):
         prompt: str,
         config: LLMConfig,  # noqa: ARG002
         system_prompt: str | None = None,
-    ) -> str:
+    ) -> LLMResponse:
         await self._observe(prompt, system_prompt)
-        return "1. summary: Set up the schema\ndescription: Create the tables.\n"
+        return LLMResponse(text="1. summary: Set up the schema\ndescription: Create the tables.\n")
 
 
 class TestRenderTimeSnapshot:

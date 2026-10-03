@@ -183,7 +183,7 @@ async def test_llm_connection(
             elapsed = int((time.monotonic() - start) * 1000)
             return LLMTestResponse(
                 success=True,
-                message=f"Ollama responded: {response[:100]}",
+                message=f"Ollama responded: {response.text[:100]}",
                 model=body.model,
                 latency_ms=elapsed,
             )
@@ -216,7 +216,7 @@ async def test_llm_connection(
             elapsed = int((time.monotonic() - start) * 1000)
             return LLMTestResponse(
                 success=True,
-                message=f"Gemini responded: {response[:100]}",
+                message=f"Gemini responded: {response.text[:100]}",
                 model=body.model,
                 latency_ms=elapsed,
             )
@@ -249,7 +249,7 @@ async def test_llm_connection(
             elapsed = int((time.monotonic() - start) * 1000)
             return LLMTestResponse(
                 success=True,
-                message=f"OpenAI responded: {response[:100]}",
+                message=f"OpenAI responded: {response.text[:100]}",
                 model=body.model,
                 latency_ms=elapsed,
             )
@@ -282,7 +282,7 @@ async def test_llm_connection(
             elapsed = int((time.monotonic() - start) * 1000)
             return LLMTestResponse(
                 success=True,
-                message=f"Anthropic responded: {response[:100]}",
+                message=f"Anthropic responded: {response.text[:100]}",
                 model=body.model,
                 latency_ms=elapsed,
             )
@@ -323,7 +323,7 @@ async def test_llm_connection(
         elapsed = int((time.monotonic() - start) * 1000)
         return LLMTestResponse(
             success=True,
-            message=f"{body.provider} responded: {response[:100]}",
+            message=f"{body.provider} responded: {response.text[:100]}",
             model=body.model,
             latency_ms=elapsed,
         )

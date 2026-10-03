@@ -10,6 +10,7 @@ from google.genai import types as genai_types
 
 from storico.domain.entities import LLMConnectionError, LLMResponseError
 from storico.domain.ports import LLMConfig, LLMPort
+from storico.domain.ports.llm_port import LLMResponse
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class GeminiAdapter(LLMPort):
         prompt: str,
         config: LLMConfig,
         system_prompt: str | None = None,
-    ) -> str:
+    ) -> LLMResponse:
         """Send a prompt to a Gemini model and return the raw response.
 
         Args:
@@ -47,7 +48,9 @@ class GeminiAdapter(LLMPort):
                 is set.
 
         Returns:
-            Raw text response from the model.
+            The model's answer: the raw completion text plus the provider's own
+            usage container (``usage_metadata.model_dump()``) when the response
+            reports one.
 
         Raises:
             LLMConnectionError: If the Gemini API cannot be reached.
@@ -84,4 +87,6 @@ class GeminiAdapter(LLMPort):
             )
             raise LLMResponseError("Gemini returned an empty response")
 
-        return response.text
+        raw_usage = getattr(response, "usage_metadata", None)
+        usage = raw_usage.model_dump() if raw_usage is not None else None
+        return LLMResponse(text=response.text, usage=usage)

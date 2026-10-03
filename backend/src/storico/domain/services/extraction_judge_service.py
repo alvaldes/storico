@@ -70,7 +70,7 @@ class LLMJudgeService:
         )
 
         try:
-            raw_response = await self._llm.generate(
+            judge_response = await self._llm.generate(
                 judge_prompt,
                 config,
                 system_prompt=system_prompt,
@@ -84,7 +84,7 @@ class LLMJudgeService:
             )
             raise LLMError(f"Judge LLM call failed: {exc}") from exc
 
-        return self._parse_judge_response(raw_response)
+        return self._parse_judge_response(judge_response.text)
 
     def _parse_judge_response(self, raw_response: str) -> JudgeResult:
         """Parse the JSON response from the judge LLM.

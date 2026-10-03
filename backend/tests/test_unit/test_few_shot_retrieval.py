@@ -14,6 +14,7 @@ from uuid import uuid4
 import pytest
 
 from storico.domain.ports import ExtractionExample, LLMConfig, ParsedTask
+from storico.domain.ports.llm_port import LLMResponse
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.infrastructure.llm.prompt_manager import PromptManager
 from tests._helpers import simple_context
@@ -22,7 +23,7 @@ from tests._helpers import simple_context
 def _make_service(vector_store=None, few_shot_config=None):
     """Build an ExtractionService with mocked LLM and parser, real PromptManager."""
     llm_port = AsyncMock()
-    llm_port.generate.return_value = "1. summary: T\ndescription: D"
+    llm_port.generate.return_value = LLMResponse(text="1. summary: T\ndescription: D")
     task_parser = MagicMock()
     task_parser.parse.return_value = [ParsedTask(summary="T", description="D")]
     return ExtractionService(
@@ -160,9 +161,9 @@ class TestFewShotRetrieval:
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
             context=simple_context(),
         )
-        result_tasks, _ = await service.generate(rendered, LLMConfig(model="test"))
+        result = await service.generate(rendered, LLMConfig(model="test"))
 
-        assert len(result_tasks) == 1
+        assert len(result.tasks) == 1
         instruction_prompt = llm_port.generate.call_args[0][0]
         assert "## Few-Shot Examples" not in instruction_prompt
 

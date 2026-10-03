@@ -11,9 +11,9 @@ from storico.domain.entities.exceptions import LLMError
 from storico.domain.entities.task import TaskStatus
 from storico.domain.ports import (
     ExtractionExample,
+    ExtractionResult,
     LLMConfig,
     LLMPort,
-    ParsedTask,
     StoryContextRow,
     TaskContextRow,
     VectorStorePort,
@@ -243,7 +243,7 @@ class ExtractionService:
         self,
         rendered: RenderedPrompt,
         config: LLMConfig,
-    ) -> tuple[list[ParsedTask], str]:
+    ) -> ExtractionResult:
         """Send a rendered prompt to the LLM and parse the answer.
 
         Args:
@@ -251,14 +251,15 @@ class ExtractionService:
             config: LLM configuration to use for generation.
 
         Returns:
-            Tuple of (parsed_tasks, raw_response).
+            The extraction result: parsed tasks, the raw response text, and the
+            provider's own usage container when it reported one.
 
         Raises:
             LLMError: If the LLM call fails.
             ParseError: If the response cannot be parsed.
         """
         try:
-            raw_response = await self._llm.generate(
+            response = await self._llm.generate(
                 rendered.instruction,
                 config,
                 system_prompt=rendered.system_prompt,
@@ -268,9 +269,13 @@ class ExtractionService:
         except Exception as exc:
             raise LLMError(f"Unexpected error during LLM generation: {exc}") from exc
 
-        parsed_tasks = self._task_parser.parse(raw_response)
+        parsed_tasks = self._task_parser.parse(response.text)
 
-        return parsed_tasks, raw_response
+        return ExtractionResult(
+            tasks=tuple(parsed_tasks),
+            raw_response=response.text,
+            usage=response.usage,
+        )
 
     async def _fetch_rag_examples(
         self,

@@ -447,7 +447,20 @@ async def _run_extraction(
             prompt_rendered=rendered.text,
             prompt_config=snapshot,
         )
-        parsed_tasks, raw_response = await extraction_service.generate(rendered, llm_config)
+        result = await extraction_service.generate(rendered, llm_config)
+
+        # 3b. The provider answered — if it reported a usage container, record it on
+        # the snapshot. One targeted UPDATE that names only ``prompt_config``; the
+        # six render-time keys are restated because the JSON column has no merge.
+        # A provider without usage never gets this write: the key stays absent,
+        # never zero-filled, and no other column is touched.
+        if result.usage is not None:
+            await extraction_repo.record_usage(
+                extraction_id,
+                prompt_config={**snapshot, "usage": result.usage},
+            )
+        parsed_tasks = result.tasks
+        raw_response = result.raw_response
 
         # 4. Optionally validate via LLM-as-a-Judge — same system prompt
         confidence: float | None = None

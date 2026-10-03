@@ -12,6 +12,7 @@ from openai import OpenAIError as BaseOpenAIError
 
 from storico.domain.entities import LLMConnectionError, LLMModelNotFoundError, LLMResponseError
 from storico.domain.ports import LLMConfig, LLMPort
+from storico.domain.ports.llm_port import LLMResponse
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ class OpenAIAdapter(LLMPort):
         prompt: str,
         config: LLMConfig,
         system_prompt: str | None = None,
-    ) -> str:
+    ) -> LLMResponse:
         """Send a prompt to an OpenAI model and return the raw response.
 
         Args:
@@ -120,4 +121,6 @@ class OpenAIAdapter(LLMPort):
             )
             raise LLMResponseError("OpenAI returned an empty response")
 
-        return response.choices[0].message.content
+        raw_usage = getattr(response, "usage", None)
+        usage = raw_usage.model_dump() if raw_usage is not None else None
+        return LLMResponse(text=response.choices[0].message.content, usage=usage)
