@@ -2,10 +2,24 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from dataclasses import dataclass
 from uuid import UUID
 
 from storico.domain.entities.story_deletion import StoryDeletion
 from storico.domain.entities.user_story import UserStory
+
+
+@dataclass(frozen=True, slots=True)
+class StoryContextRow:
+    """One row of the prompt-context read — a read model, not an entity.
+
+    The prompt needs the story's identity and its text, nothing else, so the
+    projection selects two columns instead of hydrating whole ``UserStory``
+    rows (the same shape ``(b)'s`` ``TaskInvalidationCandidate`` takes).
+    """
+
+    id: UUID
+    raw_text: str
 
 
 class UserStoryRepository(ABC):
@@ -122,5 +136,19 @@ class UserStoryRepository(ABC):
         latency.
 
         Returns the saved entities with their ids and timestamps populated.
+        """
+        ...
+
+    @abstractmethod
+    async def list_for_context(
+        self, project_id: UUID, *, exclude_story_id: UUID
+    ) -> list[StoryContextRow]:
+        """Every story of one project except ``exclude_story_id``, oldest first.
+
+        Deliberately unbounded: the context block is not a paginated resource —
+        the paginator's window would drop rows while the composed prompt
+        claimed to carry the whole project, a silent truncation. The exclusion
+        rides in the ``WHERE`` clause, never in a Python filter, so the
+        statement itself can never answer with the story being decomposed.
         """
         ...

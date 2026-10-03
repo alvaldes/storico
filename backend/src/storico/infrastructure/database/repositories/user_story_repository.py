@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import EntityNotFound, RepositoryError, UserStory, UserStoryStatus
 from storico.domain.entities.story_deletion import StoryDeletion
-from storico.domain.ports import UserStoryRepository
+from storico.domain.ports import StoryContextRow, UserStoryRepository
 from storico.infrastructure.database.models import ProjectModel, StoryDeletionModel, UserStoryModel
 from storico.infrastructure.database.pagination import fetch_page, with_total
 
@@ -175,6 +175,29 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
         ).where(UserStoryModel.project_id == project_id)
         result = await self._session.execute(stmt)
         return list(result.all())
+
+    async def list_for_context(
+        self, project_id: UUID, *, exclude_story_id: UUID
+    ) -> list[StoryContextRow]:
+        """Every story of the project except one, oldest first, unpaginated.
+
+        Only the two columns the prompt block reads are selected, not full ORM
+        entities: a 1000-story project would hydrate every field of every row
+        to use two. The exclusion is a ``WHERE`` term — the statement itself
+        never answers with the story being decomposed — and the ``ORDER BY``
+        is the ascending ``created_at, id`` the port documents: without a total
+        order, two calls over the same state could compose different prompts.
+        """
+        stmt = (
+            select(UserStoryModel.id, UserStoryModel.raw_text)
+            .where(
+                UserStoryModel.project_id == project_id,
+                UserStoryModel.id != exclude_story_id,
+            )
+            .order_by(UserStoryModel.created_at, UserStoryModel.id)
+        )
+        result = await self._session.execute(stmt)
+        return [StoryContextRow(id=row.id, raw_text=row.raw_text) for row in result]
 
     async def save_many(self, user_stories: Sequence[UserStory]) -> list[UserStory]:
         # Empty input is answered before any statement: no rows means no work,

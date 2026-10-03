@@ -1,9 +1,26 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from uuid import UUID
 
-from storico.domain.entities.task import Task
+from storico.domain.entities.task import Task, TaskStatus
+
+
+@dataclass(frozen=True, slots=True)
+class TaskContextRow:
+    """One row of the prompt-context read — a read model, not an entity.
+
+    The rows belong to the *existing tasks* block of a prompt: the title, the
+    kanban status and the owning story's id (so the template can name which
+    story each task came from), nothing else. Returning a ``Task`` would drag
+    the description, labels and dependencies through a read that never reads
+    them.
+    """
+
+    title: str
+    status: TaskStatus
+    user_story_id: UUID
 
 
 class TaskRepository(ABC):
@@ -85,4 +102,20 @@ class TaskRepository(ABC):
     @abstractmethod
     async def delete(self, task_id: UUID) -> None:
         """Delete a task by its unique identifier."""
+        ...
+
+    @abstractmethod
+    async def list_for_context(
+        self, project_id: UUID, *, exclude_story_id: UUID
+    ) -> list[TaskContextRow]:
+        """The project's current-version, valid tasks except ``exclude_story_id``'s.
+
+        Deliberately unbounded: the context block is not a paginated resource —
+        the paginator's window would drop tasks while the composed prompt
+        claimed to carry the project's whole task set, a silent truncation.
+        Both exclusions ride in the ``WHERE`` clause, never in a Python filter:
+        the story being decomposed (``user_story_id != exclude_story_id``), and
+        any task carrying an active mark (``NOT EXISTS`` a ``task_invalidations``
+        row with ``revoked_at IS NULL``).
+        """
         ...
