@@ -631,15 +631,20 @@ class TestQdrantAdapter:
 
         assert client is mock_client
         mock_client.create_collection.assert_called_once()
-        # All three filtered fields are ensured (see the dedicated schema test
+        # All four filtered fields are ensured (see the dedicated schema test
         # below for the per-field schemas this generalised loop issues).
         ensured = {
             call.kwargs["field_name"] for call in mock_client.create_payload_index.call_args_list
         }
-        assert ensured == {"workspace_id", "project_id", "has_invalid_tasks"}
+        assert ensured == {
+            "workspace_id",
+            "project_id",
+            "user_story_id",
+            "has_invalid_tasks",
+        }
         # Index is created with the boolean schema on the last ensured field;
-        # the workspace_id/project_id keyword schemas are pinned by the
-        # dedicated three-index test below.
+        # the workspace_id/project_id/user_story_id keyword schemas are pinned by
+        # the dedicated four-index test below.
         idx_call = mock_client.create_payload_index.call_args[1]
         assert idx_call["field_name"] == "has_invalid_tasks"
         assert idx_call["field_schema"] == qdrant_models.PayloadSchemaType.BOOL
@@ -675,21 +680,27 @@ class TestQdrantAdapter:
         ensured = {
             call.kwargs["field_name"] for call in mock_client.create_payload_index.call_args_list
         }
-        assert ensured == {"workspace_id", "project_id", "has_invalid_tasks"}
+        assert ensured == {
+            "workspace_id",
+            "project_id",
+            "user_story_id",
+            "has_invalid_tasks",
+        }
 
     @pytest.mark.asyncio
-    async def test_lazy_init_creates_the_three_payload_indexes_with_their_schemas(self) -> None:
-        """All three filtered fields get payload indexes, with per-field schemas.
+    async def test_lazy_init_creates_the_four_payload_indexes_with_their_schemas(self) -> None:
+        """All four filtered fields get payload indexes, with per-field schemas.
 
-        The read side of WU3 filters on ``workspace_id`` and ``has_invalid_tasks``
-        and stores ``project_id``, so all three need indexes for the filtered
-        searches to stay fast — one ``_ensure_payload_indexes`` loop behind one
-        flag, called from ``_get_client`` right after the collection is ensured.
-        ``workspace_id``/``project_id`` are stored as strings (``KEYWORD``);
-        ``has_invalid_tasks`` is a JSON boolean, given ``PayloadSchemaType.BOOL``
-        — the schema the pinned ``qdrant_client`` accepts (verified against the
-        installed client's ``PayloadSchemaType`` enum, so this pins the schema
-        the running dependency actually resolves).
+        The read side of WU3 filters on ``workspace_id``, ``user_story_id`` and
+        ``has_invalid_tasks`` and stores ``project_id``, so all four need indexes
+        for the filtered searches to stay fast — one ``_ensure_payload_indexes``
+        loop behind one flag, called from ``_get_client`` right after the
+        collection is ensured.
+        ``workspace_id``/``project_id``/``user_story_id`` are stored as strings
+        (``KEYWORD``); ``has_invalid_tasks`` is a JSON boolean, given
+        ``PayloadSchemaType.BOOL`` — the schema the pinned ``qdrant_client``
+        accepts (verified against the installed client's ``PayloadSchemaType``
+        enum, so this pins the schema the running dependency actually resolves).
         """
         port = _make_embedding_port()
         port.embed.return_value = [0.1, 0.2, 0.3]
@@ -718,6 +729,7 @@ class TestQdrantAdapter:
         assert schemas == {
             "workspace_id": qdrant_models.PayloadSchemaType.KEYWORD,
             "project_id": qdrant_models.PayloadSchemaType.KEYWORD,
+            "user_story_id": qdrant_models.PayloadSchemaType.KEYWORD,
             "has_invalid_tasks": qdrant_models.PayloadSchemaType.BOOL,
         }
         # Every index request waits for the index to be built before returning.
