@@ -361,7 +361,7 @@ end green.
       `NegativeExampleBlock(examples, omitted)` with its JSON-native `as_template_variables()`, and
       `compose_negative_examples(candidates) -> NegativeExampleBlock` implementing sort → dedupe →
       cap → `omitted = deduped_total - taken`. No session, no I/O, no new mark read.
-- [ ] 2.3 RED — `backend/tests/test_api/test_extraction.py`: add the failing block-level cases — the
+- [x] 2.3 RED — `backend/tests/test_api/test_extraction.py`: add the failing block-level cases — the
       prompt of v3 carries the v1 mark with reason "Duplicates the auth task" and the v2 mark with
       reason "Too coarse to implement"; a mark on another story is absent from this story's block;
       **21 marks put exactly 20 in the block and the block announces that 1 older mark was omitted**;
@@ -369,11 +369,11 @@ end green.
       omitted, and no `workspace_prompts` field exists that changes the cap (C6's no-knob half).
       Prove RED with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_extraction.py -m "not integration"`.
-- [ ] 2.4 GREEN — `backend/src/storico/domain/services/extraction_service.py`: add `few_shots`
+- [x] 2.4 GREEN — `backend/src/storico/domain/services/extraction_service.py`: add `few_shots`
       (`[{user_story_text, tasks_summary, model_used, confidence_score, similarity_score}]` — the
       port's own fields, **text not id**, and not interpolated by the template) and the two
       negative-example entries to `prompt_kwargs`, sourced from `context`.
-- [ ] 2.5 GREEN — `backend/src/storico/infrastructure/tasks/extraction_task.py`: call (b)'s
+- [x] 2.5 GREEN — `backend/src/storico/infrastructure/tasks/extraction_task.py`: call (b)'s
       `TaskInvalidationRepository.list_active_on_other_versions(user_story_id=story.id,
       exclude_extraction_id=None)` (b's file, created at 5.6 — **no second mark read is invented**),
       feed it through `compose_negative_examples`, and fold both results into the `ProjectContext`
@@ -382,7 +382,7 @@ end green.
       `negative_examples_omitted` beside the inherited `validate` and `system_prompt` — with
       `negative_examples` deliberately **not** a snapshot key (it is in `prompt_rendered`).
       The ordering render → write → provider is (a)'s and is not moved.
-- [ ] 2.6 TRIANGULATE — **21 marks → 20 plus the announced omission, read back from the row.**
+- [x] 2.6 TRIANGULATE — **21 marks → 20 plus the announced omission, read back from the row.**
       `backend/tests/test_api/test_extraction.py`: `prompt_config["negative_examples_omitted"] == 1`
       and the stored rendered prompt's block announces it; 5 marks give `0`; the two-run determinism
       case composes the same block; the snapshot key set is exactly the six expected keys;

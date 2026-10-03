@@ -587,3 +587,141 @@ the exact changes ruff's `--diff` output showed were applied by hand, then re-ve
 - None observed: the unit is pure and additive; the full-suite delta is exactly the 7 new tests, and
   no existing assertion was touched. Part (ii) still has to wire the composer's output into
   `ProjectContext` — until then the block renders empty and the composer has no production caller.
+
+## W2-T2 — the negative block stops being empty and the snapshot records what was composed (tasks 2.3–2.6)
+
+2026-10-03, branch `feat/extraction-versioning-prompt-wu2a` (tip `9b513e9`; branch not switched,
+nothing committed or staged). WU2 part (ii) per the dated amendment: 2.3's block-level RED together
+with the wiring that turns it green (2.4, 2.5), plus 2.6's row-level read-back. The composer of
+W2-T1 finally gets its production caller; 2.7–2.11 (part iii) and every later phase remain untouched.
+
+### Consumed branch / baseline facts
+
+Parent-verified at this head, re-observed during the run: full suite
+`conda run -n storico python -m pytest -m "not integration"` read **1238 passed, 39 deselected**
+before the new tests; `ruff check` clean and `ruff format --check` read 272 files already formatted.
+The only mark read used is (b)'s `list_active_on_other_versions(*, user_story_id,
+exclude_extraction_id)`, called with `exclude_extraction_id=None` — exactly D7's row set for the
+story, no second mark read invented. Pre-existing untracked `backend/.gitignore` and
+`.claude/skills/` untouched. Nothing outside the seven allowed edit surfaces was modified.
+
+### RED (tasks 2.3 and 2.6 written first, before any wiring)
+
+14 new test functions added to `backend/tests/test_api/test_extraction.py` in two classes
+(`TestNegativeExampleBlockOnTheLivePath` — 5 cases, `TestTheSnapshotRecordsWhatWasComposed` — 9
+cases, plus the appended row-level half of 1.13 inside `TestWorkspaceTemplateOptOutAtTheRecord`).
+Prove-RED run:
+`cd backend && conda run -n storico python -m pytest tests/test_api/test_extraction.py -m "not integration" -q`
+→ **12 failed, 56 passed**. Failure kinds, exactly as expected:
+
+- **Block-level (2.3): `ValueError: substring not found`** — `_negative_block()` indexes the
+  `## Do Not Produce These Tasks (Previously Marked Invalid)` header in the stored
+  `prompt_rendered`, and the header never renders because the block ships empty (WU1's part (ii)
+  state: the context carries no marks). Four 2.3 cases failed this way; the fifth (the no-knob
+  column-set assertion) passed at RED because it pins the model's schema, which was already correct.
+- **Snapshot-level (2.6): the snapshot carrying only the two inherited keys** — the six-key set
+  assertion failed with `assert {'system_prompt', 'validate'} == {six keys}`; the story-edit and
+  few-shots cases failed with `KeyError: 'story_text'` and `KeyError: 'few_shots'`; the opt-out
+  row-level case failed with `None == 'Seeded Project'` on `prompt_config.get("project_context")`.
+- Already-true pins that passed at RED, by design: the two-different-prompts case (the context block
+  was wired in WU1, so a new story already changes the prompt) and the middleware-list case
+  (`[CORSMiddleware]` was already the app's only middleware). They are recorded as structural pins,
+  not as RED evidence.
+
+### GREEN (2.4 + 2.5) and where the render-time mapping lives
+
+- `backend/src/storico/domain/services/negative_examples.py`: **`negative_examples_as_template_variables(examples)`**
+  is the ONE place the `NegativeExample → JSON-native dict` conversion lives; `NegativeExampleBlock.
+  as_template_variables()` now delegates to it. Not duplicated: the service builds
+  `prompt_kwargs["negative_examples"]` through the same module function, so the template's block, the
+  block's own variables and the render kwargs cannot drift — there is no second mapping anywhere in
+  the tree.
+- `backend/src/storico/domain/services/extraction_service.py` (2.4): `prompt_kwargs["negative_examples"]`
+  is now the composer's JSON-native mapping of `context.negative_examples` (it was a list of raw
+  dataclasses); `few_shots` stays `[asdict(example) for example in examples]` — verified to be the
+  vector port's own five fields (`user_story_text`, `tasks_summary`, `model_used`,
+  `confidence_score`, `similarity_score`), text and never an id, and snapshot-only: the template
+  renders the few-shot section from `examples`, never from `few_shots` (asserted on the row: the
+  rendered prompt carries the example text but never a dict repr like `'user_story_text'`).
+- `backend/src/storico/infrastructure/tasks/extraction_task.py` (2.5): the runner's fourth read is
+  `SQLAlchemyTaskInvalidationRepository.list_active_on_other_versions(user_story_id=story.id,
+  exclude_extraction_id=None)`, fed through `compose_negative_examples`; the block's
+  `examples`/`omitted` fold into the `ProjectContext` it already builds. The snapshot dictionary is
+  written **from `rendered.template_variables`** — `few_shots`, `project_context`, `story_text`
+  (=`template_variables["user_story"]`), `negative_examples_omitted` — beside the inherited
+  `validate` and `system_prompt`, in (a)'s `record_rendered_prompt` call. **The ordering render →
+  write → provider did not move.**
+- **The six-key snapshot and what `negative_examples` deliberately is not**: the stored
+  `prompt_config` key set is exactly `{validate, system_prompt, few_shots, project_context,
+  story_text, negative_examples_omitted}` (asserted with a set equality on a full context — marks,
+  another story's task — plus `json.dumps(snapshot)` succeeding). `negative_examples` is **not** a
+  snapshot key: the block itself travels in `prompt_rendered` and is re-derivable from the marks, so
+  copying it into `prompt_config` would store it twice.
+
+### The no-knob assertion's shape (C6)
+
+Two assertions on the schema, not on today's behaviour:
+`{c for c in WorkspacePromptModel.__table__.columns if c.startswith("few_shot")} ==
+{"few_shot_enabled", "few_shot_limit", "few_shot_threshold"}` (the three few-shot knobs are the only
+retrieval knobs the row owns) and `not [c for c in columns if "negative" in c or "cap" in c]` with
+`[c for c in columns if "limit" in c] == ["few_shot_limit"]` (no field can move the composer's
+constant — a future column cannot quietly appear the way a behaviour-only assertion would tolerate).
+The behavioural half rides alongside: with `few_shot_limit = 25` upserted, 25 marks still compose 20
+entries and the block announces `5 older marks were omitted.`
+
+### The 1.13 deferred row-level half lands
+
+`test_the_opt_out_run_completes_and_the_row_records_what_each_fact_saw` gained (appended — nothing
+weakened or restructured) the two read-back assertions the WU1 part (iii) boundary could not make:
+the opt-out workspace's stored `prompt_config` carries `project_context` (name `Seeded Project`) and
+`negative_examples_omitted == 0` even though its `{{ user_story }}`-only template interpolates
+neither block. The class docstring's stale "at this head" paragraph was updated to record that 2.5
+has landed; no assertion text changed.
+
+### Files changed (this unit — `git diff --numstat`)
+
+- `backend/src/storico/domain/services/negative_examples.py` (+30/−12 — the mapping helper, the
+  method now delegating)
+- `backend/src/storico/domain/services/extraction_service.py` (+12/−7 — the render-time source and
+  the comment updates)
+- `backend/src/storico/infrastructure/tasks/extraction_task.py` (+32/−11 — the marks read, the
+  composer call, the six-key snapshot)
+- `backend/tests/test_api/test_extraction.py` (+778/−8 — the 14 new cases, the imports, the appended
+  1.13 assertions, the stale docstring paragraph)
+- `openspec/changes/extraction-versioning-prompt/tasks.md` (+4/−4 — checkboxes 2.3–2.6 only)
+- `openspec/changes/extraction-versioning-prompt/apply-progress.md` — this section appended, earlier
+  sections verbatim
+
+Unit changed-line count (`--numstat`, additions + deletions): **890** (790+ / 100−). The test-file
+share dominates because 2.3+2.6 carry the fourteen row/prompt-level cases the plan priced into part
+(ii)'s ≈300-line estimate only loosely; the three source files together are 92 changed lines.
+
+### Verification (in this order, all observed)
+
+- `cd backend && conda run -n storico python -m pytest tests/test_unit/test_negative_examples.py tests/test_api/test_extraction.py -m "not integration" -q` → **75 passed**
+- `cd backend && conda run -n storico python -m pytest tests/test_unit/test_negative_examples.py tests/test_unit/test_ollama_adapter.py tests/test_api/test_extraction.py -m "not integration" -q` → **91 passed** (the phase runner's first half)
+- `cd backend && conda run -n storico python -m pytest -m "not integration" -q` → **1252 passed, 39 deselected** — delta against the 1238 baseline is exactly the 14 new test functions
+- `cd backend && conda run -n storico python -m ruff check src tests` → **All checks passed!**
+- `cd backend && conda run -n storico python -m ruff format --check src tests` → **272 files already formatted**
+
+Formatting note: the first `ruff format --check` after implementation read 2 files would be
+reformatted (over-long argument lists in my own new code). The formatter was **not** run (task letter
+forbids formatters); the exact changes ruff's `--diff` output showed were applied by hand to the two
+files, then re-verified clean. Two test-side defects were also fixed during GREEN (a missing `import
+json`, and the determinism case reading rows by id because the marks fixture mints its own version) —
+both are changes to the new tests only.
+
+### Remaining unchecked tasks
+
+- 2.7–2.11 (part iii): all still `[ ]`, untouched — the `LLMResponse`/`usage` ripple, `record_usage`,
+  2.10's pinned edges and 2.11's closing pass.
+- Phases 3–5: untouched.
+
+### Risks
+
+- The 21/25-mark fixtures rely on explicit `marked_at` values for the omission identity ("task 0 is
+  the dropped one"); with default timestamps the counts and the announced sentence still hold, only
+  the dropped-title assertion would depend on the composer's tiebreak. Fixtures pin the timestamps, so
+  this is deterministic as written.
+- The two-already-true pins (middleware list, two-different-prompts) protect regression surface the
+  change did not introduce; if a future diff breaks them, the cause is elsewhere, not in this unit.

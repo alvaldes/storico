@@ -41,10 +41,12 @@ from storico.domain.services.extraction_service import (
     ProjectContext,
 )
 from storico.domain.services.llm_config_readiness import normalize_optional
+from storico.domain.services.negative_examples import compose_negative_examples
 from storico.infrastructure.database.base import create_session_factory, get_engine
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
+    SQLAlchemyTaskInvalidationRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserStoryRepository,
 )
@@ -388,17 +390,16 @@ async def _run_extraction(
 
         # 4. Render the prompt, snapshot it, and only then ask the provider. The
         #    render-time write commits before ``generate()`` is called, so a failed
-        #    run still leaves a version whose input is fully readable — and
-        #    ``record_rendered_prompt`` replaces ``prompt_config`` wholesale (Postgres
-        #    ``json`` has no merge operator), restating ``validate`` and adding the
-        #    resolved system prompt.
+        #    run still leaves a version whose input is fully readable.
         #
-        #    The project context is composed here, not in the service: three reads
-        #    (the project row plus the two unbounded context reads, both excluding
-        #    the story being decomposed in the WHERE) hand ``render()`` one value so
-        #    the service stays repository-free. The ``workspace_id`` the project row
-        #    returns is ignored — the story's workspace is already known. Until WU2
-        #    wires the marks read, the negative-example block ships empty.
+        #    The project context is composed here, not in the service: four reads
+        #    (the project row, the two unbounded context reads — both excluding the
+        #    story being decomposed in the WHERE — and (b)'s marks read with
+        #    ``exclude_extraction_id=None``, which is exactly D7's row set for this
+        #    story) hand ``render()`` one value so the service stays repository-free.
+        #    The marks go through the pure composer, whose cap and omission travel
+        #    with the context. The ``workspace_id`` the project row returns is
+        #    ignored — the story's workspace is already known.
         project_repo = SQLAlchemyProjectRepository(session)
         project = await project_repo.find_by_id(story.project_id)
         other_stories = await story_repo.list_for_context(
@@ -407,11 +408,17 @@ async def _run_extraction(
         existing_tasks = await task_repo.list_for_context(
             story.project_id, exclude_story_id=story.id
         )
+        mark_candidates = await SQLAlchemyTaskInvalidationRepository(
+            session
+        ).list_active_on_other_versions(user_story_id=story.id, exclude_extraction_id=None)
+        negative_block = compose_negative_examples(mark_candidates)
         project_context = ProjectContext(
             name=project.name if project is not None else "",
             description=project.description if project is not None else "",
             other_stories=tuple(other_stories),
             existing_tasks=tuple(existing_tasks),
+            negative_examples=negative_block.examples,
+            negative_examples_omitted=negative_block.omitted,
         )
         rendered = await extraction_service.render(
             story,
@@ -421,10 +428,24 @@ async def _run_extraction(
             few_shot_config=few_shot_config,
             context=project_context,
         )
+        #    The snapshot dictionary is read from ``rendered.template_variables`` —
+        #    never re-derived — so the version records exactly what was composed.
+        #    ``negative_examples`` is deliberately NOT a snapshot key: the block
+        #    itself travels in ``prompt_rendered`` and is re-derivable from the
+        #    marks, so copying it here would store it twice.
+        template_variables = rendered.template_variables
+        snapshot: dict[str, object] = {
+            "validate": validate,
+            "system_prompt": system_prompt,
+            "few_shots": template_variables["few_shots"],
+            "project_context": template_variables["project_context"],
+            "story_text": template_variables["user_story"],
+            "negative_examples_omitted": template_variables["negative_examples_omitted"],
+        }
         await extraction_repo.record_rendered_prompt(
             extraction_id,
             prompt_rendered=rendered.text,
-            prompt_config={"validate": validate, "system_prompt": system_prompt},
+            prompt_config=snapshot,
         )
         parsed_tasks, raw_response = await extraction_service.generate(rendered, llm_config)
 

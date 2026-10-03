@@ -5,9 +5,10 @@ Tests the workspace-scoped routes at
 """
 
 import asyncio
+import json
 from collections.abc import Iterator
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
@@ -22,6 +23,7 @@ from storico.domain.entities import (
     Extraction,
     LLMConnectionError,
     User,
+    UserStory,
     WorkspaceMember,
     WorkspacePrompt,
     WorkspaceRole,
@@ -29,13 +31,14 @@ from storico.domain.entities import (
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.task_invalidation import TaskInvalidation
 from storico.domain.entities.user_story import UserStoryStatus
-from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
+from storico.domain.ports import ExtractionExample, LLMConfig, LLMPort, VectorStorePort
 from storico.domain.services.extraction_service import ExtractionService
 from storico.infrastructure.crypto import FernetCipher
 from storico.infrastructure.database.models import (
     ExtractionModel,
     TaskModel,
     WorkspaceLLMConfigModel,
+    WorkspacePromptModel,
 )
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
@@ -2006,6 +2009,765 @@ class TestExtractionPromptCarriesTheProject:
             )
 
 
+# ── WU2 2.3 / 2.6 — the negative-example block and the snapshot on the live path ──
+
+_MARK_BASE = datetime(2026, 10, 1, 9, 0, 0)
+
+
+def _negative_block(prompt_rendered: str) -> str:
+    """The text between the negative header and the story line, for block-level comparison."""
+    start = prompt_rendered.index("## Do Not Produce These Tasks (Previously Marked Invalid)")
+    end = prompt_rendered.index("User story:", start)
+    return prompt_rendered[start:end]
+
+
+def _marked_entries(block: str) -> int:
+    """How many mark lines the block carries — one ``— reason:`` per entry."""
+    return block.count("— reason:")
+
+
+class _ExamplesVectorStore(_RecordingVectorStore):
+    """Vector store that answers ``search_similar`` with fixed examples.
+
+    Stands in for both halves of the adapter construction (embedding port and
+    Qdrant client) so the few-shot section is exercised without a live cluster.
+    """
+
+    def __init__(self, examples: list[ExtractionExample]) -> None:
+        super().__init__()
+        self._examples = examples
+
+    async def search_similar(  # noqa: ARG002
+        self,
+        text: str,
+        limit: int = 3,
+        threshold: float = 0.85,
+        *,
+        workspace_id: UUID,  # noqa: ARG002
+    ) -> list[ExtractionExample]:
+        return self._examples[:limit]
+
+
+@pytest.mark.unit
+class TestNegativeExampleBlockOnTheLivePath:
+    """The runner feeds (b)'s marks read through the composer into the prompt (WU2 2.3).
+
+    The subject is the stored ``prompt_rendered`` — the block the provider
+    actually received is readable from the row, so every case here is at the
+    prompt level and needs no re-rendering.
+    """
+
+    async def _seed_pending(self, factory, story_id: UUID) -> Extraction:
+        """Birth one pending extraction through the allocation path."""
+        async with factory() as session:
+            return await seed_extraction(session, story_id, model_used="llama3.2")
+
+    async def _run(
+        self,
+        monkeypatch,
+        test_engine: AsyncEngine,
+        pending: Extraction,
+        story_id: UUID,
+        workspace_id: UUID,
+        llm: LLMPort,
+    ) -> None:
+        """Run the real background task against the test engine with a fake LLM."""
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        # The subject here is the rendered prompt, not retrieval — see the helper.
+        _make_the_vector_store_unavailable(monkeypatch)
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=story_id,
+            workspace_id=workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+    async def _seed_mark(
+        self,
+        session,
+        story_id: UUID,
+        title: str,
+        reason: str,
+        *,
+        extraction: Extraction | None = None,
+        marked_at: datetime | None = None,
+    ) -> None:
+        """Seed one task carrying one active mark, through the same write paths (b) ships."""
+        task = await seed_task(session, story_id, title, extraction=extraction)
+        await SQLAlchemyTaskInvalidationRepository(session).create(
+            TaskInvalidation(
+                task_id=task.id,
+                reason=reason,
+                marked_at=marked_at or datetime.now(UTC),
+            )
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_v3_prompt_carries_the_v1_and_v2_marks_with_their_reasons(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The negative block lists both previous versions' marks, most recent first."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_id
+
+        async with factory() as session:
+            v1 = await seed_extraction(
+                session,
+                story_id,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            await self._seed_mark(
+                session,
+                story_id,
+                "Implement login retry",
+                "Duplicates the auth task",
+                extraction=v1,
+                marked_at=_MARK_BASE,
+            )
+            v2 = await seed_extraction(
+                session,
+                story_id,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            await self._seed_mark(
+                session,
+                story_id,
+                "Generate the coarse plan",
+                "Too coarse to implement",
+                extraction=v2,
+                marked_at=_MARK_BASE + timedelta(minutes=5),
+            )
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        assert row.prompt_rendered is not None
+        block = _negative_block(row.prompt_rendered)
+        assert "- Implement login retry — reason: Duplicates the auth task (version 1)" in block
+        assert "- Generate the coarse plan — reason: Too coarse to implement (version 2)" in block
+        # Most recent mark first (the composer's total order).
+        assert block.index("Generate the coarse plan") < block.index("Implement login retry")
+
+    @pytest.mark.asyncio
+    async def test_a_mark_on_another_story_is_absent_from_this_storys_block(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The marks read is scoped to this story: a foreign story's mark never enters the block."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(stories=2)
+        other_story = seeded.story_ids[0]
+        story_id = seeded.story_ids[1]
+
+        async with factory() as session:
+            own_v1 = await seed_extraction(
+                session,
+                story_id,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            await self._seed_mark(
+                session,
+                story_id,
+                "Implement login retry",
+                "Duplicates the auth task",
+                extraction=own_v1,
+                marked_at=_MARK_BASE,
+            )
+            other_v = await seed_extraction(
+                session,
+                other_story,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            await self._seed_mark(
+                session,
+                other_story,
+                "Foreign story's marked task",
+                "Marked in a foreign story",
+                extraction=other_v,
+                marked_at=_MARK_BASE + timedelta(minutes=1),
+            )
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        assert row.prompt_rendered is not None
+        block = _negative_block(row.prompt_rendered)
+        assert "Implement login retry" in block
+        # The foreign mark is nowhere: not in the block and not in the prompt.
+        assert "Foreign story's marked task" not in block
+        assert "Foreign story's marked task" not in row.prompt_rendered
+
+    @pytest.mark.asyncio
+    async def test_21_marks_fill_the_cap_and_the_block_announces_one_omitted(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """21 distinct marks compose 20 entries and the block announces the one older omission."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_id
+
+        async with factory() as session:
+            version = await seed_extraction(
+                session,
+                story_id,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            for i in range(21):
+                await self._seed_mark(
+                    session,
+                    story_id,
+                    f"Repeated marked task {i}",
+                    f"Mark reason {i}",
+                    extraction=version,
+                    marked_at=_MARK_BASE + timedelta(minutes=i),
+                )
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        assert row.prompt_rendered is not None
+        block = _negative_block(row.prompt_rendered)
+        assert _marked_entries(block) == 20
+        assert "1 older marks were omitted." in block
+        # The oldest mark is the one the cap dropped; the newest survived.
+        assert "Repeated marked task 0" not in block
+        assert "Repeated marked task 20" in block
+
+    @pytest.mark.asyncio
+    async def test_a_few_shot_limit_above_20_cannot_lift_the_cap(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A workspace with ``few_shot_limit = 25`` still gets 20 entries and 5 announced omissions."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_id
+
+        async with factory() as session:
+            await SQLAlchemyWorkspacePromptRepository(session).upsert(
+                WorkspacePrompt(workspace_id=seeded.workspace_id, few_shot_limit=25)
+            )
+            version = await seed_extraction(
+                session,
+                story_id,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            for i in range(25):
+                await self._seed_mark(
+                    session,
+                    story_id,
+                    f"Capped marked task {i}",
+                    f"Cap reason {i}",
+                    extraction=version,
+                    marked_at=_MARK_BASE + timedelta(minutes=i),
+                )
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        assert row.prompt_rendered is not None
+        block = _negative_block(row.prompt_rendered)
+        assert _marked_entries(block) == 20
+        assert "5 older marks were omitted." in block
+        assert "Capped marked task 0" not in block
+
+    def test_no_workspace_prompts_field_can_change_the_cap(self) -> None:
+        """C6's no-knob half, pinned on the schema rather than today's behaviour.
+
+        The cap is the composer's module constant, so the ``workspace_prompts``
+        table must carry no field that could move it: the only knobs the row
+        owns are the three few-shot ones, and no column mentions the cap at all.
+        Asserting the column set means a future column cannot quietly appear —
+        a behaviour-only assertion would keep passing until the knob was used.
+        """
+        columns = set(WorkspacePromptModel.__table__.columns.keys())
+        # The only retrieval knobs the workspace owns are the three few-shot ones.
+        assert {c for c in columns if c.startswith("few_shot")} == {
+            "few_shot_enabled",
+            "few_shot_limit",
+            "few_shot_threshold",
+        }
+        # No field can change the negative-example cap: nothing names it, and the
+        # only ``limit``-shaped column is the few-shot one.
+        assert not [c for c in columns if "negative" in c or "cap" in c]
+        assert [c for c in columns if "limit" in c] == ["few_shot_limit"]
+
+
+@pytest.mark.unit
+class TestTheSnapshotRecordsWhatWasComposed:
+    """The snapshot dictionary is written from ``template_variables`` (WU2 2.5, read back in 2.6).
+
+    Every case reads the stored row: ``prompt_config`` is the snapshot, and
+    ``prompt_rendered`` is the authority on what the provider received.
+    """
+
+    async def _seed_pending(self, factory, story_id: UUID) -> Extraction:
+        """Birth one pending extraction through the allocation path."""
+        async with factory() as session:
+            return await seed_extraction(session, story_id, model_used="llama3.2")
+
+    async def _run(
+        self,
+        monkeypatch,
+        test_engine: AsyncEngine,
+        pending: Extraction,
+        story_id: UUID,
+        workspace_id: UUID,
+        llm: LLMPort,
+    ) -> None:
+        """Run the real background task against the test engine with a fake LLM."""
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        # The subject here is the snapshot, not retrieval — see the helper.
+        _make_the_vector_store_unavailable(monkeypatch)
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=story_id,
+            workspace_id=workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+    async def _seed_marks(self, session, story_id: UUID, count: int) -> None:
+        """Seed ``count`` distinct marks with deterministic, increasing timestamps."""
+        version = await seed_extraction(
+            session,
+            story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        for i in range(count):
+            task = await seed_task(
+                session, story_id, f"Snapshot marked task {i}", extraction=version
+            )
+            await SQLAlchemyTaskInvalidationRepository(session).create(
+                TaskInvalidation(
+                    task_id=task.id,
+                    reason=f"Snapshot reason {i}",
+                    marked_at=_MARK_BASE + timedelta(minutes=i),
+                )
+            )
+
+    @pytest.mark.asyncio
+    async def test_21_marks_record_one_omission_on_the_row_and_announce_it(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The same integer the block announces is what the snapshot records (V3)."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_id
+
+        async with factory() as session:
+            await self._seed_marks(session, story_id, 21)
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        assert row.prompt_config is not None
+        assert row.prompt_config["negative_examples_omitted"] == 1
+        assert row.prompt_rendered is not None
+        assert "1 older marks were omitted." in _negative_block(row.prompt_rendered)
+
+    @pytest.mark.asyncio
+    async def test_five_marks_record_zero_omissions_and_announce_nothing(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """Under the cap the snapshot carries 0 and the rendered block announces nothing."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_id
+
+        async with factory() as session:
+            await self._seed_marks(session, story_id, 5)
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        assert row.prompt_config is not None
+        assert row.prompt_config["negative_examples_omitted"] == 0
+        assert row.prompt_rendered is not None
+        assert "older marks were omitted" not in row.prompt_rendered
+
+    @pytest.mark.asyncio
+    async def test_two_runs_over_unchanged_marks_compose_identical_negative_blocks(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """Determinism at the block level: the same marks compose byte-identical blocks."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_id
+
+        async with factory() as session:
+            await self._seed_marks(session, story_id, 2)
+
+        first = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            first,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+        second = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            second,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V2),
+        )
+
+        async with factory() as session:
+            rows = {r.id: r for r in await _extraction_rows(session, story_id)}
+
+        first_row, second_row = rows[first.id], rows[second.id]
+        assert first_row.version_number < second_row.version_number
+        assert first_row.prompt_rendered is not None
+        assert second_row.prompt_rendered is not None
+        assert _negative_block(first_row.prompt_rendered) == _negative_block(
+            second_row.prompt_rendered
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_snapshot_key_set_is_exactly_the_six_keys_and_serializes(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """Six keys on a full context, no more — and the whole snapshot is JSON-native (V2)."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(stories=2)
+        other_story = seeded.story_ids[0]
+        story_id = seeded.story_ids[1]
+
+        async with factory() as session:
+            completed = await seed_extraction(
+                session,
+                other_story,
+                status=ExtractionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            )
+            await seed_task(
+                session, other_story, "Add password reset endpoint", extraction=completed
+            )
+            await self._seed_marks(session, story_id, 2)
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        snapshot = row.prompt_config
+        assert snapshot is not None
+        assert set(snapshot.keys()) == {
+            "validate",
+            "system_prompt",
+            "few_shots",
+            "project_context",
+            "story_text",
+            "negative_examples_omitted",
+        }
+        # JSON-native on a full context: marks, another story's task and all.
+        json.dumps(snapshot)
+        # The composed context is the project's real state, not a stub.
+        assert snapshot["project_context"]["name"] == "Seeded Project"
+        assert snapshot["story_text"].startswith("As a user, I want to use seeded feature 1")
+
+    @pytest.mark.asyncio
+    async def test_editing_the_story_leaves_v1s_story_text_unchanged(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """Each version's ``story_text`` is the story as its own render saw it."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_id
+
+        v1 = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch, test_engine, v1, story_id, seeded.workspace_id, _AnsweringLLM(_RESPONSE_V1)
+        )
+
+        async with factory() as session:
+            story = await SQLAlchemyUserStoryRepository(session).find_by_id(story_id)
+            assert story is not None
+            await SQLAlchemyUserStoryRepository(session).save(
+                replace(
+                    story,
+                    raw_text="As a user, I want the edited feature so that the snapshot records it",
+                )
+            )
+
+        v2 = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch, test_engine, v2, story_id, seeded.workspace_id, _AnsweringLLM(_RESPONSE_V2)
+        )
+
+        async with factory() as session:
+            rows = await _extraction_rows(session, story_id)
+
+        assert [row.version_number for row in rows] == [1, 2]
+        assert rows[0].prompt_config is not None and rows[1].prompt_config is not None
+        assert (
+            rows[0]
+            .prompt_config["story_text"]
+            .startswith("As a user, I want to use seeded feature 0")
+        )
+        assert (
+            rows[1].prompt_config["story_text"].startswith("As a user, I want the edited feature")
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_system_prompt_lives_only_in_prompt_config_and_the_run_facts_in_their_columns(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """No second copy of provider/model/temperature in the snapshot; the columns carry them."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_id
+
+        async with factory() as session:
+            await SQLAlchemyWorkspacePromptRepository(session).upsert(
+                WorkspacePrompt(
+                    workspace_id=seeded.workspace_id,
+                    system_prompt="Snapshot system prompt",
+                )
+            )
+
+        pending = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch,
+            test_engine,
+            pending,
+            story_id,
+            seeded.workspace_id,
+            _AnsweringLLM(_RESPONSE_V1),
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        snapshot = row.prompt_config
+        assert snapshot is not None
+        # The six-key set already proves no provider/model/temperature copy exists.
+        assert set(snapshot.keys()) == {
+            "validate",
+            "system_prompt",
+            "few_shots",
+            "project_context",
+            "story_text",
+            "negative_examples_omitted",
+        }
+        assert snapshot["system_prompt"] == "Snapshot system prompt"
+        # The run's own facts live in their declared columns, not in the snapshot.
+        assert row.provider == "ollama"
+        assert row.model_used == "llama3.2"
+        assert row.temperature == 0.1
+
+    @pytest.mark.asyncio
+    async def test_few_shots_carry_text_model_and_similarity_and_match_the_prompts_section(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """``few_shots`` holds the port's own fields — text, not an id — and the
+        provider reads the examples through the rendered section, not the snapshot."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_id
+
+        examples = [
+            ExtractionExample(
+                user_story_text="As a user, I want to reset my password so that I can log back in",
+                tasks_summary="1. Add reset endpoint: Create the route.",
+                model_used="llama3.2",
+                confidence_score=0.9,
+                similarity_score=0.91,
+            ),
+            ExtractionExample(
+                user_story_text="As an admin, I want to export the board so that I can archive it",
+                tasks_summary="1. Build the export job: Serialize the board.",
+                model_used="mistral",
+                confidence_score=None,
+                similarity_score=0.87,
+            ),
+        ]
+        store = _ExamplesVectorStore(examples)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, story_id, model_used="llama3.2")
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(
+            extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM(_RESPONSE_V1)
+        )
+        # Both halves of the vector-store construction are replaced, exactly like
+        # the RAG-point test does: nothing embeds, nothing reaches a live cluster.
+        monkeypatch.setattr(extraction_task, "get_embedding_port", lambda _settings: object())
+        monkeypatch.setattr(extraction_task, "QdrantAdapter", lambda **_: store)
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            max_retries=0,
+        )
+
+        async with factory() as session:
+            row = next(r for r in await _extraction_rows(session, story_id) if r.id == pending.id)
+
+        snapshot = row.prompt_config
+        assert snapshot is not None
+        few_shots = snapshot["few_shots"]
+        assert len(few_shots) == 2
+        first, second = few_shots
+        assert set(first.keys()) == {
+            "user_story_text",
+            "tasks_summary",
+            "model_used",
+            "confidence_score",
+            "similarity_score",
+        }
+        assert first["user_story_text"].startswith("As a user, I want to reset my password")
+        assert first["model_used"] == "llama3.2"
+        assert first["confidence_score"] == 0.9
+        assert first["similarity_score"] == 0.91
+        assert second["model_used"] == "mistral"
+        assert second["confidence_score"] is None
+        # Text, not an id: no id-shaped key travels in the snapshot.
+        assert "extraction_id" not in first and "id" not in first
+
+        assert row.prompt_rendered is not None
+        # The provider's few-shot section carries the text (through ``examples``).
+        assert "## Few-Shot Examples" in row.prompt_rendered
+        assert (
+            "As a user, I want to reset my password so that I can log back in"
+            in row.prompt_rendered
+        )
+        assert "1. Add reset endpoint: Create the route." in row.prompt_rendered
+        # ``few_shots`` is snapshot-only: the template never interpolates the dicts.
+        assert "'user_story_text'" not in row.prompt_rendered
+
+    @pytest.mark.asyncio
+    async def test_two_runs_with_one_new_story_in_between_store_two_different_prompts(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """Identical provider/model/temperature, changed project state → different stored prompts."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace()
+        story_id = seeded.story_id
+
+        v1 = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch, test_engine, v1, story_id, seeded.workspace_id, _AnsweringLLM(_RESPONSE_V1)
+        )
+
+        async with factory() as session:
+            await SQLAlchemyUserStoryRepository(session).save(
+                UserStory(
+                    project_id=seeded.project_id,
+                    actor="admin",
+                    feature="arrive between the two runs",
+                    benefit="the second prompt differs",
+                    raw_text=(
+                        "As an admin, I want to arrive between the two runs "
+                        "so that the second prompt differs"
+                    ),
+                )
+            )
+
+        v2 = await self._seed_pending(factory, story_id)
+        await self._run(
+            monkeypatch, test_engine, v2, story_id, seeded.workspace_id, _AnsweringLLM(_RESPONSE_V2)
+        )
+
+        async with factory() as session:
+            rows = await _extraction_rows(session, story_id)
+
+        assert [row.version_number for row in rows] == [1, 2]
+        assert rows[0].prompt_rendered is not None
+        assert rows[1].prompt_rendered is not None
+        assert rows[0].prompt_rendered != rows[1].prompt_rendered
+        assert "arrive between the two runs" not in rows[0].prompt_rendered
+        assert "arrive between the two runs" in rows[1].prompt_rendered
+
+    def test_the_app_middleware_list_stays_cors_only(self, app) -> None:
+        """V5's no-new-instrument shape: measurement derives from stored facts, never middleware."""
+        assert [m.cls.__name__ for m in app.user_middleware] == ["CORSMiddleware"]
+
+
 @pytest.mark.unit
 class TestWorkspaceTemplateOptOutAtTheRecord:
     """WU1 1.13 — a workspace template that references only ``{{ user_story }}``.
@@ -2017,12 +2779,14 @@ class TestWorkspaceTemplateOptOutAtTheRecord:
     warning exists or should: it would fire on every run of a workspace that
     chose the opt-out.
 
-    At this head the runner's snapshot (``prompt_config``) records the
-    composed *config* (``validate``, ``system_prompt``); filling it from
-    ``RenderedPrompt.template_variables`` with the context keys is WU2 task
-    2.5's write, so the full snapshot-vs-rendered comparison this class
-    documents becomes assertable there (2.6 reads
-    ``prompt_config["negative_examples_omitted"]`` back from the row).
+    WU2 task 2.5 has since filled the snapshot from
+    ``RenderedPrompt.template_variables`` with the context keys, so the full
+    snapshot-vs-rendered comparison this class documents is assertable at the
+    row (2.6 reads ``prompt_config["negative_examples_omitted"]`` back from
+    it), and the deferred row-level half of 1.13 lands here too: the opt-out
+    workspace's ``prompt_config`` carries ``project_context`` and
+    ``negative_examples_omitted`` even though its template interpolates
+    neither block.
     """
 
     async def _seed_pending(self, factory, story_id: UUID) -> Extraction:
@@ -2114,6 +2878,12 @@ class TestWorkspaceTemplateOptOutAtTheRecord:
         # prompt was composed and delivered separately, whatever the template
         # chose to interpolate.
         assert (row.prompt_config or {}).get("system_prompt") == "Opted-out system prompt"
+        # 1.13's deferred row-level half (WU2 2.5/2.6): the composed context
+        # keys are on the row even though this template interpolates neither
+        # block — the snapshot records what was composed, the rendered text
+        # what the provider received.
+        assert (row.prompt_config or {}).get("project_context", {}).get("name") == "Seeded Project"
+        assert (row.prompt_config or {}).get("negative_examples_omitted") == 0
 
     @pytest.mark.asyncio
     async def test_the_opt_out_templates_variables_still_carry_the_composed_context(self) -> None:

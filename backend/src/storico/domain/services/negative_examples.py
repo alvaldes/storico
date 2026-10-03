@@ -36,6 +36,32 @@ class NegativeExample:
     marked_at: datetime
 
 
+def negative_examples_as_template_variables(
+    examples: Sequence[NegativeExample],
+) -> list[dict[str, object]]:
+    """Project composed examples into the JSON-native shape the template reads.
+
+    ``[{title, reason, version_number, marked_at}]`` — this function is the ONE
+    place the ``NegativeExample → dict`` conversion lives: the block's own
+    ``as_template_variables()`` delegates to it, and the service builds
+    ``prompt_kwargs["negative_examples"]`` through it, so no second mapping can
+    drift from it.
+
+    ``marked_at`` serializes to ISO-8601 at this boundary — the template
+    renders only title, reason and version number, and the JSON-native
+    shape is what the snapshot's ``json.dumps`` relies on everywhere else.
+    """
+    return [
+        {
+            "title": example.title,
+            "reason": example.reason,
+            "version_number": example.version_number,
+            "marked_at": example.marked_at.isoformat(),
+        }
+        for example in examples
+    ]
+
+
 @dataclass(frozen=True, slots=True)
 class NegativeExampleBlock:
     examples: tuple[NegativeExample, ...]
@@ -44,19 +70,11 @@ class NegativeExampleBlock:
     def as_template_variables(self) -> list[dict[str, object]]:
         """JSON-native: ``[{title, reason, version_number, marked_at}]``.
 
-        ``marked_at`` serializes to ISO-8601 at this boundary — the template
-        renders only title, reason and version number, and the JSON-native
-        shape is what the snapshot's ``json.dumps`` relies on everywhere else.
+        Delegates to ``negative_examples_as_template_variables`` — the module
+        helper owns the conversion so the service can reuse it for the
+        context's examples without duplicating it.
         """
-        return [
-            {
-                "title": example.title,
-                "reason": example.reason,
-                "version_number": example.version_number,
-                "marked_at": example.marked_at.isoformat(),
-            }
-            for example in self.examples
-        ]
+        return negative_examples_as_template_variables(self.examples)
 
 
 def compose_negative_examples(
