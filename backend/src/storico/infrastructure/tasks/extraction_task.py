@@ -35,11 +35,16 @@ from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
 from storico.domain.ports.llm_port import DEFAULT_TEMPERATURE
 from storico.domain.services.extraction_judge_service import LLMJudgeService
-from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
+from storico.domain.services.extraction_service import (
+    ExtractionService,
+    FewShotConfig,
+    ProjectContext,
+)
 from storico.domain.services.llm_config_readiness import normalize_optional
 from storico.infrastructure.database.base import create_session_factory, get_engine
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
+    SQLAlchemyProjectRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserStoryRepository,
 )
@@ -387,12 +392,34 @@ async def _run_extraction(
         #    ``record_rendered_prompt`` replaces ``prompt_config`` wholesale (Postgres
         #    ``json`` has no merge operator), restating ``validate`` and adding the
         #    resolved system prompt.
+        #
+        #    The project context is composed here, not in the service: three reads
+        #    (the project row plus the two unbounded context reads, both excluding
+        #    the story being decomposed in the WHERE) hand ``render()`` one value so
+        #    the service stays repository-free. The ``workspace_id`` the project row
+        #    returns is ignored — the story's workspace is already known. Until WU2
+        #    wires the marks read, the negative-example block ships empty.
+        project_repo = SQLAlchemyProjectRepository(session)
+        project = await project_repo.find_by_id(story.project_id)
+        other_stories = await story_repo.list_for_context(
+            story.project_id, exclude_story_id=story.id
+        )
+        existing_tasks = await task_repo.list_for_context(
+            story.project_id, exclude_story_id=story.id
+        )
+        project_context = ProjectContext(
+            name=project.name if project is not None else "",
+            description=project.description if project is not None else "",
+            other_stories=tuple(other_stories),
+            existing_tasks=tuple(existing_tasks),
+        )
         rendered = await extraction_service.render(
             story,
             system_prompt=system_prompt,
             instruction_template=instruction_template,
             workspace_id=workspace_id,
             few_shot_config=few_shot_config,
+            context=project_context,
         )
         await extraction_repo.record_rendered_prompt(
             extraction_id,

@@ -16,6 +16,7 @@ import pytest
 from storico.domain.ports import ExtractionExample, LLMConfig, ParsedTask
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.infrastructure.llm.prompt_manager import PromptManager
+from tests._helpers import simple_context
 
 
 def _make_service(vector_store=None, few_shot_config=None):
@@ -59,6 +60,7 @@ class TestFewShotRetrieval:
             story,
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test"))
 
@@ -83,6 +85,7 @@ class TestFewShotRetrieval:
             story,
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test"))
 
@@ -106,6 +109,7 @@ class TestFewShotRetrieval:
             story,
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=False, limit=3, threshold=0.85),
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test"))
 
@@ -128,6 +132,7 @@ class TestFewShotRetrieval:
             story,
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=2, threshold=0.9),
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test"))
 
@@ -153,6 +158,7 @@ class TestFewShotRetrieval:
             story,
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
+            context=simple_context(),
         )
         result_tasks, _ = await service.generate(rendered, LLMConfig(model="test"))
 
@@ -174,6 +180,7 @@ class TestFewShotRetrieval:
         rendered = await service.render(
             story,
             workspace_id=workspace_id,
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test"))
 
@@ -196,6 +203,7 @@ class TestFewShotRetrieval:
             story,
             workspace_id=uuid4(),
             few_shot_config=FewShotConfig(enabled=True),
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test"))
 
@@ -256,6 +264,7 @@ class TestFewShotInjectionObservability:
             story,
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test"))
 
@@ -289,6 +298,7 @@ class TestFewShotInjectionObservability:
             story,
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test"))
 
@@ -314,6 +324,7 @@ class TestFewShotInjectionObservability:
             story,
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=False, limit=3, threshold=0.85),
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test"))
 
@@ -346,6 +357,7 @@ class TestFewShotInjectionObservability:
             story,
             workspace_id=workspace_id,
             few_shot_config=FewShotConfig(enabled=True, limit=3, threshold=0.85),
+            context=simple_context(),
         )
         await service.generate(rendered, LLMConfig(model="test"))
 

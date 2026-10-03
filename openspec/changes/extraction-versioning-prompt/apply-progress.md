@@ -146,3 +146,161 @@ ends on a green suite and the budget question belongs to the whole WU1 PR (parts
   run here (no Docker daemon in this environment; `-m integration` never invoked).
 - `list_for_context` has no caller yet (part (ii) wires it); until then the only proof of the
   statements is the repository layer itself.
+
+---
+
+## W1-T2 — `ProjectContext`, the required `context` argument, the two template blocks, the churn (tasks 1.5–1.10)
+
+2026-10-03, same branch `feat/extraction-versioning-prompt-wu1`, part (i)'s tip `b09272e` untouched
+below this work. Nothing committed or staged by this run.
+
+### Consumed branch / baseline facts
+
+Parent-verified baseline at `b09272e` re-observed through the run's end state: full suite
+`conda run -n storico python -m pytest -m "not integration"` read **1218 passed, 36 deselected**
+before this tranche's tests and **1227 passed, 36 deselected** after — the delta is exactly the
+9 new test functions (5 template cases + 4 runner/context cases). `ruff check` and
+`ruff format --check` clean at both points (269 files formatted). Part (i)'s two ports
+(`list_for_context` on both, the row types re-exported) were consumed as shipped; `prompt_manager.py`
+was read and confirmed to need no change — `render_instruction` renders with `**kwargs` verbatim
+and the Jinja environment uses the default undefined, so a workspace template that never mentions
+the new variables renders with them simply unused.
+
+### TDD cycle evidence
+
+| Cycle | Task(s) | Command | Result |
+| --- | --- | --- | --- |
+| RED | 1.5 (5 template cases in `test_unit/test_prompt_manager.py`) | `conda run -n storico python -m pytest tests/test_unit/test_prompt_manager.py -m "not integration"` | **3 failed, 16 passed** — the content/order/omission cases failed on `assert '## Project Context' in result` / the negative header / the omission sentence; the two absent-block cases (nothing marked; the opt-out template) passed trivially against the old template, as `{% if %}`-guarding predicts |
+| RED | 1.7 (4 runner/context cases in `test_api/test_extraction.py`) | `conda run -n storico python -m pytest tests/test_api/test_extraction.py -m "not integration"` | **4 failed, 46 passed** — the three prompt-content cases failed on the missing `## Project Context` block in the stored `prompt_rendered`; **the required-argument case failed `DID NOT RAISE TypeError`** — i.e. at RED a `render()` call without `context` succeeded silently, which is precisely the hole the required argument closes |
+| GREEN | 1.6 (template) | `conda run -n storico python -m pytest tests/test_unit/test_prompt_manager.py tests/test_few_shot_examples.py -m "not integration"` | **31 passed** — the template cases turned green and `test_few_shot_examples.py`'s three direct `render_instruction` sites stayed green untouched |
+| GREEN | 1.8+1.9+1.10 | phase runner (below) | **125 passed** |
+| Full suite | whole backend | `conda run -n storico python -m pytest -m "not integration"` | **1227 passed, 36 deselected** — baseline 1218 + exactly the 9 new test functions |
+| Lint | repo-documented forms | `conda run -n storico python -m ruff check src tests` / `… format --check src tests` | **All checks passed; 269 files already formatted** |
+
+One mid-GREEN failure was mine: the first pass left `test_extract_forwards_instruction_template`'s
+multi-line `render()` call without the new argument (`TypeError: missing 1 required keyword-only
+argument: 'context'`). The call site was completed — the failure was the churn missing a site, not
+an assertion relaxed.
+
+### The blocks as built (task 1.6)
+
+Insertion point: immediately after the format instructions, before the existing
+`{% if examples %}` section — which, `Now break down the following user story:` inside it, and
+`{{user_story}}` are byte-for-byte untouched. Order in the template, each block guarded by its own
+`{% if %}`:
+
+1. `{% if project_context %}` → `## Project Context` — `Project: {{ project_context.name }}`,
+   `Description: {{ project_context.description }}`, then one `- {{ story.raw_text }}` line per
+   other story and one `- {{ task.title }} (story: {{ task.user_story_id }})` line per
+   current-version valid task (Jinja's dict-attribute fallback reads the JSON-native variables;
+   list-item lines carry the loop tags inline so no blank lines appear between items).
+2. `{% if negative_examples %}` → `## Do Not Produce These Tasks (Previously Marked Invalid)` —
+   intro sentence, then `- {{ example.title }} — reason: {{ example.reason }} (version
+   {{ example.version_number }})` per mark (em dash, matching design.md's rendered example), and
+   when `negative_examples_omitted` is truthy the English closing sentence
+   `{{ negative_examples_omitted }} older marks were omitted.` — the source spec's Spanish wording
+   deliberately corrected, every model-facing block in this template being English. Ships empty
+   until WU2 wires the marks read; D7's block-composition requirement stays WU2's.
+3. The existing `## Few-Shot Examples` section, unchanged.
+
+Verified by rendering through the real `PromptManager` during GREEN: with marks and examples the
+output matches design.md's rendered example block for block, and the block order assertion pins
+context → negative → few-shot → `User story:`.
+
+### The required argument and the context build (1.7 RED / 1.8 / 1.9)
+
+- `ProjectContext` is a frozen slotted dataclass beside `FewShotConfig` in
+  `extraction_service.py` with exactly the contracted fields;
+  `as_template_variables()` returns the four-key `project_context` dictionary and does the
+  `UUID → str` / `TaskStatus → str` conversion at that boundary (and nowhere else).
+  **One deviation, mechanical not contractual:** the `negative_examples` field is annotated
+  `tuple[NegativeExample, ...]` via a `TYPE_CHECKING`-only import of
+  `storico.domain.services.negative_examples` — the module is WU2's file and does not exist yet,
+  and creating it (or a placeholder type here) was outside this unit's surfaces. With
+  `from __future__ import annotations` the annotation is a string at runtime; the tuple itself is
+  always `()` until WU2. `prompt_kwargs["negative_examples"]` is therefore
+  `list(context.negative_examples)` — rendered, never snapshotted — and WU2 task 2.4 replaces it
+  with the composer's rendering.
+- `render()` gained the **required** keyword-only `context: ProjectContext` (no default), and
+  `prompt_kwargs` — which is `RenderedPrompt.template_variables` — is exactly the contracted five
+  entries (`user_story`, `project_context`, `negative_examples`, `negative_examples_omitted`,
+  `few_shots` as `[asdict(example) for example in examples]`), plus the unchanged `examples` text
+  when there are examples. `RenderedPrompt` unchanged.
+- The runner (`_run_extraction`) builds the context between the story load and `render()`: the
+  project row through the existing `ProjectRepository.find_by_id(story.project_id)` (its
+  `workspace_id` ignored), both new port methods with `exclude_story_id=story.id`, and a missing
+  project row degrades to empty name/description rather than failing the run (SQLite enforces no
+  FK, so a dangling `project_id` is reachable in tests; Postgres makes it unreachable). Until 2.5,
+  `negative_examples=()` and `negative_examples_omitted=0` are the defaults.
+
+### The required-argument churn (1.10)
+
+Shared builder in `backend/tests/_helpers.py`:
+
+```python
+def simple_context(**overrides: object) -> ProjectContext:
+    """name="Test Project", description="A test project description", empty row tuples;
+    keyword overrides pass straight through (other_stories/existing_tasks take row tuples)."""
+```
+
+Files that took it, with call-site counts:
+
+- `tests/test_services/test_extraction_service.py` — 10 `render()` sites + the two
+  `assert_called_once_with(...)` assertions on `render_instruction` re-pointed to the widened
+  kwargs (`project_context=simple_context().as_template_variables()`, `negative_examples=[]`,
+  `negative_examples_omitted=0`, `few_shots=[]`). No assertion count or status was relaxed.
+- `tests/test_services/test_workspace_prompt_resolution.py` — 1 site (the call site neither design
+  table names).
+- `tests/test_unit/test_few_shot_retrieval.py` — 11 sites.
+- `tests/test_extraction_flow_few_shot.py` — 2 sites.
+- `tests/test_integration/test_few_shot_rag_qdrant.py` — 1 site (`_extract` helper).
+- `tests/test_api/test_extraction.py` — new cases only; the file had no direct `render()` call
+  sites (the runner is exercised through `run_background_extraction`, which builds its own context).
+
+`tests/test_few_shot_examples.py` needed **nothing**: it calls `render_instruction` directly with
+its own kwargs, the new blocks are `{% if %}`-guarded, and its three cases were confirmed green
+after the template change (within the 31-passed focused run and again in the full suite).
+
+### Files changed (this unit — `git diff --numstat`: 543 changed lines, 527+/16−)
+
+- `backend/src/storico/domain/services/extraction_service.py` (+75/−3)
+- `backend/src/storico/infrastructure/llm/prompts/task_generation.j2` (+15/−1)
+- `backend/src/storico/infrastructure/tasks/extraction_task.py` (+28/−1)
+- `backend/tests/_helpers.py` (+24/−0)
+- `backend/tests/test_api/test_extraction.py` (+220/−1)
+- `backend/tests/test_extraction_flow_few_shot.py` (+3/−0)
+- `backend/tests/test_integration/test_few_shot_rag_qdrant.py` (+2/−0)
+- `backend/tests/test_services/test_extraction_service.py` (+23/−10)
+- `backend/tests/test_services/test_workspace_prompt_resolution.py` (+2/−0)
+- `backend/tests/test_unit/test_few_shot_retrieval.py` (+12/−0)
+- `backend/tests/test_unit/test_prompt_manager.py` (+123/−0)
+- `openspec/changes/extraction-versioning-prompt/tasks.md` (+6/−6 — checkboxes 1.5–1.10 only)
+- `openspec/changes/extraction-versioning-prompt/apply-progress.md` — this section appended
+
+Format note: `ruff format` was never executed; after the first draft, `ruff format --check` and
+`ruff check` diffs were read and every named line was applied by hand (wrapped imports and calls,
+joined comprehensions, and two inline `select` blocks replaced by the file's existing
+`_extraction_rows` helper — a reuse, not a weakening).
+
+### Deviations from the design / task letter
+
+1. **`NegativeExample` forward reference** (above): `TYPE_CHECKING` import of WU2's future module;
+   the field, its default and its semantics are exactly as contracted. The only alternative within
+   the surfaces was an untyped placeholder annotation, which would have drifted from the design's
+   dataclass sketch.
+2. **Missing project row fallback**: the design's four-read composition assumes the project row
+   exists; the runner degrades to empty strings when it does not, because the extraction should
+   still render and record rather than die on a dangling id SQLite permits.
+
+### Remaining unchecked tasks
+
+- [ ] 1.11–1.15 (part (iii): the four TRIANGULATE cases and the REFACTOR confirmation) — untouched.
+- Phases 2–5: untouched.
+
+### Risks
+
+- `negative_examples` in `prompt_kwargs` carries raw row objects until WU2 lands the composer; the
+  tuple is always empty on every path today, so nothing non-JSON ever reaches
+  `template_variables`, but the WU2 diff must replace that entry.
+- The 1000-row Postgres scale proof (1.14) and the opt-out snapshot cross-check (1.13's record
+  half) still belong to part (iii); no integration marker was run in this environment.

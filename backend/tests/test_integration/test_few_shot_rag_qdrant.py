@@ -57,6 +57,7 @@ from storico.domain.services.extraction_service import ExtractionService, FewSho
 from storico.infrastructure.llm.prompt_manager import PromptManager
 from storico.infrastructure.llm.task_parser import TaskParser
 from storico.infrastructure.vector import QdrantAdapter, get_embedding_port
+from tests._helpers import simple_context
 
 pytestmark = [
     pytest.mark.integration,
@@ -259,6 +260,7 @@ async def _extract(
         Story(raw_text=story_text),
         workspace_id=workspace_id,
         few_shot_config=few_shot_config,
+        context=simple_context(),
     )
     tasks, _raw_response = await service.generate(rendered, LLMConfig(model="pytest-recording"))
     assert len(llm.prompts) == 1, "render must hand the provider exactly one prompt"
