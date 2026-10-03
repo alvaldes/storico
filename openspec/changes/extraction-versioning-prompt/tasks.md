@@ -606,6 +606,16 @@ test, and **no code line in this phase may add an input cap, a truncation or an 
 to make a run pass**. Operator-run, after the code lands and after D11's wipe; every number goes into
 `openspec/changes/extraction-versioning-prompt/verify-report.md`.
 
+> **[Waiting on the operator, 2026-10-03]** 4.1–4.3 are data operations, not code, and the two inputs
+> they need are not in this environment. **4.1** needs one reachable generation provider per adapter
+> along with a credential: the owner is providing **Gemini**; Ollama is not running on this host and no
+> OpenAI or Anthropic key exists in it, so those two rows will read *not confirmed* — which is not the
+> same as *absent from the provider*. **4.2 and 4.3** need a **Neon-like database with a direct
+> connection**; the dev pooler is excluded by name because its ~2 s per-statement floor would measure
+> the pooler instead of the prompt. Both inputs have been requested. Until they arrive,
+> `verify-report.md` carries these rows as `pending`, 4.4's tables wait with them, and **nothing in the
+> extraction path is changed to make anything pass**.
+
 - [ ] 4.1 **Per-provider `usage` confirmation against real responses** (operator-run). For each of
       Ollama, OpenAI, Anthropic and Gemini: issue one real generation through the corresponding
       adapter with a configured provider, capture the raw response, and record in `verify-report.md`
@@ -646,30 +656,61 @@ to make a run pass**. Operator-run, after the code lands and after D11's wipe; e
       landed in, the 4.1 usage-confirmation table with its omissions annotated, the corrected
       statement-count baseline, and one line stating that no input token cap, no truncation and no
       input-side pagination were introduced anywhere between the story text and the provider call.
-- [ ] 4.5 **No-shortcut sweep** (operator/inspection, recorded in the same file): confirm by reading
+- [x] 4.5 **No-shortcut sweep** (operator/inspection, recorded in the same file): confirm by reading
       the extraction path that no length operation, `min(`, slice, token budget or paginated read was
       added between `extraction_service.py`'s `raw_text` read and the provider call, and that
       `list_page`'s 20/100 window bounds neither of the two context reads. Record the sweep's result
       in `verify-report.md`; if a bench failed, this sweep is what proves the failure was not
       "fixed".
+  > **[Swept 2026-10-03, recorded in `verify-report.md` §2 — measured, not asserted]** The story text
+  > reaches the prompt **whole**: `raw_text` is read once and used for retrieval and for
+  > `prompt_kwargs["user_story"]` with no `len(`, `min(`, slice, cap or token budget on it (the only
+  > `len(...)` in that module is a log field). `max_tokens=2048` is an **output** budget in every
+  > adapter — Ollama's `num_predict`, OpenAI's `max_tokens`, Anthropic's `max_tokens`, Gemini's
+  > `max_output_tokens` — never the prompt's. And neither context read is paginated:
+  > `list_for_context` takes no `limit`/`offset` on either repository (signature-pinned in the unit
+  > layer) and `list_page`'s 20/100 window has no caller on this path. **The path is unclipped by
+  > construction** — which is a statement about the code, deliberately not a claim that it survives
+  > 1000 stories, because 4.3 has not run.
 
 ## Phase 5: Slice Verification
 
-- [ ] 5.1 Whole backend suite (the acceptance gate):
+- [x] 5.1 Whole backend suite (the acceptance gate):
       `cd backend && conda run -n storico python -m pytest`.
-- [ ] 5.2 Integration layer, run where the Docker daemon exists:
+      **Local: `1282 passed, 45 skipped`** (the 45 are the integration cases that cannot run here).
+      **CI: `1303 passed, 24 skipped`** — and the two reconcile exactly (1327 collected = 1282 + 45 =
+      1303 + 24), which is what proves 21 Docker-gated cases ran there and 24 (22 Qdrant + 2 Ollama
+      live) skip in both places.
+- [x] 5.2 Integration layer, run where the Docker daemon exists:
       `cd backend && conda run -n storico python -m pytest -m integration`. Without a Docker daemon
       the Postgres-only scale proof (1.14) and the Postgres half of (b)'s deletion record skip and
       stay **unverified** — record that outcome instead of reporting green.
-- [ ] 5.3 Live-Qdrant layer, run where a Qdrant server is reachable:
+      **Run in CI on this slice's PR heads** (this machine has no Docker daemon): the 21 Docker-gated
+      cases executed and passed, including 1.14's Postgres scale proof, 1.16's record-survives-cascade
+      cases and the migration-chain ratchet. On this machine all 45 integration cases **skip**, and a
+      skip is not a proof.
+- [x] 5.3 Live-Qdrant layer, run where a Qdrant server is reachable:
       `STORICO_TEST_LIVE_QDRANT=1 cd backend && conda run -n storico python -m pytest tests/test_integration/test_few_shot_rag_qdrant.py`.
       Record which cases ran and which skipped.
-- [ ] 5.4 Repo-documented lint/format (`AGENTS.md` §0), from `backend/`:
+      **Ran here against Qdrant Cloud: `22 passed`**, in throwaway collections, with the flag; and
+      **`22 skipped`** without it. The parent re-ran it independently. It is also the layer that found
+      the two production defects recorded in §3 of the report — including the missing payload index
+      that made every filtered search answer `400` and degrade to an empty list.
+- [x] 5.4 Repo-documented lint/format (`AGENTS.md` §0), from `backend/`:
       `conda run -n storico python -m ruff check src tests` and
       `conda run -n storico python -m ruff format --check src tests`.
+      **`All checks passed!` and `272 files already formatted`**, locally and in CI.
 - [ ] 5.5 Record in `verify-report.md` the honest split of evidence: what the SQLite unit layer
       proved, what required Postgres, what required a live Qdrant and what skipped, what the four
       provider responses confirmed, and what each bench measured.
+  > **[Recorded 2026-10-03 in `verify-report.md` §1 — with one row that is not green]** The split is
+  > written: the SQLite unit and API layer (1282 local / 1303 in CI), Postgres via testcontainers (21
+  > cases, CI only), the live Qdrant layer (22 passed here, 22 skipped without the flag), and the 24
+  > cases that skip in both places. **The four provider responses are NOT confirmed and no bench has
+  > measured anything yet**: 4.1 needs a reachable provider with a credential (the owner is providing
+  > Gemini; Ollama is not running here and there is no OpenAI/Anthropic key), and 4.2/4.3 need a
+  > Neon-like database with a direct connection. Those rows read `pending` in the report rather than
+  > borrowing the unit layer's green, which is the whole point of this task.
 
 ## Slice Boundary
 

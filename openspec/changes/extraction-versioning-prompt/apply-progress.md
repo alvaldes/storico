@@ -1454,3 +1454,42 @@ accepted trade-off, disclosed rather than absorbed.
 | `cd backend && conda run -n storico python -m pytest tests/test_integration/test_few_shot_rag_qdrant.py -m integration -q` (no flag) | **22 skipped** — the honest skip count; nothing ran against a live server |
 | `cd backend && conda run -n storico python -m ruff check src tests` | **All checks passed!** |
 | `cd backend && conda run -n storico python -m ruff format --check src tests` | **272 files already formatted** |
+
+## W4 (partial) + Phase 5 — the sweep, the runnable verification and the report's skeleton, 2026-10-03
+
+**What ran, with its number:**
+
+| Layer | Command | Observed |
+| --- | --- | --- |
+| Whole backend suite (no marker filter) | `python -m pytest -q` | **1282 passed, 45 skipped** locally |
+| The same, in CI | — | **1303 passed, 24 skipped** |
+| Live Qdrant layer | `STORICO_TEST_LIVE_QDRANT=1 … -m integration` | **22 passed** (and **22 skipped** without the flag) |
+| Lint / format | `ruff check` · `ruff format --check` | clean · **272 files** |
+
+The two suite numbers reconcile exactly — **1327 collected = 1282 + 45 = 1303 + 24** — so 21
+Docker-gated cases ran in CI and 24 cases (22 Qdrant + 2 Ollama live) **skip in both places**. The live
+layer ran only because this machine reaches Qdrant Cloud: **CI cannot run it**, so its evidence is this
+run's, not a badge.
+
+**4.5's sweep, measured rather than asserted.** The story text reaches the prompt **whole**:
+`extraction_service.py` reads `raw_text` once and uses it for retrieval and for `prompt_kwargs`, with no
+`len(`, `min(`, slice, cap or token budget on it (the only `len(...)` there is a log field).
+`max_tokens=2048` is an **output** budget in every adapter — Ollama's `num_predict`, OpenAI's
+`max_tokens`, Anthropic's `max_tokens` (required), Gemini's `max_output_tokens` — never the prompt's. And
+neither context read is paginated: `list_for_context` takes no `limit`/`offset` on either repository
+(signature-pinned in the unit layer) and `list_page`'s 20/100 window has **no caller** on this path.
+**The path is unclipped by construction** — which is a statement about the code, deliberately not a claim
+that it survives 1000 stories, because 4.3 has not run.
+
+**`verify-report.md` created** with the honest split (§1), the sweep (§2), the two defects the live layer
+found and their fixes (§3), the snapshot contract as the unit layer verified it (§4), the statement-count
+baseline **stated as a baseline rather than a measurement** (§5), the pending rows (§6) and the bottom
+line (§7) that says plainly which claims the unit layer's green cannot carry.
+
+**Pending, and why** — recorded in the report rather than borrowed: **4.1** needs a reachable generation
+provider with a credential (the owner is providing **Gemini**; Ollama is not running on this host and
+there is no OpenAI/Anthropic key in it, so those rows read *not confirmed*), and **4.2/4.3** need a
+**Neon-like database with a direct connection** (the dev pooler is excluded by name). Both were requested
+of the owner. **4.4**'s tables wait with the numbers, and **5.5**'s letter explicitly includes "what the
+four provider responses confirmed, and what each bench measured", so it stays unchecked as well — its
+record exists, its evidence does not.
