@@ -13,6 +13,7 @@ These tests reach them, and the recovery sweep with them — all three are termi
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -266,6 +267,7 @@ class TestRenderTimeSnapshot:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -298,6 +300,7 @@ class TestRenderTimeSnapshot:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             provider="gemini",
             api_key=None,
             max_retries=0,
@@ -326,6 +329,7 @@ class TestRenderTimeSnapshot:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -356,6 +360,7 @@ class TestRenderTimeSnapshot:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -435,6 +440,7 @@ class TestTerminalWritesGoThroughTheMarks:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -462,6 +468,7 @@ class TestTerminalWritesGoThroughTheMarks:
             story_id=seeded.story_id,
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -485,6 +492,7 @@ class TestTerminalWritesGoThroughTheMarks:
             story_id=uuid4(),  # no such story
             workspace_id=seeded.workspace_id,
             model="llama3.2",
+            version_number=1,
             max_retries=0,
         )
 
@@ -506,3 +514,21 @@ class TestTerminalWritesGoThroughTheMarks:
         await extraction_task.recover_stuck_extractions(max_age_minutes=1)
 
         assert calls == ["mark_failed"]
+
+
+class TestRunnerSignature:
+    """The runner's versioned-input contract, pinned on the signature itself."""
+
+    def test_version_number_is_a_required_int(self) -> None:
+        """``run_background_extraction`` cannot be called without a version number.
+
+        The port's ``store_extraction`` requires an ``int``; a ``None`` default
+        on the runner let a direct in-process caller thread ``None`` down into
+        the RAG payload's ``version_number`` key. With no default, the missing
+        argument fails at the call site instead of inside the payload.
+        """
+        signature = inspect.signature(extraction_task.run_background_extraction)
+        param = signature.parameters["version_number"]
+        assert param.default is inspect.Parameter.empty
+        # Postponed annotations make this the string "int" at runtime.
+        assert param.annotation in (int, "int")

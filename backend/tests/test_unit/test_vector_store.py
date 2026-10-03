@@ -43,6 +43,7 @@ class TestQdrantAdapter:
     def setup_method(self) -> None:
         self.workspace_id = uuid4()
         self.project_id = uuid4()
+        self.story_id = uuid4()
         self.collection = "test_storico_extractions"
         self.qdrant_url = "http://localhost:6333"
 
@@ -83,6 +84,7 @@ class TestQdrantAdapter:
             limit=3,
             threshold=0.85,
             workspace_id=self.workspace_id,
+            exclude_story_id=str(self.story_id),
         )
 
         assert len(results) == 1
@@ -112,6 +114,7 @@ class TestQdrantAdapter:
         await adapter.search_similar(
             text="test",
             workspace_id=self.workspace_id,
+            exclude_story_id=str(self.story_id),
         )
 
         mock_client.query_points.assert_called_once()
@@ -145,7 +148,11 @@ class TestQdrantAdapter:
         mock_client.query_points.return_value = _make_query_response([])
         adapter._client = mock_client
 
-        await adapter.search_similar(text="test", workspace_id=self.workspace_id)
+        await adapter.search_similar(
+            text="test",
+            workspace_id=self.workspace_id,
+            exclude_story_id=str(self.story_id),
+        )
 
         call_kwargs = mock_client.query_points.call_args[1]
         query_filter = call_kwargs["query_filter"]
@@ -195,13 +202,92 @@ class TestQdrantAdapter:
         # ``cast`` rather than ``# type: ignore[arg-type]``: no type checker runs
         # in this gate, so the cast only documents the deliberate breach of the
         # annotation. Either spelling keeps the call legal at runtime.
-        await adapter.search_similar(text="test", workspace_id=cast(UUID, None))
+        await adapter.search_similar(
+            text="test",
+            workspace_id=cast(UUID, None),
+            exclude_story_id=str(self.story_id),
+        )
 
         call_kwargs = mock_client.query_points.call_args[1]
         query_filter = call_kwargs["query_filter"]
         # Not None: the query stays filtered even for a runtime ``None`` scope.
         assert query_filter is not None
         assert query_filter.must[0].key == "workspace_id"
+
+    @pytest.mark.asyncio
+    async def test_search_similar_carries_the_fail_closed_validity_filter(self) -> None:
+        """The search filter is the unified exclusion expression: valid points only.
+
+        The built filter must carry exactly this shape:
+
+        - ``must``: ``workspace_id == str(workspace_id)`` **and**
+          ``has_invalid_tasks == False``;
+        - ``must_not``: ``user_story_id == str(exclude_story_id)``.
+
+        The validity rule is asserted as a **positive ``must`` on ``False``**,
+        never a ``must_not`` on ``True`` — and that is not a stylistic choice:
+        ``must_not`` on ``True`` still admits a point with **no**
+        ``has_invalid_tasks`` key at all, so a point written before this slice
+        existed would sail through the validity rule and be retrieved as if it
+        were valid. ``must`` on ``False`` is fail-closed: a legacy point without
+        the key matches neither branch and is never retrieved.
+        """
+        port = _make_embedding_port()
+        port.embed.return_value = [0.1, 0.2, 0.3]
+
+        adapter = QdrantAdapter(
+            embedding_port=port,
+            qdrant_url=self.qdrant_url,
+            collection_name=self.collection,
+            vector_size=3,
+        )
+
+        mock_client = AsyncMock()
+        mock_client.query_points.return_value = _make_query_response([])
+        adapter._client = mock_client
+
+        exclude_story_id = uuid4()
+        await adapter.search_similar(
+            text="test",
+            workspace_id=self.workspace_id,
+            exclude_story_id=str(exclude_story_id),
+        )
+
+        mock_client.query_points.assert_called_once()
+        query_filter = mock_client.query_points.call_args[1]["query_filter"]
+
+        # ``must``: the workspace scope plus the positive validity condition.
+        must = query_filter.must
+        assert [condition.key for condition in must] == ["workspace_id", "has_invalid_tasks"]
+        assert must[0].match.value == str(self.workspace_id)
+        assert must[1].match.value is False
+
+        # ``must_not``: the story's own point, string-typed like the payload.
+        must_not = query_filter.must_not
+        assert must_not is not None
+        assert [condition.key for condition in must_not] == ["user_story_id"]
+        assert must_not[0].match.value == str(exclude_story_id)
+
+    def test_search_similar_requires_exclude_story_id(self) -> None:
+        """The story exclusion is required on both the port and the adapter.
+
+        Retrieval has two unconditional rules — never return the story's own
+        run, never return an invalid-marked extraction — and neither may be
+        opt-out: a caller that could omit ``exclude_story_id`` would retrieve
+        the story's own previous version as its own few-shot example. Following
+        the ``workspace_id`` pin above, the parameter is keyword-only with no
+        default, so re-adding one makes the bind succeed and fails here.
+        """
+        for target in (VectorStorePort.search_similar, QdrantAdapter.search_similar):
+            signature = inspect.signature(target)
+            param = signature.parameters.get("exclude_story_id")
+            assert param is not None, (
+                f"{target.__qualname__} must require keyword-only exclude_story_id"
+            )
+            assert param.kind is inspect.Parameter.KEYWORD_ONLY
+            assert param.default is inspect.Parameter.empty
+            with pytest.raises(TypeError, match="exclude_story_id"):
+                signature.bind(object(), text="test", workspace_id=uuid4())
 
     @pytest.mark.asyncio
     async def test_search_similar_empty(self) -> None:
@@ -220,7 +306,11 @@ class TestQdrantAdapter:
         mock_client.query_points.return_value = _make_query_response([])
         adapter._client = mock_client
 
-        results = await adapter.search_similar(text="test", workspace_id=self.workspace_id)
+        results = await adapter.search_similar(
+            text="test",
+            workspace_id=self.workspace_id,
+            exclude_story_id=str(self.story_id),
+        )
         assert results == []
 
     # ── search_similar — graceful degradation ────────────────────────
@@ -237,7 +327,11 @@ class TestQdrantAdapter:
             collection_name=self.collection,
         )
 
-        results = await adapter.search_similar(text="test", workspace_id=self.workspace_id)
+        results = await adapter.search_similar(
+            text="test",
+            workspace_id=self.workspace_id,
+            exclude_story_id=str(self.story_id),
+        )
         assert results == []
 
     @pytest.mark.asyncio
@@ -257,7 +351,11 @@ class TestQdrantAdapter:
         mock_client.query_points.side_effect = RuntimeError("Qdrant down")
         adapter._client = mock_client
 
-        results = await adapter.search_similar(text="test", workspace_id=self.workspace_id)
+        results = await adapter.search_similar(
+            text="test",
+            workspace_id=self.workspace_id,
+            exclude_story_id=str(self.story_id),
+        )
         assert results == []
 
     # ── store_extraction — success ───────────────────────────────────
@@ -640,7 +738,11 @@ class TestQdrantAdapter:
         adapter._client = None
 
         with pytest.raises(ValueError, match="dimensions"):
-            await adapter.search_similar(text="test", workspace_id=self.workspace_id)
+            await adapter.search_similar(
+                text="test",
+                workspace_id=self.workspace_id,
+                exclude_story_id=str(self.story_id),
+            )
 
     @pytest.mark.asyncio
     async def test_lazy_init_connection_error_returns_empty(self) -> None:
@@ -660,7 +762,11 @@ class TestQdrantAdapter:
             "storico.infrastructure.vector.qdrant_adapter.AsyncQdrantClient",
             side_effect=RuntimeError("connection refused"),
         ):
-            results = await adapter.search_similar(text="test", workspace_id=self.workspace_id)
+            results = await adapter.search_similar(
+                text="test",
+                workspace_id=self.workspace_id,
+                exclude_story_id=str(self.story_id),
+            )
             assert results == []
 
             stored = await adapter.store_extraction(
@@ -748,7 +854,11 @@ class TestQdrantAdapter:
         mock_client.query_points.return_value = _make_query_response([mock_point])
         adapter._client = mock_client
 
-        results = await adapter.search_similar(text="test", workspace_id=self.workspace_id)
+        results = await adapter.search_similar(
+            text="test",
+            workspace_id=self.workspace_id,
+            exclude_story_id=str(self.story_id),
+        )
         assert len(results) == 1
         assert results[0].similarity_score == 0.0
 

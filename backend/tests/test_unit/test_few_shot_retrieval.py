@@ -142,6 +142,7 @@ class TestFewShotRetrieval:
             limit=2,
             threshold=0.9,
             workspace_id=workspace_id,
+            exclude_story_id=str(story.id),
         )
 
     @pytest.mark.asyncio
@@ -190,6 +191,7 @@ class TestFewShotRetrieval:
             limit=3,
             threshold=0.85,
             workspace_id=workspace_id,
+            exclude_story_id=str(story.id),
         )
 
     @pytest.mark.asyncio
