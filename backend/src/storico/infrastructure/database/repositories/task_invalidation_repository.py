@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -113,6 +113,31 @@ class SQLAlchemyTaskInvalidationRepository(TaskInvalidationRepository):
             await self._session.rollback()
             raise EntityNotFound("TaskInvalidation", str(mark_id))
         await self._session.commit()
+
+    async def count_active_for_extraction(
+        self, *, extraction_id: UUID, exclude_mark_id: UUID | None = None
+    ) -> int:
+        """The computed active-mark count, as the port documents it.
+
+        One statement: the mark → task join scoped by the task's
+        ``extraction_id``, filtered to still-active rows, with the mark being
+        revoked excluded when its id is given. The value answers the revoke
+        handler's pre-revoke question, so the refresh can run before the
+        internally-committing ``revoke`` is called.
+        """
+        stmt = (
+            select(func.count())
+            .select_from(TaskInvalidationModel)
+            .join(TaskModel, TaskModel.id == TaskInvalidationModel.task_id)
+            .where(
+                TaskModel.extraction_id == extraction_id,
+                TaskInvalidationModel.revoked_at.is_(None),
+            )
+        )
+        if exclude_mark_id is not None:
+            stmt = stmt.where(TaskInvalidationModel.id != exclude_mark_id)
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())
 
     async def list_active_on_other_versions(
         self, *, user_story_id: UUID, exclude_extraction_id: UUID | None
