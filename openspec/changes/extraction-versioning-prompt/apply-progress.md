@@ -304,3 +304,182 @@ joined comprehensions, and two inline `select` blocks replaced by the file's exi
   `template_variables`, but the WU2 diff must replace that entry.
 - The 1000-row Postgres scale proof (1.14) and the opt-out snapshot cross-check (1.13's record
   half) still belong to part (iii); no integration marker was run in this environment.
+
+---
+
+## W1-T3 — the triangulations and the closing refactor (tasks 1.11–1.15)
+
+2026-10-03, same branch `feat/extraction-versioning-prompt-wu1`, part (ii)'s tip `3240b5b` untouched
+below this work. Nothing committed or staged by this run. **Evidence-only tranche**: no production
+file was touched (`backend/src/**` stayed out of the diff), and the two pre-existing untracked
+entries (`backend/.gitignore`, `.claude/skills/`) were left alone.
+
+### Consumed branch / baseline facts
+
+Parent-verified baseline at `3240b5b` re-observed: full suite
+`conda run -n storico python -m pytest -m "not integration"` read **1227 passed, 36 deselected**
+before this tranche's tests and **1231 passed, 39 deselected** after — the delta is exactly the
+4 new unit-layer test functions (1.11, 1.12, and 1.13's two cases); the deselected count rose by
+exactly the 3 new integration cases in `test_context_ports_scale.py`, which skip locally and are
+deselected by `-m "not integration"`. `ruff check` clean and `ruff format --check` clean (270 files
+formatted — 269 plus the new integration file). Part (i)'s and part (ii)'s commits were consumed as
+shipped: both `list_for_context` reads with their `WHERE` exclusions, `ProjectContext`, the required
+`context` argument, the two template blocks, and the runner composing the context between the story
+load and the render.
+
+### TDD cycle evidence (kind: TRIANGULATE/REFACTOR — GREEN-only, exception stated)
+
+These five tasks pin and confirm behaviour that parts (i)/(ii) already landed; none of them
+changes production code. A RED observation would have required mutating a `backend/src` file to
+break working behaviour, which this unit's surfaces forbid — so no RED was observed and none is
+claimed. Verification is the GREEN and TRIANGULATE evidence below.
+
+| Cycle | Task(s) | Command | Result |
+| --- | --- | --- | --- |
+| GREEN | 1.11 + 1.12 + 1.13 (2 cases) | `conda run -n storico python -m pytest tests/test_api/test_extraction.py -m "not integration"` | **54 passed** (50 pre-existing + 4 new) |
+| GREEN | 1.13 (template half, pre-existing) + repo halves | phase runner (below) | **129 passed** |
+| GREEN | 1.15 confirmation run | `conda run -n storico python -m pytest tests/test_few_shot_examples.py -m "not integration"` | **12 passed** — the three direct `render_instruction` sites green untouched with the optional blocks in the template |
+| Phase runner | 1.11–1.15 | `conda run -n storico python -m pytest tests/test_repositories/test_user_story_repo.py tests/test_repositories/test_task_repo.py tests/test_unit/test_prompt_manager.py tests/test_api/test_extraction.py -m "not integration"` | **129 passed** |
+| Integration | 1.14 | `conda run -n storico python -m pytest tests/test_integration/test_context_ports_scale.py -m integration -q` | **3 skipped** — every case `SKIPPED [1] … Docker daemon unreachable — this integration test needs docker to spawn a Postgres container via testcontainers.` This machine has no Docker daemon; the scale proof stays unverified here, and **CI owns these cases' verdict** (GitHub runners have a daemon) |
+| Full suite | whole backend | `conda run -n storico python -m pytest -m "not integration"` | **1231 passed, 39 deselected** — baseline 1227 + exactly the 4 new test functions; deselected 36 → 39 = the 3 new integration cases |
+| Lint | repo-documented forms | `conda run -n storico python -m ruff check src tests` / `… format --check src tests` | **All checks passed; 270 files already formatted** |
+
+Two mid-GREEN failures were mine, not the implementation's: the first draft of 1.11 read the story's
+*seeded* v1 row instead of the run's row (the story now carries a prior extraction, so
+`rows[0]` is no longer the run — the selection now pins `row.id == pending.id`), and the first draft
+of 1.12 seeded the decomposing stories' task with the title `Set up database schema`, which is a
+substring of the template's own few-shot format example (`Set up database schema for transactions`)
+and made an absence assertion pass vacuously — the title moved to `Configure the billing database`
+in that case. No assertion was weakened; 1.11 keeps the letter's `Set up database schema` title,
+where the positive presence is carried by the `(story: {other_story})` pairing the template example
+cannot fake. One 1.13 draft asserted `rendered.text` equality that ignored the `system_prompt=None`
+two-newline prefix — replaced with an `instruction` equality. Formatting: `ruff format` was never
+executed; four lines the `--check --diff` named were applied by hand.
+
+### The 1.11 / 1.12 inventory — what already existed, what was added
+
+Checked before writing, as instructed; the repo-level letters were already satisfied by part (i)'s
+cases, so **nothing was added to `test_repositories/test_task_repo.py`** — duplicating them would
+have weakened the inventory, not the suite.
+
+- **1.11, read level — already existed**: `test_task_repo.py::TestListForContext::
+  test_the_excluded_story_is_absent_in_every_version` (excluded story with completed v1 + v2, both
+  with tasks; neither version's tasks return — the `WHERE` exclusion holding across every version at
+  once). The story-side half is `test_user_story_repo.py::TestListForContext::
+  test_returns_the_other_stories_and_never_the_excluded_one`. **Added**: the end-to-end prompt
+  case `test_api/test_extraction.py::TestExtractionPromptCarriesTheProject::
+  test_a_storys_own_completed_tasks_never_enter_its_own_context_block` — the decomposed story has a
+  completed v1 producing `Implement login retry`; its own next prompt never carries that title while
+  a different story's `Set up database schema` does, paired with `(story: {other_story})`; the
+  story's raw text appears exactly once, as the story to decompose.
+- **1.12, read level — already existed**: `test_task_repo.py::TestListForContext::
+  test_an_active_mark_hides_the_task_and_revoking_restores_it` (another story's task hidden by an
+  active mark created through `SQLAlchemyTaskInvalidationRepository.create`, restored after
+  `revoke`). **Added**: the prompt-level case `test_api/test_extraction.py::
+  TestExtractionPromptCarriesTheProject::
+  test_an_invalid_task_leaves_every_context_block_and_returns_after_revoke` — a three-story fixture
+  where the marked story is never itself run (a completed run for it would mint a newer version and
+  retire the marked task by currency, which is the read-level case above, not this one); the marked
+  task is absent from **both** other stories' prompts while the mark is active, returns to the block
+  after revoke through the same write path the endpoint drives (paired with its owning story id),
+  and the decomposing story's own valid task stays excluded throughout — own-story exclusion and
+  validity are independent `WHERE` terms.
+
+### The 1.13 opt-out — the two stored facts and where each was read
+
+- **Fact 1 — what the provider received**: the row's `prompt_rendered` column, read back from
+  `extractions` after the run (`test_the_opt_out_run_completes_and_the_row_records_what_each_fact_saw`):
+  status `completed`, the story text present, `## Project Context` and
+  `## Do Not Produce These Tasks (Previously Marked Invalid)` absent, and the other story's raw text
+  and task title absent although that data existed in the project when the context was composed.
+- **Fact 2 — what was composed**: at this head the runner snapshots `prompt_config` as
+  `{validate, system_prompt}` (WU2 task 2.5 owns filling it from `RenderedPrompt.template_variables`),
+  so the row-level half of fact 2 is asserted as the composed config that survives
+  (`prompt_config["system_prompt"]`, read from the row), and the `template_variables` half is
+  asserted at the render boundary (`test_the_opt_out_templates_variables_still_carry_the_composed_context`:
+  `template_variables["project_context"]["name"]` and `["negative_examples_omitted"]` present while
+  the rendered text carries neither block). **Sequencing note for the parent**: the full
+  two-stored-facts comparison the brief describes — `prompt_config.project_context` and
+  `prompt_config.negative_examples_omitted` read back from the row — becomes assertable only once
+  2.5 writes the snapshot from `template_variables`; asserting it now would have been RED against
+  production and out of this unit's evidence-only surfaces. 2.6 already carries the row-level
+  read-back (`prompt_config["negative_examples_omitted"] == 1`). The template half was already green:
+  `test_unit/test_prompt_manager.py::TestTaskGenerationContextBlocks::
+  test_a_workspace_template_without_the_variables_renders_neither_block` (part (ii)'s 1.5). No
+  runtime warning exists and none was added — the spec blesses the opt-out.
+
+### The new integration file (1.14) — `backend/tests/test_integration/test_context_ports_scale.py`
+
+Three cases, each `@pytest.mark.integration` + the `_docker_reachable()` skipif copied from
+`test_migration_chain.py` (copy-not-share, that module's own documented reason), each with
+`loop_scope="module"` sharing one Postgres 16 testcontainer and the enum-type shim of
+`test_projects_integration.py`:
+
+1. `test_the_story_read_returns_999_of_1000_without_the_excluded_one` — 999 rows, equal to the
+   table's own `count(*)` for the project minus one, none carrying the excluded id.
+2. `test_the_task_read_returns_every_valid_current_version_task_without_a_limit` — one completed
+   run with one task per story, no marks: 999 tasks, 999 distinct owning story ids, past the API's
+   page cap of 100 (the signature pin against `limit`/`offset` stays at the unit layer).
+3. `test_two_calls_over_the_same_state_are_byte_identical` — both reads equal twice.
+
+**Observed local status: 3 skipped** (Docker daemon unreachable — the reason string above). CI owns
+their verdict; a skip here proves nothing about scale.
+
+**What the plan letter's "created through the CSV import" became, and why**: no container
+integration file wires the FastAPI app, its Auth.js bearer-JWT dependency and a workspace membership
+against a live server — they drive repositories and entities directly — and building that HTTP/auth
+scaffolding was not this file's job. What runs instead is the import's **own write path, minus only
+the HTTP and auth shell**: `parse_story_csv` decodes a generated 1000-row parts CSV (exactly at the
+parser's `MAX_ROWS` cap), `validate_import` classifies it (blocked-assertion included), and the
+stories persist through the same `save_many` commit `import_stories` executes. The rows enter
+through the import machinery, not hand-built model inserts; the module docstring states this same
+substitution.
+
+### The 1.15 confirmations — what was read to make each
+
+- **Exactly one context-construction site**: `grep -rn "ProjectContext(" backend/src` matches only
+  `infrastructure/tasks/extraction_task.py:410` — the runner. No other production site composes one.
+- **No read path filters in Python**: both implementations were read in full —
+  `user_story_repository.list_for_context` (two-column projection; `project_id == :p` and
+  `id != :excluded` as `WHERE` terms, `ORDER BY created_at, id`, rows returned as they come) and
+  `task_repository.list_for_context` (one statement: the `task → story` join, the currency predicate
+  reused from `_current_version_only`, the active-mark `NOT EXISTS`, and `user_story_id != :excluded`
+  — all four in the `WHERE`; the docstring itself names the Python-filter trap). No `if`-filter sits
+  between either statement and its return.
+- **The two port methods appear in no paginated caller**: `grep -rn "list_for_context" backend/src`
+  matches the two ports, the two implementations, and exactly two call sites — both in the runner
+  (`extraction_task.py:404,407`), neither adjacent to any `list_page`/`fetch_page` window; the only
+  `fetch_page` use remains `list_page`'s own body.
+- **`test_few_shot_examples.py` still green**: 12 passed (run listed above) — the three direct
+  `render_instruction` sites are unaffected by the `{% if %}`-guarded optional blocks.
+
+### Files changed (this unit — final `git diff --numstat`: 520 tracked changed lines, 514+/6−, plus the new integration file)
+
+- `backend/tests/test_api/test_extraction.py` (+331/−1 — 4 new test functions)
+- `backend/tests/test_integration/test_context_ports_scale.py` — new file, 288 lines (untracked, so
+  outside `git diff --numstat`; unit total including it: 808 changed lines)
+- `openspec/changes/extraction-versioning-prompt/tasks.md` (+5/−5 — checkboxes 1.11–1.15 only)
+- `openspec/changes/extraction-versioning-prompt/apply-progress.md` — this section appended
+  (+178/−0, earlier sections verbatim)
+
+### Deviations from the design / task letter
+
+1. **1.13's snapshot half** (detailed above): asserted at the boundaries that exist at this head;
+   the row-level `prompt_config` context keys land with WU2's 2.5 write and 2.6's read-back. This
+   tranche adds no production code to make the comparison possible early.
+2. **1.14's import path** (detailed above): the import's parse → validate → `save_many` write path
+   against the container instead of the HTTP endpoint, for the scaffolding reason the brief's
+   escape hatch anticipates; documented in the module docstring, not silently substituted.
+
+### Remaining unchecked tasks
+
+- Phases 2–5: untouched (2.1 onward). Phase 1 is complete: 1.1–1.15 all checked.
+
+### Risks
+
+- The three scale cases have never executed anywhere yet — locally they skip by design and CI has
+  not run this branch. Until they pass on a runner with a daemon, 1.14's proof is structural, not
+  observed.
+- 1.13's full two-stored-facts comparison is split across this tranche (row fact 1, boundary fact 2)
+  and WU2 (2.5's snapshot write, 2.6's row-level read-back); a reviewer of WU2 should re-read this
+  section before judging 2.6's coverage.

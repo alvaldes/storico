@@ -291,20 +291,20 @@ asks for the split, parts i (1.1–1.4), ii (1.5–1.10) and iii (1.11–1.15) e
       `backend/tests/test_integration/test_few_shot_rag_qdrant.py` and
       `backend/tests/test_api/test_extraction.py`; re-point the `assert_called_once_with(...)`
       assertions on `render_instruction` to the widened kwargs.
-- [ ] 1.11 TRIANGULATE — **the story absent from its own task block.**
+- [x] 1.11 TRIANGULATE — **the story absent from its own task block.**
       `backend/tests/test_api/test_extraction.py` + `backend/tests/test_repositories/test_task_repo.py`:
       a story whose completed v1 produced "Implement login retry" does not carry that title in the
       existing-tasks block of its own next prompt, while a **different** story's "Set up database
       schema" does; the story's own raw text appears exactly once, as the story to decompose. Prove
       with
       `cd backend && conda run -n storico python -m pytest tests/test_api/test_extraction.py tests/test_repositories/test_task_repo.py -m "not integration"`.
-- [ ] 1.12 TRIANGULATE — **an invalid task never as positive context.**
+- [x] 1.12 TRIANGULATE — **an invalid task never as positive context.**
       `backend/tests/test_repositories/test_task_repo.py` + `backend/tests/test_api/test_extraction.py`:
       a task of another story with an active mark is absent from the existing-tasks block and from
       every story's context; after the mark is revoked while its version is still current, the task
       returns to the existing-tasks block. (Its exit from the *negative-example* block is asserted in
       2.10, once WU2 wires that block.) Prove with the same command as 1.11.
-- [ ] 1.13 TRIANGULATE — **the workspace template that does not reference the new variables.**
+- [x] 1.13 TRIANGULATE — **the workspace template that does not reference the new variables.**
       `backend/tests/test_unit/test_prompt_manager.py` (the template half) and
       `backend/tests/test_api/test_extraction.py` (the record half): a custom `instruction_template`
       referencing only `{{ user_story }}` renders neither block, the run completes normally, and
@@ -312,7 +312,7 @@ asks for the split, parts i (1.1–1.4), ii (1.5–1.10) and iii (1.11–1.15) e
       `negative_examples_omitted`; the stored `prompt_rendered` shows the provider received neither
       block, so the divergence is readable by comparing two stored facts of one version. No runtime
       warning is added (the spec blesses the opt-out). Prove with the same command as 1.11.
-- [ ] 1.14 TRIANGULATE — **Postgres-only, 1000-row non-truncation.**
+- [x] 1.14 TRIANGULATE — **Postgres-only, 1000-row non-truncation.**
       `backend/tests/test_integration/test_context_ports_scale.py` **New** (path free; confirmed
       absent at planning time), each case `@pytest.mark.integration` with the `_docker_reachable()`
       skipif of `backend/tests/test_integration/test_migration_chain.py`: a project of 1000 stories
@@ -322,7 +322,7 @@ asks for the split, parts i (1.1–1.4), ii (1.5–1.10) and iii (1.11–1.15) e
       **Requires a Docker daemon (Postgres 16 via testcontainers); without one this case skips and the
       scale proof stays unverified** — that is the honest status, not a green. Prove with
       `cd backend && conda run -n storico python -m pytest tests/test_integration/test_context_ports_scale.py -m integration`.
-- [ ] 1.15 REFACTOR — confirm there is exactly one context-construction site (the runner), that no
+- [x] 1.15 REFACTOR — confirm there is exactly one context-construction site (the runner), that no
       read path filters in Python, that the two port methods appear in no paginated caller, and that
       `backend/tests/test_few_shot_examples.py`'s three direct `render_instruction` sites still pass
       now that the template has optional blocks; then rerun the phase runner and
