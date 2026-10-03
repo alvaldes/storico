@@ -1398,3 +1398,40 @@ endpoint → **200**; and the Vercel production deployment for `fe9a16d` → **s
 workspace has no LLM configuration and `resolve_llm_config` falls back to an Ollama that does not exist
 there (**D-a-6**). And the version string still reads `0.9.0` because no `make bump` has run — the merged
 commits are `feat`s, so the release is the owner's call, never a task in a change.
+
+## Slice (c) `extraction-versioning-prompt` — session 2026-10-03 (c1): WU1 delivered as three chained PRs
+
+Slice (c) started after `v0.10.0` (the release that carried slice (b)) and after this session merged the
+nine-PR chain of (b) into `main`. Its apply progress lives in the change folder
+(`openspec/changes/extraction-versioning-prompt/apply-progress.md`), section by tranche; this is the
+index a reader needs to find it.
+
+**WU1 measured 2,205 changed lines against a 750–1,000 forecast** — the slice's usual pattern, now its
+fourth instance — so the owner chose to open it as **three chained PRs on the plan's own axes**, which
+is the reading of the delivery decision that respects the 400-line budget:
+
+| PR | Branch → base | Part | Measured |
+| --- | --- | --- | --- |
+| **#40** | `…-wu1a` → `main` | the two unbounded context reads (`list_for_context` on both repositories) | 685 |
+| **#41** | `…-wu1b` → `…-wu1a` | `ProjectContext`, the **required** `context` argument, the two template blocks, the call-site churn | 713 |
+| **#42** | `…-wu1c` → `…-wu1b` | the triangulations, the Postgres scale file, the closing pass | 809 |
+
+All three are green. **CI on #42 reports `1252 passed, 18 skipped`**, which reconciles exactly with the
+local `1231 passed, 39 deselected`: of the 39 integration cases, 21 ran in CI (18 Docker-gated plus the
+three new scale cases) and 18 skip everywhere (16 Qdrant live + 2 Ollama live). So the **1000-row scale
+proof ran and passed in CI** — the half this machine could never show.
+
+**Phase 1 of the slice is complete (1.1–1.15).** Three things in it a reviewer should not have to
+rediscover: the reads are unbounded **on purpose** (the API's page window would truncate prompt context
+silently, and the 120-story case proves the consequence); `context` is required because a `None` default
+would let a caller render 0.8.0's prompt while the row claimed 0.9.0; and the blessed opt-out needs no
+code (Jinja ignores unreferenced variables, and the snapshot records what was composed, so the
+divergence is readable from the version's own stored facts).
+
+**One split recorded rather than papered over:** the row-level half of that snapshot is WU2's write
+(task 2.5 fills `prompt_config` from `template_variables`; 2.6 reads those keys back from the row), so
+part (iii) asserts the boundary facts that exist today and names the deferral.
+
+**Next:** WU2 — what the version records (the negative-example composer, the snapshot dictionary, the
+`usage` types and the four adapters, `record_usage`). Its third part is the slice's largest atomic
+commit (`LLMResponse` + the `.text` ripple, ≈305 lines) and it is the unit that closes **D10**.
