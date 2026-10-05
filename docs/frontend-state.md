@@ -168,6 +168,27 @@ toggleSidebar()
 
 Lee tema de localStorage en init. Aplica `applyTheme()` en browser.
 
+### loadingStore
+
+Contador de peticiones bloqueantes que alimenta el loader de página completa.
+
+```typescript
+interface LoadingState {
+  pending: number;    // peticiones bloqueantes en vuelo
+  visible: boolean;   // el overlay está pintado
+}
+
+// Funciones (no acciones del store):
+beginBlockingRequest()   // +1, y arma el show diferido
+endBlockingRequest()     // -1, y arma el hide con piso de visibilidad
+resetBlockingLoader()    // solo tests: limpia timers y contador
+```
+
+El contador y los dos timers viven en estado **a nivel de módulo**, no en el componente: sobreviven
+el desmontaje y remontaje de la isla, así que una mutación en vuelo durante una navegación conserva
+su overlay en vez de perderlo. Un único escritor (`sync()`) empuja `pending` y `visible` al store, de
+modo que no pueden divergir. Ver la sección siguiente para el contrato completo.
+
 ## Reglas de Estado
 
 1. **Un store por dominio** — proyectos, tareas, UI, auth, settings. No un store monolítico.
@@ -211,6 +232,75 @@ Módulos de dominio:
 | `prompts-api.ts` | Prompts del workspace |
 
 Todos los módulos convierten keys entre camelCase (frontend) y snake_case (API).
+
+## Loader de página completa (peticiones bloqueantes)
+
+Las llamadas que el usuario percibe como lentas tienen una señal global: un velo a pantalla completa
+con un spinner y el texto `common.processing`. Se monta **una sola vez**, en `DashboardShell`
+(`src/components/react/FullPageLoader.tsx`), porque toda mutación de `ApiClient` en la aplicación
+ocurre debajo de ese shell. No existe en las páginas públicas: ninguna de ellas importa `ApiClient`.
+
+### Qué lo dispara
+
+**Automático por método HTTP, con lista de excepciones** — no opt-in por acción. `ApiClient.request()`
+y `ApiClient.postForm()` llaman a `shouldBlockRequest(method, path)`
+(`src/lib/blocking-requests.ts`) y envuelven la petición en `beginBlockingRequest()` /
+`endBlockingRequest()` dentro de un `try/finally`.
+
+| Método | ¿Bloquea? |
+|---|---|
+| `POST`, `PUT`, `PATCH`, `DELETE` | sí, salvo excepción |
+| `GET`, `HEAD`, `OPTIONS` | nunca |
+
+Las lecturas quedan exentas por método, y eso es lo que mantiene fuera del overlay al sondeo de
+extracción (un `GET` cada 2 s) y a todos los refrescos de fondo, sin necesitar una excepción por
+call site. La query string y el hash se descartan antes de comparar, así que una excepción no se
+esquiva ni se dispara por parámetros.
+
+Las tres excepciones, cada una con su motivo escrito en el propio código (`BLOCKING_EXCLUSIONS`):
+
+| Path | Por qué no bloquea |
+|---|---|
+| `PATCH /api/v1/users/me/onboarding` | Escritura automática del primer login, disparada por el modal de onboarding. |
+| `POST /api/v1/workspaces/{ws}/settings/llm/models` | Sondeo automático de modelos. Es `POST` sólo porque la selección puede llevar una API key que no debe quedar en el query string de un log de acceso. |
+| `POST /api/v1/workspaces/{ws}/extract/` | El arranque de extracción responde `202` al instante y la página de la historia ya tiene su propia UI de pendiente (selector de versiones, toast y poll). |
+
+### Cuándo se ve
+
+El overlay no aparece en cualquier mutación, sólo cuando la mutación **se demora**; sin esto, el
+disparador automático haría parpadear la pantalla entera en cada arrastre de tarjeta Kanban (un `PUT`
+que responde en ~100 ms).
+
+| Constante | Valor | Efecto |
+|---|---|---|
+| `BLOCKING_LOADER_DELAY_MS` | 250 ms | El overlay sólo se pinta si la petición sigue en vuelo al vencer el plazo. Una petición más rápida nunca lo muestra. |
+| `BLOCKING_LOADER_MIN_VISIBLE_MS` | 400 ms | Piso de visibilidad **medido desde que el velo apareció**, no desde que el trabajo terminó. Es el antídoto contra el parpadeo, nunca una espera extra: una petición que ya duró 10 s se oculta en el acto (`max(0, MIN_VISIBLE - (ahora - visibleSince))`). |
+
+Dos escrituras consecutivas cuentan como una sola operación: el `begin` de la segunda llega antes de
+que venza el `hide` de la primera, así que el velo no baja entre medio. Es exactamente el caso de
+invalidar una tarea, que hace `POST` de la marca y después `PUT` de la tarea.
+
+### z-index
+
+`z-[60]`, y el valor es deliberado: por encima de los diálogos de shadcn (`z-50` en `dialog.tsx`,
+`alert-dialog.tsx` y `sheet.tsx`) para que el velo también tape el diálogo que el usuario acaba de
+confirmar, y por debajo de sonner (`z-index: 999999999`, `sonner/dist/styles.css`) para que el toast de
+éxito que se dispara al resolver la petición se lea por encima. La cadena de ancestros del overlay no
+crea ningún stacking context, así que su `60` compite en el contexto raíz con el `50` de los diálogos.
+
+### Caso límite aceptado
+
+Se monta también cuando el usuario borra su cuenta (`DELETE /api/v1/users/me`) — a propósito: es una
+mutación lenta e irreversible, y el velo es la única señal de que algo está pasando antes de que el
+navegador se vaya del sitio.
+
+### Verificación
+
+Medido en el navegador el 2026-10-05, con latencia real inyectada por CDP (1500 ms): un `POST` real
+no pinta el velo a los 120 ms, sí lo pinta a los 620 ms, un `GET` nunca toca el contador, y un error
+`404` lo libera y baja el velo (la rama `finally`, o sea el modo de falla «overlay trabado para
+siempre»), con `elementFromPoint` devolviendo el overlay en las cuatro esquinas y el centro. El
+comando exacto y la salida cruda están en `odd/tasks/blocking-page-loader.md`.
 
 ## Redirecciones internas: `window.location.assign` vs `navigate()` de Astro
 
