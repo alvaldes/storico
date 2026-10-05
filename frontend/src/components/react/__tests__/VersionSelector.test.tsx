@@ -50,21 +50,52 @@ describe('VersionSelector', () => {
     expect(marked[0]?.textContent).toContain('2');
   });
 
-  it('offers a failed version with its error info, model and date', () => {
+  it('offers a failed version with its model and date, and keeps its reason out of the option', () => {
+    // The reason is deliberately NOT part of the option label. `error_info` is
+    // arbitrary-length prose (a Postgres refusal can run to a full sentence), and a
+    // native `<select>` sizes itself to its widest option: embedded there, it blew
+    // the control past its container and clipped it mid-word. The full reason is
+    // rendered below by the story page's no-output card, where it can wrap.
     render(<VersionSelector versions={versions} selectedId="ext-2" onSelect={() => {}} />);
 
     const selector = screen.getByRole('combobox', { name: t.versionSelector.label });
-    const failed = [...selector.querySelectorAll('option')].find((o) =>
-      o.textContent?.includes('Ollama unreachable'),
-    );
+    const failed = [...selector.querySelectorAll('option')].find((o) => o.value === 'ext-3');
     expect(failed).toBeDefined();
+    expect(failed?.textContent).toContain('v3');
+    expect(failed?.textContent).toContain(t.versionSelector.failed);
     expect(failed?.textContent).toContain('llama3.2');
     expect(failed?.textContent).toContain(
       new Date('2026-10-02T10:00:00Z').toLocaleDateString('en-US'),
     );
+    expect(failed?.textContent).not.toContain('Ollama unreachable');
     // "Offered" means selectable: the failed version must be reachable so its
     // no-output state can be shown instead of an empty board.
     expect(failed?.disabled).toBe(false);
+  });
+
+  it('keeps every option short enough to fit, however long the failure reason is', () => {
+    // The regression this pins: a 200-char Postgres error used to become the option
+    // label, so the control grew past the content column and clipped mid-sentence.
+    const longReason =
+      'Unexpected error after 3 attempts: (EMAXCONNSESSION) max clients reached in session ' +
+      'mode - max clients are limited to pool_size: 15';
+    const failedVersion = makeVersion({
+      id: 'ext-9',
+      versionNumber: 9,
+      status: 'failed',
+      hasOutput: false,
+      errorInfo: longReason,
+    });
+    render(
+      <VersionSelector versions={[failedVersion]} selectedId="ext-9" onSelect={() => {}} />,
+    );
+
+    const selector = screen.getByRole('combobox', { name: t.versionSelector.label });
+    const option = selector.querySelector('option');
+    expect(option?.textContent).not.toContain('EMAXCONNSESSION');
+    expect(option?.textContent).not.toContain('pool_size');
+    // The identity is what remains: version number, status, model, date.
+    expect(option?.textContent?.length ?? 0).toBeLessThan(80);
   });
 
   it('reports the selected version to the caller', async () => {
