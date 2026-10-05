@@ -138,7 +138,7 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
     {
       // Show "← Back to home" on every public page except the home page itself
       !currentPath.match(/^\/(en|es)?\/?$/) && (
-        <div class="mx-auto max-w-3xl px-4 pt-12 md:px-8 lg:px-0 lg:pt-20">
+        <div class="mx-auto max-w-3xl px-4 pt-4 md:px-8 lg:px-0 lg:pt-6">
           <div class="w-fit">
             <a
               href={L('/')}
