@@ -23,6 +23,8 @@ import { ProviderIcon } from '@/components/ui/provider-icon';
 import { IconPicker, IconTrigger } from '@/components/ui/icon-picker';
 import { completeOnboarding } from '@/lib/user-api';
 import { upsertLLMConfig } from '@/lib/llm-config-api';
+import { workspaceSettingsPath } from '@/lib/workspace-nav';
+import { navigate } from 'astro:transitions/client';
 import { useTranslations, type Locale } from '@/i18n/utils';
 
 interface OnboardingModalProps {
@@ -46,6 +48,26 @@ export function OnboardingModal({ locale = 'en' }: OnboardingModalProps) {
   const originalName = useRef(currentWorkspaceName ?? '');
 
   const resolvedTheme = useResolvedTheme();
+
+  // Best-effort landing on the current workspace's settings once onboarding is done:
+  // settings is where the LLM provider/credentials get configured, mirroring the
+  // create-workspace path in team-switcher. Never throws into the handlers — a
+  // navigation failure must not change the onboarding outcome.
+  const navigateToWorkspaceSettings = async () => {
+    try {
+      let wsId = useWorkspaceStore.getState().currentWorkspace?.id;
+      if (!wsId) {
+        // The persisted workspace slice may still be hydrating on a brand-new first login.
+        await useWorkspaceStore.getState().fetchWorkspaces();
+        wsId = useWorkspaceStore.getState().currentWorkspace?.id;
+      }
+      if (!wsId) return;
+      const path = workspaceSettingsPath(locale, wsId);
+      if (path) navigate(path);
+    } catch {
+      // Silently skip — the user can reach settings from the sidebar.
+    }
+  };
 
   // Bloquear Escape a nivel DOM antes de que Base UI lo procese.
   // Base UI usa un listener en document para cerrar con Escape, y su
@@ -84,6 +106,7 @@ export function OnboardingModal({ locale = 'en' }: OnboardingModalProps) {
     setIsSubmitting(true);
     try {
       await completeOnboarding();
+      await navigateToWorkspaceSettings();
     } catch {
       // Silently fail — the user can still continue
     } finally {
@@ -117,6 +140,8 @@ export function OnboardingModal({ locale = 'en' }: OnboardingModalProps) {
           // are reasonable; they can adjust provider in workspace settings.
         });
       }
+
+      await navigateToWorkspaceSettings();
     } catch {
       // Silently fail — the user can still continue
     } finally {

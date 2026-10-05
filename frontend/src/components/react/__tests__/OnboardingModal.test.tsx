@@ -5,6 +5,8 @@ import { OnboardingModal } from '@/components/react/OnboardingModal';
 import { useAuthStore } from '@/stores/authStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { KNOWN_PROVIDERS } from '@/lib/llm-providers';
+import { upsertLLMConfig } from '@/lib/llm-config-api';
+import { navigate } from 'astro:transitions/client';
 import en from '@/i18n/en.json';
 
 // Mock the completeOnboarding API call
@@ -12,8 +14,21 @@ vi.mock('@/lib/user-api', () => ({
   completeOnboarding: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Get Started (step 3) persists the chosen provider; keep the network layer out of the test.
+vi.mock('@/lib/llm-config-api', () => ({
+  upsertLLMConfig: vi.fn().mockResolvedValue(undefined),
+}));
+
+// `astro:transitions/client` is an Astro virtual module (see vitest.config.ts).
+// The specifier resolves to a test-only stub; here it is replaced by a spy so the
+// test can observe the exact path onboarding asks the router to navigate to.
+vi.mock('astro:transitions/client', () => ({
+  navigate: vi.fn(),
+}));
+
 describe('OnboardingModal', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     // Reset auth store
     useAuthStore.setState({
       user: { id: '1', email: 'test@test.com', name: 'Test' },
@@ -107,6 +122,75 @@ describe('OnboardingModal', () => {
 
     // isFirstLogin should be false after skipping
     expect(useAuthStore.getState().isFirstLogin).toBe(false);
+  });
+
+  it('lands on workspace settings after clicking Get Started', async () => {
+    const user = userEvent.setup();
+    render(<OnboardingModal locale="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Welcome to Storico')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('Next'));
+    await user.click(screen.getByText('Next'));
+    await waitFor(() => {
+      expect(screen.getByText('Step 3 of 3')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('Get Started'));
+
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalledWith('/en/workspaces/ws-1/settings');
+    });
+    expect(vi.mocked(upsertLLMConfig).mock.calls[0]?.[0]).toBe('ws-1');
+  });
+
+  it('lands on workspace settings after clicking Skip', async () => {
+    const user = userEvent.setup();
+    render(<OnboardingModal locale="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Welcome to Storico')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('Skip'));
+
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalledWith('/en/workspaces/ws-1/settings');
+    });
+  });
+
+  it('lands on the late-hydrated workspace settings when the store hydrates during onboarding', async () => {
+    // Brand-new first login: the persisted workspace slice has not hydrated yet.
+    useWorkspaceStore.setState({
+      currentWorkspace: null,
+      workspaces: [],
+      fetchWorkspaces: vi.fn().mockImplementation(async () => {
+        useWorkspaceStore.setState({
+          currentWorkspace: {
+            id: 'ws-late',
+            name: 'Auto Workspace',
+            slug: 'auto-workspace',
+            role: 'owner',
+            createdAt: '2026-01-01T00:00:00Z',
+          } as any,
+        });
+      }),
+    });
+
+    const user = userEvent.setup();
+    render(<OnboardingModal locale="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Welcome to Storico')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('Skip'));
+
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalledWith('/en/workspaces/ws-late/settings');
+    });
   });
 
   it('has no close button (X) — can only dismiss via Skip or completing all steps', async () => {
