@@ -1,7 +1,9 @@
 # ODD Feature: invalid-flag-and-version-refresh
 
-> **Status**: T1–T3 implemented, gated, and committed on the branch (`4d96f03`, `b487ee5`, `1193f1d`,
-> plus `1a52049` for the port pin and the formatter pass); independent verification pending
+> **Status**: complete and verified — T1–T3 implemented, gated and committed on the branch
+> (`4d96f03`, `b487ee5`, `1193f1d`, plus `1a52049` for the port pin and the formatter pass,
+> `b07b325` for the evidence record, and `a2a9cdc` for the verification's one accepted finding).
+> Pushing, the PR and the merge are the owner's decisions.
 > **Created**: 2026-10-05
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: stacked on the current `chore/issue-forms` (owner's choice, asked and answered
@@ -176,6 +178,16 @@ Its untested-edge list is real and is recorded rather than papered over: PUT-fai
 a failed story-marks read, a revoke from the story page, and a first-ever extraction with no prior
 version have no test. The behaviour is covered end-to-end only by the cases this slice added; each
 named edge is a candidate for a follow-up if it ever regresses.
+
+**Follow-up confirmation (`a2a9cdc`).** The same verifier re-checked the remediation read-only and
+confirmed: the F2 guard sits on **both** the success and the failure write and stays fail-open while
+no switch has been observed (`workspace-scope.ts`'s comparison holds with two `undefined`s); the new
+`storyStore` case has teeth (with the guard removed the write lands and the assertion fails);
+`git diff --stat b07b325..a2a9cdc` touches only the four intended files, none of them the owner's;
+and **F1 is retracted by its author** — `git show 7afd020:…/StoryDetail.tsx` puts the pending panel
+in the final `else`, reachable only when `storyTasks.length === 0`, so the window is pre-existing and
+not a regression. Verdict: F2 closed, nothing changes the finding that both reported defects are
+fixed.
 
 ## Non-goals confirmed, not silently dropped
 
