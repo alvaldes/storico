@@ -57,6 +57,10 @@ data/
 # OpenCode / AI tooling
 .atl/
 .agents/
+# Claude Code's skill entries are symlinks into the ignored .agents/ above: versioned,
+# they would arrive in a fresh clone as dangling links. The rest of .claude/ (agents/,
+# commands/) is tracked on purpose.
+/.claude/skills/
 .mcp.json
 skills-lock.json
 
