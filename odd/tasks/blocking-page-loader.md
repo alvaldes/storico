@@ -1,11 +1,23 @@
 # ODD Feature: blocking-page-loader
 
-> **Status**: implementation and verification complete on `feat/blocking-page-loader`, off `main` @
-> `72b9013`. Four work-unit commits, no native review (receipt-driven development is off in this
-> clone).
+> **Status**: implementation, verification and landing complete — **`main` was fast-forwarded from
+> `72b9013` to `6ce1d73`** on 2026-10-05, and the branch is gone. The four commits: `6e653ed` (the
+> decision: which mutations block), `f5bbaf8` (the accounting: delay and visibility floor),
+> `9400334` (the wiring and the surface: `ApiClient`, the overlay, its mount, the copy), `6ce1d73`
+> (`docs/frontend-state.md` and this document). The remote is `origin`
+> (`https://github.com/alvaldes/storico.git`); the branch was never pushed, so `main` is the only
+> thing that travels.
+>
+> No native review ran: receipt-driven development is off in this clone (`gentle-ai review mode
+> status` → `off (decided by clone_local)`). The landing was gated on `main` itself by a read-only
+> re-gate, which confirmed the fast-forward was real (no merge commit, no divergence from
+> `origin/main`), the tree was clean, and the gates were 63 files / 717 tests passing with
+> `tsc --noEmit` exit 0. Release is a separate, owner-owned decision: the three `feat(web)` commits
+> imply a MINOR bump (`v0.11.0` → `v0.12.0`), and `make bump` was deliberately NOT run.
+>
 > **Created**: 2026-10-05
 > **Workflow**: Organic Driven Development (ODD)
-> **Branch**: `feat/blocking-page-loader`
+> **Branch**: `feat/blocking-page-loader` off `main` @ `72b9013` — fast-forwarded and deleted.
 
 ## Problem
 
