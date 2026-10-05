@@ -169,6 +169,18 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
     }
   }, [versions, selectedVersionId]);
 
+  // Follow the run the user just started: as soon as the version the 202 minted
+  // shows up in the history — pending or settled — it becomes the displayed one,
+  // so the selector names the run instead of waiting for a reload. The effect
+  // only re-runs when the history or the minted number changes, so a manual
+  // selection made while the run is going still sticks until the next refresh.
+  useEffect(() => {
+    const minted = extraction?.versionNumber;
+    if (!versions || minted == null) return;
+    const match = versions.find((v) => v.versionNumber === minted);
+    if (match) setSelectedVersionId(match.id);
+  }, [versions, extraction?.versionNumber]);
+
   // Reset extraction state on unmount
   useEffect(() => {
     return () => {
@@ -405,6 +417,21 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const extractGateLocked = !!workspaceId && !canManage;
   const extractButtonDisabled = extractDisabled || extractGateLocked;
 
+  // The in-progress state, shared by the two ways the page knows a run is going:
+  // the store's extraction entry, and the displayed version's own `pending`
+  // status (the version the user just started is selected as soon as its row
+  // exists). A pending version has no output yet, but it is not a failed one —
+  // the no-output card belongs to a run that ended.
+  const pendingPanel = (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-12">
+      <Loader2 className="mb-3 h-8 w-8 text-muted-foreground animate-spin" />
+      <p className="text-sm text-muted-foreground">{t.stories.extraction_tasks_in_progress}</p>
+      <p className="text-xs text-muted-foreground mt-1 opacity-60">
+        {t.stories.extraction_takes_up_to_minute}
+      </p>
+    </div>
+  );
+
   // ── Render ──
 
   if (initialLoad || storyLoading) {
@@ -591,7 +618,10 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
           </div>
         )}
 
-        {selectedVersion && !selectedVersion.hasOutput ? (
+        {selectedVersion?.status === 'pending' ||
+        (!selectedVersion && extraction?.status === 'pending') ? (
+          pendingPanel
+        ) : selectedVersion && !selectedVersion.hasOutput ? (
           /* A failed version is shown honestly: what it is, which model ran it
              and why it produced nothing — never an empty board that reads as
              "this story has no tasks". */
@@ -674,17 +704,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-12">
-            {extraction?.status === 'pending' ? (
-              <>
-                <Loader2 className="mb-3 h-8 w-8 text-muted-foreground animate-spin" />
-                <p className="text-sm text-muted-foreground">
-                  {t.stories.extraction_tasks_in_progress}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1 opacity-60">
-                  {t.stories.extraction_takes_up_to_minute}
-                </p>
-              </>
-            ) : extraction?.status === 'failed' || extraction?.status === 'unauthorized' ? (
+            {extraction?.status === 'failed' || extraction?.status === 'unauthorized' ? (
               <>
                 <ErrorDisplay
                   friendlyMessage={

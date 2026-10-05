@@ -34,10 +34,17 @@ vi.mock('@/lib/projects-api', () => ({
   getProject: vi.fn(),
 }));
 
+// The extraction lifecycle refreshes the story's version history; the mock keeps
+// that read in the test instead of reaching the network.
+vi.mock('@/lib/versioning-api', () => ({
+  listVersions: vi.fn(),
+}));
+
 import * as api from '@/lib/tasks-api';
 import * as storiesApi from '@/lib/stories-api';
 import * as projectsApi from '@/lib/projects-api';
 import * as workspaceApi from '@/lib/workspace-api';
+import { listVersions } from '@/lib/versioning-api';
 import { useTaskStore } from '@/stores/taskStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
@@ -262,6 +269,7 @@ describe('taskStore — stale workspace continuations', () => {
           userStoryStatus: 'extracting',
           error: null,
           errorCode: null,
+          versionNumber: null,
         },
       },
     });
@@ -314,7 +322,7 @@ describe('taskStore — stale workspace continuations', () => {
     // remains, so "no workspace" is the scope from here on — not the unobserved state.
     await useWorkspaceStore.getState().deleteWorkspace('ws-a');
 
-    pendingStart.resolve({ extractionId: 'ext-1', status: 'pending', modelUsed: 'llama3' });
+    pendingStart.resolve({ extractionId: 'ext-1', status: 'pending', modelUsed: 'llama3', versionNumber: null });
     await inflight;
     // Drain the projects fetch the switch triggered, so no promise leaks into the next test.
     await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
@@ -346,6 +354,7 @@ describe('taskStore — stale workspace continuations', () => {
           userStoryStatus: 'extracting',
           error: null,
           errorCode: null,
+          versionNumber: null,
         },
       },
     });
@@ -454,6 +463,7 @@ describe('taskStore — stale workspace continuations', () => {
           userStoryStatus: 'extracting',
           error: null,
           errorCode: null,
+          versionNumber: null,
         },
       },
     });
@@ -476,6 +486,7 @@ describe('taskStore — stale workspace continuations', () => {
           userStoryStatus: 'failed_extraction',
           error: null,
           errorCode: 'server',
+          versionNumber: null,
         },
       },
     });
@@ -562,7 +573,7 @@ describe('taskStore — extraction started in a workspace that was discarded', (
     // The user switches to ws-b while the POST is still inflight.
     useWorkspaceStore.getState().setCurrentWorkspace(makeWorkspace('ws-b'));
 
-    pendingStart.resolve({ extractionId: 'ext-1', status: 'pending', modelUsed: 'llama3' });
+    pendingStart.resolve({ extractionId: 'ext-1', status: 'pending', modelUsed: 'llama3', versionNumber: null });
     await inflight;
     // Drain the projects fetch the switch triggered, so no promise leaks into the next test.
     await vi.waitFor(() => expect(useProjectStore.getState().loading).toBe(false));
@@ -602,6 +613,7 @@ describe('taskStore — extraction started in a workspace that was discarded', (
       extractionId: 'ext-9',
       status: 'pending',
       modelUsed: 'llama3',
+      versionNumber: null,
     });
 
     // A real switch already landed on ws-b...
@@ -621,6 +633,7 @@ describe('taskStore — extraction started in a workspace that was discarded', (
       extractionId: 'ext-2',
       status: 'pending',
       modelUsed: 'llama3',
+      versionNumber: null,
     });
     vi.mocked(api.getExtractionStatus).mockResolvedValue(failedStatus);
 
@@ -742,5 +755,117 @@ describe('taskStore — version-aware task read (W6-B1)', () => {
     expect(api.listTasks).toHaveBeenCalledTimes(1);
     // Exactly the pre-versioning call: no extraction_id argument at all.
     expect(api.listTasks).toHaveBeenCalledWith('story-2');
+  });
+});
+
+describe('taskStore — the extraction lifecycle refreshes the version history', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetScopedWorkspace();
+    vi.mocked(api.listTasks).mockResolvedValue([]);
+    vi.mocked(api.listTasksByWorkspace).mockResolvedValue([]);
+    vi.mocked(storiesApi.getStory).mockResolvedValue(story);
+    vi.mocked(listVersions).mockResolvedValue([]);
+    useTaskStore.setState({
+      tasks: {},
+      workspaceTasks: [],
+      extractions: {},
+      loading: false,
+      error: null,
+      updatingTaskId: null,
+      allowedTransitions: {},
+    });
+  });
+
+  it('keeps the number the 202 minted and refreshes the history right after the POST', async () => {
+    vi.mocked(api.startExtraction).mockResolvedValue({
+      extractionId: 'ext-9',
+      status: 'pending',
+      modelUsed: 'llama3.2',
+      versionNumber: 9,
+    });
+    // Hold the first poll in flight so the entry stays `pending` for the assertions.
+    const statusInFlight = deferred<Awaited<ReturnType<typeof api.getExtractionStatus>>>();
+    vi.mocked(api.getExtractionStatus).mockImplementation(() => statusInFlight.promise);
+
+    await useTaskStore.getState().extractTasks('story-2', 'ws-a');
+
+    // The pending version exists as soon as the POST answers, so the selector can
+    // show it before the run finishes.
+    expect(listVersions).toHaveBeenCalledWith('story-2');
+    const entry = useTaskStore.getState().extractions['story-2'];
+    expect(entry.status).toBe('pending');
+    expect(entry.versionNumber).toBe(9);
+  });
+
+  it('does not refresh the history when the POST itself failed', async () => {
+    vi.mocked(api.startExtraction).mockRejectedValue(new Error('boom'));
+
+    await useTaskStore.getState().extractTasks('story-2', 'ws-a');
+
+    expect(listVersions).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().extractions['story-2'].versionNumber).toBeNull();
+  });
+
+  it('refreshes the history and keeps the minted number when the run settles completed', async () => {
+    useTaskStore.setState({
+      extractions: {
+        'story-2': {
+          extractionId: 'ext-9',
+          status: 'pending',
+          userStoryStatus: 'extracting',
+          error: null,
+          errorCode: null,
+          versionNumber: 9,
+        },
+      },
+    });
+    vi.mocked(api.getExtractionStatus).mockResolvedValue({
+      id: 'ext-9',
+      userStoryId: 'story-2',
+      modelUsed: 'llama3',
+      status: 'completed',
+      userStoryStatus: 'extracted',
+      errorInfo: null,
+      confidenceScore: null,
+    });
+
+    await useTaskStore.getState().pollExtraction('story-2', 'ws-a', 'ext-9');
+
+    // The version row now carries its terminal status and the new current flag,
+    // so the history has to be re-read for the selector to say so.
+    expect(listVersions).toHaveBeenCalledWith('story-2');
+    const entry = useTaskStore.getState().extractions['story-2'];
+    expect(entry.status).toBe('completed');
+    expect(entry.versionNumber).toBe(9);
+  });
+
+  it('refreshes the history when the run settles failed, keeping its consumed number', async () => {
+    useTaskStore.setState({
+      extractions: {
+        'story-2': {
+          extractionId: 'ext-9',
+          status: 'pending',
+          userStoryStatus: 'extracting',
+          error: null,
+          errorCode: null,
+          versionNumber: 9,
+        },
+      },
+    });
+    vi.mocked(api.getExtractionStatus).mockResolvedValue({
+      id: 'ext-9',
+      userStoryId: 'story-2',
+      modelUsed: 'llama3',
+      status: 'failed',
+      userStoryStatus: 'failed_extraction',
+      errorInfo: 'model unreachable',
+      confidenceScore: null,
+    });
+
+    await useTaskStore.getState().pollExtraction('story-2', 'ws-a', 'ext-9');
+
+    expect(listVersions).toHaveBeenCalledWith('story-2');
+    expect(useTaskStore.getState().extractions['story-2'].versionNumber).toBe(9);
   });
 });

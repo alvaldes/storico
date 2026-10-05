@@ -110,6 +110,7 @@ function idleExtraction(): ExtractionState {
     userStoryStatus: null,
     error: null,
     errorCode: null,
+    versionNumber: null,
   };
 }
 
@@ -120,6 +121,7 @@ function pendingExtraction(): ExtractionState {
     userStoryStatus: 'extracting',
     error: null,
     errorCode: null,
+    versionNumber: 2,
   };
 }
 
@@ -392,6 +394,35 @@ describe('StoryDetail — version selector and version-aware actions', () => {
     resetStores();
     extractTasksSpy = vi.fn().mockResolvedValue(undefined);
     useTaskStore.setState({ extractTasks: extractTasksSpy as never });
+  });
+
+  it('shows and selects the pending version of the run in progress, never the no-output card', async () => {
+    setExtraction({
+      extractionId: 'ext-2',
+      status: 'pending',
+      userStoryStatus: 'extracting',
+      error: null,
+      errorCode: null,
+      versionNumber: 2,
+    });
+    vi.mocked(listVersions).mockResolvedValue([
+      makeVersion({ id: 'ext-2', versionNumber: 2, status: 'pending', hasOutput: false }),
+      makeVersion({ id: 'ext-1', versionNumber: 1, isCurrent: true }),
+    ]);
+    useTaskStore.setState({ tasks: { [STORY_ID]: [] } });
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    // The combobox is there even though the run has not finished, and it holds the
+    // version the run minted — not the still-current previous one.
+    const selector = (await screen.findByRole('combobox', {
+      name: t.versionSelector.label,
+    })) as HTMLSelectElement;
+    await waitFor(() => expect(selector.value).toBe('ext-2'));
+    expect(screen.getByText(t.stories.extraction_tasks_in_progress)).toBeInTheDocument();
+    // A pending version has no output yet, but it is not a failed one: the
+    // no-output card belongs to a run that ended.
+    expect(screen.queryByText(t.versionSelector.no_output_title)).not.toBeInTheDocument();
   });
 
   it('lists every version with exactly the current one marked', async () => {

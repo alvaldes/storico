@@ -119,20 +119,30 @@ export async function startExtraction(
   extractionId: string;
   status: string;
   modelUsed: string;
+  /**
+   * The version number this run minted (D22). The 202 body carries it so the
+   * client can address the run before its first poll — the pending row exists as
+   * soon as the POST answers. ``null`` is the legacy shape where the row carried
+   * no number; it is forwarded as null rather than normalized away.
+   */
+  versionNumber: number | null;
 }> {
-  const raw = await api.post<{ extraction_id: string; status: string; model_used: string }>(
-    `/api/v1/workspaces/${workspaceId}/extract/`,
-    {
-      user_story_id: storyId,
-      model: options?.model ?? null,
-      temperature: options?.temperature ?? null,
-      run_validation: false,
-    },
-  );
+  const raw = await api.post<{
+    extraction_id: string;
+    status: string;
+    model_used: string;
+    version_number: number | null;
+  }>(`/api/v1/workspaces/${workspaceId}/extract/`, {
+    user_story_id: storyId,
+    model: options?.model ?? null,
+    temperature: options?.temperature ?? null,
+    run_validation: false,
+  });
   return {
     extractionId: raw.extraction_id,
     status: raw.status,
     modelUsed: raw.model_used,
+    versionNumber: raw.version_number ?? null,
   };
 }
 

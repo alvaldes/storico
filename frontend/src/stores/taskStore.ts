@@ -36,6 +36,13 @@ export interface ExtractionState {
   error: ErrorInfo | null;
   /** Categorized failure cause so consumers can react specifically (e.g. 401 → re-auth). */
   errorCode: ExtractionErrorCode;
+  /**
+   * The version number this run minted, as the 202 body reported it. The page
+   * follows it to select the version the user just started, pending or settled,
+   * so the selector names the run instead of waiting for a reload. `null` means
+   * "no run started (or the POST failed)" — never a zero.
+   */
+  versionNumber: number | null;
 }
 
 export interface TaskState {
@@ -190,6 +197,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           userStoryStatus: null,
           error: null,
           errorCode: null,
+          versionNumber: null,
         },
       },
     }));
@@ -212,9 +220,15 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             userStoryStatus: null,
             error: null,
             errorCode: null,
+            versionNumber: result.versionNumber,
           },
         },
       }));
+
+      // The row is born `pending` before the 202 answers, so the history already
+      // holds the version the selector must show while the run is still going.
+      // Fire-and-forget: `fetchVersions` records its own failure and never rejects.
+      void useStoryStore.getState().fetchVersions(storyId);
 
       // Start polling in the background
       get().pollExtraction(storyId, workspaceId, result.extractionId);
@@ -237,6 +251,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             userStoryStatus: unauthorized ? null : 'failed_extraction',
             error: errorInfo,
             errorCode,
+            versionNumber: null,
           },
         },
       }));
@@ -248,6 +263,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     // workspace was discarded meanwhile, the continuation must not land on the new
     // workspace's slices. The scope check is read fresh right before each write.
     const scopeCurrent = () => isScopedWorkspace(workspaceId);
+    // The number `extractTasks` stored from the 202. Preserved across every terminal
+    // write below so the page can keep following the version it started.
+    const versionNumber = get().extractions[storyId]?.versionNumber ?? null;
     try {
       const status = await api.getExtractionStatus(extractionId);
 
@@ -279,6 +297,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
               userStoryStatus: status.userStoryStatus as UserStoryStatus,
               error: null,
               errorCode: null,
+              versionNumber,
             },
           },
         }));
@@ -288,6 +307,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         } catch {
           /* best effort */
         }
+        // The version row now carries its terminal status and the new current
+        // flag; the selector reads the history, so it has to be re-read. The
+        // scope is re-checked: a switch during the refreshes above must not
+        // repopulate the new workspace's slice.
+        if (scopeCurrent()) void useStoryStore.getState().fetchVersions(storyId);
       } else if (status.status === 'failed') {
         if (!scopeCurrent()) return;
         const errorInfo: ErrorInfo = {
@@ -305,6 +329,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
               userStoryStatus: status.userStoryStatus as UserStoryStatus,
               error: errorInfo,
               errorCode: 'server',
+              versionNumber,
             },
           },
         }));
@@ -314,6 +339,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         } catch {
           /* best effort */
         }
+        // A failed run keeps its consumed number and its row: it must appear in
+        // the selector with its error, so the history is re-read too.
+        if (scopeCurrent()) void useStoryStore.getState().fetchVersions(storyId);
       } else {
         // Still pending — poll again after a short delay, update userStoryStatus
         if (!scopeCurrent()) return;
@@ -350,6 +378,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             userStoryStatus: unauthorized ? null : 'failed_extraction',
             error: errorInfo,
             errorCode,
+            versionNumber,
           },
         },
       }));

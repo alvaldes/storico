@@ -106,6 +106,7 @@ describe('workspaceStore — workspace switching hygiene', () => {
           userStoryStatus: 'extracting',
           error: null,
           errorCode: null,
+          versionNumber: null,
         },
       },
       loading: false,

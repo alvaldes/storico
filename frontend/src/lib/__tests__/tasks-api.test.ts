@@ -243,6 +243,7 @@ describe('tasks-api', () => {
         extraction_id: 'ext1',
         status: 'pending',
         model_used: 'llama3.2',
+        version_number: 3,
       });
 
       const result = await tasksApi.startExtraction(storyId, wid, {
@@ -256,7 +257,12 @@ describe('tasks-api', () => {
         temperature: 0.1,
         run_validation: false,
       });
-      expect(result).toEqual({ extractionId: 'ext1', status: 'pending', modelUsed: 'llama3.2' });
+      expect(result).toEqual({
+        extractionId: 'ext1',
+        status: 'pending',
+        modelUsed: 'llama3.2',
+        versionNumber: 3,
+      });
     });
 
     it('allows calling without options', async () => {
@@ -275,6 +281,9 @@ describe('tasks-api', () => {
         run_validation: false,
       });
       expect(result.status).toBe('pending');
+      // The 202 always carries the minted number; an absent one stays null rather
+      // than becoming NaN/undefined on the extraction state.
+      expect(result.versionNumber).toBeNull();
     });
   });
 
