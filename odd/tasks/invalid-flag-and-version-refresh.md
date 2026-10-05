@@ -1,15 +1,18 @@
 # ODD Feature: invalid-flag-and-version-refresh
 
-> **Status**: in progress
+> **Status**: T1–T3 implemented, gated, and committed on the branch (`4d96f03`, `b487ee5`, `1193f1d`,
+> plus `1a52049` for the port pin and the formatter pass); independent verification pending
 > **Created**: 2026-10-05
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: stacked on the current `chore/issue-forms` (owner's choice, asked and answered
 > before the first write — the working tree also carries the owner's own uncommitted edits to
 > `StatusPanel.tsx` / `PublicLayout.astro` / `astro.config.mjs`, which this slice does not touch).
-> **Receipt-driven development**: to be re-read (`gentle-ai review mode status`) before the
-> candidate is reported complete; the record will state what it read then, not what it assumed now.
+> **Receipt-driven development**: **off** in this clone — `gentle-ai review mode status` read on
+> 2026-10-05: `receipt-driven development: off (decided by clone_local)`, global `on`, clone-local
+> `off`. No native review lineage was started, and none was expected; the gate is an independent
+> verification over the committed range, the same shape `task-control-copy-truth` used.
 > **TDD**: `strict_tdd: true` in `openspec/config.yaml`. Both halves are behaviour changes with
-> runnable deterministic tests, so every task observes RED before GREEN.
+> runnable deterministic tests, so every task observed RED before GREEN.
 
 ## Problem
 
@@ -60,7 +63,7 @@ nothing re-reads it**.
 
 ### T1 — Backend: the story's active marks are readable
 
-- **Status**: pending
+- **Status**: done — `4d96f03`, pin/format follow-up `1a52049`
 - **What**: `TaskInvalidationRepository.list_active_for_story(user_story_id)` (port + SQLAlchemy
   implementation, one join `task_invalidations → tasks` filtered by `tasks.user_story_id` and
   `revoked_at IS NULL`, ordered `marked_at DESC`); `StoryInvalidationResponse` (the mark plus its
@@ -71,7 +74,7 @@ nothing re-reads it**.
 
 ### T2 — Frontend: the card flag reflects the mark, live
 
-- **Status**: pending
+- **Status**: done — `b487ee5`
 - **What**: `listStoryInvalidations(storyId)` in `versioning-api.ts` + types;
   `StoryDetail` reads it once per story into a `task_id → mark` map, renders the card's `Flag`
   as marked (`aria-pressed`, filled/red, distinct localized label) when the displayed task has an
@@ -83,7 +86,7 @@ nothing re-reads it**.
 
 ### T3 — Frontend: the version appears and follows the run
 
-- **Status**: pending
+- **Status**: done — `1193f1d`
 - **What**: `startExtraction` returns `versionNumber`; `ExtractionState` carries it (and
   `getExtractionStatus` reports it); the store refreshes versions after the POST and in the
   completed/failed poll branches; `StoryDetail` selects the version whose number matches the run
@@ -96,7 +99,7 @@ nothing re-reads it**.
 
 ### T4 — Gate
 
-- **Status**: pending
+- **Status**: done — this commit
 - **Commands** (from the repo root / the right directory):
   - `cd backend && conda run -n storico python -m ruff check src tests`
   - `cd backend && conda run -n storico python -m pytest -m "not integration" -q`
@@ -121,4 +124,28 @@ _(no row is written before its command has actually run)_
 
 | Task | Commit | Outcome |
 |------|--------|---------|
-| | | |
+| T1 | `4d96f03` (follow-up `1a52049`) | `list_active_for_story` on the port + SQLAlchemy; `StoryInvalidationResponse` (mark + `task_id`); `GET /api/v1/stories/{story_id}/invalidations`, membership-gated, bare array. Observed RED first: the repository test failed with `AttributeError: ... has no attribute 'list_active_for_story'` and the three API cases answered 404 (route absent). GREEN: repository scope case + three API cases, 148 passed across `test_stories.py` / `test_task_invalidation.py` / `test_tasks.py`; ruff clean. `1a52049` adds the port-surface pin's eighth method (the pin failed on the full suite — 1 failed, 1285 passed) and the `ruff format` pass over the new test class. |
+| T2 | `b487ee5` | `listStoryInvalidations` + types; the story-marks read and the `Set<taskId>` state; the card flag's pressed/filled/destructive state; `TaskEditor.onInvalidationChange` after a confirmed mark write (before the PUT). Observed RED first: 5 new cases failed (the API path/mapping, the card pressed/unpressed, the no-refetch flip, and both editor callbacks). GREEN: the three focused files 60/60; full frontend suite green except the pre-existing `status-probes-mirror` failure named below; `tsc --noEmit` clean. |
+| T3 | `1193f1d` | `startExtraction` returns the 202's `version_number`; `ExtractionState.versionNumber` survives every terminal write; the store refreshes the history after the POST and in the completed/failed poll branches; `StoryDetail` selects the minted version and renders the pending panel instead of the no-output card. Observed RED first: 7 new cases failed (two API mappings, four store lifecycle cases, the pending-version case). GREEN: the three focused files 72/72; `tsc --noEmit` clean. |
+| T4 | this commit | Gate, run from the right directories. **Backend:** `ruff check src tests` → `All checks passed!`; `ruff format --check src tests` → 272 files already formatted; `pytest -m "not integration" -q` → **1286 passed, 45 deselected, 5 warnings** (all five are the pre-existing Starlette 422 deprecation warnings). **Frontend:** `vitest run` → **57 files passed, 1 failed; 682 tests passed, 1 failed**; `tsc --noEmit` → no output; `astro build` → `Complete!`. The single failure is named and pre-existing (see the risks table). |
+
+### The one failing test, and why it is not this candidate's
+
+`frontend/src/lib/__tests__/status-probes-mirror.test.ts` → `has copy for every row in both locales`
+fails with *"the status panel declares the serviceRows array"*. It reads
+`frontend/src/components/react/StatusPanel.tsx` and matches the declared array with
+`/const serviceRows: [\s\S]*?= \[([\s\S]*?)\n\];/`. Measured both ways on this machine: the regex
+matches the file at `HEAD` and **does not** match the working-tree file, which the owner was
+typing during this session (`StatusPanel.tsx`, mtime 13:54; `PublicLayout.astro`, 13:58). It is the
+owner's in-flight edit, untouched by this slice — no file this slice writes is involved.
+
+The Docker-gated Postgres integration cases were not run locally: there is no Docker daemon on
+this machine (`AGENTS.md` records the same). They are CI-only evidence and are not claimed here.
+
+## Non-goals confirmed, not silently dropped
+
+- The card flag keeps its existing owner/admin and non-frozen gate: a marked task on a **frozen**
+  version still shows no flag, because the control that would show it is hidden there. That is the
+  pre-existing gate, unchanged; surfacing the mark on frozen cards is a separate decision.
+- The Kanban board and the export do not render the flag; the `Flag` control exists only on the
+  story-detail card.
