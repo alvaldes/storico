@@ -10,6 +10,7 @@ import { type Locale } from '@/i18n/utils';
 import { useAuthStore, type AuthUser } from '@/stores/authStore';
 import { fetchFullUserProfile } from '@/lib/user-api';
 import { OnboardingModal } from '@/components/react/OnboardingModal';
+import { FullPageLoader } from '@/components/react/FullPageLoader';
 import { useThemeHydration } from '@/stores/uiStore';
 
 interface DashboardShellProps {
@@ -83,6 +84,9 @@ export function DashboardShell({
           <div className="relative flex-1 min-h-0 overflow-hidden p-px">{children}</div>
         </main>
       </SidebarInset>
+      {/* Single mount point for the blocking loader: every ApiClient mutation
+          in the app happens under this shell. */}
+      <FullPageLoader locale={locale} />
       <Toaster />
     </SidebarProvider>
   );

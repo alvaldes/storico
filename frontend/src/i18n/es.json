@@ -42,7 +42,8 @@
     "create": "Crear",
     "search": "Buscar",
     "clear": "Quitar",
-    "retry": "Reintentar"
+    "retry": "Reintentar",
+    "processing": "Procesando..."
   },
   "errorDisplay": {
     "show_details": "Mostrar detalles del error del backend",

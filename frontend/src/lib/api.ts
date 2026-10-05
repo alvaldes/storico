@@ -1,6 +1,8 @@
 import type { Task, TaskStatus } from '@/types/task';
 import type { UserStory, UserStoryStatus } from '@/types/story';
 import type { ExtractionResponse } from '@/types/extraction';
+import { shouldBlockRequest } from './blocking-requests';
+import { beginBlockingRequest, endBlockingRequest } from '@/stores/loadingStore';
 
 const BASE_URL = ''; // Proxy through Astro (same-origin)
 
@@ -142,20 +144,31 @@ class ApiClient {
   }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
-    const headers: Record<string, string> = {};
+    // Reads are exempt from the full-page loader: the 2 s extraction poll and
+    // every background refresh are GETs, so filtering by method is what keeps
+    // them from ever raising the overlay.
+    const blocking = shouldBlockRequest(method, path);
+    if (blocking) beginBlockingRequest();
+    try {
+      const url = `${this.baseUrl}${path}`;
+      const headers: Record<string, string> = {};
 
-    if (body !== undefined) {
-      headers['Content-Type'] = 'application/json';
+      if (body !== undefined) {
+        headers['Content-Type'] = 'application/json';
+      }
+
+      const response = await fetch(url, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+
+      return this.parseResponse<T>(response);
+    } finally {
+      // Runs on the throwing path too: an error response must still release
+      // the overlay, and the error itself is re-raised untouched.
+      if (blocking) endBlockingRequest();
     }
-
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-
-    return this.parseResponse<T>(response);
   }
 
   /**
@@ -168,9 +181,16 @@ class ApiClient {
    * the calling module applies toCamelCase/toSnakeCase itself.
    */
   async postForm<T>(path: string, form: FormData): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
-    const response = await fetch(url, { method: 'POST', body: form });
-    return this.parseResponse<T>(response);
+    // A CSV import is a long-running mutation: it blocks like any other write.
+    const blocking = shouldBlockRequest('POST', path);
+    if (blocking) beginBlockingRequest();
+    try {
+      const url = `${this.baseUrl}${path}`;
+      const response = await fetch(url, { method: 'POST', body: form });
+      return this.parseResponse<T>(response);
+    } finally {
+      if (blocking) endBlockingRequest();
+    }
   }
 
   /** Shared success/error handling for every response: throws ApiRequestError on !ok, parses JSON otherwise. */

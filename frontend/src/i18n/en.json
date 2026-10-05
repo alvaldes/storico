@@ -42,7 +42,8 @@
     "create": "Create",
     "search": "Search",
     "clear": "Clear",
-    "retry": "Retry"
+    "retry": "Retry",
+    "processing": "Processing..."
   },
   "errorDisplay": {
     "show_details": "Show backend error details",
