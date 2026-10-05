@@ -120,7 +120,10 @@ describe('the status page mirrors the backend probes', () => {
 
   it('has copy for every row in both locales', () => {
     const rows = statusPanelSource.match(
-      /const serviceRows: [\s\S]*?= \[([\s\S]*?)\n\];/,
+      // The literal is pinned from `const serviceRows` to its closing `];`; the
+      // terminator's indentation is deliberately not part of the pin, so the
+      // guard does not also freeze a formatting choice.
+      /const serviceRows: [\s\S]*?= \[([\s\S]*?)\n\s*\];/,
     )?.[1];
     expect(rows, 'the status panel declares the serviceRows array').toBeDefined();
 

@@ -39,7 +39,8 @@ const badgeTextClass = (state: BadgeState) => {
 
 const bannerBgClass = (state: string) => {
   if (state === 'ok') return 'bg-(--color-success-bg) border-(--color-success-border)';
-  if (state === 'degraded') return 'bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:border-amber-800';
+  if (state === 'degraded')
+    return 'bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:border-amber-800';
   if (state === 'pending') return 'border-(--color-border)';
   return 'bg-red-50 border-red-200 dark:bg-red-950/40 dark:border-red-800';
 };
@@ -230,10 +231,11 @@ export function StatusPanel({ locale }: { locale: Locale }) {
           ? `${embeddingsProbe.provider} / ${embeddingsProbe.model}`
           : undefined,
     },
-// The closing bracket sits at column 0 on purpose: `status-probes-mirror.test.ts`
-// extracts this array's copy keys with a regex that pins the `\n];` terminator, and the
-// drift guarantee must survive the move out of the `.astro` frontmatter unchanged.
-];
+    // `status-probes-mirror.test.ts` reads this array's copy keys straight from the
+    // source, matching the literal from `const serviceRows` to its closing `];`; the
+    // terminator's indentation is not part of the pin, only that the array is a literal.
+    // The drift guarantee therefore survives the move out of the `.astro` frontmatter.
+  ];
 
   // The per-group views of `serviceRows`, declared after the array they read. The old SSR
   // page guarded this ordering against a frontmatter TDZ that would have 500'd every request
@@ -283,8 +285,12 @@ export function StatusPanel({ locale }: { locale: Locale }) {
     <section aria-busy={pending} aria-label={t.pages.status.services_title}>
       {/* Status indicator banner. `role="status"` + `aria-live="polite"` on the verdict text
           announces the settled result once, without the pending state spamming the reader. */}
-      <div className={`flex items-center gap-3 rounded-lg border p-4 ${bannerBgClass(bannerState)}`}>
-        <span className={`relative block h-3 w-3 shrink-0 rounded-full ${bannerDotClass(bannerState)}`}>
+      <div
+        className={`flex items-center gap-3 rounded-lg border p-4 mb-2 ${bannerBgClass(bannerState)}`}
+      >
+        <span
+          className={`relative block h-3 w-3 shrink-0 rounded-full ${bannerDotClass(bannerState)}`}
+        >
           {bannerState !== 'pending' && (
             <span
               className={`absolute inline-flex h-3 w-3 animate-ping rounded-full ${bannerDotClass(bannerState)} opacity-75`}
@@ -306,21 +312,23 @@ export function StatusPanel({ locale }: { locale: Locale }) {
         </div>
       )}
 
-      <h2 className="text-xl font-bold text-(--color-text)">{t.pages.status.services_title}</h2>
+      <h2 className="mt-8 text-xl font-bold text-(--color-text)">
+        {t.pages.status.services_title}
+      </h2>
 
       <h3 className="text-sm font-semibold tracking-wide text-(--color-text-secondary) uppercase">
         {t.pages.status.core_group}
       </h3>
 
-      <div className="divide-y divide-(--color-border) rounded-lg border border-(--color-border)">
+      <div className="mt-2 divide-y divide-(--color-border) rounded-lg border border-(--color-border)">
         {coreRows.map(renderRow)}
       </div>
 
-      <h3 className="text-sm font-semibold tracking-wide text-(--color-text-secondary) uppercase">
+      <h3 className="mt-8 text-sm font-semibold tracking-wide text-(--color-text-secondary) uppercase">
         {t.pages.status.optional_group}
       </h3>
 
-      <div className="divide-y divide-(--color-border) rounded-lg border border-(--color-border)">
+      <div className="my-2 divide-y divide-(--color-border) rounded-lg border border-(--color-border)">
         {optionalRows.map(renderRow)}
       </div>
 
