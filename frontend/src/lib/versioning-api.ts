@@ -3,6 +3,8 @@ import type { StoryVersion, RawStoryVersion } from '@/types/story';
 import type {
   TaskInvalidation,
   RawTaskInvalidation,
+  StoryInvalidation,
+  RawStoryInvalidation,
   RepetitionMatch,
   RepetitionResponse,
   RawRepetitionMatch,
@@ -37,6 +39,10 @@ function mapInvalidation(raw: RawTaskInvalidation): TaskInvalidation {
   };
 }
 
+function mapStoryInvalidation(raw: RawStoryInvalidation): StoryInvalidation {
+  return { ...mapInvalidation(raw), taskId: raw.task_id };
+}
+
 function mapRepetitionMatch(raw: RawRepetitionMatch): RepetitionMatch {
   return {
     versionNumber: raw.version_number,
@@ -57,6 +63,21 @@ export async function listVersions(storyId: string): Promise<StoryVersion[]> {
 }
 
 // ── Invalidation marks ──
+
+// ── Invalidation marks ──
+
+/**
+ * The story's active marks, newest first — the card flag's read.
+ *
+ * One request for the whole story instead of one per task: the story-detail
+ * page renders a flag per card, and the marks read is story-scoped. All versions
+ * of the story come back; the caller intersects them with the tasks it is
+ * displaying.
+ */
+export async function listStoryInvalidations(storyId: string): Promise<StoryInvalidation[]> {
+  const raw = await api.get<RawStoryInvalidation[]>(`/api/v1/stories/${storyId}/invalidations`);
+  return raw.map(mapStoryInvalidation);
+}
 
 /** Mark a task invalid with a mandatory reason (201 with the stored mark). */
 export async function createInvalidation(taskId: string, reason: string): Promise<TaskInvalidation> {

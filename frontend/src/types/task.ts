@@ -79,6 +79,23 @@ export interface TaskInvalidation {
   revokedAt: string | null;
 }
 
+/** Raw story-scoped mark from `GET /stories/{id}/invalidations` (snake_case). */
+export interface RawStoryInvalidation extends RawTaskInvalidation {
+  task_id: string;
+}
+
+/**
+ * One active mark of a story's tasks: the mark plus the task it belongs to.
+ *
+ * The per-task read's `TaskInvalidation` deliberately omits `taskId` — its route
+ * path is the task, so echoing it back says nothing. A story-scoped read answers
+ * many tasks, so the id is the answer's whole point. Revoked marks are not part
+ * of this read; the history belongs to the task-scoped read.
+ */
+export interface StoryInvalidation extends TaskInvalidation {
+  taskId: string;
+}
+
 /** Raw D16 repetition match from the API (snake_case). */
 export interface RawRepetitionMatch {
   version_number: number;

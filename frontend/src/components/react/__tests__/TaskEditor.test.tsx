@@ -680,6 +680,34 @@ describe('TaskEditor — mark controls, confirmations and the D16 notice', () =>
     });
   });
 
+  it('reports the confirmed mark to the parent so its flag can flip without a refetch', async () => {
+    const user = userEvent.setup();
+    const onInvalidationChange = vi.fn();
+    vi.mocked(versioningApi.createInvalidation).mockResolvedValue(activeMark);
+    vi.mocked(api.updateTask).mockResolvedValue(mockTask);
+
+    render(
+      <TaskEditor
+        task={mockTask}
+        open={true}
+        frozen={false}
+        markDefaultChecked={true}
+        onOpenChange={vi.fn()}
+        onInvalidationChange={onInvalidationChange}
+        locale="en"
+      />,
+    );
+
+    await screen.findByText('Edit Task');
+    await user.type(screen.getByLabelText('Reason'), 'Duplicates the login task from v1');
+    await user.click(screen.getByText('Save Changes'));
+
+    const confirm = await screen.findByRole('alertdialog');
+    await user.click(within(confirm).getByRole('button', { name: 'Mark as invalid' }));
+
+    await waitFor(() => expect(onInvalidationChange).toHaveBeenCalledWith('task-1', true));
+  });
+
   it('revokes the mark after the confirmation when the checkbox is unchecked on a marked task', async () => {
     const user = userEvent.setup();
     vi.mocked(versioningApi.revokeInvalidation).mockResolvedValue(undefined);
@@ -710,6 +738,34 @@ describe('TaskEditor — mark controls, confirmations and the D16 notice', () =>
     await waitFor(() => {
       expect(api.updateTask).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('reports the confirmed revoke to the parent as unpressed', async () => {
+    const user = userEvent.setup();
+    const onInvalidationChange = vi.fn();
+    vi.mocked(versioningApi.revokeInvalidation).mockResolvedValue(undefined);
+    vi.mocked(api.updateTask).mockResolvedValue(mockTask);
+
+    render(
+      <TaskEditor
+        task={mockTask}
+        open={true}
+        frozen={false}
+        activeMark={activeMark}
+        onOpenChange={vi.fn()}
+        onInvalidationChange={onInvalidationChange}
+        locale="en"
+      />,
+    );
+
+    await screen.findByText('Edit Task');
+    await user.click(screen.getByRole('checkbox', { name: 'Invalid' }));
+    await user.click(screen.getByText('Save Changes'));
+
+    const confirm = await screen.findByRole('alertdialog');
+    await user.click(within(confirm).getByRole('button', { name: 'Remove mark' }));
+
+    await waitFor(() => expect(onInvalidationChange).toHaveBeenCalledWith('task-1', false));
   });
 
   it('cancelling the mark confirmation issues no request and keeps the editor open with the edits', async () => {

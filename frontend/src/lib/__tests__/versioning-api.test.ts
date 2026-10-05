@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   listVersions,
+  listStoryInvalidations,
   createInvalidation,
   listInvalidations,
   revokeInvalidation,
@@ -92,6 +93,39 @@ describe('versioning-api', () => {
           errorInfo: null,
           isCurrent: true,
           hasOutput: true,
+        },
+      ]);
+    });
+  });
+
+  describe('listStoryInvalidations', () => {
+    it('hits the story invalidations path and maps task_id onto taskId', async () => {
+      vi.mocked(api.get).mockResolvedValue([
+        { ...rawMark, task_id: 'task-1' },
+        { ...rawMark, id: 'mark-2', task_id: 'task-2', reason: 'second mark' },
+      ]);
+
+      const marks = await listStoryInvalidations('story-1');
+
+      expect(api.get).toHaveBeenCalledWith('/api/v1/stories/story-1/invalidations');
+      expect(marks).toEqual([
+        {
+          id: 'mark-1',
+          taskId: 'task-1',
+          reason: 'duplicates a task from v1',
+          markedBy: 'user-1',
+          markedAt: '2026-10-02T09:00:00Z',
+          revokedBy: null,
+          revokedAt: null,
+        },
+        {
+          id: 'mark-2',
+          taskId: 'task-2',
+          reason: 'second mark',
+          markedBy: 'user-1',
+          markedAt: '2026-10-02T09:00:00Z',
+          revokedBy: null,
+          revokedAt: null,
         },
       ]);
     });

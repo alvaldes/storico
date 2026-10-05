@@ -64,6 +64,14 @@ interface TaskEditorProps {
    * point is "ready to type".
    */
   reasonAutofocus?: boolean;
+  /**
+   * Called after a confirmed mark write (mark or revoke), with the task's new
+   * state, so a parent that renders the card flag can flip it without a
+   * re-read. Fires once per confirmed write, before the PUT: the mark exists
+   * server-side regardless of whether the PUT succeeds, and a PUT failure must
+   * not hide a real mark.
+   */
+  onInvalidationChange?: (taskId: string, hasActiveInvalidation: boolean) => void;
   onOpenChange: (open: boolean) => void;
   locale?: Locale;
 }
@@ -91,6 +99,7 @@ export function TaskEditor({
   activeMark = null,
   markDefaultChecked = false,
   reasonAutofocus = false,
+  onInvalidationChange,
   onOpenChange,
   locale = 'en',
 }: TaskEditorProps) {
@@ -303,9 +312,11 @@ export function TaskEditor({
       if (pendingMark === 'mark') {
         await createInvalidation(task.id, markReason.trim());
         setWasMarked(true);
+        onInvalidationChange?.(task.id, true);
       } else if (pendingMark === 'unmark') {
         await revokeInvalidation(task.id);
         setWasMarked(false);
+        onInvalidationChange?.(task.id, false);
       }
 
       // Store handles optimistic update + server response + rollback internally.

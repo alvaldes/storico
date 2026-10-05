@@ -12,6 +12,7 @@ import { useStoryStore } from '@/stores/storyStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useTranslations, type Locale } from '@/i18n/utils';
+import * as tasksApi from '@/lib/tasks-api';
 import type { Project } from '@/types/project';
 import type { Task } from '@/types/task';
 import type { UserStory } from '@/types/story';
@@ -45,6 +46,7 @@ vi.mock('@/lib/llm-config-api', () => ({
 // its own answer (an empty history by default, so pre-existing cases are unaffected).
 vi.mock('@/lib/versioning-api', () => ({
   listVersions: vi.fn(),
+  listStoryInvalidations: vi.fn(),
   createInvalidation: vi.fn(),
   listInvalidations: vi.fn(),
   revokeInvalidation: vi.fn(),
@@ -164,6 +166,9 @@ function resetStores() {
   // Default: the version read answers an empty history, which hides the
   // selector and leaves every pre-existing case exactly as it was.
   vi.mocked(listVersions).mockResolvedValue([]);
+  // The story-scoped marks read is the card flag's source; default to "no mark"
+  // so every pre-existing case keeps its unmarked cards.
+  vi.mocked(versioningApi.listStoryInvalidations).mockResolvedValue([]);
   // The mark-flow editor reads the task's marks on open; default to unmarked so
   // every pre-existing case is unaffected. The editor's D16 repetition read is
   // likewise defaulted to "no match".
@@ -549,6 +554,67 @@ describe('StoryDetail — version selector and version-aware actions', () => {
     expect(versioningApi.createInvalidation).not.toHaveBeenCalled();
     expect(versioningApi.revokeInvalidation).not.toHaveBeenCalled();
     expect(extractTasksSpy).not.toHaveBeenCalled();
+  });
+
+  it('shows the card flag as pressed for a marked task and unpressed for an unmarked one', async () => {
+    const otherTask: Task = { ...cardTask, id: 'task-2', title: 'Second task' };
+    useTaskStore.setState({ tasks: { [STORY_ID]: [cardTask, otherTask] } });
+    vi.mocked(versioningApi.listStoryInvalidations).mockResolvedValue([
+      {
+        id: 'mark-1',
+        taskId: cardTask.id,
+        reason: 'Duplicates the v1 task',
+        markedBy: 'user-1',
+        markedAt: '2026-10-05T12:00:00Z',
+        revokedBy: null,
+        revokedAt: null,
+      },
+    ]);
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    const flags = await screen.findAllByRole('button', { name: t.stories.mark_invalid });
+    await waitFor(() => expect(flags[0]).toHaveAttribute('aria-pressed', 'true'));
+    expect(flags[1]).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('flips the card flag after a confirmed mark, with no further story read', async () => {
+    const user = userEvent.setup();
+    useTaskStore.setState({ tasks: { [STORY_ID]: [cardTask] } });
+    vi.mocked(versioningApi.createInvalidation).mockResolvedValue({
+      id: 'mark-1',
+      reason: 'Duplicates the v1 task',
+      markedBy: 'user-1',
+      markedAt: '2026-10-05T12:00:00Z',
+      revokedBy: null,
+      revokedAt: null,
+    });
+    vi.mocked(tasksApi.updateTask).mockResolvedValue(cardTask);
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    const flag = await screen.findByRole('button', { name: t.stories.mark_invalid });
+    expect(flag).toHaveAttribute('aria-pressed', 'false');
+    await user.click(flag);
+
+    const editor = await screen.findByRole('dialog');
+    await user.type(
+      within(editor).getByLabelText(t.taskEditor.mark_reason_label),
+      'Duplicates the v1 task',
+    );
+    await user.click(within(editor).getByRole('button', { name: t.taskEditor.save }));
+
+    const confirm = await screen.findByRole('alertdialog');
+    await user.click(within(confirm).getByRole('button', { name: t.taskEditor.mark_confirm_accept }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: t.stories.mark_invalid })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
+    );
+    // One mount read, nothing after the save: the flip came from the confirmed write.
+    expect(vi.mocked(versioningApi.listStoryInvalidations)).toHaveBeenCalledTimes(1);
   });
 
   it('reads the selected frozen version\'s own tasks through its extraction_id', async () => {

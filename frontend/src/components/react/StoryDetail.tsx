@@ -21,7 +21,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getProject } from '@/lib/projects-api';
 import { getLLMConfigStatus, type LLMConfigStatus } from '@/lib/llm-config-api';
-import { listInvalidations } from '@/lib/versioning-api';
+import { listInvalidations, listStoryInvalidations } from '@/lib/versioning-api';
 import { canManageVersions } from '@/lib/workspace-role';
 import type { StoryVersion } from '@/types/story';
 import type { TaskInvalidation } from '@/types/task';
@@ -91,6 +91,12 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   // to its pre-versioning behavior instead of blocking on a hiccup.
   const versions = versionsByStory[storyId] ?? null;
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  // The tasks the story-scoped marks read answered as actively marked, by id.
+  // It is the card flag's only source, so marking a task needs no re-read: the
+  // editor's confirmed write flips this set through `onInvalidationChange`. A
+  // failed read leaves it empty — the flags stay unmarked rather than blocking
+  // the page, the same posture the versions read has.
+  const [markedTaskIds, setMarkedTaskIds] = useState<ReadonlySet<string>>(() => new Set());
   // Whether the extract confirmation is open. The confirmation is where the
   // version facts are named; the store's request only starts on accept.
   const [extractConfirming, setExtractConfirming] = useState(false);
@@ -125,6 +131,35 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   useEffect(() => {
     void fetchVersions(storyId);
   }, [fetchVersions, storyId]);
+
+  // Read the story's active marks once, for the card flags. One request for the
+  // whole story: the read is story-scoped and the page already knows which
+  // tasks it is showing.
+  useEffect(() => {
+    let active = true;
+    listStoryInvalidations(storyId)
+      .then((marks) => {
+        if (active) setMarkedTaskIds(new Set(marks.map((mark) => mark.taskId)));
+      })
+      .catch(() => {
+        if (active) setMarkedTaskIds(new Set());
+      });
+    return () => {
+      active = false;
+    };
+  }, [storyId]);
+
+  // The confirmed mark write flips the set, so the card updates without a
+  // re-read. A mark that was already created and a PUT that then failed still
+  // count: the mark exists server-side regardless of the PUT.
+  const handleInvalidationChange = (taskId: string, hasActiveInvalidation: boolean) => {
+    setMarkedTaskIds((previous) => {
+      const next = new Set(previous);
+      if (hasActiveInvalidation) next.add(taskId);
+      else next.delete(taskId);
+      return next;
+    });
+  };
 
   // Default the displayed version to the current one once the history lands.
   useEffect(() => {
@@ -613,12 +648,20 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
                           setMarkIntent(true);
                           setEditingTaskId(task.id);
                         }}
-                        className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                        className={
+                          markedTaskIds.has(task.id)
+                            ? 'text-destructive transition-colors'
+                            : 'text-muted-foreground/50 hover:text-muted-foreground transition-colors'
+                        }
                         disabled={extraction?.status === 'pending'}
                         title={t.stories.mark_invalid}
                         aria-label={t.stories.mark_invalid}
+                        aria-pressed={markedTaskIds.has(task.id)}
                       >
-                        <Flag className="h-3.5 w-3.5" />
+                        <Flag
+                          className="h-3.5 w-3.5"
+                          fill={markedTaskIds.has(task.id) ? 'currentColor' : 'none'}
+                        />
                       </button>
                     )}
                   </div>
@@ -760,6 +803,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
               activeMark={activeMark}
               markDefaultChecked={markIntent && !activeMark}
               reasonAutofocus={markIntent}
+              onInvalidationChange={handleInvalidationChange}
               onOpenChange={(open) => {
                 if (!open) setEditingTaskId(null);
               }}
