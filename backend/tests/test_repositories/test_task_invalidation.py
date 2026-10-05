@@ -1078,3 +1078,56 @@ async def test_the_count_is_scoped_to_the_extraction(
     count = await _repo(db_session).count_active_for_extraction(extraction_id=v2.id)
 
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_active_marks_of_a_story_exclude_revoked_rows_and_other_stories(
+    db_session: AsyncSession,
+) -> None:
+    """The story-scoped read answers exactly the story's active marks, newest first.
+
+    Three exclusions, each of which would be a wrong card on the page: a revoked
+    mark of the same story (history, not state), and an active mark of another
+    story (another page's card). The order is ``marked_at DESC`` so the read is
+    deterministic rather than incidental.
+    """
+    story_a = uuid4()
+    story_b = uuid4()
+    task_a1 = await seed_task(db_session, story_a, "Story A first")
+    task_a2 = await seed_task(db_session, story_a, "Story A second")
+    task_a3 = await seed_task(db_session, story_a, "Story A third — will be revoked")
+    task_b1 = await seed_task(db_session, story_b, "Story B only")
+
+    newer = await _seed_mark(
+        db_session,
+        task_a1.id,
+        reason="kept, newer",
+        marked_at=datetime(2026, 10, 5, 12, 0, tzinfo=UTC),
+    )
+    older = await _seed_mark(
+        db_session,
+        task_a2.id,
+        reason="kept, older",
+        marked_at=datetime(2026, 10, 5, 10, 0, tzinfo=UTC),
+    )
+    revoked = await _seed_mark(
+        db_session,
+        task_a3.id,
+        reason="revoked, so history",
+        marked_at=datetime(2026, 10, 5, 11, 0, tzinfo=UTC),
+    )
+    await _repo(db_session).revoke(
+        revoked.id, revoked_by=uuid4(), revoked_at=datetime(2026, 10, 5, 13, 0, tzinfo=UTC)
+    )
+    await _seed_mark(
+        db_session,
+        task_b1.id,
+        reason="another story",
+        marked_at=datetime(2026, 10, 5, 14, 0, tzinfo=UTC),
+    )
+
+    marks = await _repo(db_session).list_active_for_story(story_a)
+
+    assert [mark.id for mark in marks] == [newer.id, older.id]
+    assert [mark.task_id for mark in marks] == [task_a1.id, task_a2.id]
+    assert all(mark.revoked_at is None for mark in marks)

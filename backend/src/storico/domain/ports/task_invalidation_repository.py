@@ -92,6 +92,26 @@ class TaskInvalidationRepository(ABC):
         ...
 
     @abstractmethod
+    async def list_active_for_story(self, user_story_id: UUID) -> list[TaskInvalidation]:
+        """The story's active marks, newest first — the card flag's read.
+
+        The story-detail page renders one flag per task, so it needs to know
+        which of the story's tasks carry an active mark without asking per
+        task. The join is ``task_invalidations JOIN tasks``, filtered by
+        ``tasks.user_story_id = :user_story_id`` and
+        ``task_invalidations.revoked_at IS NULL``, ordered ``marked_at DESC``
+        so the read is deterministic. All versions of the story are included on
+        purpose: the caller intersects the result with the tasks it is
+        displaying, so selecting a frozen version keeps working without a
+        second query shape.
+
+        The rows are marks of the story's own tasks, so returning the entity —
+        with its ``task_id`` — is honest here, unlike the D16 candidate read,
+        whose rows belong to other tasks.
+        """
+        ...
+
+    @abstractmethod
     async def count_active_for_extraction(
         self, *, extraction_id: UUID, exclude_mark_id: UUID | None = None
     ) -> int:

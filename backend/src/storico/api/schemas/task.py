@@ -66,6 +66,18 @@ class InvalidationResponse(BaseModel):
     revoked_at: datetime | None
 
 
+class StoryInvalidationResponse(InvalidationResponse):
+    """One active mark of a story's tasks: the mark plus the task it belongs to.
+
+    ``task_id`` is the one field the per-task read deliberately omits — its
+    route path is the task. A story-scoped read answers many tasks, so the id
+    is the answer's whole point. Revoked marks are not part of this read; the
+    history belongs to the task-scoped read.
+    """
+
+    task_id: UUID
+
+
 class RepetitionMatch(BaseModel):
     """One D16 match: a mark on another version whose normalized title equals the task's.
 

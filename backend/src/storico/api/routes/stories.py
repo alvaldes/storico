@@ -30,6 +30,7 @@ from storico.api.schemas.story import (
     UpdateUserStoryRequest,
     UserStoryResponse,
 )
+from storico.api.schemas.task import StoryInvalidationResponse
 from storico.application.services.story_deletion_service import StoryDeletionService
 from storico.domain.entities import EntityNotFound, User, UserStory, Workspace, WorkspaceRole
 from storico.domain.entities.extraction import ExtractionStatus
@@ -38,6 +39,7 @@ from storico.domain.services.story_import import ImportRow, validate_import
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
+    SQLAlchemyTaskInvalidationRepository,
     SQLAlchemyUserStoryRepository,
     SQLAlchemyWorkspaceRepository,
 )
@@ -77,6 +79,11 @@ MemberRepoDep = Annotated[
 ExtractionRepoDep = Annotated[
     SQLAlchemyExtractionRepository,
     Depends(get_repository(SQLAlchemyExtractionRepository)),
+]
+
+InvalidationRepoDep = Annotated[
+    SQLAlchemyTaskInvalidationRepository,
+    Depends(get_repository(SQLAlchemyTaskInvalidationRepository)),
 ]
 
 WorkspaceRepoDep = Annotated[
@@ -312,6 +319,54 @@ async def list_story_versions(
             has_output=v.status == ExtractionStatus.COMPLETED,
         )
         for v in versions
+    ]
+
+
+@router.get("/{story_id}/invalidations")
+async def list_story_invalidations(
+    story_id: UUID,
+    current_user: User = Depends(get_current_user),
+    repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    invalidation_repo: InvalidationRepoDep = None,  # type: ignore[assignment]
+) -> list[StoryInvalidationResponse]:
+    """List the story's active invalidation marks, newest first.
+
+    The story-detail card renders one flag per task, so the page asks once for
+    the story instead of once per task. The user must be a member of the
+    workspace that owns the story's project — the unchanged
+    ``require_story_workspace_access`` walk, so a missing story is 404 and a
+    non-member is 403 ``NOT_A_WORKSPACE_MEMBER``, exactly the posture of
+    ``GET /{story_id}/versions``. The gate is membership, not ownership: every
+    member may read the record, the mutations are the gated half.
+
+    The response is a **bare unpaginated array** like the versions read: the
+    list is an input to the card, not a paginated resource. Every version of
+    the story is included; the caller intersects the marks with the tasks it is
+    displaying, so a frozen version's cards stay correct without a second
+    query shape. Revoked marks are history and never appear here — they belong
+    to ``GET /api/v1/tasks/{task_id}/invalidations``.
+    """
+    await require_story_workspace_access(
+        story_id,
+        current_user,
+        story_repo=repo,
+        project_repo=project_repo,
+        member_repo=member_repo,
+    )
+    marks = await invalidation_repo.list_active_for_story(story_id)
+    return [
+        StoryInvalidationResponse(
+            id=mark.id,
+            task_id=mark.task_id,
+            reason=mark.reason,
+            marked_by=mark.marked_by,
+            marked_at=mark.marked_at,
+            revoked_by=mark.revoked_by,
+            revoked_at=mark.revoked_at,
+        )
+        for mark in marks
     ]
 
 

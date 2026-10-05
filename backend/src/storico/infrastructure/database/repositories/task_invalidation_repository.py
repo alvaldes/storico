@@ -114,6 +114,26 @@ class SQLAlchemyTaskInvalidationRepository(TaskInvalidationRepository):
             raise EntityNotFound("TaskInvalidation", str(mark_id))
         await self._session.commit()
 
+    async def list_active_for_story(self, user_story_id: UUID) -> list[TaskInvalidation]:
+        """The story's active marks, newest first, as the port documents it.
+
+        One statement over the mark → task join; the story filter rides
+        ``tasks.user_story_id`` (the task carries its own story foreign key, so
+        no further join is needed) and revoked rows are excluded the same way
+        every other read excludes them.
+        """
+        stmt = (
+            select(TaskInvalidationModel)
+            .join(TaskModel, TaskModel.id == TaskInvalidationModel.task_id)
+            .where(
+                TaskModel.user_story_id == user_story_id,
+                TaskInvalidationModel.revoked_at.is_(None),
+            )
+            .order_by(TaskInvalidationModel.marked_at.desc())
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_domain(model) for model in result.scalars()]
+
     async def count_active_for_extraction(
         self, *, extraction_id: UUID, exclude_mark_id: UUID | None = None
     ) -> int:

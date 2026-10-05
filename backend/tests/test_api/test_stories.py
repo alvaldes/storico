@@ -1141,3 +1141,180 @@ class TestStoryVersionsEndpoint:
         data = response.json()
         assert [entry["version_number"] for entry in data] == [1]
         assert data[0]["is_current"] is True
+
+
+class TestStoryInvalidationsEndpoint:
+    """GET /api/v1/stories/{story_id}/invalidations — the card flag's read.
+
+    The story-detail card renders a ``Flag`` control per task, so the page needs
+    to know which of the story's tasks carry an active mark. This read answers
+    exactly that, in the versions read's shape (a bare unpaginated array) and
+    under the marks reads' gate (membership only: every member may read the
+    record, the mutations are the gated half).
+    """
+
+    async def _create_story(self, authed_client, seeded, feature: str = "log in") -> str:
+        """Create one story through the API and return its id as a string.
+
+        ``feature`` is a knob because the duplicate-story guard rejects two
+        stories of one project with the same text, and the scope case below
+        needs two distinct stories in one project.
+        """
+        response = await authed_client.post(
+            "/api/v1/stories/",
+            json={
+                "project_id": str(seeded.project_id),
+                "actor": "user",
+                "feature": feature,
+                "benefit": "access my account",
+                "raw_text": (
+                    "As a user, I want to "
+                    f"{feature} so that I can access my account"
+                ),
+            },
+        )
+        assert response.status_code == 201
+        return response.json()["id"]
+
+    async def _seed_mark(self, db_session: AsyncSession, task_id: UUID, *, reason: str, marked_at):
+        """Seed one active mark through the repository's own birth path."""
+        from storico.domain.entities.task_invalidation import TaskInvalidation
+        from storico.infrastructure.database.repositories import (
+            SQLAlchemyTaskInvalidationRepository,
+        )
+
+        return await SQLAlchemyTaskInvalidationRepository(db_session).create(
+            TaskInvalidation(task_id=task_id, reason=reason, marked_at=marked_at)
+        )
+
+    async def test_lists_exactly_the_storys_active_marks_newest_first(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """Two active marks of this story come back; a revoked one and another
+        story's active one do not. The payload is the mark plus its ``task_id``,
+        which is the only fact the card needs to turn a flag on."""
+        seeded = await seed_workspace(stories=0)
+        story_id = await self._create_story(authed_client, seeded)
+        other_story_id = await self._create_story(authed_client, seeded, feature="reset password")
+        first = await seed_task(db_session, UUID(story_id), "First task")
+        second = await seed_task(db_session, UUID(story_id), "Second task")
+        revoked_task = await seed_task(db_session, UUID(story_id), "Revoked task")
+        foreign_task = await seed_task(db_session, UUID(other_story_id), "Other story task")
+
+        newer = await self._seed_mark(
+            db_session,
+            first.id,
+            reason="Newer mark",
+            marked_at=datetime(2026, 10, 5, 12, 0, tzinfo=UTC),
+        )
+        older = await self._seed_mark(
+            db_session,
+            second.id,
+            reason="Older mark",
+            marked_at=datetime(2026, 10, 5, 10, 0, tzinfo=UTC),
+        )
+        to_revoke = await self._seed_mark(
+            db_session,
+            revoked_task.id,
+            reason="Revoked mark",
+            marked_at=datetime(2026, 10, 5, 11, 0, tzinfo=UTC),
+        )
+        await self._seed_mark(
+            db_session,
+            foreign_task.id,
+            reason="Other story's mark",
+            marked_at=datetime(2026, 10, 5, 13, 0, tzinfo=UTC),
+        )
+        from storico.infrastructure.database.repositories import (
+            SQLAlchemyTaskInvalidationRepository,
+        )
+
+        await SQLAlchemyTaskInvalidationRepository(db_session).revoke(
+            to_revoke.id,
+            revoked_by=uuid4(),
+            revoked_at=datetime(2026, 10, 5, 14, 0, tzinfo=UTC),
+        )
+
+        response = await authed_client.get(f"/api/v1/stories/{story_id}/invalidations")
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert isinstance(data, list)
+        assert [entry["id"] for entry in data] == [str(newer.id), str(older.id)]
+        assert [entry["task_id"] for entry in data] == [str(first.id), str(second.id)]
+        for entry in data:
+            assert set(entry.keys()) == {
+                "id",
+                "task_id",
+                "reason",
+                "marked_by",
+                "marked_at",
+                "revoked_by",
+                "revoked_at",
+            }
+            assert entry["revoked_at"] is None
+
+    async def test_a_member_reads_the_storys_marks(
+        self, authed_client, authed_user, db_session: AsyncSession, seed_workspace
+    ):
+        """A plain MEMBER gets 200: the gate is membership, not ownership."""
+        from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
+        from storico.infrastructure.database.repositories.workspace_member_repository import (
+            SQLAlchemyWorkspaceMemberRepository,
+        )
+
+        owner = await SQLAlchemyUserRepository(db_session).save(
+            User(email="member-marks-owner@test.com", name="Member Marks Owner")
+        )
+        seeded = await seed_workspace(user=owner, stories=0)
+        await SQLAlchemyWorkspaceMemberRepository(db_session).add(
+            WorkspaceMember(
+                workspace_id=seeded.workspace_id,
+                user_id=authed_user.id,
+                role=WorkspaceRole.MEMBER,
+            )
+        )
+        story_id = await self._create_story(authed_client, seeded)
+        task = await seed_task(db_session, UUID(story_id), "Member-visible task")
+        await self._seed_mark(
+            db_session,
+            task.id,
+            reason="Visible to every member",
+            marked_at=datetime(2026, 10, 5, 12, 0, tzinfo=UTC),
+        )
+
+        response = await authed_client.get(f"/api/v1/stories/{story_id}/invalidations")
+
+        assert response.status_code == 200, response.text
+        assert [entry["task_id"] for entry in response.json()] == [str(task.id)]
+
+    async def test_a_missing_story_is_404_and_a_non_member_is_403(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The unchanged access walk's two refusals, with nothing leaked."""
+        from storico.infrastructure.database.repositories import (
+            SQLAlchemyUserStoryRepository,
+        )
+
+        foreign_owner = await SQLAlchemyUserRepository(db_session).save(
+            User(email="foreign-marks-owner@test.com", name="Foreign Marks Owner")
+        )
+        foreign_seeded = await seed_workspace(user=foreign_owner, stories=0)
+        foreign_story = await SQLAlchemyUserStoryRepository(db_session).save(
+            UserStory(
+                project_id=foreign_seeded.project_id,
+                actor="user",
+                feature="stay private",
+                benefit="the gate holds",
+                raw_text=RAW_TEXT,
+            )
+        )
+
+        missing = await authed_client.get(f"/api/v1/stories/{uuid4()}/invalidations")
+        forbidden = await authed_client.get(
+            f"/api/v1/stories/{foreign_story.id}/invalidations"
+        )
+
+        assert missing.status_code == 404
+        assert forbidden.status_code == 403
+        assert forbidden.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
