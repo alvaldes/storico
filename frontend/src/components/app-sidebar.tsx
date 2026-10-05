@@ -85,18 +85,23 @@ export function AppSidebar({ locale, currentPath, ...props }: AppSidebarProps) {
       url: L('/projects'),
       icon: <FolderKanban />,
       isActive: isProjectsActive,
-      items: [
-        {
-          title: t.nav.allProjects,
-          url: L('/projects'),
-          isActive: isActive(L('/projects')),
-        },
-        ...projects.map((p) => ({
-          title: p.name,
-          url: L(`/projects/${p.id}`),
-          isActive: cleanPath === `/projects/${p.id}`,
-        })),
-      ],
+      // Flat link while the workspace has no projects; collapsible with the
+      // "All Projects" sub-item plus one entry per project from the first project on.
+      items:
+        projects.length > 0
+          ? [
+              {
+                title: t.nav.allProjects,
+                url: L('/projects'),
+                isActive: isActive(L('/projects')),
+              },
+              ...projects.map((p) => ({
+                title: p.name,
+                url: L(`/projects/${p.id}`),
+                isActive: cleanPath === `/projects/${p.id}`,
+              })),
+            ]
+          : undefined,
     },
     {
       title: t.nav.stories,
