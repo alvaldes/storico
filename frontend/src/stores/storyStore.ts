@@ -125,8 +125,15 @@ export const useStoryStore = create<StoryState>((set, get) => ({
   },
 
   fetchVersions: async (storyId) => {
+    // The version slice is workspace-scoped data like `stories`, and this call
+    // carries no workspace id of its own: the scope in effect when it started is
+    // the only thing that can say whether its answer still belongs to the
+    // workspace on screen. Sampled before the request and compared after it, so a
+    // switch in between does not repopulate the slice `reset()` just cleared.
+    const scopeAtCall = getScopedWorkspaceId();
     try {
       const versions = await listVersions(storyId);
+      if (!isScopeUnchanged(scopeAtCall)) return;
       set((state) => ({
         versionsByStory: { ...state.versionsByStory, [storyId]: versions },
       }));
@@ -134,6 +141,7 @@ export const useStoryStore = create<StoryState>((set, get) => ({
       // The failure is the value: `null` tells the delete dialog to drop the
       // count and show its neutral fallback sentence, and tells the story page
       // to keep its selector hidden.
+      if (!isScopeUnchanged(scopeAtCall)) return;
       set((state) => ({
         versionsByStory: { ...state.versionsByStory, [storyId]: null },
       }));

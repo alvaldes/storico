@@ -64,8 +64,6 @@ export async function listVersions(storyId: string): Promise<StoryVersion[]> {
 
 // ── Invalidation marks ──
 
-// ── Invalidation marks ──
-
 /**
  * The story's active marks, newest first — the card flag's read.
  *

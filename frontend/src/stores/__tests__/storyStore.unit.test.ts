@@ -17,13 +17,18 @@ vi.mock('@/lib/projects-api', () => ({
   getProject: vi.fn(),
 }));
 
+vi.mock('@/lib/versioning-api', () => ({
+  listVersions: vi.fn(),
+}));
+
 import * as api from '@/lib/stories-api';
 import * as projectsApi from '@/lib/projects-api';
+import { listVersions } from '@/lib/versioning-api';
 import { useStoryStore } from '@/stores/storyStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { getScopedWorkspaceId, resetScopedWorkspace, setScopedWorkspaceId } from '@/lib/workspace-scope';
-import type { StoryImportReport, UserStory } from '@/types/story';
+import type { StoryImportReport, StoryVersion, UserStory } from '@/types/story';
 import type { Workspace } from '@/types/workspace';
 import type { PaginatedResponse } from '@/lib/projects-api';
 
@@ -91,7 +96,7 @@ const storyB = makeStory('story-ws-b');
 describe('storyStore — workspace-scoped inflight fetches', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useStoryStore.setState({ stories: [], loading: false, saving: false });
+    useStoryStore.setState({ stories: [], loading: false, saving: false, versionsByStory: {} });
   });
 
   it('issues one request per workspace even when the project filter is identical', async () => {
@@ -667,5 +672,37 @@ describe('storyStore — failed fetch keeps the previous list', () => {
 
     expect(useStoryStore.getState().stories).toEqual([storyB]);
     expect(useStoryStore.getState().loading).toBe(false);
+  });
+
+  it('drops a version read whose workspace was switched away while it was inflight', async () => {
+    const pendingVersions = deferred<StoryVersion[]>();
+    vi.mocked(listVersions).mockImplementationOnce(() => pendingVersions.promise);
+
+    // A real switch has been observed on ws-a, which is the scope the read starts in.
+    setScopedWorkspaceId('ws-a');
+    const inflight = useStoryStore.getState().fetchVersions('story-1');
+
+    // The user switches while the read is still inflight.
+    setScopedWorkspaceId('ws-b');
+
+    pendingVersions.resolve([
+      {
+        id: 'ext-1',
+        versionNumber: 1,
+        status: 'completed',
+        modelUsed: 'llama3.2',
+        provider: 'ollama',
+        temperature: 0.1,
+        createdAt: '2026-10-05T10:00:00Z',
+        completedAt: '2026-10-05T10:01:00Z',
+        errorInfo: null,
+        isCurrent: true,
+        hasOutput: true,
+      },
+    ]);
+    await inflight;
+
+    // The departed workspace's history must not be repopulated after the switch cleared it.
+    expect(useStoryStore.getState().versionsByStory['story-1']).toBeUndefined();
   });
 });
