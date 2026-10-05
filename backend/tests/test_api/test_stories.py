@@ -1167,10 +1167,7 @@ class TestStoryInvalidationsEndpoint:
                 "actor": "user",
                 "feature": feature,
                 "benefit": "access my account",
-                "raw_text": (
-                    "As a user, I want to "
-                    f"{feature} so that I can access my account"
-                ),
+                "raw_text": (f"As a user, I want to {feature} so that I can access my account"),
             },
         )
         assert response.status_code == 201
@@ -1311,9 +1308,7 @@ class TestStoryInvalidationsEndpoint:
         )
 
         missing = await authed_client.get(f"/api/v1/stories/{uuid4()}/invalidations")
-        forbidden = await authed_client.get(
-            f"/api/v1/stories/{foreign_story.id}/invalidations"
-        )
+        forbidden = await authed_client.get(f"/api/v1/stories/{foreign_story.id}/invalidations")
 
         assert missing.status_code == 404
         assert forbidden.status_code == 403
