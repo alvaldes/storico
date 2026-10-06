@@ -97,6 +97,16 @@ export default defineConfig({
           translations: { es: 'Versiones de extracción' },
           link: '/docs/extraction-versions',
         },
+        {
+          label: 'Historical context',
+          translations: { es: 'Contexto histórico' },
+          link: '/docs/embeddings-rag',
+        },
+        {
+          label: 'Roles and permissions',
+          translations: { es: 'Roles y permisos' },
+          link: '/docs/roles-permissions',
+        },
       ],
     }),
   ],
