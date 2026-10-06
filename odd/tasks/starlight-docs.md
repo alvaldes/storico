@@ -1,11 +1,14 @@
 # ODD Feature: starlight-docs
 
-> **Status**: complete on `feat/starlight-docs` off `main` @ `54abdc7`. Tasks 1–5 done and verified;
-> the last commit is `a5d5e55`. Not pushed, not merged.
+> **Status**: **not complete after all.** Tasks 1–5 are done and verified, but task 6 — added
+> 2026-10-05 after a browser review — shows the note's acceptance criterion is unmet: the
+> documentation renders with Starlight's own theme, not Storico's. Branch `feat/starlight-docs` off
+> `main` @ `54abdc7`. Not pushed, not merged.
 >
-> **Final state**: `/en/docs` and `/es/docs` serve a five-page Starlight site per locale, prerendered
-> with a working Pagefind index, in neutral Spanish, guarded on variant, slug parity, link integrity
-> and sidebar coverage. **733/733 tests in 64 files**, `tsc --noEmit` exit 0, build exit 0.
+> **Verified so far**: `/en/docs` and `/es/docs` serve a five-page Starlight site per locale,
+> prerendered with a working Pagefind index, in neutral Spanish, guarded on variant, slug parity,
+> link integrity and sidebar coverage. **733/733 tests in 64 files**, `tsc --noEmit` exit 0, build
+> exit 0.
 > **Created**: 2026-10-05
 > **Workflow**: Organic Driven Development (ODD)
 > **Source**: the vault note `Starlight — documentación del sitio con Starlight` (second-brain,
@@ -103,6 +106,42 @@ and stop shipping copy the product cannot keep.
       as it lives, so the debt is cheap to carry. Revisit when the reference lands; at that point the
       choice is between converting it into a landing that links to the reference and deleting it with
       a redirect, which also retires the guard.
+- [ ] 6. **Make the docs wear Storico's design system.** Added 2026-10-05 after reviewing the running
+      site in a real browser. The note's acceptance criterion — "que todo quede alineado al estilo
+      real de Storico y al estilo shadcn" — is **not met**. Starlight ships its own theme and nothing
+      was done to align it. Measured on `pnpm dev`, landing page versus `/en/docs`, same browser
+      session:
+
+      | | App (`/en/`) | Docs (`/en/docs`) |
+      | --- | --- | --- |
+      | `data-theme` | `light` | **`dark`** |
+      | Body background | `rgb(248, 250, 252)` | `rgb(23, 24, 28)` |
+      | Body font | **Inter** | `ui-sans-serif` (system stack) |
+      | Heading font | **Space Grotesk** | `ui-sans-serif` |
+      | Text colour | `oklch(0.15 0.01 260)` | `rgb(193, 195, 200)` |
+      | Accent | `--color-primary-500: oklch(0.55 0.15 250)` | `--sl-color-accent: hsl(224, 100%, 60%)` |
+      | Design tokens | `--color-*` | `--sl-color-*` |
+
+      Two separate problems, both in scope here:
+
+      1. **Palette and typography.** The token sets do not intersect at all, so the docs look like a
+         stock Starlight site: system fonts, a different blue, different surfaces. The fix is a
+         stylesheet injected through Starlight's `customCss` mapping `--sl-color-*` onto Storico's
+         tokens for both themes, plus the font stacks. One caveat found while measuring:
+         `globals.css:141` declares `--font-mono: 'JetBrains Mono'`, but **JetBrains Mono is never
+         loaded** — the font link at `PublicLayout.astro:95` loads Inter, Space Grotesk and **Geist
+         Mono**. That is a pre-existing app inconsistency, not this feature's; the docs must match
+         what the app actually renders, and the mismatch should at least be recorded.
+      2. **Two theme switches that disagree.** The app stores its choice under `theme` (next-themes);
+         Starlight stores its own under `starlight-theme`. Both write `data-theme` on the same
+         `<html>`. Measured: with the app's `theme=light`, `/en/docs` rendered `data-theme=dark`;
+         choosing light in Starlight's own select then left the app on `dark`. Neither surface honours
+         the other, and which one wins the attribute depends on load order. One source of truth has
+         to win, and the fix has to be verified by toggling in each surface and reading the other.
+
+      Verification for this task is browser-based. Playwright is absent from this repository, so the
+      evidence is a real browser session driven through ego-browser, and its provenance must say so —
+      the same standard follow-up 5 of `odd/tasks/csv-story-import.md` was held to.
 
 Task 2 is deliberately ordered before task 3: `docs.astro` is the only user-facing documentation that
 exists today, and deleting it before its content is ported leaves `/en/docs` as a 404.
