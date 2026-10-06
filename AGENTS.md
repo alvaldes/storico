@@ -289,15 +289,17 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 ### ADR-003: Autenticación y Permisos
 
 - **Status**: ✅ Decidido
-- **Decisión**: **Auth.js (OAuth) con Google + GitHub. Registro abierto. Admins pueden crear workspaces y asignar usuarios a equipos.**
-- **Contexto**: Se necesita un sistema de autenticación que no requiera manejo de passwords. Auth.js es la evolución de NextAuth.js y funciona con cualquier framework (incluyendo Astro). Soporta múltiples proveedores OAuth, sesiones JWT, y callbacks para control de acceso. Para permisos, se definió un modelo de workspaces y equipos donde solo admins pueden crear workspaces y administrar membresías.
+- **Decisión**: **Auth.js (OAuth) con Google + GitHub. Registro abierto. Dos roles por workspace: `admin` y `member`.**
+- **Contexto**: Se necesita un sistema de autenticación que no requiera manejo de passwords. Auth.js es la evolución de NextAuth.js y funciona con cualquier framework (incluyendo Astro). Soporta múltiples proveedores OAuth, sesiones JWT, y callbacks para control de acceso. Auth.js **es lo que está implementado**: el frontend depende de `@auth/core` y el backend expone un endpoint de sync que su callback JWT llama en cada login (`api/routes/auth.py`).
 - **Consecuencias**:
   - Sin registro por email+password — solo OAuth (Google, GitHub)
   - Sin recovery de contraseña (no aplica)
   - Auth.js maneja sesiones vía JWT o base de datos
-  - Modelo de permisos: Admin → Workspace → Equipos → Usuarios
-  - Solo admins pueden crear workspaces y asignar usuarios a equipos
-  - Usuarios regulares pueden pertenecer a múltiples equipos/workspaces
+  - **Modelo de permisos: Workspace → Miembros (`admin` | `member`). No hay equipos**: la membresía es por workspace, y ninguna de las 14 tablas del esquema es de equipos.
+  - **Cualquier usuario autenticado puede crear un workspace** y queda como su `owner` (`workspaces.owner_id`) y como miembro `admin`. **No existe admin de sistema**: no hay ningún `is_admin`/`is_superuser` en el backend, y cada operación administrativa se ejerce dentro de un workspace.
+  - **"Owner" no es un rol**: es un campo del workspace, y el owner puede tener cualquiera de los dos roles. Transferir la propiedad es la única operación exclusiva del owner; el resto de las administrativas son de `admin`.
+  - Usuarios regulares pueden pertenecer a múltiples workspaces
+- **Corregido contra el código** (feature `docs-content-v2`): la versión anterior de este ADR decía que *sólo los admins* podían crear workspaces y asignar usuarios a *equipos*, y describía un modelo de permisos con un nivel de equipos. Ninguna de las dos cosas existe. Evidencia: `backend/src/storico/api/routes/workspaces.py:112-115` (la ruta sólo exige `get_current_user`), `application/workspaces/create_workspace.py:79-83` (el creador queda como owner y admin), `domain/entities/workspace_member.py:17-21` (los dos roles), `api/dependencies.py:409-416` (la propiedad es `owner_id == user.id`, no un rol).
 
 ### ADR-004: Base de Datos
 
