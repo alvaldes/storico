@@ -585,7 +585,8 @@ Create Story
 Create a new user story.
 
 The story's project must belong to a workspace the user is a member of.
-Duplicate stories (same raw_text) within the same project are not allowed.
+Duplicate stories (same actor, feature and benefit) within the same project are
+not allowed.
 
 **Parámetros**
 
