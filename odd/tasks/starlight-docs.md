@@ -1,7 +1,8 @@
 # ODD Feature: starlight-docs
 
-> **Status**: in progress on `feat/starlight-docs` off `main` @ `54abdc7`. Tasks 1–3 verified and
-> committed as `20d6bc9`, `693db17` and `32bfcf8`; tasks 4–5 pending. Not pushed, not merged.
+> **Status**: in progress on `feat/starlight-docs` off `main` @ `54abdc7`. Tasks 1–4 verified and
+> committed as `20d6bc9`, `693db17`, `32bfcf8` and `97c76df`; task 5 is an open decision. Not
+> pushed, not merged.
 > **Created**: 2026-10-05
 > **Workflow**: Organic Driven Development (ODD)
 > **Source**: the vault note `Starlight — documentación del sitio con Starlight` (second-brain,
@@ -86,10 +87,19 @@ and stop shipping copy the product cannot keep.
 - [x] 3. Retire the old surface: delete `src/pages/[locale]/docs.astro`, drop the now-orphaned
       `pages.docs.*` keys from both locales, and retire the architecture half of `more_coming`.
       — `32bfcf8`
-- [ ] 4. Guards: neutral-Spanish coverage for the markdown (the existing guard only reads `es.json`),
-      and a locale-parity test that both locales expose the same page slugs.
+- [x] 4. Guards: neutral-Spanish coverage for the markdown (the existing guard only reads `es.json`),
+      and a locale-parity test that both locales expose the same page slugs. — `97c76df`
 - [ ] 5. Decide `api.astro` — deleted with a redirect, or kept as a landing that links to the future
-      reference — and record the decision.
+      reference — and record the decision. **Open, and it needs the owner.** What the repository says:
+      the page lives at `/en/api` and `/es/api`, is in `PUBLIC_PATHS`, and is guarded by
+      `src/i18n/__tests__/api-docs-copy.test.ts`, which derives its advertised endpoints from the
+      backend router table and fails if the page names a path no router declares (that guard exists
+      because the page once advertised a `/api/v1/batch` that never existed). Deleting the page means
+      retiring that guard with it. The Starlight API reference that was going to replace it is
+      deferred, and its community plugin is still unnamed, so deleting now leaves nothing in its
+      place; the backend's own Swagger at `/docs` and `/openapi.json` are already public and respond
+      `200` in production, which is the note's argument that the surface is not being hidden either
+      way.
 
 Task 2 is deliberately ordered before task 3: `docs.astro` is the only user-facing documentation that
 exists today, and deleting it before its content is ported leaves `/en/docs` as a 404.
@@ -118,6 +128,7 @@ deployed from this branch, and the window closes as soon as task 2 puts the real
 | 1 | `20d6bc9` | `pnpm build` emits `.vercel/output/static/en/docs/index.html` and `es/docs/index.html`; `.vercel/output/static/pagefind/pagefind-entry.json` reports `en` and `es` with `page_count: 1` each; `pnpm exec tsc --noEmit` exit 0; `pnpm test` **717/717 across 63 files**, unregressed; `astro.config.mjs` diff is additive only and the top-level `i18n` block is byte-for-byte unchanged. Pagefind found 3 HTML files. |
 | 2 | `693db17` | Ten routes prerendered, five per locale; `pagefind-entry.json` reports `page_count: 5` for `en` and for `es`; sidebar links resolve to `/en/docs/...` and `/es/docs/...`; `lang="es"` and `hreflang` `en`/`es` present on the Spanish pages; a voseo grep over `src/content/docs/es/**` is empty; `tsc --noEmit` exit 0; `pnpm test` **717/717 across 63 files**. 20 of the 22 `pages.docs.*` keys ported, 2 retired by instruction. |
 | 3 | `32bfcf8` | `docs.astro` deleted and `pages.docs` gone from both catalogs (`git diff --stat`: 24 deletions per file, zero insertions — no `\uXXXX` un-escaping leaked in); key parity holds at **763 = 763**; RED observed before the repoint (both catalogs failed with “does not declare pages.docs.step_2”) and GREEN after; `pnpm test` **719/719 across 63 files**; `tsc --noEmit` exit 0; build exit 0 with the ten routes and Pagefind at 10 HTML files, and the `[router]` duplicate-`/404` warning is gone. |
+| 4 | `97c76df` | Only the two test files changed; `astro.config.mjs` and every markdown file are byte-identical to `32bfcf8`. Four guards, each shown to fail on a broken input and pass once reverted: a voseo form in `es/docs/export.md`, a dead slug (`/en/docs/quikstart`), a cross-locale link, and a removed sidebar entry. `pnpm test` **733/733 across 64 files** (+14); `tsc --noEmit` exit 0; build exit 0, ten routes, Pagefind `page_count: 5` per locale, no duplicate-`/404` conflict. |
 
 ### Findings that changed the plan
 
@@ -148,11 +159,14 @@ deployed from this branch, and the window closes as soon as task 2 puts the real
   first said “haz clic en **Download**” over a button that reads **Descargar**, and called the
   selector target a “workspace” where the app says “espacio de trabajo”. Both corrected against
   `es.json` before committing.
-- **Content links are locale-absolute in the markdown** (`[Quickstart](/en/docs/quickstart)` in the
-  English files, `/es/...` in the Spanish ones). They render correctly and are verified, but the
-  locale is duplicated per file and a future routing change would have to touch every link. Task 4
-  pins the shape; normalising to Starlight's locale-less links needs its own verification, since it
-  is not established here that Starlight rewrites body links the way it rewrites sidebar ones.
+- **Content links are locale-absolute in the markdown, and that shape is now guarded rather than
+  provisional.** `[Quickstart](/en/docs/quickstart)` in the English files, `/es/...` in the Spanish
+  ones; the locale is duplicated per file. `docs-content.test.ts` pins both halves — the prefix must
+  match the file's own locale and the slug must resolve — so the duplication can no longer drift
+  silently. Normalising to Starlight's locale-less links is therefore no longer the obvious
+  improvement it looked like: the guard's regex only recognises the `/xx/docs/...` form, so a
+  locale-less link would make the integrity check blind. Whoever changes the shape must widen the
+  guard in the same commit.
 - **A `Duplicate id "es/docs/export"` warning from `starlight-docs-loader` is a stale-content-cache
   artefact, not a defect.** It appears only when a content file is edited between builds, the new
   entry wins (the rendered HTML carries the corrected copy), and removing `.astro/` yields zero
