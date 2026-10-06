@@ -6,6 +6,7 @@ import {
   isProtectedPagePath,
   getLocaleFromPath,
 } from '@/i18n/utils';
+import { retiredPathRedirect } from '@/lib/retired-paths';
 
 const SKIP_PREFIX = ['/api/', '/_astro/', '/favicon'];
 
@@ -15,6 +16,16 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   const url = new URL(context.request.url);
   const { pathname } = url;
+
+  // Retired pages go first, and deliberately BEFORE the SKIP_PREFIX early return below: `/api/`
+  // starts with `/api/`, so the skip would swallow it and it would 404 instead of redirecting —
+  // the pure guard and the manual walkthrough both say it redirects, and they were right about
+  // the rule and wrong about the wiring. The match is exact, so `/api/health/services` and the
+  // backend proxy still fall through to the skip, which is the property that must not break.
+  const retiredTarget = retiredPathRedirect(pathname, context.request.headers.get('accept-language'));
+  if (retiredTarget) {
+    return context.redirect(retiredTarget, 302);
+  }
 
   // Skip non-page paths
   if (SKIP_PREFIX.some((p) => pathname.startsWith(p))) {

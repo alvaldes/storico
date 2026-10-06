@@ -663,6 +663,7 @@
     "product": "Producto",
     "resources": "Recursos",
     "company": "Compañía",
+    "home": "Inicio",
     "documentation": "Documentación",
     "api_reference": "Referencia API",
     "status_page": "Estado",
@@ -778,22 +779,6 @@
       "contact_title": "Contacto",
       "contact_before": "Preguntas sobre estos T\u00e9rminos pueden enviarse a",
       "contact_after": "o abre un issue en nuestro repositorio de GitHub."
-    },
-    "api": {
-      "title": "Referencia de API",
-      "description": "Referencia completa de la API para integrar con Storico.",
-      "last_updated": "Última actualización: 24 de septiembre de 2026",
-      "intro": "Storico provee una API REST impulsada por FastAPI. A continuación hay un resumen de los endpoints principales. La documentación completa de OpenAPI está disponible en",
-      "intro_end": "cuando el backend esté en ejecución.",
-      "auth_title": "Autenticación",
-      "auth": "Todas las solicitudes a la API requieren autenticación mediante sesión OAuth. El proxy del frontend adjunta automáticamente el token de sesión a las solicitudes.",
-      "endpoints_title": "Endpoints",
-      "endpoint_extract_desc": "Inicia la extracción de una historia de usuario y devuelve 202 con el identificador de la extracción.",
-      "endpoint_status_desc": "Consulta el estado de una extracción por su identificador hasta que finalice.",
-      "aria_openapi": "Documentación de OpenAPI (se abre en nueva pestaña)",
-      "aria_swagger": "Documentación de Swagger (se abre en nueva pestaña)",
-      "footer": "Para esquemas detallados de solicitud/respuesta, inicia el backend y visita",
-      "footer_end": "para la documentación interactiva de Swagger."
     },
     "status": {
       "title": "Estado del Sistema",

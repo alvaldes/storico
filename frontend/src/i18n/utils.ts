@@ -38,7 +38,7 @@ export function detectLocale(acceptLanguage: string | null): Locale {
 /**
  * Returns true if the given path is a public page path (needs locale redirect).
  */
-const PUBLIC_PATHS = ['/', '/login', '/about', '/privacy', '/terms', '/docs', '/api', '/status'];
+const PUBLIC_PATHS = ['/', '/login', '/about', '/privacy', '/terms', '/docs', '/status'];
 
 const PROTECTED_PATHS = ['/dashboard', '/stories', '/kanban', '/export', '/account'];
 

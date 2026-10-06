@@ -7,17 +7,23 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
-import { PUBLIC_NAV_PATHS, publicNavLinks } from '@/lib/public-nav';
+import {
+  DOCS_HEADER_NAV_PATHS,
+  PUBLIC_NAV_PATHS,
+  docsHeaderNavLinks,
+  publicNavLinks,
+} from '@/lib/public-nav';
 import { localizedPath } from '@/i18n/utils';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 
 /**
- * The docs header must advertise the app's public nav, and the app's navbar must keep rendering
- * exactly the list it has always rendered. Both surfaces consume one module
- * (`src/lib/public-nav.ts`); nothing here restates the list — the expectations below derive the
- * labels from the same translation catalogs and the hrefs from `localizedPath`, so a divergence
- * between the two surfaces, or a third hardcoded copy of the list, fails here instead of shipping.
+ * The docs header no longer mirrors the app navbar: by the owner's decision, recorded in
+ * `odd/tasks/docs-header-nav-scope.md`, it renders its own two-destination list (the app landing
+ * page and the status page) while the app's navbar keeps the original three. Both surfaces still
+ * consume one module (`src/lib/public-nav.ts`), so the guard pins BOTH declared lists explicitly —
+ * not as a subset relation — and keeps refusing to let the header name a destination or a label
+ * itself, so no third hardcoded copy of either list can appear.
  */
 const CONFIG_SOURCE = readFileSync(new URL('../../../astro.config.mjs', import.meta.url), 'utf8');
 const PUBLIC_LAYOUT = readFileSync(new URL('../../layouts/PublicLayout.astro', import.meta.url), 'utf8');
@@ -27,8 +33,22 @@ const HEADER = readFileSync(new URL('../../components/starlight/Header.astro', i
 const CATALOGS = { en, es } as const;
 type CatalogLocale = keyof typeof CATALOGS;
 
-/** The footer keys the shared module maps the nav paths onto. */
+type FooterCatalog = (typeof en)['footer'];
+
+/** The footer keys the shared module maps the app navbar's nav paths onto. */
 const NAV_LABEL_KEYS = ['documentation', 'api_reference', 'status_page'] as const;
+
+/**
+ * The label key each declared nav path must map onto, as an independent expectation restated
+ * here so a path added to a module list without a catalogue key fails this guard even though
+ * the module's own map is compile-time enforced.
+ */
+const LABEL_KEY_BY_PATH: Record<string, keyof FooterCatalog> = {
+  '/docs': 'documentation',
+  '/docs/api-reference': 'api_reference',
+  '/status': 'status_page',
+  '/': 'home',
+};
 
 /**
  * The Starlight `components` override block, located by brace matching from its
@@ -73,15 +93,91 @@ describe('the app navbar consumes the shared list', () => {
   });
 });
 
-describe('the docs header consumes the same shared list', () => {
-  it('renders its nav from publicNavLinks, not a hardcoded copy', () => {
+describe('the docs header renders its own two-destination list', () => {
+  /**
+   * The invariant this guard once protected — that the docs header nav equals the app's public
+   * nav list — is retired deliberately: the owner decided the docs header shows the app landing
+   * page and the status page only, while the app navbar keeps its three destinations
+   * (`odd/tasks/docs-header-nav-scope.md`). The cases below pin each surface's list exactly so
+   * neither can shrink or grow silently.
+   */
+
+  it('keeps the app navbar pinned to exactly the docs, api-reference and status destinations', () => {
+    expect([...PUBLIC_NAV_PATHS]).toEqual(['/docs', '/docs/api-reference', '/status']);
+    for (const locale of ['en', 'es'] as CatalogLocale[]) {
+      const links = publicNavLinks(locale);
+      expect(links.map((link) => link.path), `${locale} navbar paths must stay the docs, api-reference and status destinations`).toEqual([
+        '/docs',
+        '/docs/api-reference',
+        '/status',
+      ]);
+      expect(links.map((link) => link.label)).toEqual(
+        NAV_LABEL_KEYS.map((key) => CATALOGS[locale].footer[key]),
+      );
+    }
+  });
+
+  it('renders the docs header list as exactly the app home then the status page', () => {
+    expect([...DOCS_HEADER_NAV_PATHS]).toEqual(['/', '/status']);
+    for (const locale of ['en', 'es'] as CatalogLocale[]) {
+      const links = docsHeaderNavLinks(locale);
+      expect(links.map((link) => link.path), `${locale} docs header paths must be exactly / then /status`).toEqual([
+        '/',
+        '/status',
+      ]);
+      expect(links.map((link) => link.label)).toEqual([
+        CATALOGS[locale].footer.home,
+        CATALOGS[locale].footer.status_page,
+      ]);
+      expect(links.map((link) => link.href)).toEqual(
+        DOCS_HEADER_NAV_PATHS.map((path) => localizedPath(path, locale)),
+      );
+      // localizedPath('/') carries a trailing slash: /en/ and /es/, never the bare prefix.
+      expect(links[0].href).toBe(`/${locale}/`);
+    }
+  });
+
+  it('gives every declared path a label key that exists in both catalogs, and proves the check is not vacuous', () => {
+    const expectEveryPathHasLabelKey = (paths: readonly string[], locale: CatalogLocale): void => {
+      for (const path of paths) {
+        const key = LABEL_KEY_BY_PATH[path];
+        expect(key, `declared path '${path}' has no label key`).toBeDefined();
+        expect(
+          CATALOGS[locale].footer[key as keyof FooterCatalog],
+          `label key '${String(key)}' for '${path}' must exist in the ${locale} catalog`,
+        ).toBeDefined();
+      }
+    };
+
+    // Non-vacuity: a synthetic path with no label key must make this check fail loudly, so a
+    // future empty or renamed list cannot let the check pass silently.
+    expect(() => expectEveryPathHasLabelKey(['/synthetic-path-without-a-key'], 'en')).toThrow();
+
+    const declaredPaths = [...PUBLIC_NAV_PATHS, ...DOCS_HEADER_NAV_PATHS];
+    for (const locale of ['en', 'es'] as CatalogLocale[]) {
+      expectEveryPathHasLabelKey(declaredPaths, locale);
+    }
+  });
+
+  it('names no destination and hardcodes no nav label itself', () => {
     expect(HEADER).toMatch(/from '@\/lib\/public-nav'/);
-    expect(HEADER).toMatch(/publicNavLinks\(/);
-    for (const path of PUBLIC_NAV_PATHS) {
+    expect(HEADER).toMatch(/docsHeaderNavLinks\(/);
+    expect(HEADER).not.toMatch(/publicNavLinks\(/);
+    for (const path of [...PUBLIC_NAV_PATHS, ...DOCS_HEADER_NAV_PATHS]) {
       expect(
         HEADER.includes(`'${path}'`),
         `the docs header must not hardcode the destination '${path}'`,
       ).toBe(false);
+    }
+    // The bare '/' is checked as a quoted string only: a naked slash would match every closing tag.
+    expect(HEADER.includes(`'/'`), `the docs header must not hardcode the destination '/'`).toBe(false);
+    expect(HEADER.includes(`"/"`), `the docs header must not hardcode the destination "/"`).toBe(false);
+
+    // Labels: scoped to the template (frontmatter stripped), so the file's doc comment can
+    // describe the list without tripping the guard.
+    const template = HEADER.replace(/^---[\s\S]*?---/, '');
+    for (const label of ['Inicio', 'Home', 'Estado', 'Status']) {
+      expect(template.includes(label), `the docs header template must not hardcode the label '${label}'`).toBe(false);
     }
   });
 
@@ -91,7 +187,7 @@ describe('the docs header consumes the same shared list', () => {
 });
 
 describe('the docs title override', () => {
-  it('links the brand mark to the app home and the Docs label to the docs home, locale-aware', () => {
+  it('links the brand mark to the app home and the docs-home label to the docs home, locale-aware', () => {
     expect(SITE_TITLE).toMatch(/localizedPath/);
     expect(SITE_TITLE).toMatch(/href=\{L\('\/'\)\}/);
     expect(SITE_TITLE).toMatch(/href=\{L\('\/docs'\)\}/);
@@ -99,8 +195,10 @@ describe('the docs title override', () => {
     expect(SITE_TITLE).not.toMatch(/siteTitleHref/);
   });
 
-  it('keeps the visible header label at Docs in both locales', () => {
-    expect(SITE_TITLE).toMatch(/>\s*Docs\s*</);
+  it('keeps one visible header label, `Storico Docs`, in both locales', () => {
+    // A single literal serves both locales: the label is not translated, so the Spanish catalogue
+    // carries no copy for it and the neutral-Spanish guard needs no widening.
+    expect(SITE_TITLE).toMatch(/>\s*Storico Docs\s*</);
   });
 });
 

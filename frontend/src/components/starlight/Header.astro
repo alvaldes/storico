@@ -8,13 +8,17 @@
  * we now own, and the diff is the price of changing the header's structure
  * instead of abusing the `SocialIcons` slot.
  *
- * The single deliberate change against upstream: the app's public nav links
- * (`/docs`, `/api`, `/status`, from the shared `src/lib/public-nav.ts` module —
- * the same list `PublicLayout.astro` renders) are inserted as the first child of
- * the right-hand cluster, which is `sl-hidden md:sl-flex`, so the nav is visible
- * from `md` up. The three-column grid is untouched: the nav deliberately lives
- * OUTSIDE `.title-wrapper`, which carries `min-width: 0` and `overflow: clip`
- * and would clip the links and fight the search box.
+ * The single deliberate change against upstream: the docs header's own
+ * two-destination nav — the app landing page and the status page, from the
+ * shared `src/lib/public-nav.ts` module (`DOCS_HEADER_NAV_PATHS`, built by
+ * `docsHeaderNavLinks`) — is inserted as the first child of the right-hand
+ * cluster, which is `sl-hidden md:sl-flex`, so the nav is visible from `md` up.
+ * This list is NOT the app navbar's list: that one keeps its three destinations
+ * in `PublicLayout.astro`, and the divergence is the owner's decision, recorded
+ * in `odd/tasks/docs-header-nav-scope.md`. The three-column grid is untouched:
+ * the nav deliberately lives OUTSIDE `.title-wrapper`, which carries
+ * `min-width: 0` and `overflow: clip` and would clip the links and fight the
+ * search box.
  *
  * Starlight's own Search, SocialIcons, ThemeSelect and LanguageSelect keep their
  * stock positions and behaviour. Labels come from the app's translation keys via
@@ -27,7 +31,7 @@ import Search from 'virtual:starlight/components/Search';
 import SiteTitle from 'virtual:starlight/components/SiteTitle';
 import SocialIcons from 'virtual:starlight/components/SocialIcons';
 import ThemeSelect from 'virtual:starlight/components/ThemeSelect';
-import { publicNavLinks } from '@/lib/public-nav';
+import { docsHeaderNavLinks } from '@/lib/public-nav';
 
 /**
  * Render the `Search` component if Pagefind is enabled or the default search component has been overridden.
@@ -39,7 +43,7 @@ const shouldRenderSearch =
 // the same way `localizedPath` clamps internally. `prefixDefaultLocale: true` means
 // a docs route always carries a locale prefix, but the clamp keeps it honest.
 const locale = Astro.locals.starlightRoute.locale === 'es' ? 'es' : 'en';
-const navLinks = publicNavLinks(locale);
+const navLinks = docsHeaderNavLinks(locale);
 ---
 
 <div class="header">
