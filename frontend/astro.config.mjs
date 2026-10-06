@@ -107,6 +107,14 @@ export default defineConfig({
           translations: { es: 'Roles y permisos' },
           link: '/docs/roles-permissions',
         },
+        {
+          // Generated from the FastAPI app by `storico.scripts.render_api_reference`
+          // and guarded by backend/tests/test_api_reference.py, which fails when the
+          // committed page drifts from the spec. See odd/tasks/api-reference.md.
+          label: 'API reference',
+          translations: { es: 'Referencia de la API' },
+          link: '/docs/api-reference',
+        },
       ],
     }),
   ],
