@@ -64,8 +64,8 @@ Plus: localize every sidebar label, and correct ADR-003.
 
 - [x] 1. **Kanban states and workflow page** — `79d45e3`
 - [x] 2. **Extraction versions page** — `79d45e3`
-- [ ] 3. **Historical context page** (en + es) plus its sidebar entry and its links from the index.
-- [ ] 4. **Roles and permissions page** (en + es) plus its sidebar entry and its links from the index.
+- [x] 3. **Historical context page** — `fcbdb35`
+- [x] 4. **Roles and permissions page** — `fcbdb35`
 - [ ] 5. **Localize the whole sidebar** with per-item `translations`, and widen
       `neutral-spanish.test.ts` to cover `astro.config.mjs` in the same commit — the new Spanish
       labels live in a file that guard does not read today, which is the same hole the `SiteTitle`
@@ -102,6 +102,12 @@ Plus: localize every sidebar label, and correct ADR-003.
 | Task | Commit | Claim → source map, and the checks that ran |
 | --- | --- | --- |
 | 1–2 | `79d45e3` | Both pages written from the code and audited clause by clause by an independent verifier: the transition table direction by direction, `INVALID_STATE_TRANSITION` with its 400 and its three fields, the drag's `PUT /api/v1/tasks/{task_id}` checked against the backend router, the three frozen operations with `TASK_VERSION_FROZEN`, `TASK_ALREADY_MARKED`, the single-active-mark index, the owner-or-admin gate, and the two 410-Gone endpoints. **Two defects were caught in the first draft and fixed before the commit** (see below). Guards 19/19; suite **765/765 in 68 files**; `tsc --noEmit` exit 0; build exit 0 with **14 routes** and Pagefind **7 per locale**. |
+| 3–4 | `fcbdb35` | Both pages audited claim by claim by an independent verifier: **every flagged claim PASS**, including the ones I expected to be weakest. The per-environment collection *rationale* is stated verbatim in `config/settings.py:46-48`; the page names the mechanism and the default and asserts no deployed collection name; all ten payload fields exist in `infrastructure/vector/qdrant_adapter.py:317-326`; and the roles page matches `require_admin` and `require_owner` per endpoint. The writer refused to invent dev and prod collection names because they are not sourceable from the repository, and the verifier confirmed that reasoning. Suite **767/767 in 68 files**; `tsc --noEmit` exit 0; build exit 0 with **18 routes** and Pagefind **9 per locale**. |
+
+Two sentences were softened **after** the audit, on the verifier's own reading, so that no absolute
+outlives the code: storage is described as what the server does when a run completes rather than as a
+guarantee that every run is stored, and the degraded path no longer says an extraction *always*
+succeeds — it says it *still* succeeds. Task 7 re-checks the final bytes.
 
 ### Defects verification caught in the first draft
 
@@ -123,7 +129,8 @@ the plumbing:
   the same feature area: `kanban.no_workspace` and `kanban.empty_board` say *workspace*, while
   `export.no_workspace` on the same screen family says *espacio de trabajo*. The docs use *espacio de
   trabajo*, which is the majority and the better Spanish. Fixing the app's copy is its own change.
-- **A `[starlight-docs-loader] Duplicate id "en/docs"` warning appeared in the build.** A previous
-  feature already diagnosed this class as a stale content-cache artefact that disappears on a clean
-  `.astro/`, but it was never confirmed for this branch. The next verification run checks it against
-  a moved-aside cache rather than assuming.
+- **A `[starlight-docs-loader] Duplicate id "en/docs"` warning appeared in the build — SETTLED, and it
+  was cache, not content.** Measured with `frontend/.astro` moved aside and the build repeated: four
+  `Duplicate id` warnings (the two index pages and the two `extraction-versions` pages) **became
+  zero**, with the same 18 routes and Pagefind at 9 per locale in both builds. The earlier feature's
+  diagnosis holds.
