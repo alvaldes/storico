@@ -1,14 +1,12 @@
 # ODD Feature: starlight-docs
 
-> **Status**: **not complete after all.** Tasks 1–5 are done and verified, but task 6 — added
-> 2026-10-05 after a browser review — shows the note's acceptance criterion is unmet: the
-> documentation renders with Starlight's own theme, not Storico's. Branch `feat/starlight-docs` off
-> `main` @ `54abdc7`. Not pushed, not merged.
+> **Status**: complete on `feat/starlight-docs` off `main` @ `54abdc7`. Tasks 1–6 done and verified;
+> the last commit is `fa899e0`. Not pushed, not merged.
 >
-> **Verified so far**: `/en/docs` and `/es/docs` serve a five-page Starlight site per locale,
-> prerendered with a working Pagefind index, in neutral Spanish, guarded on variant, slug parity,
-> link integrity and sidebar coverage. **733/733 tests in 64 files**, `tsc --noEmit` exit 0, build
-> exit 0.
+> **Verified**: `/en/docs` and `/es/docs` serve a five-page Starlight site per locale, prerendered
+> with a working Pagefind index, in neutral Spanish, decorated with Storico's own tokens and fonts,
+> and guarded on variant, slug parity, link integrity and sidebar coverage. **748/748 tests in 66
+> files**, `tsc --noEmit` exit 0, build exit 0.
 > **Created**: 2026-10-05
 > **Workflow**: Organic Driven Development (ODD)
 > **Source**: the vault note `Starlight — documentación del sitio con Starlight` (second-brain,
@@ -106,11 +104,42 @@ and stop shipping copy the product cannot keep.
       as it lives, so the debt is cheap to carry. Revisit when the reference lands; at that point the
       choice is between converting it into a landing that links to the reference and deleting it with
       a redirect, which also retires the guard.
-- [ ] 6. **Make the docs wear Storico's design system.** Added 2026-10-05 after reviewing the running
-      site in a real browser. The note's acceptance criterion — "que todo quede alineado al estilo
-      real de Storico y al estilo shadcn" — is **not met**. Starlight ships its own theme and nothing
-      was done to align it. Measured on `pnpm dev`, landing page versus `/en/docs`, same browser
-      session:
+- [x] 6. **Make the docs wear Storico's design system.** Added 2026-10-05 after reviewing the running
+      site in a real browser. — `fa899e0`
+
+      **Outcome.** `starlight.css` maps Starlight's ramp and semantic aliases onto the app's tokens
+      for both themes, and `src/lib/fonts.ts` is now the single source of truth for the web fonts,
+      rendered by `PublicLayout` and by the Starlight `Head` override. The app's `theme` key is the
+      one theme source: a pre-paint inline bridge script replaces `ThemeScript`, which never ran on
+      Starlight pages, and Starlight's `ThemeSelect` is overridden to write that key while mirroring
+      `starlight-theme` so Starlight's own provider agrees.
+
+      Verified in a real browser through ego-browser, comparing `/en/docs` with `/en/api` in both
+      themes: identical font faces (`Inter`, `Space Grotesk`, `Geist Mono` — 62 faces), `h1` Space
+      Grotesk 800, `h2` Inter 700, body Inter, page background `rgb(248, 250, 252)` light and
+      `rgb(11, 15, 23)` dark, `--sl-color-accent` at `oklch(0.55 0.15 250)`. Theme round trip
+      confirmed both ways: choosing Light in the docs' select wrote the app's `theme` key and the app
+      honoured it, and returning to the docs kept it.
+
+      Two things this task uncovered that were not in the original diagnosis:
+      - **The docs loaded no web fonts at all.** The Google Fonts link lived only in `PublicLayout`,
+        so the docs declared `Inter` and downloaded nothing — `document.fonts` held zero faces while
+        still rendering. `document.fonts.check()` returns `true` for a family with no `@font-face`,
+        which is exactly how that hid; `[...document.fonts]` is what caught it.
+      - **Space Grotesk is the app's display face for `h1` only.** Every public page applies it to
+        its `h1` and to nothing else: `privacy.astro` has 13 `h2` and not one uses it, and the
+        deleted `[locale]/docs.astro` did the same. The first pass put it on every heading; `h2` and
+        below stay on Inter.
+
+      Left alone deliberately, recorded for the owner: `globals.css:141` declares `--font-mono:
+      'JetBrains Mono'` and never loads it — the mono actually delivered is `Geist Mono` — so the
+      app's code blocks render in the system mono, and `@fontsource-variable/geist` sits unused in
+      `dependencies`. The docs mirror the declaration faithfully. Changing the app's mono is a
+      separate decision.
+      **The diagnosis, kept as the before measurement.** The note's acceptance criterion — "que todo
+      quede alineado al estilo real de Storico y al estilo shadcn" — was **not met**. Starlight ships
+      its own theme and nothing had been done to align it. Measured on `pnpm dev`, landing page
+      versus `/en/docs`, same browser session:
 
       | | App (`/en/`) | Docs (`/en/docs`) |
       | --- | --- | --- |
@@ -141,7 +170,8 @@ and stop shipping copy the product cannot keep.
 
       Verification for this task is browser-based. Playwright is absent from this repository, so the
       evidence is a real browser session driven through ego-browser, and its provenance must say so —
-      the same standard follow-up 5 of `odd/tasks/csv-story-import.md` was held to.
+      the same standard follow-up 5 of `odd/tasks/csv-story-import.md` was held to. **Done: the
+      original measured table above is the before; the Outcome section records the after.**
 
 Task 2 is deliberately ordered before task 3: `docs.astro` is the only user-facing documentation that
 exists today, and deleting it before its content is ported leaves `/en/docs` as a 404.
@@ -171,9 +201,17 @@ deployed from this branch, and the window closes as soon as task 2 puts the real
 | 2 | `693db17` | Ten routes prerendered, five per locale; `pagefind-entry.json` reports `page_count: 5` for `en` and for `es`; sidebar links resolve to `/en/docs/...` and `/es/docs/...`; `lang="es"` and `hreflang` `en`/`es` present on the Spanish pages; a voseo grep over `src/content/docs/es/**` is empty; `tsc --noEmit` exit 0; `pnpm test` **717/717 across 63 files**. 20 of the 22 `pages.docs.*` keys ported, 2 retired by instruction. |
 | 3 | `32bfcf8` | `docs.astro` deleted and `pages.docs` gone from both catalogs (`git diff --stat`: 24 deletions per file, zero insertions — no `\uXXXX` un-escaping leaked in); key parity holds at **763 = 763**; RED observed before the repoint (both catalogs failed with “does not declare pages.docs.step_2”) and GREEN after; `pnpm test` **719/719 across 63 files**; `tsc --noEmit` exit 0; build exit 0 with the ten routes and Pagefind at 10 HTML files, and the `[router]` duplicate-`/404` warning is gone. |
 | 4 | `97c76df` | Only the two test files changed; `astro.config.mjs` and every markdown file are byte-identical to `32bfcf8`. Four guards, each shown to fail on a broken input and pass once reverted: a voseo form in `es/docs/export.md`, a dead slug (`/en/docs/quikstart`), a cross-locale link, and a removed sidebar entry. `pnpm test` **733/733 across 64 files** (+14); `tsc --noEmit` exit 0; build exit 0, ten routes, Pagefind `page_count: 5` per locale, no duplicate-`/404` conflict. |
+| 5 | (decision) | `api.astro` kept as-is and carried as debt; no code change. |
+| 6 | `fa899e0` | Browser-verified against `/en/api`, both themes: identical font faces (`Inter`, `Space Grotesk`, `Geist Mono`), `h1` Space Grotesk 800, `h2` Inter 700, body Inter, page background `rgb(248, 250, 252)` light and `rgb(11, 15, 23)` dark, `--sl-color-accent` `oklch(0.55 0.15 250)`; theme round trip honoured in both directions. `pnpm test` **748/748 across 66 files** (+15); `tsc --noEmit` exit 0; build exit 0, ten routes. |
 
 ### Findings that changed the plan
 
+- **The docs looked like stock Starlight, and `document.fonts` was empty.** Both were found in the
+  browser and both had the same shape: a declaration with nothing behind it. The tokens pointed at
+  `--sl-color-*`, which nothing was mapping, and the font stacks named `Inter`, which nothing was
+  loading because the Google Fonts link lived only in `PublicLayout`. `document.fonts.check()`
+  returns `true` for a family with no `@font-face`, so it reported success on a page rendering in a
+  system font; `[...document.fonts]` is the measurement that catches it.
 - **Starlight's 404 shadowed the app's, site-wide — fixed in `693db17`.** Adding Starlight made `/404`
   defined twice: the build warned about it and the emitted `.vercel/output/static/404.html` was
   Starlight's, so every 404 on the site, not just under `/docs`, stopped serving
