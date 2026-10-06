@@ -87,6 +87,16 @@ export default defineConfig({
           translations: { es: 'Exportación' },
           link: '/docs/export',
         },
+        {
+          label: 'Kanban board',
+          translations: { es: 'Tablero Kanban' },
+          link: '/docs/kanban',
+        },
+        {
+          label: 'Extraction versions',
+          translations: { es: 'Versiones de extracción' },
+          link: '/docs/extraction-versions',
+        },
       ],
     }),
   ],
