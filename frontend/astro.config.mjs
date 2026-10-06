@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
+import starlight from '@astrojs/starlight';
 import auth from 'auth-astro';
 import vercel from '@astrojs/vercel';
 
@@ -14,7 +15,17 @@ export default defineConfig({
       { hostname: '127.0.0.1' },
     ],
   },
-  integrations: [react(), auth()],
+  integrations: [
+    react(),
+    auth(),
+    // Starlight mounts at the site root; the docs path comes from nesting the
+    // content under src/content/docs/en/docs/ and es/docs/. The top-level i18n
+    // block above is the single owner of localisation (Option B): a Starlight
+    // `locales` block next to it makes the build fail hard with
+    // "Cannot provide both an Astro 'i18n' configuration and a Starlight
+    // 'locales' configuration". 0.37.7 is the ceiling for Astro 5.
+    starlight({ title: 'Storico Documentation', pagefind: true }),
+  ],
   site: process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:4321',
   i18n: {
     defaultLocale: 'en',
