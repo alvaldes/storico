@@ -375,7 +375,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
             <HoverCard>
               <HoverCardTrigger
                 render={
-                  <span className="inline-flex items-center justify-center rounded-full h-5 w-5 text-muted-foreground hover:text-foreground hover:bg-(--color-surface-tertiary) transition-colors cursor-help">
+                  <span className="inline-flex items-center justify-center rounded-full h-5 w-5 text-muted-foreground hover:text-foreground hover:bg-(--color-surface-secondary) transition-colors cursor-help">
                     <Info className="h-4 w-4" />
                   </span>
                 }
@@ -412,7 +412,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
               <HoverCard>
                 <HoverCardTrigger
                   render={
-                    <span className="inline-flex items-center justify-center rounded-full h-5 w-5 text-muted-foreground hover:text-foreground hover:bg-(--color-surface-tertiary) transition-colors cursor-help">
+                    <span className="inline-flex items-center justify-center rounded-full h-5 w-5 text-muted-foreground hover:text-foreground hover:bg-(--color-surface-secondary) transition-colors cursor-help">
                       <Info className="h-4 w-4" />
                     </span>
                   }
@@ -470,7 +470,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-(--color-surface-tertiary)"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-(--color-surface-secondary)"
                   aria-label={t.common.edit}
                   onClick={(e) => {
                     e.stopPropagation();

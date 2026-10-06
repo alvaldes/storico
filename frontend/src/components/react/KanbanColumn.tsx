@@ -21,7 +21,7 @@ export function KanbanColumn({ columnId, title, tasks, locale }: KanbanColumnPro
       {/* Column header — fixed */}
       <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        <span className="inline-flex items-center justify-center rounded-full bg-(--color-surface-tertiary) px-2 py-0.5 text-xs font-medium text-muted-foreground">
+        <span className="inline-flex items-center justify-center rounded-full bg-(--color-surface-secondary) px-2 py-0.5 text-xs font-medium text-muted-foreground">
           {tasks.length}
         </span>
       </div>

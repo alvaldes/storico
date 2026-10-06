@@ -3,6 +3,21 @@
 @import 'shadcn/tailwind.css';
 /* Geist font removed — using system fonts for now */
 
+/* ── Tailwind content sources ─────────────────────────────────────
+   Tests are not production content, yet Tailwind's automatic detection scans `src/**` as content
+   — comments included — so the guard test's own illustrative examples of Tailwind syntax
+   compiled into rules no markup can ever match. Measured by diffing the raw emitted CSS of two
+   builds, this exclusion removes exactly nine dead rules (343 bytes) and nothing else: the `--c`,
+   `--name` and `--x` bracketed declarations and the `bg-(--…)` / `w-(--…)` examples from
+   `src/styles/__tests__/css-vars.test.ts`, plus `.contents` and `.lowercase`, which existed only
+   as words in test prose (both have zero uses in app source). Nothing left the bundle that any
+   markup references, and nothing was added.
+
+   This is a build-level exclusion, not a discipline the guard test could enforce on itself:
+   every synthetic fixture written to exercise a Tailwind-shaped pattern is a candidate for the
+   scanner, so sanitising the fixtures would be a losing game. */
+@source not "../**/__tests__";
+
 /* ── Loading dots animation for breadcrumb ─────────────────────── */
 @keyframes loading-dots {
   20% {
