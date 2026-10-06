@@ -170,7 +170,7 @@ export function TeamSwitcher({ teams, locale }: { teams: Team[]; locale: Locale 
               <ChevronsUpDown className="ml-auto size-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
-              className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+              className="w-(--anchor-width) min-w-56 rounded-lg"
               align="start"
               side={isMobile ? 'bottom' : 'right'}
               sideOffset={4}
