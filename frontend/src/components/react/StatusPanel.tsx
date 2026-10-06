@@ -264,7 +264,7 @@ export function StatusPanel({ locale }: { locale: Locale }) {
     );
 
   const renderRow = (row: (typeof serviceRows)[number]) => (
-    <div className="flex items-center justify-between p-4">
+    <div key={row.title} className="flex items-center justify-between p-4">
       <div>
         <p className="font-medium text-(--color-text)">{row.title}</p>
         <p className="text-sm text-(--color-text-secondary)">{row.description}</p>
