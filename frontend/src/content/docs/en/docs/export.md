@@ -1,6 +1,6 @@
 ---
 title: Export
-description: Download your workspace's tasks as JSON or Markdown.
+description: Download your workspace's tasks as JSON or Markdown, and exactly what ends up in the file.
 ---
 
 ## JSON and Markdown export
@@ -9,11 +9,19 @@ Export your tasks to JSON or Markdown with one click. Compatible with your exist
 
 Open the export page, select a workspace, choose **JSON** or **Markdown**, and click **Download**. The backend returns the file as a download: JSON as an array of tasks, Markdown with one section per story. An empty workspace downloads a valid JSON array (`[]`) or a Markdown document with only the `# Tasks Export` heading.
 
-These are the only two formats available — CSV and XML are not supported. Any other format value is refused with HTTP 400 and the error code `UNSUPPORTED_EXPORT_FORMAT`.
+These are the only two formats available — CSV and XML are not supported. The format is a query parameter that defaults to `json`, and any other value is refused with HTTP 400 and the error code `UNSUPPORTED_EXPORT_FORMAT`.
+
+## The scope of an export
+
+An export is **whole-workspace and unfiltered**:
+
+- there is no project filter and no story filter, and no date range;
+- the response is not paginated — every task the workspace's current versions hold is in one file;
+- the endpoint is `GET /api/v1/workspaces/{workspace_id}/export/tasks`, and any member of the workspace may call it.
 
 ## The JSON format
 
-The JSON export is a pretty-printed array of task objects, one per exported task, served as `application/json`. Each object carries exactly these fields:
+The JSON export is a pretty-printed array of task objects, one per exported task, served as `application/json` with UTF-8. Each object carries exactly these fields:
 
 | Field | Meaning |
 | --- | --- |
@@ -30,7 +38,9 @@ The JSON export is a pretty-printed array of task objects, one per exported task
 
 ## The Markdown format
 
-The Markdown export, served as `text/markdown`, starts with a `# Tasks Export` heading and has one `## {story}` section per story, where `{story}` is the story's raw text — or `Untitled story` when it has none. Inside a section, every task is one bullet built as `- **{title}** — {description}`, with the task's labels appended as `#label` markers and its dependencies appended as `→ {resolved title}`. A dependency resolves to the referenced task's title and falls back to the raw reference when no title matches.
+The Markdown export, served as `text/markdown` with UTF-8, starts with a `# Tasks Export` heading and has one `## {story}` section per story, where `{story}` is the story's raw text — or `Untitled story` when it has none. Inside a section, every task is one bullet built as `- **{title}** — {description}`, with the task's labels appended as `#label` markers and its dependencies appended as `→ {resolved title}`.
+
+A dependency reference is resolved in two passes: first against the exported tasks' ids, then against their titles compared case-insensitively and trimmed. When neither matches, the raw reference is written out unchanged.
 
 ## The download
 
