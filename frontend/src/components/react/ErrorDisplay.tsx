@@ -98,7 +98,7 @@ function RawDetail({ detail, locale }: { detail: string; locale: Locale }) {
               className="text-xs text-muted-foreground hover:text-foreground"
             >
               {copied ? (
-                <Check className="h-3.5 w-3.5 text-emerald-500" />
+                <Check className="h-3.5 w-3.5 text-(--color-success)" />
               ) : (
                 <Copy className="h-3.5 w-3.5" />
               )}

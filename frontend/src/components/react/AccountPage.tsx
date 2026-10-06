@@ -311,23 +311,23 @@ export function AccountPage({ locale }: AccountPageProps) {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <TriangleAlert className="h-4 w-4 text-red-500" />
-            <CardTitle className="text-red-600">{t.settings.danger_title}</CardTitle>
+            <TriangleAlert className="h-4 w-4 text-destructive" />
+            <CardTitle className="text-destructive">{t.settings.danger_title}</CardTitle>
           </div>
           <CardDescription>{t.settings.danger_description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
-            <p className="text-sm font-medium text-red-800 dark:text-red-200">
+          <div className="rounded-lg border border-(--color-destructive-border) bg-(--color-destructive-bg) p-4">
+            <p className="text-sm font-medium text-(--color-destructive-text)">
               {t.settings.danger_delete_account}
             </p>
-            <p className="mt-1 text-sm text-red-600 dark:text-red-300">
+            <p className="mt-1 text-sm text-(--color-destructive-text)">
               {t.settings.danger_delete_description}
             </p>
             <Button
               variant="outline"
               onClick={() => setDeleteDialogOpen(true)}
-              className="mt-3 cursor-pointer border-red-300 text-red-600 hover:bg-red-100 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/50 dark:hover:text-red-300"
+              className="mt-3 cursor-pointer border-(--color-destructive-border) text-destructive hover:bg-(--color-destructive-bg) hover:text-(--color-destructive-text)"
             >
               {t.settings.danger_delete_account}
             </Button>

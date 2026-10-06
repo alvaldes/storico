@@ -584,18 +584,18 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
         {configIncomplete && (
           <div
             role="alert"
-            className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/30"
+            className="flex items-start gap-3 rounded-lg border border-(--color-destructive-border) bg-(--color-destructive-bg) p-3"
           >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
             <div className="space-y-1">
-              <p className="text-sm font-medium text-red-800 dark:text-red-200">
+              <p className="text-sm font-medium text-(--color-destructive-text)">
                 {t.stories.extractionBlockedTitle}
               </p>
-              <p className="text-sm text-red-700 dark:text-red-300">
+              <p className="text-sm text-(--color-destructive-text)">
                 {t.stories.extractionBlockedDesc}
               </p>
               {missingConfigNames !== '' && (
-                <p className="text-sm text-red-700 dark:text-red-300">
+                <p className="text-sm text-(--color-destructive-text)">
                   {t.stories.extractionBlockedMissing.replace('{fields}', missingConfigNames)}
                 </p>
               )}
@@ -605,12 +605,12 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
               {workspaceRole === 'admin' && settingsHref ? (
                 <a
                   href={settingsHref}
-                  className="inline-block text-sm text-red-700 underline hover:text-red-900 dark:text-red-300 dark:hover:text-red-100"
+                  className="inline-block text-sm text-destructive underline hover:text-(--color-destructive-text)"
                 >
                   {t.stories.extractionBlockedAction}
                 </a>
               ) : (
-                <p className="text-sm text-red-700 dark:text-red-300">
+                <p className="text-sm text-(--color-destructive-text)">
                   {t.stories.extractionBlockedAskAdmin}
                 </p>
               )}

@@ -282,14 +282,14 @@ export function WorkspaceSettings({ locale, workspaceId }: WorkspaceSettingsProp
           {t.workspace?.loading ?? 'Loading settings...'}
         </div>
       ) : error ? (
-        <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
-          <TriangleAlert className="h-5 w-5 shrink-0 text-red-500" />
+        <div className="flex items-center gap-3 rounded-lg border border-(--color-destructive-border) bg-(--color-destructive-bg) p-4">
+          <TriangleAlert className="h-5 w-5 shrink-0 text-destructive" />
           <div>
-            <p className="text-sm font-medium text-red-800 dark:text-red-200">{error}</p>
+            <p className="text-sm font-medium text-(--color-destructive-text)">{error}</p>
             <button
               type="button"
               onClick={loadWorkspaceInfo}
-              className="mt-1 text-sm text-red-600 underline hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
+              className="mt-1 text-sm text-destructive underline hover:text-(--color-destructive-text)"
             >
               {t.workspace?.tryAgain ?? 'Try again'}
             </button>
@@ -319,11 +319,11 @@ export function WorkspaceSettings({ locale, workspaceId }: WorkspaceSettingsProp
 
           {/* ── Section 4: Danger Zone (owner only) ── */}
           {isOwner && (
-            <Card className="border-red-300 dark:border-red-700">
+            <Card className="border-(--color-destructive-border)">
               <CardHeader>
                 <div className="flex items-center gap-2">
-                  <TriangleAlert className="h-4 w-4 text-red-500" />
-                  <CardTitle className="text-red-600 dark:text-red-400">
+                  <TriangleAlert className="h-4 w-4 text-destructive" />
+                  <CardTitle className="text-destructive">
                     {t.workspace?.deleteTitle ?? 'Delete workspace'}
                   </CardTitle>
                 </div>
@@ -332,7 +332,7 @@ export function WorkspaceSettings({ locale, workspaceId }: WorkspaceSettingsProp
                     'Permanently delete this workspace and all its data. This action cannot be undone.'}
                 </CardDescription>
               </CardHeader>
-              <CardFooter className="bg-red-50/80 dark:bg-red-950/20 border-t-red-200 dark:border-t-red-800 justify-end">
+              <CardFooter className="bg-(--color-destructive-bg) border-t-(--color-destructive-border) justify-end">
                 <AlertDialog
                   open={deleteOpen}
                   onOpenChange={(open) => {
@@ -396,16 +396,16 @@ export function WorkspaceSettings({ locale, workspaceId }: WorkspaceSettingsProp
                     </div>
 
                     {/* Warning note */}
-                    <div className="flex items-start gap-3 rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/30">
-                      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-                      <p className="text-sm text-red-800 dark:text-red-200">
+                    <div className="flex items-start gap-3 rounded-md border border-(--color-destructive-border) bg-(--color-destructive-bg) p-3">
+                      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                      <p className="text-sm text-(--color-destructive-text)">
                         {(
                           t.workspace?.deleteConfirmNote ?? 'Deleting {name} cannot be undone.'
                         ).replace('{name}', wsName)}
                       </p>
                     </div>
 
-                    {deleteError && <p className="text-xs text-red-500">{deleteError}</p>}
+                    {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
 
                     <AlertDialogFooter>
                       <AlertDialogCancel disabled={deleteSaving}>

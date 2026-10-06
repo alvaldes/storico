@@ -241,14 +241,14 @@ export function MemberManagement({ locale, workspaceId }: MemberManagementProps)
   /* ── Error State ── */
   if (error) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
-        <TriangleAlert className="h-5 w-5 shrink-0 text-red-500" />
+      <div className="flex items-center gap-3 rounded-lg border border-(--color-destructive-border) bg-(--color-destructive-bg) p-4">
+        <TriangleAlert className="h-5 w-5 shrink-0 text-destructive" />
         <div>
-          <p className="text-sm font-medium text-red-800 dark:text-red-200">{error}</p>
+          <p className="text-sm font-medium text-(--color-destructive-text)">{error}</p>
           <button
             type="button"
             onClick={loadMembers}
-            className="mt-1 text-sm text-red-600 underline hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
+            className="mt-1 text-sm text-destructive underline hover:text-(--color-destructive-text)"
           >
             {t.members?.tryAgain ?? 'Try again'}
           </button>
@@ -348,7 +348,7 @@ export function MemberManagement({ locale, workspaceId }: MemberManagementProps)
                     <span className="truncate text-sm font-medium text-(--color-text)">
                       {member.name}
                     </span>
-                    {isOwner && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+                    {isOwner && <Crown className="h-3.5 w-3.5 shrink-0 text-(--color-warning)" />}
                     {isSelf && (
                       <span className="text-xs text-(--color-text-tertiary)">
                         {t.members?.you ?? '(you)'}
@@ -423,7 +423,7 @@ export function MemberManagement({ locale, workspaceId }: MemberManagementProps)
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            className="text-(--color-text-tertiary) hover:text-red-500"
+                            className="text-(--color-text-tertiary) hover:text-destructive"
                             onClick={() => setRemoveTarget(member)}
                           />
                         }
@@ -493,15 +493,15 @@ export function MemberManagement({ locale, workspaceId }: MemberManagementProps)
                   src={ownerMember.avatarUrl}
                   name={ownerMember.name}
                   size="md"
-                  className="ring-amber-300"
-                  fallbackClass="bg-amber-500/10 text-amber-600"
+                  className="ring-(--color-warning-border)"
+                  fallbackClass="bg-(--color-warning)/10 text-(--color-warning-text)"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-medium text-(--color-text)">
                       {ownerMember.name}
                     </span>
-                    <Badge variant="default" className="bg-amber-500/15 text-amber-600">
+                    <Badge variant="default" className="bg-(--color-warning)/15 text-(--color-warning-text)">
                       <Crown className="mr-1 h-3 w-3" />
                       {t.members?.owner ?? 'Owner'}
                     </Badge>
@@ -554,11 +554,11 @@ export function MemberManagement({ locale, workspaceId }: MemberManagementProps)
                         <FieldError>{transferError}</FieldError>
                       </Field>
                       {transferTargetId && (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
-                          <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+                        <div className="rounded-lg border border-(--color-warning-border) bg-(--color-warning-bg) p-3">
+                          <p className="text-xs font-medium text-(--color-warning-text)">
                             ⚠️ {t.members?.transferWarning ?? 'This action cannot be undone'}
                           </p>
-                          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                          <p className="mt-1 text-xs text-(--color-warning-text)">
                             {t.members?.transferWarningDesc ??
                               'The new owner will have full control over this workspace, including the ability to remove you.'}
                           </p>

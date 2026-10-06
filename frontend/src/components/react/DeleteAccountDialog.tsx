@@ -101,7 +101,7 @@ export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccoun
             {/* Warning note */}
             <div
               role="note"
-              className="flex items-start gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200"
+              className="flex items-start gap-3 rounded-md border border-(--color-destructive-border) bg-(--color-destructive-bg) px-3 py-2 text-sm text-(--color-destructive-text)"
             >
               <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{t.settings.danger_delete_dialog_description_2}</span>
@@ -141,7 +141,7 @@ export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccoun
             </FieldGroup>
 
             {/* Error message */}
-            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
 
           <DialogFooter>
@@ -157,7 +157,7 @@ export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccoun
               type="submit"
               variant="outline"
               disabled={!canDelete}
-              className="border-red-300 text-red-600 hover:bg-red-100 hover:text-red-700 disabled:border-input disabled:text-muted-foreground disabled:hover:bg-transparent dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/50 dark:hover:text-red-300"
+              className="border-(--color-destructive-border) text-destructive hover:bg-(--color-destructive-bg) hover:text-(--color-destructive-text) disabled:border-input disabled:text-muted-foreground disabled:hover:bg-transparent"
             >
               {deleting ? (
                 <span className="inline-flex items-center gap-2">

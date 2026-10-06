@@ -511,14 +511,14 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
 
   if (error) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
-        <TriangleAlert className="h-5 w-5 shrink-0 text-red-500" />
+      <div className="flex items-center gap-3 rounded-lg border border-(--color-destructive-border) bg-(--color-destructive-bg) p-4">
+        <TriangleAlert className="h-5 w-5 shrink-0 text-destructive" />
         <div>
-          <p className="text-sm font-medium text-red-800 dark:text-red-200">{error}</p>
+          <p className="text-sm font-medium text-(--color-destructive-text)">{error}</p>
           <button
             type="button"
             onClick={loadConfigs}
-            className="mt-1 text-sm text-red-600 underline hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
+            className="mt-1 text-sm text-destructive underline hover:text-(--color-destructive-text)"
           >
             {t.workspace?.tryAgain ?? 'Try again'}
           </button>
@@ -589,19 +589,19 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
             {missingFields.length > 0 && (
               <div
                 role="alert"
-                className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/30"
+                className="flex items-start gap-3 rounded-lg border border-(--color-destructive-border) bg-(--color-destructive-bg) p-3"
               >
-                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                  <p className="text-sm font-medium text-(--color-destructive-text)">
                     {t.workspace?.llmMissingSummaryTitle ??
                       'This workspace cannot extract tasks yet'}
                   </p>
-                  <p className="text-sm text-red-700 dark:text-red-300">
+                  <p className="text-sm text-(--color-destructive-text)">
                     {t.workspace?.llmMissingSummaryDesc ??
                       'Complete these fields to enable extraction:'}
                   </p>
-                  <ul className="list-disc pl-5 text-sm text-red-700 dark:text-red-300">
+                  <ul className="list-disc pl-5 text-sm text-(--color-destructive-text)">
                     {missingFields.map((field) => (
                       <li key={field}>{labelFor(READINESS_FIELD_TO_FORM_KEY[field])}</li>
                     ))}
@@ -870,12 +870,12 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                      then a probe that came back empty, then the typing hint. Nothing
                      claims a list is empty before the user has asked for one. */
                   modelsError ? (
-                    <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                    <span className="flex items-center gap-1.5 text-(--color-warning-text)">
                       <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
                       {modelsError}
                     </span>
                   ) : customModelsProbed && availableModels.length === 0 ? (
-                    <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                    <span className="flex items-center gap-1.5 text-(--color-warning-text)">
                       <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
                       {t.workspace?.llmCustomModelsEmpty ??
                         'The provider returned no models. Type the model id manually.'}
@@ -888,7 +888,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                     </span>
                   )
                 ) : modelsError ? (
-                  <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                  <span className="flex items-center gap-1.5 text-(--color-warning-text)">
                     <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
                     {modelsError}
                   </span>
@@ -899,13 +899,13 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       'Add your API key and save to enable model suggestions.'}
                   </span>
                 ) : savedModelMissingFromList ? (
-                  <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                  <span className="flex items-center gap-1.5 text-(--color-warning-text)">
                     <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
                     {t.workspace?.llmModelNotInList ??
                       "The saved model is not in the provider's model list."}
                   </span>
                 ) : modelListUnavailable ? (
-                  <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                  <span className="flex items-center gap-1.5 text-(--color-warning-text)">
                     <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
                     {noModelsMessage}
                   </span>

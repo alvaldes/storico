@@ -5,7 +5,9 @@
 // node environment keeps this file out of the jsdom suite instead of making the paths depend on
 // the working directory.
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const CSS = readFileSync(new URL('../globals.css', import.meta.url), 'utf8');
 
@@ -127,5 +129,60 @@ describe('theme split', () => {
         `${name}: light and dark must not carry the same value`,
       ).not.toBe(dark[0]!.value);
     }
+  });
+});
+
+// ── The ramp-literal ban ─────────────────────────────────────────────────────────────
+//
+// The app must paint its status colours with the semantic tokens above, never with raw
+// Tailwind ramp steps (`red-500`, `amber-200`, ...). This half of the guard scans the app
+// source so the debt cannot quietly grow back.
+
+/** frontend/src, resolved off this file's own URL — never off the working directory. */
+const SOURCE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+
+const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.astro'];
+
+function collectSourceFiles(dir: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
+    if (!entry.isFile() || !SOURCE_EXTENSIONS.some((ext) => entry.name.endsWith(ext))) continue;
+    // Tests are allowed to name ramp steps (this file does); only app source is policed.
+    if (entry.parentPath.split(/[\\/]/).includes('__tests__')) continue;
+    found.push(join(entry.parentPath, entry.name));
+  }
+  return found;
+}
+
+const SOURCE_FILES = collectSourceFiles(SOURCE_ROOT);
+
+/** Matches any Tailwind ramp step of the banned hues: `red-500`, `amber-200`, ... */
+const RAMP_LITERAL = /-(?:red|amber|emerald|blue)-\d{2,3}/;
+
+function findRampLiterals(): string[] {
+  const offenders: string[] = [];
+  for (const file of SOURCE_FILES) {
+    const lines = readFileSync(file, 'utf8').split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const match = lines[i]!.match(RAMP_LITERAL);
+      if (match) offenders.push(`${file}:${i + 1}: ${lines[i]!.trim()}`);
+    }
+  }
+  return offenders;
+}
+
+describe('the ramp-literal ban', () => {
+  it('walks a substantial part of the source tree, so a broken walk fails loudly instead of passing on an empty list', () => {
+    expect(SOURCE_FILES.length).toBeGreaterThanOrEqual(100);
+  });
+
+  it('finds no Tailwind ramp literals in app source — every status colour goes through the semantic tokens', () => {
+    const offenders = findRampLiterals();
+    expect(
+      offenders,
+      `${offenders.length} file(s) still hardcode ramp literals; every site must move onto\n` +
+        'the semantic status tokens (see globals.css). Offenders, one per line:\n' +
+        offenders.join('\n'),
+    ).toEqual([]);
   });
 });
