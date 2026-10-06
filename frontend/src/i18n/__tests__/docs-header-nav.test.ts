@@ -187,7 +187,7 @@ describe('the docs header renders its own two-destination list', () => {
 });
 
 describe('the docs title override', () => {
-  it('links the brand mark to the app home and the Docs label to the docs home, locale-aware', () => {
+  it('links the brand mark to the app home and the docs-home label to the docs home, locale-aware', () => {
     expect(SITE_TITLE).toMatch(/localizedPath/);
     expect(SITE_TITLE).toMatch(/href=\{L\('\/'\)\}/);
     expect(SITE_TITLE).toMatch(/href=\{L\('\/docs'\)\}/);
@@ -195,8 +195,10 @@ describe('the docs title override', () => {
     expect(SITE_TITLE).not.toMatch(/siteTitleHref/);
   });
 
-  it('keeps the visible header label at Docs in both locales', () => {
-    expect(SITE_TITLE).toMatch(/>\s*Docs\s*</);
+  it('keeps one visible header label, `Storico Docs`, in both locales', () => {
+    // A single literal serves both locales: the label is not translated, so the Spanish catalogue
+    // carries no copy for it and the neutral-Spanish guard needs no widening.
+    expect(SITE_TITLE).toMatch(/>\s*Storico Docs\s*</);
   });
 });
 
