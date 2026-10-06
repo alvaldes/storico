@@ -1,7 +1,7 @@
 # ODD Feature: starlight-docs
 
-> **Status**: in progress on `feat/starlight-docs` off `main` @ `54abdc7`. Tasks 1 and 2 verified and
-> committed as `20d6bc9` and `693db17`; tasks 3–5 pending. Not pushed, not merged.
+> **Status**: in progress on `feat/starlight-docs` off `main` @ `54abdc7`. Tasks 1–3 verified and
+> committed as `20d6bc9`, `693db17` and `32bfcf8`; tasks 4–5 pending. Not pushed, not merged.
 > **Created**: 2026-10-05
 > **Workflow**: Organic Driven Development (ODD)
 > **Source**: the vault note `Starlight — documentación del sitio con Starlight` (second-brain,
@@ -83,8 +83,9 @@ and stop shipping copy the product cannot keep.
       `/es/docs/` with a populated Pagefind index. — `20d6bc9`
 - [x] 2. Port the copy **before** deleting anything: five pages per locale, authored from
       `pages.docs.*` and `landing.features.card_3`, in neutral Spanish. — `693db17`
-- [ ] 3. Retire the old surface: delete `src/pages/[locale]/docs.astro`, drop the now-orphaned
+- [x] 3. Retire the old surface: delete `src/pages/[locale]/docs.astro`, drop the now-orphaned
       `pages.docs.*` keys from both locales, and retire the architecture half of `more_coming`.
+      — `32bfcf8`
 - [ ] 4. Guards: neutral-Spanish coverage for the markdown (the existing guard only reads `es.json`),
       and a locale-parity test that both locales expose the same page slugs.
 - [ ] 5. Decide `api.astro` — deleted with a redirect, or kept as a landing that links to the future
@@ -116,6 +117,7 @@ deployed from this branch, and the window closes as soon as task 2 puts the real
 | --- | --- | --- |
 | 1 | `20d6bc9` | `pnpm build` emits `.vercel/output/static/en/docs/index.html` and `es/docs/index.html`; `.vercel/output/static/pagefind/pagefind-entry.json` reports `en` and `es` with `page_count: 1` each; `pnpm exec tsc --noEmit` exit 0; `pnpm test` **717/717 across 63 files**, unregressed; `astro.config.mjs` diff is additive only and the top-level `i18n` block is byte-for-byte unchanged. Pagefind found 3 HTML files. |
 | 2 | `693db17` | Ten routes prerendered, five per locale; `pagefind-entry.json` reports `page_count: 5` for `en` and for `es`; sidebar links resolve to `/en/docs/...` and `/es/docs/...`; `lang="es"` and `hreflang` `en`/`es` present on the Spanish pages; a voseo grep over `src/content/docs/es/**` is empty; `tsc --noEmit` exit 0; `pnpm test` **717/717 across 63 files**. 20 of the 22 `pages.docs.*` keys ported, 2 retired by instruction. |
+| 3 | `32bfcf8` | `docs.astro` deleted and `pages.docs` gone from both catalogs (`git diff --stat`: 24 deletions per file, zero insertions — no `\uXXXX` un-escaping leaked in); key parity holds at **763 = 763**; RED observed before the repoint (both catalogs failed with “does not declare pages.docs.step_2”) and GREEN after; `pnpm test` **719/719 across 63 files**; `tsc --noEmit` exit 0; build exit 0 with the ten routes and Pagefind at 10 HTML files, and the `[router]` duplicate-`/404` warning is gone. |
 
 ### Findings that changed the plan
 
@@ -130,6 +132,16 @@ deployed from this branch, and the window closes as soon as task 2 puts the real
   the Starlight sidebar config does not exist”: the prerendered 404 page resolves the sidebar with
   no locale, and the raw lookup never matches. `link` entries are locale-stripped paths and Starlight
   injects the current locale when rendering. Recorded in a comment in `astro.config.mjs`.
+- **The note's claim that a test pins the docs copy was wrong, and this file repeated it.**
+  `src/i18n/__tests__/api-docs-copy.test.ts` guards `api.astro` and the router table — it has
+  nothing to do with `pages.docs`. The guard that actually pinned the docs copy is
+  `provider-copy.test.ts`, via `pages.docs.step_2` in `ALL_PROVIDER_KEYS`. It was repointed to the
+  four markdown files that now carry the provider enumeration.
+- **A benign upstream warning, recorded so it is not mistaken for ours:** every build emits
+  `[WARN] Astro.request.headers was used when rendering the route …starlight/routes/static/index.astro
+  … not available on prerendered pages`, once per docs route. Measured present in the task-2 builds
+  (10 occurrences each) and before task 3, so it comes from Starlight 0.37.7's own route under
+  `output: 'server'`. Each locale's pages render with the right locale, so it has no observed effect.
 - **`llm_backend_gemini` was dead copy.** The key existed in both locale files and was never
   rendered by `docs.astro`. It is visible now.
 - **The app's own copy was not the source of truth for the UI labels.** The Spanish export page
