@@ -44,6 +44,18 @@ export default defineConfig({
       // site, not just for /docs: the build warned that "/404" is defined twice
       // and the emitted .vercel/output/static/404.html was Starlight's.
       disable404Route: true,
+      // Make the docs wear Storico's design system: remap Starlight's --sl-*
+      // tokens onto the app's --color-* / --font-* tokens for both themes. The
+      // file also mirrors the token values themselves, because globals.css is
+      // not loaded on Starlight pages (they use Starlight's own layout).
+      customCss: ['./src/styles/starlight.css'],
+      // Component overrides for the theme bridge: Head injects the app→Starlight
+      // inline theme script (src/lib/theme-bridge.ts) pre-paint; ThemeSelect
+      // writes the app's `theme` key instead of Starlight's `starlight-theme`.
+      components: {
+        Head: './src/components/starlight/Head.astro',
+        ThemeSelect: './src/components/starlight/ThemeSelect.astro',
+      },
       sidebar: [
         {
           label: 'Documentation',

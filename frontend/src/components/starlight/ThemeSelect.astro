@@ -1,0 +1,93 @@
+---
+/**
+ * Starlight `ThemeSelect` component override.
+ *
+ * The stock select writes Starlight's own `starlight-theme` key, which the app
+ * ignores, so choosing a theme in the docs left the app on its own choice (and
+ * vice versa). This override writes the app's `theme` key — the single source of
+ * truth (`'light' | 'dark' | 'system'`, see `src/lib/theme.ts`, unchanged) — and
+ * mirrors `starlight-theme` (`''` for system) so Starlight's ThemeProvider, which
+ * re-derives `data-theme` from that key, always agrees.
+ *
+ * The initial page-load theme itself is applied pre-paint by the bridge script
+ * injected through `Head.astro`; this component keeps the picker UI and storage
+ * in sync from there on.
+ *
+ * Labels come from Starlight's own translations (already neutral Spanish:
+ * "Automático", "Claro", "Oscuro") — no copy is hardcoded here.
+ */
+import Select from '@astrojs/starlight/components/Select.astro';
+---
+
+<starlight-theme-select>
+	<Select
+		icon="laptop"
+		label={Astro.locals.t('themeSelect.accessibleLabel')}
+		options={[
+			{ label: Astro.locals.t('themeSelect.auto'), value: 'system', selected: false },
+			{ label: Astro.locals.t('themeSelect.light'), value: 'light', selected: false },
+			{ label: Astro.locals.t('themeSelect.dark'), value: 'dark', selected: false },
+		]}
+		width="6.25em"
+	/>
+</starlight-theme-select>
+
+<script>
+	type AppTheme = 'light' | 'dark' | 'system';
+
+	/** The app's storage key — the single source of truth. Never rename lightly. */
+	const STORAGE_KEY = 'theme';
+	/** Starlight's own key, mirrored so its ThemeProvider agrees with the app. */
+	const STARLIGHT_KEY = 'starlight-theme';
+
+	const parse = (value: unknown): AppTheme =>
+		value === 'light' || value === 'dark' ? value : 'system';
+
+	const resolve = (theme: AppTheme): 'light' | 'dark' =>
+		theme === 'system'
+			? window.matchMedia('(prefers-color-scheme: dark)').matches
+				? 'dark'
+				: 'light'
+			: theme;
+
+	function applyTheme(theme: AppTheme): void {
+		document.documentElement.dataset.theme = resolve(theme);
+		localStorage.setItem(STORAGE_KEY, theme);
+		localStorage.setItem(STARLIGHT_KEY, theme === 'system' ? '' : theme);
+	}
+
+	/** Swap the picker's label icon using Starlight's own `#theme-icons` template. */
+	function setIcon(picker: HTMLElement, icon: 'light' | 'dark' | 'auto'): void {
+		const template = document.querySelector<HTMLTemplateElement>('#theme-icons');
+		const next = template?.content.querySelector('.' + icon);
+		const current = picker.querySelector('svg.label-icon');
+		if (next && current) current.replaceChildren(...next.cloneNode(true).childNodes);
+	}
+
+	class StarlightThemeSelect extends HTMLElement {
+		constructor() {
+			super();
+			const theme = parse(localStorage.getItem(STORAGE_KEY));
+			const select = this.querySelector('select');
+			if (select) select.value = theme;
+			setIcon(this, theme === 'system' ? 'auto' : theme);
+
+			select?.addEventListener('change', (e) => {
+				if (!(e.currentTarget instanceof HTMLSelectElement)) return;
+				const next = parse(e.currentTarget.value);
+				applyTheme(next);
+				setIcon(this, next === 'system' ? 'auto' : next);
+			});
+
+			// Follow the OS preference while the user is on 'system' — same behaviour
+			// the stock select had for its 'auto' value, but writing the app's key.
+			window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+				if (parse(localStorage.getItem(STORAGE_KEY)) === 'system') {
+					document.documentElement.dataset.theme = resolve('system');
+					setIcon(this, 'auto');
+				}
+			});
+		}
+	}
+	customElements.define('starlight-theme-select', StarlightThemeSelect);
+</script>

@@ -7,6 +7,10 @@ import PublicFooter from '@/components/astro/PublicFooter.astro';
 import { ArrowLeft } from 'lucide-react';
 import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
 import { Separator } from '@/components/ui/separator';
+import {
+  GOOGLE_FONTS_PRECONNECT_HOSTS,
+  GOOGLE_FONTS_STYLESHEET_HREF,
+} from '@/lib/fonts';
 
 import { getSession } from 'auth-astro/server';
 
@@ -89,12 +93,12 @@ const ctaLink = { href: L(isLoggedIn ? '/dashboard' : '/login'), label: isLogged
     <link rel="stylesheet" href={globalsCss} />
     <ClientRouter />
     <title>{title}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@700;800&family=Geist+Mono:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    {
+      GOOGLE_FONTS_PRECONNECT_HOSTS.map(({ host, crossorigin }) => (
+        <link rel="preconnect" href={host} crossorigin={crossorigin ? '' : undefined} />
+      ))
+    }
+    <link href={GOOGLE_FONTS_STYLESHEET_HREF} rel="stylesheet" />
     <style>
       .bg-landing-grid {
         background-image:
