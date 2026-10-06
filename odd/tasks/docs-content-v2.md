@@ -75,9 +75,12 @@ Plus: localize every sidebar label, and correct ADR-003.
 - [x] 6. **Correct ADR-003** — `5a8e1a1`, in its own commit. Two falsehoods, not one: the claim that
       only admins create workspaces, and a permission model with a team level that does not exist.
       The judge finding is recorded below rather than written into feature table 6.
-- [ ] 7. **Verify.** The docs guards (slug parity, link integrity, sidebar coverage, neutral Spanish),
-      the full suite, `tsc --noEmit`, the build, and a real-browser pass over every new page in both
-      locales.
+- [x] 7. **Verify.** Done on the final tree, with the whole stack in place: the docs guards, the full
+      suite (**777 tests in 68 files**), `tsc --noEmit` exit 0, a **genuinely cold** build (exit 0, zero
+      duplicate-id warnings, **18 routes**, Pagefind **9 per locale**), and a real-browser pass over the
+      eight new pages plus every docs link in both locales. Details below, including the one procedure
+      error of mine that the verifier caught.
+- [x] 8. **One work-unit commit per change**, on the feature branch, nothing pushed.
 
 ## Constraints
 
@@ -109,6 +112,7 @@ Plus: localize every sidebar label, and correct ADR-003.
 | 3–4 | `fcbdb35` | Both pages audited claim by claim by an independent verifier: **every flagged claim PASS**, including the ones I expected to be weakest. The per-environment collection *rationale* is stated verbatim in `config/settings.py:46-48`; the page names the mechanism and the default and asserts no deployed collection name; all ten payload fields exist in `infrastructure/vector/qdrant_adapter.py:317-326`; and the roles page matches `require_admin` and `require_owner` per endpoint. The writer refused to invent dev and prod collection names because they are not sourceable from the repository, and the verifier confirmed that reasoning. Suite **767/767 in 68 files**; `tsc --noEmit` exit 0; build exit 0 with **18 routes** and Pagefind **9 per locale**. |
 | 5 | `ca81ac1` | The guard now extracts only the `translations.es` values from `astro.config.mjs`, so English labels, code and URLs are out of scope by construction, and asserts at least nine entries were found so a broken extraction fails loudly instead of passing vacuously. Observed RED before GREEN: a voseo label reports `carries voseo forms: descargá`. The whole-word tokenizer earns its keep here — a raw substring match would trip on `sos` inside `roles-permissions`. |
 | 6 | `5a8e1a1` | ADR-003 corrected with the code as evidence: the create route requires only `get_current_user`, the creator becomes owner and admin, the roles are `admin` and `member`, ownership is `workspaces.owner_id`, there is no system-level admin, and none of the **fourteen** schema tables is a team. The Auth.js half was left alone because it is **real**: `@auth/core` in the frontend and the sync endpoint its JWT callback calls. |
+| 7 | this commit | Verification on the final tree: **777 tests in 68 files**, all passing; `tsc --noEmit` exit 0; cold build exit 0 with **zero** duplicate-id warnings, **18 routes** (nine `index.html` per locale), Pagefind `en: 9` / `es: 9`; the two guard files at 31 tests. Browser pass over the eight new pages in both locales: correct `lang`, title and `h1` per locale, the Spanish sidebar rendering `Documentación` … `Roles y permisos`, **zero nested anchors**, all **18** docs URLs answering 200, and no horizontal overflow at 390 px. Two blemishes of mine, both recorded rather than tidied away: the procedure above named the wrong cache, and one evidence screenshot is named `storico-es-kanban-desktop.png` while showing the roles page. |
 
 Two sentences were softened **after** the audit, on the verifier's own reading, so that no absolute
 outlives the code: storage is described as what the server does when a run completes rather than as a
@@ -135,11 +139,16 @@ the plumbing:
   the same feature area: `kanban.no_workspace` and `kanban.empty_board` say *workspace*, while
   `export.no_workspace` on the same screen family says *espacio de trabajo*. The docs use *espacio de
   trabajo*, which is the majority and the better Spanish. Fixing the app's copy is its own change.
-- **A `[starlight-docs-loader] Duplicate id "en/docs"` warning appeared in the build — SETTLED, and it
-  was cache, not content.** Measured with `frontend/.astro` moved aside and the build repeated: four
-  `Duplicate id` warnings (the two index pages and the two `extraction-versions` pages) **became
-  zero**, with the same 18 routes and Pagefind at 9 per locale in both builds. The earlier feature's
-  diagnosis holds.
+- **A `[starlight-docs-loader] Duplicate id "en/docs"` warning appeared in the build — the conclusion
+  was right, the mechanism I wrote down was wrong.** The real content store is
+  **`node_modules/.astro/data-store.json`**, not `frontend/.astro`. Astro's glob loader warns when
+  `store.has(id)` (`astro/dist/content/loaders/glob.js:107`), and that store survived every earlier
+  "cold" build because it lives under `node_modules`. The final verification reproduced the warning
+  under my literal procedure (2 warnings, same 18 routes, Pagefind still 9/9) and cleared it to **zero**
+  once `node_modules/.astro` was moved aside too. The effect is benign and the loader's own message
+  says so — *"later items with the same id will overwrite earlier ones"* — and the output carries
+  exactly nine `index.html` per locale, so nothing was duplicated on disk. A CI build is cold by
+  construction, which is why this never escaped into a deploy.
 
 ### Correction of record — a finding I asserted without verifying it
 
@@ -157,6 +166,12 @@ nine Spanish strings were genuinely unguarded. That half was real work and it la
 
 Rule worth keeping: a claim about what a file contains is verified **in the file**, never inferred
 from a list of its neighbours' fields.
+
+**Second correction, same shape.** The `Duplicate id` closure above named `frontend/.astro` as the
+cache. That is not the content store — `node_modules/.astro/data-store.json` is — which is why the
+warning survived my "cold" build and only vanished under the verifier's genuinely cold one. The
+conclusion held (stale cache, not content); my mechanism did not, and the bullet above now carries the
+sourced one.
 
 ### The judge finding, recorded for the owner
 
