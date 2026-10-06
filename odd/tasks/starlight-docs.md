@@ -1,8 +1,11 @@
 # ODD Feature: starlight-docs
 
-> **Status**: in progress on `feat/starlight-docs` off `main` @ `54abdc7`. Tasks 1–4 verified and
-> committed as `20d6bc9`, `693db17`, `32bfcf8` and `97c76df`; task 5 is an open decision. Not
-> pushed, not merged.
+> **Status**: complete on `feat/starlight-docs` off `main` @ `54abdc7`. Tasks 1–5 done and verified;
+> the last commit is `a5d5e55`. Not pushed, not merged.
+>
+> **Final state**: `/en/docs` and `/es/docs` serve a five-page Starlight site per locale, prerendered
+> with a working Pagefind index, in neutral Spanish, guarded on variant, slug parity, link integrity
+> and sidebar coverage. **733/733 tests in 64 files**, `tsc --noEmit` exit 0, build exit 0.
 > **Created**: 2026-10-05
 > **Workflow**: Organic Driven Development (ODD)
 > **Source**: the vault note `Starlight — documentación del sitio con Starlight` (second-brain,
@@ -89,17 +92,17 @@ and stop shipping copy the product cannot keep.
       — `32bfcf8`
 - [x] 4. Guards: neutral-Spanish coverage for the markdown (the existing guard only reads `es.json`),
       and a locale-parity test that both locales expose the same page slugs. — `97c76df`
-- [ ] 5. Decide `api.astro` — deleted with a redirect, or kept as a landing that links to the future
-      reference — and record the decision. **Open, and it needs the owner.** What the repository says:
-      the page lives at `/en/api` and `/es/api`, is in `PUBLIC_PATHS`, and is guarded by
-      `src/i18n/__tests__/api-docs-copy.test.ts`, which derives its advertised endpoints from the
-      backend router table and fails if the page names a path no router declares (that guard exists
-      because the page once advertised a `/api/v1/batch` that never existed). Deleting the page means
-      retiring that guard with it. The Starlight API reference that was going to replace it is
-      deferred, and its community plugin is still unnamed, so deleting now leaves nothing in its
-      place; the backend's own Swagger at `/docs` and `/openapi.json` are already public and respond
-      `200` in production, which is the note's argument that the surface is not being hidden either
-      way.
+- [x] 5. Decide `api.astro` — deleted with a redirect, or kept as a landing that links to the future
+      reference — and record the decision. **Decided: keep it as it is and carry it as debt.**
+      The rationale, so the next reader does not re-litigate it blindly: the Starlight API reference
+      that was going to replace the page is deferred and its community plugin is still unnamed, so
+      deleting now would leave nothing in its place. The page is public, in `PUBLIC_PATHS`, and
+      guarded by `src/i18n/__tests__/api-docs-copy.test.ts`, which derives the endpoints it may
+      advertise from the backend router table — a guard that was written because the page once
+      advertised a `/api/v1/batch` that never existed. That guard keeps the page honest for as long
+      as it lives, so the debt is cheap to carry. Revisit when the reference lands; at that point the
+      choice is between converting it into a landing that links to the reference and deleting it with
+      a redirect, which also retires the guard.
 
 Task 2 is deliberately ordered before task 3: `docs.astro` is the only user-facing documentation that
 exists today, and deleting it before its content is ported leaves `/en/docs` as a 404.
@@ -178,6 +181,9 @@ deployed from this branch, and the window closes as soon as task 2 puts the real
 
 ## Open decisions carried in
 
-- `api.astro`: delete with redirect, or landing (task 5).
-- The `more_coming` promise: retired in task 3, since the architecture half has no content and the
-  API half belongs to the deferred reference.
+- **`api.astro` — decided in task 5: keep as-is, carried as debt.** Revisit when the Starlight API
+  reference exists.
+- The `more_coming` promise: retired in task 3.
+- Deferred out of this feature, each needing its own start: the Starlight API reference from
+  production's `openapi.json` (community plugin must first be chosen and pinned against 0.37.7), and
+  the CSV import page (blocked by follow-up 11 of `odd/tasks/csv-story-import.md`).
