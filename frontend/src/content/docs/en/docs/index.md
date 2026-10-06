@@ -11,3 +11,7 @@ Start here:
 - [User story format](/en/docs/story-format) — the format Storico expects for user stories.
 - [LLM providers](/en/docs/llm-providers) — Ollama, OpenAI, Anthropic, and Gemini.
 - [Export](/en/docs/export) — download your tasks as JSON or Markdown.
+- [Kanban board](/en/docs/kanban) — the task states and the moves the server allows.
+- [Extraction versions](/en/docs/extraction-versions) — what re-extracting a story does to its tasks.
+- [Historical context](/en/docs/embeddings-rag) — where the examples in an extraction prompt come from.
+- [Roles and permissions](/en/docs/roles-permissions) — who may do what in a workspace.

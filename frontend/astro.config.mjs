@@ -52,9 +52,14 @@ export default defineConfig({
       // Component overrides for the theme bridge: Head injects the app→Starlight
       // inline theme script (src/lib/theme-bridge.ts) pre-paint; ThemeSelect
       // writes the app's `theme` key instead of Starlight's `starlight-theme`.
+      // SiteTitle and Header give the docs a header that knows where it lives
+      // (brand → app home, `Docs` label → docs home) and where the app is (the
+      // shared public nav links); see odd/tasks/docs-app-navigation.md.
       components: {
         Head: './src/components/starlight/Head.astro',
         ThemeSelect: './src/components/starlight/ThemeSelect.astro',
+        SiteTitle: './src/components/starlight/SiteTitle.astro',
+        Header: './src/components/starlight/Header.astro',
       },
       sidebar: [
         {
@@ -81,6 +86,34 @@ export default defineConfig({
           label: 'Export',
           translations: { es: 'Exportación' },
           link: '/docs/export',
+        },
+        {
+          label: 'Kanban board',
+          translations: { es: 'Tablero Kanban' },
+          link: '/docs/kanban',
+        },
+        {
+          label: 'Extraction versions',
+          translations: { es: 'Versiones de extracción' },
+          link: '/docs/extraction-versions',
+        },
+        {
+          label: 'Historical context',
+          translations: { es: 'Contexto histórico' },
+          link: '/docs/embeddings-rag',
+        },
+        {
+          label: 'Roles and permissions',
+          translations: { es: 'Roles y permisos' },
+          link: '/docs/roles-permissions',
+        },
+        {
+          // Generated from the FastAPI app by `storico.scripts.render_api_reference`
+          // and guarded by backend/tests/test_api_reference.py, which fails when the
+          // committed page drifts from the spec. See odd/tasks/api-reference.md.
+          label: 'API reference',
+          translations: { es: 'Referencia de la API' },
+          link: '/docs/api-reference',
         },
       ],
     }),

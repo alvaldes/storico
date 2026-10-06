@@ -12,4 +12,9 @@ description: Set up Storico and extract your first tasks from a user story.
 5. **Extract tasks** — let AI break down your story into structured tasks.
 6. **Review and export** — edit tasks as needed and export to JSON or Markdown.
 
+:::caution
+Extraction needs a saved model and provider configuration. Until a workspace has one, **task extraction
+cannot start**, and the story page lists what is still undefined instead of generating tasks.
+:::
+
 For the exact format Storico expects, see [User story format](/en/docs/story-format).

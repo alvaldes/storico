@@ -11,3 +11,7 @@ Empieza por aquí:
 - [Formato de historia de usuario](/es/docs/story-format) — el formato que Storico espera para las historias de usuario.
 - [Proveedores de LLM](/es/docs/llm-providers) — Ollama, OpenAI, Anthropic y Gemini.
 - [Exportación](/es/docs/export) — descarga tus tareas como JSON o Markdown.
+- [Tablero Kanban](/es/docs/kanban) — los estados de las tareas y los movimientos que el servidor permite.
+- [Versiones de extracción](/es/docs/extraction-versions) — qué le pasa a las tareas al volver a extraer una historia.
+- [Contexto histórico](/es/docs/embeddings-rag) — de dónde salen los ejemplos del prompt de extracción.
+- [Roles y permisos](/es/docs/roles-permissions) — quién puede hacer qué en un espacio de trabajo.

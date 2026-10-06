@@ -6,6 +6,7 @@ import PublicNavbar from '@/components/astro/PublicNavbar.astro';
 import PublicFooter from '@/components/astro/PublicFooter.astro';
 import { ArrowLeft } from 'lucide-react';
 import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
+import { publicNavLinks } from '@/lib/public-nav';
 import { Separator } from '@/components/ui/separator';
 import {
   GOOGLE_FONTS_PRECONNECT_HOSTS,
@@ -44,11 +45,9 @@ const currentPath = Astro.url.pathname;
 const otherLocale: 'en' | 'es' = locale === 'en' ? 'es' : 'en';
 const langToggleHref = localizedPath(cleanPath, otherLocale);
 
-const navLinks = [
-  { href: L('/docs'), label: t.footer.documentation },
-  { href: L('/api'), label: t.footer.api_reference },
-  { href: L('/status'), label: t.footer.status_page },
-];
+// The desktop nav comes from the shared module: the Starlight docs header renders
+// the same list, so the destinations cannot drift into a third hardcoded copy.
+const navLinks = publicNavLinks(locale);
 
 // Built from the session: Product lists only routes an anonymous visitor can
 // actually open (D2/D3 in odd/tasks/mobile-nav-functional.md) — the footer CTA

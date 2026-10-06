@@ -194,7 +194,7 @@ La investigación se enmarca en el paradigma de **Design Science Research** (Hev
 
 > Storico is an LLM-powered tool that automates decomposing natural language user stories into structured Kanban tasks, exporting directly to project management tools like Trello.
 >
-> Built on a microservices-based hexagonal architecture with a FastAPI REST API and intuitive web UI, it features configurable connectors for cloud-based and local models via Ollama. Performance is optimized via an in-process per-user cache, asynchronous per-story extraction, and an automated LLM-as-a-Judge validation mechanism.
+> Built on a microservices-based hexagonal architecture with a FastAPI REST API and intuitive web UI, it features configurable connectors for cloud-based and local models via Ollama. Performance is optimized via an in-process per-user cache, asynchronous per-story extraction, and an LLM-as-a-Judge validation mechanism that lives in the engine and that the web app does not currently request — so no judge score reaches the user today (`frontend/src/lib/tasks-api.ts:139`).
 >
 > It enables agile teams to reduce planning time, eliminate misinterpretations, and maintain strict traceability from high-level requirements to concrete implementation tasks.
 
@@ -289,15 +289,17 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 ### ADR-003: Autenticación y Permisos
 
 - **Status**: ✅ Decidido
-- **Decisión**: **Auth.js (OAuth) con Google + GitHub. Registro abierto. Admins pueden crear workspaces y asignar usuarios a equipos.**
-- **Contexto**: Se necesita un sistema de autenticación que no requiera manejo de passwords. Auth.js es la evolución de NextAuth.js y funciona con cualquier framework (incluyendo Astro). Soporta múltiples proveedores OAuth, sesiones JWT, y callbacks para control de acceso. Para permisos, se definió un modelo de workspaces y equipos donde solo admins pueden crear workspaces y administrar membresías.
+- **Decisión**: **Auth.js (OAuth) con Google + GitHub. Registro abierto. Dos roles por workspace: `admin` y `member`.**
+- **Contexto**: Se necesita un sistema de autenticación que no requiera manejo de passwords. Auth.js es la evolución de NextAuth.js y funciona con cualquier framework (incluyendo Astro). Soporta múltiples proveedores OAuth, sesiones JWT, y callbacks para control de acceso. Auth.js **es lo que está implementado**: el frontend depende de `@auth/core` y el backend expone un endpoint de sync que su callback JWT llama en cada login (`api/routes/auth.py`).
 - **Consecuencias**:
   - Sin registro por email+password — solo OAuth (Google, GitHub)
   - Sin recovery de contraseña (no aplica)
   - Auth.js maneja sesiones vía JWT o base de datos
-  - Modelo de permisos: Admin → Workspace → Equipos → Usuarios
-  - Solo admins pueden crear workspaces y asignar usuarios a equipos
-  - Usuarios regulares pueden pertenecer a múltiples equipos/workspaces
+  - **Modelo de permisos: Workspace → Miembros (`admin` | `member`). No hay equipos**: la membresía es por workspace, y ninguna de las 14 tablas del esquema es de equipos.
+  - **Cualquier usuario autenticado puede crear un workspace** y queda como su `owner` (`workspaces.owner_id`) y como miembro `admin`. **No existe admin de sistema**: no hay ningún `is_admin`/`is_superuser` en el backend, y cada operación administrativa se ejerce dentro de un workspace.
+  - **"Owner" no es un rol**: es un campo del workspace, y el owner puede tener cualquiera de los dos roles. Transferir la propiedad es la única operación exclusiva del owner; el resto de las administrativas son de `admin`.
+  - Usuarios regulares pueden pertenecer a múltiples workspaces
+- **Corregido contra el código** (feature `docs-content-v2`): la versión anterior de este ADR decía que *sólo los admins* podían crear workspaces y asignar usuarios a *equipos*, y describía un modelo de permisos con un nivel de equipos. Ninguna de las dos cosas existe. Evidencia: `backend/src/storico/api/routes/workspaces.py:112-115` (la ruta sólo exige `get_current_user`), `application/workspaces/create_workspace.py:79-83` (el creador queda como owner y admin), `domain/entities/workspace_member.py:17-21` (los dos roles), `api/dependencies.py:409-416` (la propiedad es `owner_id == user.id`, no un rol).
 
 ### ADR-004: Base de Datos
 
@@ -506,7 +508,7 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | 3   | Editor de prompts           | Personalización de prompts del sistema desde configuración del workspace (solo admins)                                      |
 | 4   | Soporte Ollama               | Conexión con modelos locales vía API de Ollama (LLaMA 3.2, Mistral)                                                          |
 | 5   | Procesamiento asíncrono       | Extracción en segundo plano **por historia**: `asyncio.create_task` en el proceso de la API, respuesta `202 Accepted` y el cliente consulta `GET /extractions/{id}`. No hay endpoint de lote — ver la fila 10 |
-| 6   | Validación LLM-as-a-Judge    | Evaluación automática de calidad (coherencia, granularidad, relevancia)                                                      |
+| 6   | Validación LLM-as-a-Judge    | Evaluación automática de calidad (coherencia, granularidad, relevancia). **Implementada en el motor; la app web no la solicita** (`tasks-api.ts:139` manda `run_validation: false`, default `False` en `api/schemas/extraction.py:67`), así que hoy no hay puntuación de juez visible para el usuario. Ver `odd/tasks/docs-truth-closure.md`. |
 | 7   | Contexto histórico (RAG)    | Consulta extracciones previas en Qdrant para incluir ejemplos similares en el prompt del LLM                                 |
 | 8   | Refinamiento post-extracción | Deduplicación, validación de dependencias, verificación de coherencia                                                        |
 
@@ -656,6 +658,14 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 │   modelo usado, tiempo de proceso    │
 └──────────────────────────────────────┘
 ```
+
+> **Matiz medido el 2026-10-06**: la puntuación del juez del paso 6 sólo aparece si el llamador pide la
+> validación, y la app web **nunca la pide** (`frontend/src/lib/tasks-api.ts:139` manda
+> `run_validation: false`; el default del schema es `False` en
+> `backend/src/storico/api/schemas/extraction.py:67`). El motor la implementa —el flujo de arriba es
+> correcto como descripción del motor, pero la puntuación del paso 6 sólo existe si la validación
+> corre— y la UI no la solicita, así que hoy ninguna puntuación llega al usuario. Ver
+> `odd/tasks/docs-truth-closure.md`.
 
 ### Configuración de prompts (de la tesis)
 

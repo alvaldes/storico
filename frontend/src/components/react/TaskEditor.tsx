@@ -510,9 +510,9 @@ export function TaskEditor({
           {repetition && (
             <div
               role="status"
-              className="flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30"
+              className="flex items-start justify-between gap-3 rounded-lg border border-(--color-warning-border) bg-(--color-warning-bg) p-3"
             >
-              <p className="text-sm text-amber-800 dark:text-amber-200">
+              <p className="text-sm text-(--color-warning-text)">
                 {t.taskEditor.repetition_notice
                   .replace('{version}', String(repetition.versionNumber))
                   .replace('{reason}', repetition.reason)}

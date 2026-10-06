@@ -27,36 +27,36 @@ const badgeState = (probe: ServiceStatus | null): BadgeState => {
 
 const badgeDotClass = (state: BadgeState) => {
   if (state === 'ok') return 'bg-(--color-success)';
-  if (state === 'unknown') return 'bg-amber-500';
-  return 'bg-red-500';
+  if (state === 'unknown') return 'bg-(--color-warning)';
+  return 'bg-destructive';
 };
 
 const badgeTextClass = (state: BadgeState) => {
   if (state === 'ok') return 'text-(--color-success-text)';
-  if (state === 'unknown') return 'text-amber-800 dark:text-amber-300';
-  return 'text-red-600 dark:text-red-400';
+  if (state === 'unknown') return 'text-(--color-warning-text)';
+  return 'text-(--color-destructive-text)';
 };
 
 const bannerBgClass = (state: string) => {
   if (state === 'ok') return 'bg-(--color-success-bg) border-(--color-success-border)';
   if (state === 'degraded')
-    return 'bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:border-amber-800';
+    return 'bg-(--color-warning-bg) border-(--color-warning-border)';
   if (state === 'pending') return 'border-(--color-border)';
-  return 'bg-red-50 border-red-200 dark:bg-red-950/40 dark:border-red-800';
+  return 'bg-(--color-destructive-bg) border-(--color-destructive-border)';
 };
 
 const bannerDotClass = (state: string) => {
   if (state === 'ok') return 'bg-(--color-success)';
-  if (state === 'degraded') return 'bg-amber-500';
+  if (state === 'degraded') return 'bg-(--color-warning)';
   if (state === 'pending') return 'bg-(--color-text-tertiary)';
-  return 'bg-red-500';
+  return 'bg-destructive';
 };
 
 const bannerTextClass = (state: string) => {
   if (state === 'ok') return 'text-(--color-success-text)';
-  if (state === 'degraded') return 'text-amber-800 dark:text-amber-300';
+  if (state === 'degraded') return 'text-(--color-warning-text)';
   if (state === 'pending') return 'text-(--color-text-secondary)';
-  return 'text-red-800 dark:text-red-300';
+  return 'text-(--color-destructive-text)';
 };
 
 export function StatusPanel({ locale }: { locale: Locale }) {
@@ -264,7 +264,7 @@ export function StatusPanel({ locale }: { locale: Locale }) {
     );
 
   const renderRow = (row: (typeof serviceRows)[number]) => (
-    <div className="flex items-center justify-between p-4">
+    <div key={row.title} className="flex items-center justify-between p-4">
       <div>
         <p className="font-medium text-(--color-text)">{row.title}</p>
         <p className="text-sm text-(--color-text-secondary)">{row.description}</p>
@@ -307,7 +307,7 @@ export function StatusPanel({ locale }: { locale: Locale }) {
           `bannerState === 'ok'` already implies a document arrived and settled: the summary
           answers `down` otherwise, so no separate `health` check is needed here. */}
       {bannerState === 'ok' && optionalNote && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+        <div className="rounded-lg border border-(--color-warning-border) bg-(--color-warning-bg) p-4 text-sm text-(--color-warning-text)">
           {t.pages.status.optional_unavailable_note.replace('{list}', optionalNote)}
         </div>
       )}

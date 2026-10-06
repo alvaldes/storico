@@ -488,7 +488,7 @@ export function StoryForm({
                       />
                     </div>
                     {allKeywordsValid ? (
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                      <p className="text-xs text-(--color-success-text) font-medium">
                         {t.stories.keyword_valid}
                       </p>
                     ) : (
@@ -555,7 +555,7 @@ function KeywordIndicator({ label, valid }: { label: string; valid: boolean }) {
   return (
     <div className="flex items-center gap-2 text-sm">
       {valid ? (
-        <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+        <Check className="h-4 w-4 text-(--color-success) shrink-0" />
       ) : (
         <X className="h-4 w-4 text-destructive shrink-0" />
       )}

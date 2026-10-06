@@ -1,0 +1,129 @@
+---
+/**
+ * Starlight `SiteTitle` component override.
+ *
+ * Forked from the upstream default shipped in `@astrojs/starlight@0.37.7`
+ * (`node_modules/@astrojs/starlight/components/SiteTitle.astro`). Re-diff this
+ * file against the new default on every Starlight upgrade.
+ *
+ * Three deliberate changes against upstream, all recorded in
+ * `odd/tasks/docs-app-navigation.md`:
+ *
+ * 1. The brand mark links to the app home (`L('/')`), not the docs root.
+ *    Upstream computes the href as `formatPath(locale)` (see
+ *    `utils/routing/data.ts` `getSiteTitleHref`), which is a locale root by
+ *    construction — `/en` — so the only fix is this override.
+ * 2. The visible label is the single word `Docs` and links to the docs home
+ *    (`L('/docs')`). Starlight's `title` config keeps its full value: it also
+ *    feeds the document `<title>` and the social metadata, which stay untouched.
+ *    `Docs` is the agreed label in both locales (no new Spanish copy, so the
+ *    neutral-Spanish guard needs no widening), hence the literal here.
+ *
+ * A third structural constraint, from the same task: the brand and the `Docs`
+ * label are two SIBLING anchors inside a wrapper, never an anchor nested inside
+ * an anchor. Upstream puts `class="site-title sl-flex"` on a single anchor; here
+ * the wrapper (a plain `<div>`) carries that class and both links sit inside it.
+ * The brand anchor mirrors the app's own `PublicNavbar` brand: favicon image plus
+ * `t.app.name` (a proper noun, identical in both catalogs), and it keeps
+ * upstream's `config.logo` rendering for the day a logo is configured — without
+ * it, and with no logo configured, the brand anchor would serialise empty and
+ * have no accessible name. `docs-header-nav.test.ts` guards the no-nesting rule
+ * at the source level; the emitted HTML is verified separately.
+ *
+ * Locale-aware hrefs go through the app's `localizedPath`, the same helper the
+ * app's `PublicNavbar` and `PublicFooter` use; the locale is clamped the same
+ * way `localizedPath` itself clamps, so an unexpected locale falls back to `en`.
+ */
+import { logos } from 'virtual:starlight/user-images';
+import config from 'virtual:starlight/user-config';
+import { localizedPath, useTranslations } from '@/i18n/utils';
+
+const { locale: starlightLocale } = Astro.locals.starlightRoute;
+const locale = starlightLocale === 'es' ? 'es' : 'en';
+const L = (path: string) => localizedPath(path, locale);
+const t = useTranslations(locale);
+---
+
+<div class="site-title sl-flex">
+	<a href={L('/')} class="brand-link">
+		{
+			config.logo && logos.dark && (
+				<>
+					<img
+						class:list={{ 'light:sl-hidden print:hidden': !('src' in config.logo) }}
+						alt={config.logo.alt}
+						src={logos.dark.src}
+						width={logos.dark.width}
+						height={logos.dark.height}
+					/>
+					{/* Show light alternate if a user configure both light and dark logos. */}
+					{!('src' in config.logo) && (
+						<img
+							class="dark:sl-hidden print:block"
+							alt={config.logo.alt}
+							src={logos.light?.src}
+							width={logos.light?.width}
+							height={logos.light?.height}
+						/>
+					)}
+			</>
+		)
+		}
+		<img src="/favicon.svg" alt="" />
+		<span class="brand-name" translate="no">{t.app.name}</span>
+	</a>
+	<a
+		href={L('/docs')}
+		class:list={{ 'sr-only': config.logo?.replacesTitle, 'docs-home-link': true }}
+		translate="no"
+	>
+		Docs
+	</a>
+</div>
+
+<style>
+	@layer starlight.core {
+		.site-title {
+			align-items: center;
+			gap: var(--sl-nav-gap);
+			font-size: var(--sl-text-h4);
+			font-weight: 600;
+			color: var(--sl-color-text-accent);
+			text-decoration: none;
+			white-space: nowrap;
+			min-width: 0;
+		}
+		.docs-home-link {
+			overflow: hidden;
+			color: inherit;
+			font-size: inherit;
+			font-weight: inherit;
+			text-decoration: none;
+		}
+		.docs-home-link:hover,
+		.docs-home-link:focus-visible,
+		.brand-link:hover,
+		.brand-link:focus-visible {
+			color: var(--sl-color-text-accent);
+			text-decoration: underline;
+		}
+		.brand-link {
+			display: inline-flex;
+			align-items: center;
+			gap: var(--sl-nav-gap);
+			color: inherit;
+			font-size: inherit;
+			font-weight: inherit;
+			text-decoration: none;
+			white-space: nowrap;
+			min-width: 0;
+		}
+		img {
+			height: calc(var(--sl-nav-height) - 2 * var(--sl-nav-pad-y));
+			width: auto;
+			max-width: 100%;
+			object-fit: contain;
+			object-position: 0 50%;
+		}
+	}
+</style>

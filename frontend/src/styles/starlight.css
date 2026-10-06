@@ -16,8 +16,11 @@
  *    token *values* referenced below therefore cannot be picked up from
  *    globals.css; they are mirrored here as literals (light on `:root`, dark on
  *    `:root[data-theme='dark']`, mirroring globals.css' own scopes). The
- *    --sl-* → --color-* mapping itself stays by reference, but a value change
- *    in globals.css must be mirrored here by hand.
+ *    --sl-* → --color-* mapping itself stays by reference, and the mirroring is
+ *    not a voluntary discipline: `src/styles/__tests__/starlight-tokens.test.ts`
+ *    fails when a mirror drifts from globals.css, when a token is referenced
+ *    here without being declared here (on a Starlight page such a token resolves
+ *    to nothing, silently), and when a callout stops painting from app tokens.
  *  - Space Grotesk is loaded only at weights 700 and 800 (see src/lib/fonts.ts) and it is the
  *    app's display face for h1 alone; the app's h1 carries Tailwind's `font-extrabold` (800)
  *    and every h2 and below stays on Inter at `font-bold` (700), with no base heading rule in
@@ -27,11 +30,11 @@
 /* ── App token mirrors: light (values from globals.css @theme) ────────────── */
 :root {
   --font-sans: 'Inter', 'SF Pro', system-ui, -apple-system, sans-serif;
-  /* globals.css declares 'JetBrains Mono' here, but the app's font link loads
-     Geist Mono instead — a pre-existing app inconsistency (see
-     odd/tasks/starlight-docs.md, task 6). The docs mirror the token exactly, so
-     they render whatever the app renders. */
-  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  /* globals.css declares Geist Mono and the app's font link loads Geist Mono, so the
+token and the download agree (see odd/tasks/app-debt-closure.md). The docs mirror the
+token exactly, so they render whatever the app renders — and the drift guard in
+src/styles/__tests__/starlight-tokens.test.ts fails when the two files disagree. */
+  --font-mono: 'Geist Mono', 'SF Mono', ui-monospace, monospace;
 
   --color-primary-100: oklch(0.87 0.06 250);
   --color-primary-300: oklch(0.7 0.12 250);
@@ -47,6 +50,25 @@
   --color-text-secondary: oklch(0.45 0.01 260);
 
   --color-body: #f8fafc;
+
+  /* Semantic status families mirrored from globals.css (@theme block), plus the tokens the
+     callouts and the search-modal scrim need. Verbatim copies: the drift guard in
+     src/styles/__tests__/starlight-tokens.test.ts compares the strings. */
+  --color-success-bg: oklch(0.96 0.03 145);
+  --color-success-border: oklch(0.87 0.05 145);
+  --color-success-text: oklch(0.4 0.1 145);
+  --color-warning-bg: oklch(0.987 0.022 95.277);
+  --color-warning-border: oklch(0.924 0.12 95.746);
+  --color-warning-text: oklch(0.473 0.137 46.201);
+  --color-destructive-bg: oklch(0.971 0.013 17.38);
+  --color-destructive-border: oklch(0.885 0.062 18.334);
+  --color-destructive-text: oklch(0.444 0.177 26.899);
+  --color-primary-50: oklch(0.93 0.03 250);
+  --color-primary-200: oklch(0.79 0.09 250);
+  --color-primary-700: oklch(0.39 0.12 250);
+  --color-primary-950: oklch(0.17 0.04 250);
+  --color-sidebar: var(--color-surface);
+  --color-inverse: #0f172a;
 }
 
 /* ── App token mirrors: dark (values from globals.css dark block) ─────────── */
@@ -58,6 +80,21 @@
   --color-text-secondary: oklch(0.63 0.01 260);
 
   --color-body: #0b0f17;
+
+  /* Semantic status families mirrored from globals.css' dark block, plus the tokens the
+     callouts and the search-modal scrim need. Verbatim copies: the drift guard in
+     src/styles/__tests__/starlight-tokens.test.ts compares the strings. */
+  --color-success-bg: oklch(0.15 0.04 145 / 0.5);
+  --color-success-border: oklch(0.3 0.07 145);
+  --color-success-text: oklch(0.8 0.1 145);
+  --color-warning-bg: oklch(0.279 0.077 45.635 / 0.3);
+  --color-warning-border: oklch(0.414 0.112 45.904);
+  --color-warning-text: oklch(0.879 0.169 91.605);
+  --color-destructive-bg: oklch(0.258 0.092 26.042 / 0.3);
+  --color-destructive-border: oklch(0.396 0.141 25.723);
+  --color-destructive-text: oklch(0.808 0.114 19.571);
+  --color-sidebar: oklch(0.14 0.01 260);
+  --color-inverse: #1a1f2e;
 }
 
 /* ── Starlight ramp + semantic aliases → Storico tokens: dark ───────────────
@@ -77,7 +114,8 @@
   /* Semantic aliases. */
   --sl-color-bg: var(--color-body);
   --sl-color-bg-nav: var(--color-surface);
-  --sl-color-bg-sidebar: var(--color-surface);
+  --sl-color-bg-sidebar: var(--color-sidebar);
+  --sl-color-backdrop-overlay: color-mix(in oklab, var(--color-inverse) 66%, transparent);
   --sl-color-bg-inline-code: var(--color-surface-secondary);
   --sl-color-text: var(--color-text);
   --sl-color-text-accent: var(--color-primary-300);
@@ -110,7 +148,8 @@
 
   --sl-color-bg: var(--color-body);
   --sl-color-bg-nav: var(--color-surface);
-  --sl-color-bg-sidebar: var(--color-surface);
+  --sl-color-bg-sidebar: var(--color-sidebar);
+  --sl-color-backdrop-overlay: color-mix(in oklab, var(--color-inverse) 66%, transparent);
   --sl-color-bg-inline-code: var(--color-surface-secondary);
   --sl-color-text: var(--color-text);
   --sl-color-text-accent: var(--color-primary-600);
@@ -125,6 +164,44 @@
 
   --sl-font: var(--font-sans);
   --sl-font-mono: var(--font-mono);
+}
+
+/* ── Callouts: the four asides, on the app's families ───────────────────────
+   The hue ramp (--sl-color-blue/purple/orange/red) is shared with Card, Badge,
+   Footer and ContentNotice, so overriding it would restyle components these
+   rules never looked at. These rules target the aside classes instead, and
+   being unlayered they beat Starlight's asides.css inside
+   @layer starlight.components. tip, caution and danger get exactly one rule
+   each because their -bg/-border/-text trios flip with the theme; only note
+   needs a dark rule, because the primary ramp is theme-invariant. */
+.starlight-aside--note {
+  background-color: var(--color-primary-50);
+  --sl-color-asides-border: var(--color-primary-200);
+  --sl-color-asides-text-accent: var(--color-primary-700);
+}
+
+:root[data-theme='dark'] .starlight-aside--note {
+  background-color: var(--color-primary-950);
+  --sl-color-asides-border: var(--color-primary-900);
+  --sl-color-asides-text-accent: var(--color-primary-300);
+}
+
+.starlight-aside--tip {
+  background-color: var(--color-success-bg);
+  --sl-color-asides-border: var(--color-success-border);
+  --sl-color-asides-text-accent: var(--color-success-text);
+}
+
+.starlight-aside--caution {
+  background-color: var(--color-warning-bg);
+  --sl-color-asides-border: var(--color-warning-border);
+  --sl-color-asides-text-accent: var(--color-warning-text);
+}
+
+.starlight-aside--danger {
+  background-color: var(--color-destructive-bg);
+  --sl-color-asides-border: var(--color-destructive-border);
+  --sl-color-asides-text-accent: var(--color-destructive-text);
 }
 
 /* ── Headings: Space Grotesk on h1 only ─────────────────────────────────────
