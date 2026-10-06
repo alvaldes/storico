@@ -138,7 +138,7 @@
   /* shadcn's default --radius token (maps to our --radius-md base). */
   --radius: var(--radius-md);
   --font-sans: 'Inter', 'SF Pro', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  --font-mono: 'Geist Mono', 'SF Mono', ui-monospace, monospace;
 
   /* ── Sidebar (shadcn sidebar-07) ────────────────────────────── */
   --color-sidebar: var(--color-surface);

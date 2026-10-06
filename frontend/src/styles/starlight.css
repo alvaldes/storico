@@ -30,11 +30,11 @@
 /* ── App token mirrors: light (values from globals.css @theme) ────────────── */
 :root {
   --font-sans: 'Inter', 'SF Pro', system-ui, -apple-system, sans-serif;
-  /* globals.css declares 'JetBrains Mono' here, but the app's font link loads
-     Geist Mono instead — a pre-existing app inconsistency (see
-     odd/tasks/starlight-docs.md, task 6). The docs mirror the token exactly, so
-     they render whatever the app renders. */
-  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  /* globals.css declares Geist Mono and the app's font link loads Geist Mono, so the
+token and the download agree (see odd/tasks/app-debt-closure.md). The docs mirror the
+token exactly, so they render whatever the app renders — and the drift guard in
+src/styles/__tests__/starlight-tokens.test.ts fails when the two files disagree. */
+  --font-mono: 'Geist Mono', 'SF Mono', ui-monospace, monospace;
 
   --color-primary-100: oklch(0.87 0.06 250);
   --color-primary-300: oklch(0.7 0.12 250);
