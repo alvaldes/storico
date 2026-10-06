@@ -1,0 +1,143 @@
+---
+/**
+ * Starlight `Header` component override.
+ *
+ * Forked from the upstream default shipped in `@astrojs/starlight@0.37.7`
+ * (`node_modules/@astrojs/starlight/components/Header.astro`). Re-diff this file
+ * against the new default on every Starlight upgrade — this is upstream markup
+ * we now own, and the diff is the price of changing the header's structure
+ * instead of abusing the `SocialIcons` slot.
+ *
+ * The single deliberate change against upstream: the app's public nav links
+ * (`/docs`, `/api`, `/status`, from the shared `src/lib/public-nav.ts` module —
+ * the same list `PublicLayout.astro` renders) are inserted as the first child of
+ * the right-hand cluster, which is `sl-hidden md:sl-flex`, so the nav is visible
+ * from `md` up. The three-column grid is untouched: the nav deliberately lives
+ * OUTSIDE `.title-wrapper`, which carries `min-width: 0` and `overflow: clip`
+ * and would clip the links and fight the search box.
+ *
+ * Starlight's own Search, SocialIcons, ThemeSelect and LanguageSelect keep their
+ * stock positions and behaviour. Labels come from the app's translation keys via
+ * the shared module — nothing is hardcoded here.
+ */
+import config from 'virtual:starlight/user-config';
+
+import LanguageSelect from 'virtual:starlight/components/LanguageSelect';
+import Search from 'virtual:starlight/components/Search';
+import SiteTitle from 'virtual:starlight/components/SiteTitle';
+import SocialIcons from 'virtual:starlight/components/SocialIcons';
+import ThemeSelect from 'virtual:starlight/components/ThemeSelect';
+import { publicNavLinks } from '@/lib/public-nav';
+
+/**
+ * Render the `Search` component if Pagefind is enabled or the default search component has been overridden.
+ */
+const shouldRenderSearch =
+	config.pagefind || config.components.Search !== '@astrojs/starlight/components/Search.astro';
+
+// Clamp the Starlight route locale (string | undefined) to the app's Locale union,
+// the same way `localizedPath` clamps internally. `prefixDefaultLocale: true` means
+// a docs route always carries a locale prefix, but the clamp keeps it honest.
+const locale = Astro.locals.starlightRoute.locale === 'es' ? 'es' : 'en';
+const navLinks = publicNavLinks(locale);
+---
+
+<div class="header">
+	<div class="title-wrapper sl-flex">
+		<SiteTitle />
+	</div>
+	<div class="sl-flex print:hidden">
+		{shouldRenderSearch && <Search />}
+	</div>
+	<div class="sl-hidden md:sl-flex print:hidden right-group">
+		<nav class="sl-flex docs-app-nav">
+			{
+				navLinks.map(({ href, label }) => (
+					<a href={href} class="docs-app-nav-link">
+						{label}
+					</a>
+				))
+			}
+		</nav>
+		<div class="sl-flex social-icons">
+			<SocialIcons />
+		</div>
+		<ThemeSelect />
+		<LanguageSelect />
+	</div>
+</div>
+
+<style>
+	@layer starlight.core {
+		.header {
+			display: flex;
+			gap: var(--sl-nav-gap);
+			justify-content: space-between;
+			align-items: center;
+			height: 100%;
+		}
+
+		.title-wrapper {
+			/* Prevent long titles overflowing and covering the search and menu buttons on narrow viewports. */
+			overflow: clip;
+			/* Avoid clipping focus ring around link inside title wrapper. */
+			padding: 0.25rem;
+			margin: -0.25rem;
+			min-width: 0;
+		}
+
+		.right-group,
+		.social-icons,
+		.docs-app-nav {
+			gap: 1rem;
+			align-items: center;
+		}
+		.social-icons::after {
+			content: '';
+			height: 2rem;
+			border-inline-end: 1px solid var(--sl-color-gray-5);
+		}
+
+		.docs-app-nav-link {
+			color: var(--sl-color-gray-3);
+			font-size: var(--sl-text-sm);
+			text-decoration: none;
+			white-space: nowrap;
+		}
+		.docs-app-nav-link:hover,
+		.docs-app-nav-link:focus-visible {
+			color: var(--sl-color-text-accent);
+		}
+
+		@media (min-width: 50rem) {
+			:global(:root[data-has-sidebar]) {
+				--__sidebar-pad: calc(2 * var(--sl-nav-pad-x));
+			}
+			:global(:root:not([data-has-toc])) {
+				--__toc-width: 0rem;
+			}
+			.header {
+				--__sidebar-width: max(0rem, var(--sl-content-inline-start, 0rem) - var(--sl-nav-pad-x));
+				--__main-column-fr: calc(
+					(
+							100% + var(--__sidebar-pad, 0rem) - var(--__toc-width, var(--sl-sidebar-width)) -
+								(2 * var(--__toc-width, var(--sl-nav-pad-x))) - var(--sl-content-inline-start, 0rem) -
+								var(--sl-content-width)
+						) / 2
+				);
+				display: grid;
+				grid-template-columns:
+        /* 1 (site title): runs up until the main content column’s left edge or the width of the title, whichever is the largest  */
+					minmax(
+						calc(var(--__sidebar-width) + max(0rem, var(--__main-column-fr) - var(--sl-nav-gap))),
+						auto
+					)
+					/* 2 (search box): all free space that is available. */
+					1fr
+					/* 3 (right items): use the space that these need. */
+					auto;
+				align-content: center;
+			}
+		}
+	}
+</style>

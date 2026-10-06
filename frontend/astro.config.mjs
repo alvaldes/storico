@@ -52,9 +52,14 @@ export default defineConfig({
       // Component overrides for the theme bridge: Head injects the app→Starlight
       // inline theme script (src/lib/theme-bridge.ts) pre-paint; ThemeSelect
       // writes the app's `theme` key instead of Starlight's `starlight-theme`.
+      // SiteTitle and Header give the docs a header that knows where it lives
+      // (brand → app home, `Docs` label → docs home) and where the app is (the
+      // shared public nav links); see odd/tasks/docs-app-navigation.md.
       components: {
         Head: './src/components/starlight/Head.astro',
         ThemeSelect: './src/components/starlight/ThemeSelect.astro',
+        SiteTitle: './src/components/starlight/SiteTitle.astro',
+        Header: './src/components/starlight/Header.astro',
       },
       sidebar: [
         {
