@@ -270,7 +270,7 @@ export function AccountPage({ locale }: AccountPageProps) {
                 <ExternalLink className="h-3 w-3" />
               </a>
               <a
-                href={localizedPath('/api', locale)}
+                href={localizedPath('/docs/api-reference', locale)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-(--color-border) px-3 py-1.5 text-sm text-(--color-text-secondary) transition-colors hover:border-(--color-primary-300) hover:text-(--color-text)"
               >
                 <Code className="h-3.5 w-3.5" />

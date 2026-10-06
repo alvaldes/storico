@@ -780,22 +780,6 @@
       "contact_before": "Questions about these Terms can be sent to",
       "contact_after": "or open an issue on our GitHub repository."
     },
-    "api": {
-      "title": "API Reference",
-      "description": "Complete API reference for integrating with Storico.",
-      "last_updated": "Last updated: September 24, 2026",
-      "intro": "Storico provides a REST API powered by FastAPI. Below is a summary of the main endpoints. Full OpenAPI documentation is available at",
-      "intro_end": "when the backend is running.",
-      "auth_title": "Authentication",
-      "auth": "All API requests require authentication via OAuth session. The frontend proxy automatically attaches the session token to requests.",
-      "endpoints_title": "Endpoints",
-      "endpoint_extract_desc": "Starts the extraction for one user story and returns 202 with the extraction id.",
-      "endpoint_status_desc": "Polls the status of an extraction by its id until it finishes.",
-      "aria_openapi": "OpenAPI documentation (opens in new tab)",
-      "aria_swagger": "Swagger documentation (opens in new tab)",
-      "footer": "For detailed request/response schemas, start the backend and visit",
-      "footer_end": "for interactive Swagger documentation."
-    },
     "status": {
       "title": "System Status",
       "description": "Check the current status of Storico services.",

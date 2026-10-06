@@ -16,7 +16,7 @@ export interface PublicNavLink {
  * mirror this one — see `odd/tasks/docs-header-nav-scope.md`. This module owns
  * both lists so neither can drift into a third hardcoded copy.
  */
-export const PUBLIC_NAV_PATHS = ['/docs', '/api', '/status'] as const;
+export const PUBLIC_NAV_PATHS = ['/docs', '/docs/api-reference', '/status'] as const;
 
 /**
  * The nav destinations of the Starlight docs header (`Header.astro` override),
@@ -41,7 +41,7 @@ type NavPath = (typeof PUBLIC_NAV_PATHS)[number] | (typeof DOCS_HEADER_NAV_PATHS
  */
 const NAV_LABEL_KEYS: Record<NavPath, 'documentation' | 'api_reference' | 'status_page' | 'home'> = {
   '/docs': 'documentation',
-  '/api': 'api_reference',
+  '/docs/api-reference': 'api_reference',
   '/status': 'status_page',
   '/': 'home',
 };

@@ -45,7 +45,7 @@ const NAV_LABEL_KEYS = ['documentation', 'api_reference', 'status_page'] as cons
  */
 const LABEL_KEY_BY_PATH: Record<string, keyof FooterCatalog> = {
   '/docs': 'documentation',
-  '/api': 'api_reference',
+  '/docs/api-reference': 'api_reference',
   '/status': 'status_page',
   '/': 'home',
 };
@@ -102,13 +102,13 @@ describe('the docs header renders its own two-destination list', () => {
    * neither can shrink or grow silently.
    */
 
-  it('keeps the app navbar pinned to exactly the original three destinations', () => {
-    expect([...PUBLIC_NAV_PATHS]).toEqual(['/docs', '/api', '/status']);
+  it('keeps the app navbar pinned to exactly the docs, api-reference and status destinations', () => {
+    expect([...PUBLIC_NAV_PATHS]).toEqual(['/docs', '/docs/api-reference', '/status']);
     for (const locale of ['en', 'es'] as CatalogLocale[]) {
       const links = publicNavLinks(locale);
-      expect(links.map((link) => link.path), `${locale} navbar paths must stay the original three`).toEqual([
+      expect(links.map((link) => link.path), `${locale} navbar paths must stay the docs, api-reference and status destinations`).toEqual([
         '/docs',
-        '/api',
+        '/docs/api-reference',
         '/status',
       ]);
       expect(links.map((link) => link.label)).toEqual(
