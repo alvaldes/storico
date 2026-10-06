@@ -12,4 +12,10 @@ description: Configura Storico y extrae tus primeras tareas a partir de una hist
 5. **Extrae tareas** — deja que la IA descomponga tu historia en tareas estructuradas.
 6. **Revisa y exporta** — edita las tareas según sea necesario y expórtalas a JSON o Markdown.
 
+:::caution
+La extracción necesita un modelo y una configuración del proveedor guardados. Hasta que un espacio de
+trabajo los tenga, **la extracción no puede comenzar**, y la página de la historia indica qué falta por
+definir en lugar de generar tareas.
+:::
+
 Para el formato exacto que Storico espera, consulta [Formato de historia de usuario](/es/docs/story-format).
