@@ -16,8 +16,11 @@
  *    token *values* referenced below therefore cannot be picked up from
  *    globals.css; they are mirrored here as literals (light on `:root`, dark on
  *    `:root[data-theme='dark']`, mirroring globals.css' own scopes). The
- *    --sl-* → --color-* mapping itself stays by reference, but a value change
- *    in globals.css must be mirrored here by hand.
+ *    --sl-* → --color-* mapping itself stays by reference, and the mirroring is
+ *    not a voluntary discipline: `src/styles/__tests__/starlight-tokens.test.ts`
+ *    fails when a mirror drifts from globals.css, when a token is referenced
+ *    here without being declared here (on a Starlight page such a token resolves
+ *    to nothing, silently), and when a callout stops painting from app tokens.
  *  - Space Grotesk is loaded only at weights 700 and 800 (see src/lib/fonts.ts) and it is the
  *    app's display face for h1 alone; the app's h1 carries Tailwind's `font-extrabold` (800)
  *    and every h2 and below stays on Inter at `font-bold` (700), with no base heading rule in
