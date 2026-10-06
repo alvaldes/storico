@@ -1,4 +1,11 @@
+// @vitest-environment node
+//
+// Besides importing the JSON catalogs, this guard reads the Spanish Starlight markdown off the
+// real filesystem, so it needs a real path: jsdom hands out `http://localhost/...` URLs for
+// `import.meta.url`, and `readFileSync` refuses those. The node environment keeps this file out
+// of the jsdom suite instead of making the paths depend on the working directory.
 import { describe, expect, it } from 'vitest';
+import { readFileSync, readdirSync } from 'node:fs';
 
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
@@ -91,6 +98,19 @@ function collectStrings(value: unknown, path: string[] = []): [string, string][]
   return [];
 }
 
+/** Every `.md` file under `dir`, recursively, as name + text. */
+function markdownFiles(dir: URL): { name: string; text: string }[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const entryUrl = new URL(`${entry.name}${entry.isDirectory() ? '/' : ''}`, dir);
+    if (entry.isDirectory()) return markdownFiles(entryUrl);
+    if (!entry.name.endsWith('.md')) return [];
+    return [{ name: entry.name, text: readFileSync(entryUrl, 'utf8') }];
+  });
+}
+
+/** The Spanish documentation pages, where the same variant rule applies to prose. */
+const ES_MARKDOWN = markdownFiles(new URL('../../content/docs/es/', import.meta.url));
+
 describe('es.json Spanish variant', () => {
   it('detects voseo and leaves neutral Spanish alone', () => {
     // Guarding the guard: a detector that matches nothing would pass the copy check
@@ -120,5 +140,18 @@ describe('es.json Spanish variant', () => {
     };
 
     expect(keys(es).sort()).toEqual(keys(en).sort());
+  });
+});
+
+describe('Spanish docs markdown variant', () => {
+  it('finds the Spanish docs pages, or the voseo case below is vacuous', () => {
+    // A broken glob or a moved content directory must fail loudly here instead of
+    // letting the per-file check pass on an empty list.
+    expect(ES_MARKDOWN.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it.each(ES_MARKDOWN)('uses neutral Spanish in $name', ({ name, text }) => {
+    const offenders = voseoFormsIn(text);
+    expect(offenders, `${name} carries voseo forms: ${offenders.join(', ')}`).toEqual([]);
   });
 });

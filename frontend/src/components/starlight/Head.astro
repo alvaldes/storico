@@ -1,0 +1,32 @@
+---
+/**
+ * Starlight `Head` component override.
+ *
+ * Renders Starlight's default head content (the same mapped `head` array the
+ * stock component renders) and then injects the app→Starlight theme bridge as
+ * an inline script, so it executes before first paint — exactly what
+ * `ThemeScript.astro` does for app pages, which Starlight pages never run.
+ *
+ * Positioning matters: Starlight's own ThemeProvider inline script also lives in
+ * the `<head>` (rendered after `<Head />` in Page.astro) and re-derives
+ * `data-theme` from `starlight-theme`. Running the bridge first means that later
+ * run re-applies the very value the bridge just applied.
+ */
+import { THEME_BRIDGE_SCRIPT } from '@/lib/theme-bridge';
+import {
+  GOOGLE_FONTS_PRECONNECT_HOSTS,
+  GOOGLE_FONTS_STYLESHEET_HREF,
+} from '@/lib/fonts';
+
+const { head } = Astro.locals.starlightRoute;
+---
+
+{head.map(({ tag: Tag, attrs, content }) => <Tag {...attrs} set:html={content} />)}
+{/* The app's web fonts: PublicLayout loads them for app pages, but Starlight pages
+    render through their own layout, so without this the docs declare `--sl-font: Inter`
+    and fall back to a system font. Same constants, same faces. */}
+{GOOGLE_FONTS_PRECONNECT_HOSTS.map(({ host, crossorigin }) => (
+  <link rel="preconnect" href={host} crossorigin={crossorigin ? '' : undefined} />
+))}
+<link href={GOOGLE_FONTS_STYLESHEET_HREF} rel="stylesheet" />
+<script is:inline set:html={THEME_BRIDGE_SCRIPT} />
