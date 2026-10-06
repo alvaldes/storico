@@ -1,9 +1,9 @@
 // @vitest-environment node
 //
-// This guard reads a Python file, so it needs a real filesystem path: jsdom hands out
-// `http://localhost/...` URLs for `import.meta.url`, and `readFileSync` refuses those. The
-// node environment keeps this file out of the jsdom suite instead of making the path depend
-// on the working directory.
+// This guard reads files from disk — a Python backend rule and the markdown docs pages — so it
+// needs a real filesystem path: jsdom hands out `http://localhost/...` URLs for `import.meta.url`,
+// and `readFileSync` refuses those. The node environment keeps this file out of the jsdom suite
+// instead of making the paths depend on the working directory.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 
@@ -59,16 +59,38 @@ const CLOUD_ONLY_KEYS = [
 ];
 
 /**
- * The one key that lists the runners a deployment can be pointed at, so it names the local
+ * The one catalog key that lists the runners a deployment can be pointed at, so it names the local
  * provider alongside the cloud ones. That is what the string already does — Ollama is in it
  * today — and requiring all of them is not over-constraining a list of runners. The local
  * side is still read from the rule rather than typed out, so the two requirements come from
  * one classification.
  *
- * `pages.docs.step_2` is the same kind of list in the user-facing docs, and it is here rather
- * than unguarded so a fifth provider cannot leave it behind.
+ * The user-facing docs used to carry the same kind of list on the retired placeholder page; that
+ * page is now Starlight markdown, so the enumeration is guarded where it lives — see the docs
+ * pages below.
  */
-const ALL_PROVIDER_KEYS = ['pages.status.llm_runner_desc', 'pages.docs.step_2'];
+const ALL_PROVIDER_KEYS = ['pages.status.llm_runner_desc'];
+
+/**
+ * The docs pages that enumerate the providers the product supports. They are where the user-facing
+ * *set* of providers is written out, which is what makes them the place a fifth provider is
+ * forgotten: nothing else turns red when the backend grows one, so a name lands in
+ * `KNOWN_PROVIDERS` and the docs keep naming four. Each locale's provider reference and quickstart
+ * both carry the list, so all four files are guarded.
+ */
+const ALL_PROVIDER_DOC_PATHS = [
+  'content/docs/en/docs/llm-providers.md',
+  'content/docs/es/docs/llm-providers.md',
+  'content/docs/en/docs/quickstart.md',
+  'content/docs/es/docs/quickstart.md',
+] as const;
+
+const DOC_SOURCES = Object.fromEntries(
+  ALL_PROVIDER_DOC_PATHS.map((relativePath) => [
+    relativePath,
+    readFileSync(new URL(`../../${relativePath}`, import.meta.url), 'utf8'),
+  ]),
+);
 
 const CATALOGS = { en: en as Record<string, unknown>, es: es as Record<string, unknown> };
 
@@ -136,6 +158,15 @@ describe('provider copy', () => {
         missing,
         `${locale} ${key} must name every provider; missing: ${missing.join(', ')}`,
       ).toEqual([]);
+    });
+  });
+
+  describe.each(Object.entries(DOC_SOURCES))('the %s docs page', (path, text) => {
+    it('names every provider, local included', () => {
+      const missing = missingProviders(text, KNOWN_PROVIDERS);
+      expect(missing, `${path} must name every provider; missing: ${missing.join(', ')}`).toEqual(
+        [],
+      );
     });
   });
 });
