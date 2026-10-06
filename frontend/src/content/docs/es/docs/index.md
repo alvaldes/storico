@@ -1,7 +1,13 @@
 ---
-title: Documentación de Storico
+title: Documentación
+description: Aprende a usar Storico con guías y tutoriales.
 ---
 
-Storico convierte historias de usuario en lenguaje natural en tareas Kanban estructuradas usando LLMs.
+Bienvenido a la documentación de Storico. Storico convierte historias de usuario en lenguaje natural en tareas Kanban estructuradas usando modelos de lenguaje.
 
-Este sitio de documentación está en construcción. Las guías completas cubrirán proyectos, extracción y el tablero Kanban.
+Empieza por aquí:
+
+- [Inicio rápido](/es/docs/quickstart) — configura Storico y extrae tus primeras tareas.
+- [Formato de historia de usuario](/es/docs/story-format) — el formato que Storico espera para las historias de usuario.
+- [Proveedores de LLM](/es/docs/llm-providers) — Ollama, OpenAI, Anthropic y Gemini.
+- [Exportación](/es/docs/export) — descarga tus tareas como JSON o Markdown.

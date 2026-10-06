@@ -24,7 +24,54 @@ export default defineConfig({
     // `locales` block next to it makes the build fail hard with
     // "Cannot provide both an Astro 'i18n' configuration and a Starlight
     // 'locales' configuration". 0.37.7 is the ceiling for Astro 5.
-    starlight({ title: 'Storico Documentation', pagefind: true }),
+    // Explicit sidebar: the five docs pages in a deliberate reading order,
+    // index first, instead of alphabetical autogeneration. Entries use
+    // `link`, not `slug`: under `prefixDefaultLocale: true` every route slug
+    // is locale-prefixed (en/docs/..., es/docs/...) and `slug` entries fail
+    // to resolve on the locale-less prerendered 404 page ("The slug
+    // \"docs/index\" specified in the Starlight sidebar config does not
+    // exist"). `link` entries are locale-stripped paths; Starlight injects
+    // the current page's locale prefix when rendering (/en/docs/quickstart,
+    // /es/docs/quickstart).
+    // No Starlight `locales` block: next to the top-level `i18n` config it
+    // makes the build fail hard with "Cannot provide both an Astro 'i18n'
+    // configuration and a Starlight 'locales' configuration".
+    starlight({
+      title: 'Storico Documentation',
+      pagefind: true,
+      // The app ships its own branded 404 (src/pages/404.astro, app layout plus
+      // i18n). Without this, Starlight's static 404 shadows it for the whole
+      // site, not just for /docs: the build warned that "/404" is defined twice
+      // and the emitted .vercel/output/static/404.html was Starlight's.
+      disable404Route: true,
+      sidebar: [
+        {
+          label: 'Documentation',
+          translations: { es: 'Documentación' },
+          link: '/docs/',
+        },
+        {
+          label: 'Quickstart',
+          translations: { es: 'Inicio rápido' },
+          link: '/docs/quickstart',
+        },
+        {
+          label: 'User story format',
+          translations: { es: 'Formato de historia de usuario' },
+          link: '/docs/story-format',
+        },
+        {
+          label: 'LLM providers',
+          translations: { es: 'Proveedores de LLM' },
+          link: '/docs/llm-providers',
+        },
+        {
+          label: 'Export',
+          translations: { es: 'Exportación' },
+          link: '/docs/export',
+        },
+      ],
+    }),
   ],
   site: process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:4321',
   i18n: {
