@@ -111,6 +111,24 @@ function markdownFiles(dir: URL): { name: string; text: string }[] {
 /** The Spanish documentation pages, where the same variant rule applies to prose. */
 const ES_MARKDOWN = markdownFiles(new URL('../../content/docs/es/', import.meta.url));
 
+/**
+ * The Spanish sidebar labels living in `astro.config.mjs`, extracted from the
+ * `translations: { es: '...' }` entries only. That file is code, English prose,
+ * and URLs besides these strings, so scanning the whole file would guard
+ * nothing meaningful; the extraction keeps the check on exactly the Spanish
+ * copy that ships to `/es/docs`. Only the labels are real Spanish there: the
+ * same word list would otherwise trip on lookalikes inside code identifiers
+ * (`docs/roles-permissions` contains the letters of `sos`), which whole-word
+ * tokenization in `voseoFormsIn` already avoids for the values themselves.
+ */
+const ES_SIDEBAR_LABELS = (() => {
+  const config = readFileSync(new URL('../../../astro.config.mjs', import.meta.url), 'utf8');
+  return [...config.matchAll(/translations:\s*\{\s*es:\s*(['"])(.*?)\1/g)].map((match, i) => ({
+    name: `sidebar entry ${i + 1}`,
+    text: match[2],
+  }));
+})();
+
 describe('es.json Spanish variant', () => {
   it('detects voseo and leaves neutral Spanish alone', () => {
     // Guarding the guard: a detector that matches nothing would pass the copy check
@@ -151,6 +169,19 @@ describe('Spanish docs markdown variant', () => {
   });
 
   it.each(ES_MARKDOWN)('uses neutral Spanish in $name', ({ name, text }) => {
+    const offenders = voseoFormsIn(text);
+    expect(offenders, `${name} carries voseo forms: ${offenders.join(', ')}`).toEqual([]);
+  });
+});
+
+describe('Spanish sidebar labels in astro.config.mjs', () => {
+  it('finds a translations entry per sidebar item, or the voseo case below is vacuous', () => {
+    // If the config moves or the extraction regex breaks, this must fail loudly
+    // instead of letting the per-label check pass on an empty list.
+    expect(ES_SIDEBAR_LABELS.length).toBeGreaterThanOrEqual(9);
+  });
+
+  it.each(ES_SIDEBAR_LABELS)('uses neutral Spanish in $name', ({ name, text }) => {
     const offenders = voseoFormsIn(text);
     expect(offenders, `${name} carries voseo forms: ${offenders.join(', ')}`).toEqual([]);
   });
