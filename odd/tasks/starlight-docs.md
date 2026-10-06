@@ -1,7 +1,9 @@
 # ODD Feature: starlight-docs
 
 > **Status**: complete on `feat/starlight-docs` off `main` @ `54abdc7`. Tasks 1–6 done and verified;
-> the last commit is `fa899e0`. Not pushed, not merged.
+> the last commit is `fa899e0`. Not pushed, not merged. **Awaiting the owner's review before any
+> push**: the two local-evaluation traps and the seven open judgement calls are collected at the end
+> of this file.
 >
 > **Verified**: `/en/docs` and `/es/docs` serve a five-page Starlight site per locale, prerendered
 > with a working Pagefind index, in neutral Spanish, decorated with Storico's own tokens and fonts,
@@ -251,10 +253,6 @@ deployed from this branch, and the window closes as soon as task 2 puts the real
   artefact, not a defect.** It appears only when a content file is edited between builds, the new
   entry wins (the rendered HTML carries the corrected copy), and removing `.astro/` yields zero
   warnings. `.astro/` is gitignored, so a fresh build never sees it.
-| 2 | _pending_ | |
-| 3 | _pending_ | |
-| 4 | _pending_ | |
-| 5 | _pending_ | |
 
 ## Open decisions carried in
 
@@ -264,3 +262,43 @@ deployed from this branch, and the window closes as soon as task 2 puts the real
 - Deferred out of this feature, each needing its own start: the Starlight API reference from
   production's `openapi.json` (community plugin must first be chosen and pinned against 0.37.7), and
   the CSV import page (blocked by follow-up 11 of `odd/tasks/csv-story-import.md`).
+
+## Awaiting the owner's review — 2026-10-05
+
+The branch is complete and verified but **not pushed, by the owner's decision**: the owner reviews
+before deciding push and PR. Two traps and seven open points are recorded here so that whoever
+resumes does not re-derive them and does not mistake any of them for a defect.
+
+### Traps when evaluating locally
+
+- **Pagefind does not run under `pnpm dev`.** Starlight mounts it only in production builds, so the
+  search modal renders `search.devWarning` instead of results. Upstream behaviour, not ours.
+  Measured: the string lives in `node_modules/@astrojs/starlight/translations/en.json`.
+- **`pnpm preview` is not an available route here.** `@astrojs/vercel` rejects it outright:
+  `[preview] The @astrojs/vercel adapter does not support the preview command.` To exercise search
+  locally, serve the already-built static output instead:
+  `cd .vercel/output/static && python3 -m http.server 4322`. The Pagefind index is present there
+  (`pagefind/pagefind-entry.json`).
+
+### Open points for the owner's judgement
+
+None is a defect. Each is either a deliberate trade or a taste call that was left to the owner.
+
+| # | Point | State |
+| --- | --- | --- |
+| 1 | The docs header title reads `Storico Documentation` but links to `/en` — the app root, not the docs home. Starlight links the site title to the site root, and `prefixDefaultLocale: true` resolves that to `/en`. | Deliberate-adjacent. It does work as a way back to the app, but the label disagrees with where it goes. Override `SiteTitle`, or add a real nav link. |
+| 2 | There is no other path from the docs back to the app: no logo, no nav, no docs footer. | Starlight default. Undecided. |
+| 3 | The callout boxes (`note`, `tip`, `caution`, `danger`) keep Starlight's hues. | Deliberate: the app has no OKLCH equivalents beyond `--color-success`, so mapping them would have meant inventing literals. |
+| 4 | The search modal is untinted (`--sl-color-backdrop-overlay`, shadows). | Deliberate, same reason as 3. |
+| 5 | In dark mode the sidebar (`--color-surface: #0f141d`) separates weakly from the body (`--color-body: #0b0f17`). | Starlight's seven gray steps collapsed onto the app's three. A taste call. |
+| 6 | A bad URL under `/docs` renders the app's branded 404, not Starlight's searchable one. | Deliberate trade: `disable404Route: true` keeps the brand's 404 site-wide. |
+| 7 | Five thin pages, a faithful port of the `pages.docs.*` copy. | The note's v2 pages (CSV import, kanban states, embeddings, roles, architecture overview) are unwritten. The `more_coming` promise was retired rather than fulfilled. |
+
+### Structural debt recorded while evaluating
+
+- **Starlight is pinned at `0.37.7`**, the ceiling for Astro 5. Current Starlight requires Astro 7, so
+  there are no new Starlight features until the Astro upgrade, and this integration must be re-checked
+  when it happens.
+- **The app is inconsistent with itself about its mono.** `globals.css:141` declares
+  `--font-mono: 'JetBrains Mono'`, which is never loaded, while `@fontsource-variable/geist` sits
+  unused in `dependencies`. `Geist Mono` is what actually arrives. The docs mirror the declaration.
