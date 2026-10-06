@@ -1,7 +1,7 @@
 # ODD Feature: starlight-docs
 
-> **Status**: planned, not started. Branch `feat/starlight-docs` off `main` @ `54abdc7`; the Starlight
-> integration is not installed in the repository.
+> **Status**: in progress on `feat/starlight-docs` off `main` @ `54abdc7`. Tasks 1 and 2 verified and
+> committed as `20d6bc9` and `693db17`; tasks 3–5 pending. Not pushed, not merged.
 > **Created**: 2026-10-05
 > **Workflow**: Organic Driven Development (ODD)
 > **Source**: the vault note `Starlight — documentación del sitio con Starlight` (second-brain,
@@ -77,12 +77,12 @@ and stop shipping copy the product cannot keep.
 
 ## Tasks
 
-- [ ] 1. Skeleton verified end to end: branch, Starlight `^0.37.7` installed, integration added to
+- [x] 1. Skeleton verified end to end: branch, Starlight `^0.37.7` installed, integration added to
       `astro.config.mjs` under Option B, `src/content.config.ts` with the `docs` collection, one
       placeholder page per locale, and a `pnpm build` that emits prerendered `/en/docs/` and
-      `/es/docs/` with a populated Pagefind index.
-- [ ] 2. Port the copy **before** deleting anything: five pages per locale, authored from
-      `pages.docs.*` and `landing.features.card_3`, in neutral Spanish.
+      `/es/docs/` with a populated Pagefind index. — `20d6bc9`
+- [x] 2. Port the copy **before** deleting anything: five pages per locale, authored from
+      `pages.docs.*` and `landing.features.card_3`, in neutral Spanish. — `693db17`
 - [ ] 3. Retire the old surface: delete `src/pages/[locale]/docs.astro`, drop the now-orphaned
       `pages.docs.*` keys from both locales, and retire the architecture half of `more_coming`.
 - [ ] 4. Guards: neutral-Spanish coverage for the markdown (the existing guard only reads `es.json`),
@@ -92,6 +92,12 @@ and stop shipping copy the product cannot keep.
 
 Task 2 is deliberately ordered before task 3: `docs.astro` is the only user-facing documentation that
 exists today, and deleting it before its content is ported leaves `/en/docs` as a 404.
+
+**Measured while closing task 1, and it changes that reasoning:** the prerendered Starlight route wins
+route priority over the dynamic `[locale]/docs.astro`, so from `20d6bc9` onward `/en/docs` and
+`/es/docs` already serve the placeholder instead of the existing page — the file still exists, but it
+is no longer reachable. Tasks 1 and 2 therefore must land in the same unreleased slice; nothing is
+deployed from this branch, and the window closes as soon as task 2 puts the real copy in place.
 
 ## Constraints
 
@@ -108,7 +114,37 @@ exists today, and deleting it before its content is ported leaves `/en/docs` as 
 
 | Work unit | Commit | Evidence |
 | --- | --- | --- |
-| 1 | _pending_ | |
+| 1 | `20d6bc9` | `pnpm build` emits `.vercel/output/static/en/docs/index.html` and `es/docs/index.html`; `.vercel/output/static/pagefind/pagefind-entry.json` reports `en` and `es` with `page_count: 1` each; `pnpm exec tsc --noEmit` exit 0; `pnpm test` **717/717 across 63 files**, unregressed; `astro.config.mjs` diff is additive only and the top-level `i18n` block is byte-for-byte unchanged. Pagefind found 3 HTML files. |
+| 2 | `693db17` | Ten routes prerendered, five per locale; `pagefind-entry.json` reports `page_count: 5` for `en` and for `es`; sidebar links resolve to `/en/docs/...` and `/es/docs/...`; `lang="es"` and `hreflang` `en`/`es` present on the Spanish pages; a voseo grep over `src/content/docs/es/**` is empty; `tsc --noEmit` exit 0; `pnpm test` **717/717 across 63 files**. 20 of the 22 `pages.docs.*` keys ported, 2 retired by instruction. |
+
+### Findings that changed the plan
+
+- **Starlight's 404 shadowed the app's, site-wide — fixed in `693db17`.** Adding Starlight made `/404`
+  defined twice: the build warned about it and the emitted `.vercel/output/static/404.html` was
+  Starlight's, so every 404 on the site, not just under `/docs`, stopped serving
+  `src/pages/404.astro` (app layout plus i18n). `disable404Route: true` restores it. The option
+  exists in 0.37.7 (`utils/user-config.ts:227`). Astro says the duplicate route becomes a hard error
+  in a future version, so this was not survivable.
+- **Sidebar entries must use `link`, not `slug`.** With `prefixDefaultLocale: true` every route slug
+  is locale-prefixed, and `slug` entries abort the build with “The slug \"docs/index\" specified in
+  the Starlight sidebar config does not exist”: the prerendered 404 page resolves the sidebar with
+  no locale, and the raw lookup never matches. `link` entries are locale-stripped paths and Starlight
+  injects the current locale when rendering. Recorded in a comment in `astro.config.mjs`.
+- **`llm_backend_gemini` was dead copy.** The key existed in both locale files and was never
+  rendered by `docs.astro`. It is visible now.
+- **The app's own copy was not the source of truth for the UI labels.** The Spanish export page
+  first said “haz clic en **Download**” over a button that reads **Descargar**, and called the
+  selector target a “workspace” where the app says “espacio de trabajo”. Both corrected against
+  `es.json` before committing.
+- **Content links are locale-absolute in the markdown** (`[Quickstart](/en/docs/quickstart)` in the
+  English files, `/es/...` in the Spanish ones). They render correctly and are verified, but the
+  locale is duplicated per file and a future routing change would have to touch every link. Task 4
+  pins the shape; normalising to Starlight's locale-less links needs its own verification, since it
+  is not established here that Starlight rewrites body links the way it rewrites sidebar ones.
+- **A `Duplicate id "es/docs/export"` warning from `starlight-docs-loader` is a stale-content-cache
+  artefact, not a defect.** It appears only when a content file is edited between builds, the new
+  entry wins (the rendered HTML carries the corrected copy), and removing `.astro/` yields zero
+  warnings. `.astro/` is gitignored, so a fresh build never sees it.
 | 2 | _pending_ | |
 | 3 | _pending_ | |
 | 4 | _pending_ | |
