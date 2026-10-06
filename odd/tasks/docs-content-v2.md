@@ -66,12 +66,15 @@ Plus: localize every sidebar label, and correct ADR-003.
 - [x] 2. **Extraction versions page** — `79d45e3`
 - [x] 3. **Historical context page** — `fcbdb35`
 - [x] 4. **Roles and permissions page** — `fcbdb35`
-- [ ] 5. **Localize the whole sidebar** with per-item `translations`, and widen
-      `neutral-spanish.test.ts` to cover `astro.config.mjs` in the same commit — the new Spanish
-      labels live in a file that guard does not read today, which is the same hole the `SiteTitle`
-      literal opened.
-- [ ] 6. **Correct ADR-003** in `AGENTS.md` with the code as evidence, in its own commit, and record
-      the judge finding for the owner rather than silently rewording feature table 6.
+- [x] 5. **Widen the guard over the Spanish sidebar labels** — `ca81ac1`. **Part one of this task was
+      already done before the feature started, and the premise that produced it was mine and wrong**
+      (see the correction of record below): all nine sidebar entries already carried a Spanish
+      `translations` value, five of them since before this branch. The real work was the guard hole,
+      and that was genuine — the variant rule read `es.json` and `content/docs/es/**` and never
+      `astro.config.mjs`, so all nine Spanish labels were unguarded.
+- [x] 6. **Correct ADR-003** — `5a8e1a1`, in its own commit. Two falsehoods, not one: the claim that
+      only admins create workspaces, and a permission model with a team level that does not exist.
+      The judge finding is recorded below rather than written into feature table 6.
 - [ ] 7. **Verify.** The docs guards (slug parity, link integrity, sidebar coverage, neutral Spanish),
       the full suite, `tsc --noEmit`, the build, and a real-browser pass over every new page in both
       locales.
@@ -81,8 +84,9 @@ Plus: localize every sidebar label, and correct ADR-003.
 - **English technical artifacts.** The Spanish *copy* is the product and is neutral Spanish, never
   voseo (ADR-008). Terminology comes from `es.json`, not from invention: the app says *espacio de
   trabajo*, not *workspace*, and *Descargar*, not *Download*.
-- **The sidebar label is a Spanish string that escapes today's guard.** `neutral-spanish.test.ts`
-  reads `es.json` and `content/docs/es/**`; `astro.config.mjs` is in neither. Task 5 closes that.
+- **The sidebar labels are Spanish strings that escaped the guard.** `neutral-spanish.test.ts` read
+  `es.json` and `content/docs/es/**`; `astro.config.mjs` was in neither. Task 5 closed that. The
+  labels themselves already existed — that half of the finding was wrong, see the correction below.
 - **Sidebar entries must use `link` with a locale-less path** (`/docs/<slug>`), never `slug`: with
   `prefixDefaultLocale: true` a `slug` entry aborts the build with *"The slug … does not exist"*
   because the prerendered 404 resolves the sidebar with no locale.
@@ -103,6 +107,8 @@ Plus: localize every sidebar label, and correct ADR-003.
 | --- | --- | --- |
 | 1–2 | `79d45e3` | Both pages written from the code and audited clause by clause by an independent verifier: the transition table direction by direction, `INVALID_STATE_TRANSITION` with its 400 and its three fields, the drag's `PUT /api/v1/tasks/{task_id}` checked against the backend router, the three frozen operations with `TASK_VERSION_FROZEN`, `TASK_ALREADY_MARKED`, the single-active-mark index, the owner-or-admin gate, and the two 410-Gone endpoints. **Two defects were caught in the first draft and fixed before the commit** (see below). Guards 19/19; suite **765/765 in 68 files**; `tsc --noEmit` exit 0; build exit 0 with **14 routes** and Pagefind **7 per locale**. |
 | 3–4 | `fcbdb35` | Both pages audited claim by claim by an independent verifier: **every flagged claim PASS**, including the ones I expected to be weakest. The per-environment collection *rationale* is stated verbatim in `config/settings.py:46-48`; the page names the mechanism and the default and asserts no deployed collection name; all ten payload fields exist in `infrastructure/vector/qdrant_adapter.py:317-326`; and the roles page matches `require_admin` and `require_owner` per endpoint. The writer refused to invent dev and prod collection names because they are not sourceable from the repository, and the verifier confirmed that reasoning. Suite **767/767 in 68 files**; `tsc --noEmit` exit 0; build exit 0 with **18 routes** and Pagefind **9 per locale**. |
+| 5 | `ca81ac1` | The guard now extracts only the `translations.es` values from `astro.config.mjs`, so English labels, code and URLs are out of scope by construction, and asserts at least nine entries were found so a broken extraction fails loudly instead of passing vacuously. Observed RED before GREEN: a voseo label reports `carries voseo forms: descargá`. The whole-word tokenizer earns its keep here — a raw substring match would trip on `sos` inside `roles-permissions`. |
+| 6 | `5a8e1a1` | ADR-003 corrected with the code as evidence: the create route requires only `get_current_user`, the creator becomes owner and admin, the roles are `admin` and `member`, ownership is `workspaces.owner_id`, there is no system-level admin, and none of the **fourteen** schema tables is a team. The Auth.js half was left alone because it is **real**: `@auth/core` in the frontend and the sync endpoint its JWT callback calls. |
 
 Two sentences were softened **after** the audit, on the verifier's own reading, so that no absolute
 outlives the code: storage is described as what the server does when a run completes rather than as a
@@ -134,3 +140,32 @@ the plumbing:
   `Duplicate id` warnings (the two index pages and the two `extraction-versions` pages) **became
   zero**, with the same 18 routes and Pagefind at 9 per locale in both builds. The earlier feature's
   diagnosis holds.
+
+### Correction of record — a finding I asserted without verifying it
+
+While planning task 5 I claimed that `/es/docs` shows its sidebar in English, and asked the owner to
+have it localized. **That was false.** All nine sidebar entries already carried a Spanish
+`translations` value; the five older ones were present at the branch base — `git show
+95986cc:frontend/astro.config.mjs` holds five of them — and in `main` as well.
+
+The mistake was mine, and it is the exact failure this feature exists to prevent: I read the `label:`
+values, which are the English labels, and concluded from those neighbours that no other locale had
+copy, instead of reading the file. The owner's answer to that question was therefore moot.
+
+What survives is the **other** half of the same observation: the guard never read that file, so those
+nine Spanish strings were genuinely unguarded. That half was real work and it landed in `ca81ac1`.
+
+Rule worth keeping: a claim about what a file contains is verified **in the file**, never inferred
+from a list of its neighbours' fields.
+
+### The judge finding, recorded for the owner
+
+`AGENTS.md` still lists *Validación LLM-as-a-Judge* as MVP feature 6 of the core engine, and section 8
+still draws it in the extraction pipeline. The implementation exists and **the web app never asks for
+it**: `frontend/src/lib/tasks-api.ts:139` sends `run_validation: false`, the route default is `False`
+(`backend/src/storico/api/schemas/extraction.py:67`), and a confidence score is only produced when
+validation runs. The new docs page says exactly that.
+
+Feature table 6 and section 8 were **not** rewritten: that is a decision the owner has not made. The
+honest state of the product is now written down in two places — the docs page and this file — instead
+of zero.
