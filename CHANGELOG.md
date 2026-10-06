@@ -1,3 +1,46 @@
+## v0.12.0 (2026-10-06)
+
+### Feat
+
+- **web**: redirect the retired /api URLs to the docs reference
+- **web**: retire the app API reference page in favour of the docs one
+- **web**: hide the docs brand text and relabel the docs link to Storico Docs
+- **web**: scope the docs header nav to the app home and the status page
+- **web**: declare a separate nav list for the docs header
+- **api**: publish an API reference generated from the application
+- **web**: give the docs callouts, the search scrim and the dark sidebar the app's tokens
+- **web**: promote warning and destructive status families into tokens
+- **web**: give the docs a header that returns to the app
+- **web**: port the documentation copy into five Starlight pages per locale
+- **web**: mount Starlight as the documentation site at /en/docs and /es/docs
+- **web**: paint a full-page loader while a mutation is in flight
+- **web**: account for blocking requests with an anti-flicker floor
+- **web**: decide which mutation requests block the page
+- **web**: show the extraction version and follow the run
+- **web**: show the task card's invalid flag and keep it live
+- **api**: read a story's active invalidation marks
+
+### Fix
+
+- **web**: keep the auth config out of the docs prerender build
+- **web**: keep test fixtures out of Tailwind's content scan
+- **web**: resolve the six CSS variables that never existed
+- **web**: declare the mono font the app actually loads
+- **web**: key the StatusPanel rows so React stops warning on every load
+- **web**: keep the task editor's footer reachable on a short viewport
+- **web**: cap dialogs to the viewport and let them scroll
+- **web**: make the docs wear Storico's theme, not Starlight's
+- **web**: keep a version's failure reason out of the selector label
+- **web**: keep the version history scoped, and record the verification
+- **web**: make the Projects nav entry match the workspace state
+- **web**: land on workspace settings after onboarding
+
+### Refactor
+
+- **web**: migrate the ad-hoc status literals onto the semantic tokens
+- **web**: extract the app's public nav links into one module
+- **web**: retire the placeholder docs page and its catalog keys
+
 ## v0.11.0 (2026-10-03)
 
 ### Feat
