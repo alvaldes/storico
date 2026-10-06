@@ -302,6 +302,46 @@ no pinta el velo a los 120 ms, sí lo pinta a los 620 ms, un `GET` nunca toca el
 siempre»), con `elementFromPoint` devolviendo el overlay en las cuatro esquinas y el centro. El
 comando exacto y la salida cruda están en `odd/tasks/blocking-page-loader.md`.
 
+## Contrato de los diálogos: techo de altura y scroll
+
+Todo popup de `Dialog` (`ui/dialog.tsx`) y `AlertDialog` (`ui/alert-dialog.tsx`) lleva
+`max-h-[calc(100dvh-2rem)]` y `overflow-y-auto overscroll-contain`, y es `flex flex-col`. El techo es
+obligatorio: sin él la altura la decide el contenido, y como el popup está centrado con
+`-translate-y-1/2`, un diálogo alto crece para los dos lados y lo que sobra queda recortado **sin
+ningún scroll** — que fue exactamente el defecto que dejó el botón de guardar del editor de tareas
+inalcanzable (883 px en un viewport de 757 px, con el header en `top -63` y el Save en `772-804`).
+
+`dvh` y no `vh`: en Safari de iOS `100vh` incluye el área de la barra de URL y el diálogo se corta igual.
+El idioma ya estaba en el repo — `MobileNav.tsx` ya pasa un techo `dvh` a su `SheetContent`.
+
+**Un call site puede sobrescribir el scroll o el techo.** `cn()` es `twMerge(clsx(...))`, así que la clase
+del call site gana por venir última. Eso no es un detalle: es lo que permite que un diálogo con estructura
+propia funcione. `TaskEditor` pasa `overflow-hidden` para que el popup no scrollee y puedan quedar el
+título y el footer fijos mientras scrollean sólo los campos; `CommandDialog` pasa `overflow-hidden` y deja
+que su lista interna (`max-h-72 overflow-y-auto`) sea el único scroller. Un test de contrato
+(`ui/__tests__/dialog.test.tsx`) fija esa dependencia, porque cambiar `twMerge` por `clsx` la rompería en
+silencio.
+
+El patrón para un diálogo alto que quiera header y footer fijos:
+
+```tsx
+<DialogContent className="sm:max-w-2xl max-h-[calc(100dvh-2rem)] overflow-hidden">
+  <DialogHeader className="shrink-0">…</DialogHeader>
+  <div className="min-h-0 flex-1 space-y-5 overflow-y-auto">…campos…</div>
+  <DialogFooter className="shrink-0">…</DialogFooter>
+</DialogContent>
+```
+
+`min-h-0` es lo que permite que un hijo flex encoja por debajo de su tamaño de contenido; sin él la región
+scrolleable crecería para entrar y el arreglo no haría nada. No usar `sticky` para el footer: con el `p-4`
+del popup y los márgenes negativos que ya trae `DialogFooter` (`-mx-4 -mb-4`), un `sticky bottom-0` queda
+un rem fuera del scrollport y se corta.
+
+Verificación: jsdom no tiene motor de layout, así que un test unitario de esto sólo puede afirmar clases.
+Lo que lo prueba es el probe en navegador — abrir el diálogo, tildar el campo que lo hace más alto, y
+comprobar que `elementFromPoint` en el centro del botón principal lo devuelve. Medición, pasada visual y
+hallazgos en `odd/tasks/dialog-viewport-overflow.md`.
+
 ## Redirecciones internas: `window.location.assign` vs `navigate()` de Astro
 
 Decisión pendiente **aceptada**: las redirecciones internas siguen usando `window.location.assign`

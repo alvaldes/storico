@@ -357,13 +357,22 @@ export function TaskEditor({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-2xl max-h-[calc(100dvh-2rem)] overflow-hidden">
+        {/* overflow-hidden overrides the primitive's overflow-y-auto (cn() is
+            twMerge-based, call site wins) so the popup itself never scrolls and
+            the footer can be pinned; the wider sm:max-w-2xl also cuts height by
+            reducing text wrapping. */}
+        <DialogHeader className="shrink-0">
           <DialogTitle>{t.taskEditor.title}</DialogTitle>
           <DialogDescription>{t.taskEditor.description}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
+        {/* Header and footer are pinned; this div is the only scroll region.
+            `min-h-0` is what allows a flex child to shrink below its content
+            size — without it the scroll region would grow to fit and defeat
+            the whole fix. The save-error banner lives inside it so the error
+            scrolls with the fields instead of being pinned. */}
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto">
           {/* Title — read-only text under the D5/D21 field matrix: the write
               contract no longer accepts it, so an editable control that cannot
               save would be a lie. */}
@@ -538,22 +547,22 @@ export function TaskEditor({
               <FieldError>{errors.markReason}</FieldError>
             </Field>
           )}
+
+          {saveError && (
+            <ErrorDisplay
+              friendlyMessage={t.taskEditor.error_save}
+              rawDetail={saveError.rawError.rawBody}
+              status={saveError.status}
+              errorCode={saveError.errorCode}
+              retryLabel={t.taskEditor.save}
+              onRetry={handleSave}
+              onDismiss={() => setSaveError(null)}
+              locale={locale}
+            />
+          )}
         </div>
 
-        {saveError && (
-          <ErrorDisplay
-            friendlyMessage={t.taskEditor.error_save}
-            rawDetail={saveError.rawError.rawBody}
-            status={saveError.status}
-            errorCode={saveError.errorCode}
-            retryLabel={t.taskEditor.save}
-            onRetry={handleSave}
-            onDismiss={() => setSaveError(null)}
-            locale={locale}
-          />
-        )}
-
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button
             type="button"
             variant="outline"
