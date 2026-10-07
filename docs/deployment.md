@@ -172,8 +172,9 @@ de verificación) y `storico_extractions_prod` (1 punto) — `storico_extraction
 y `storico_extractions` 19 puntos. Consecuencia que hay que leer sin eufemismos: **dev y prod comparten
 cluster**, y lo único que los separa es el nombre de colección; la colección legado de 19 puntos existe
 porque el default del adaptador (`qdrant_adapter.py:39`) es `storico_extractions` y esa fue la época en
-que el `.env` no declaraba colección. "Una colección por entorno" es separación lógica, no física. El
-hallazgo y su pendiente de diseño están en `prod.todo.md`.
+que el `.env` no declaraba colección. "Una colección por entorno" es separación lógica, no física. El hallazgo y su pendiente de diseño están en
+`odd/tasks/prod-purge-d-a-3.md` — era el pendiente de la sección D-a-3 de `prod.todo.md`, movida allí el
+2026-10-07 con una redirección en el lugar original; el ítem vivo sigue listado en `prod.todo.md`.
 
 ### Variables de entorno requeridas
 
@@ -291,7 +292,9 @@ negó a borrar ante cualquier diferencia), después el merge (`1dcc716`), despu�
 (`36675276096`), que corrió `0028` sobre bases vacías y pasó la guarda. Verificado leyendo Neon:
 `alembic_version = 0028` con las restricciones y los índices de la feature presentes. **El bloqueo se pagó
 con datos; la mecánica no cambió: una migración que se niega ante datos existentes sigue necesitando su
-plan de datos en `prod.todo.md` antes de llegar a `main`.**
+plan de datos en `prod.todo.md` antes de llegar a `main`.** (El registro D-a-3 con ese plan, su runbook,
+su inventario y su verificación vive desde el 2026-10-07 en `odd/tasks/prod-purge-d-a-3.md`;
+`prod.todo.md` conserva una redirección en el lugar original.)
 
 **Medido en la base de producción el 2026-09-30, en lectura y solo con `count(*)`:**
 `alembic_version = 0027`, **17** filas en `extractions` (11 `failed`, 6 `completed`, span
@@ -300,7 +303,9 @@ colección de **Qdrant** `storico_extractions_prod`, que es otra tienda: la guar
 conclusión no cambió, pero ahora la sostiene el dato de la columna que la guarda consulta.
 
 **Decidido y EJECUTADO el 2026-09-30: ventana de purga, merge y deploy.** El runbook, el inventario y la
-verificación paso a paso están en `prod.todo.md`, ítem *"Bloqueo de despliegue"*. Resumen de lo real:
+verificación paso a paso están en `odd/tasks/prod-purge-d-a-3.md` — era el ítem *"Bloqueo de
+despliegue"* de `prod.todo.md`, movido allí el 2026-10-07 sin editar su contenido y con una redirección en
+el lugar original. Resumen de lo real:
 
 1. **Purga** (~04:28 UTC) detrás de un interlock que negó a ejecutar el `TRUNCATE` si los once conteos,
    `alembic_version` y los tres conteos de Qdrant no coincidían con el inventario commiteado. Una
@@ -325,7 +330,8 @@ Un plan de purga tiene que nombrar también esto, no sólo las tablas.
 
 La regla general que sale de acá, para cualquier revisión futura con esta forma: **una migración que se
 niega ante datos existentes necesita su plan de datos escrito en `prod.todo.md` antes de llegar a
-`main`.** El gate de readiness no protege de esto: con la migración abortada, el job muere antes.
+`main`.** (El registro D-a-3 vive desde el 2026-10-07 en `odd/tasks/prod-purge-d-a-3.md`, con
+redirección en `prod.todo.md`.) El gate de readiness no protege de esto: con la migración abortada, el job muere antes.
 
 ### Artefactos de build del frontend
 

@@ -114,9 +114,16 @@ on the spec's earlier verification pass, not on new commits.
   deliberately, the equivalence CHECK stays whole, and `0028` was edited rather than superseded because
   it is unreleased. Cost of finding out: the "it is latent because no user-deletion route exists"
   argument used to justify it was **false** — that is defect **D-a-4**, carried into slice (b).
-- [ ] 13. **D-a-4** — `DELETE /api/v1/users/me` (`api/routes/settings.py:335`) has no `IntegrityError`
+- [x] 13. **D-a-4** — `DELETE /api/v1/users/me` (`api/routes/settings.py:335`) has no `IntegrityError`
   mapping, so once a revocation row can exist the refusal is an HTTP 500. Belongs to slice (b), with the
   route's first DELETE-verb test.
+  **[Closed 2026-10-07, verified against slice (b)'s archive before marking]** slice (b) closed it with
+  task **5.14**, checked at `openspec/changes/archive/2026-10-07-extraction-versioning-api/tasks.md:699`:
+  the owner chose the designed **409** — code `ACCOUNT_DELETE_BLOCKED`, produced by a pre-check that
+  names the blocking marks, with the account and the mark rows left intact — and the route's first
+  DELETE-verb tests live in `backend/tests/test_api/test_account_deletion.py`. The shipped code confirms
+  it (`api/routes/settings.py` answers the 409 with that error code), and the archive report records the
+  closure (`archive-report.md:47`). Item 15 remains open.
 - [x] 14. ~~Production `workspace_llm_configs.provider = 'Nan'`~~ — **withdrawn, it was never a defect.**
   Measured against the table that defines the value: `custom_providers` holds one row whose `name` md5
   equals md5('Nan'), and one `workspace_llm_configs` row references it with a real encrypted key.
