@@ -40,7 +40,7 @@ tag **2 `feat(extraction)` sin `!` ni `BREAKING CHANGE`** → increment `MINOR`.
 los slices (b) y (c) no se aplicaron. (b) va a tener que salir en `0.9.1` o `0.10.0`. Quedan abiertas las
 dos cosas que no dependen de esta máquina: **el config de LLM**, que el owner va a crear al rehacer su
 workspace (los valores no secretos para reconstruirlo están en el inventario de D-a-3), y **D-a-5** (`410`
-en (b) WU1, predicado de versión vigente en (b) WU3).
+en (b) WU1, predicado de versión vigente en (b) WU3). **Nota agregada el 2026-10-07, que no forma parte de ese release:** las tres cláusulas que miraban al futuro ya se resolvieron. (b) salió en `v0.10.0` (PRs #31–#39, 2026-10-02) y (c) en `v0.11.0` (PRs #40–#50, 2026-10-03); la versión publicada hoy es `v0.12.0` y producción la corre. **D-a-5 está cerrada en sus dos mitades**, cada una con su medición: ver las filas 49 y 50 de arriba. Sigue abierta la primera: **el config de LLM en producción**, sin el cual no se puede extraer nada.
 
 ## Contratos de API que mienten en producción (**D-a-5**, abierto al desplegar (a) sola)
 

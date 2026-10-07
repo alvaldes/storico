@@ -19,9 +19,9 @@ have planned around a versioning feature it believed was not applied.
 
 | Claim | Evidence |
 | --- | --- |
-| Slice (b) is task-complete | `openspec/changes/extraction-versioning-api/tasks.md` → **80 `[x]` / 1 `[ ]`** |
-| Slice (c) is task-complete | `openspec/changes/extraction-versioning-prompt/tasks.md` → **51 `[x]` / 2 `[ ]`** |
-| The three unchecked boxes are deliberate deferrals, not unstarted work | each carries a dated `> [Amended …]` note: (b)'s is the checkbox-plus-focus half of a UI seam; (c)'s two are the live-Qdrant read-side cases and a part-(iv) deferral |
+| Slice (b) is task-complete | `openspec/changes/archive/2026-10-07-extraction-versioning-api/tasks.md` → **79 checkbox lines, all `[x]`, zero open** |
+| Slice (c) is task-complete | `openspec/changes/extraction-versioning-prompt/tasks.md` → **47 checkbox lines, all `[x]`, zero open** |
+| Neither slice has an open box — and a naive count says otherwise | searching the string `[ ]` anywhere in either file returns three hits, and all three are prose quoted inside dated notes describing an intermediate state. In (b) the UI seam that note names was closed the same day by W6-B1 (`TaskEditorProps`: `markDefaultChecked` / `reasonAutofocus` / `activeMark`); in (c) tasks 3.1/3.2/3.3 and 3.9 are checked today. **This row is itself a correction**: the first version of this page read the raw string counts, called the result "80/81 and 51/53", and built a story about three live deferrals on top of it. A subagent measured the checkbox lines and refuted it |
 | (b) landed | PRs **#31–#39**, merged 2026-10-02, carried by `v0.10.0` |
 | (c) landed | PRs **#40–#50**, merged 2026-10-03, carried by `v0.11.0` (tag date 2026-10-03) |
 | Production runs all of it | `GET https://storico-api.163.192.150.75.sslip.io/api/v1/health` → `{"status":"ok","version":"0.12.0","database":{"status":"ok"},"schema":{"status":"ok"}}`; `/api/v1/health/ready` → **200** |
@@ -55,7 +55,7 @@ Sized for the two changes still in flight:
 
 | Change | Capabilities touched | Requirement blocks to merge | New canonical files |
 | --- | --- | --- | --- |
-| `extraction-versioning-api` | 7 (`export-download`, `extraction-versioning`, `extraction-workflow`, `kanban-board`, `task-editor`, `task-invalidation`, `workspace-permissions`) | **25** (18 `ADDED`, 7 `MODIFIED`) | 1 (`workspace-permissions`) |
+| `extraction-versioning-api` | 7 (`export-download`, `extraction-versioning`, `extraction-workflow`, `kanban-board`, `task-editor`, `task-invalidation`, `workspace-permissions`) | **25** (16 `ADDED`, 9 `MODIFIED`) | 1 (`workspace-permissions`) |
 | `extraction-versioning-prompt` | 4 (`extraction-context`, `extraction-versioning`, `few-shot-retrieval`, `vector-store-isolation`) | **22** (19 `ADDED`, 3 `MODIFIED`) | 1 (`extraction-context`) |
 
 **47 requirement blocks across 11 capability files, two of them new capabilities.** The `MODIFIED` half
@@ -70,11 +70,14 @@ option as offered implied a move, not 47 semantic merges.
 
 ## Tasks
 
-- [ ] **WU1 — Reconcile the three prose surfaces.** The `AGENTS.md` header block, `prod.todo.md` rows
+- [x] **WU1 — Reconcile the three prose surfaces.** The `AGENTS.md` header block, `prod.todo.md` rows
   49, 50 and 98, and `odd/tasks/extraction-versioning-090.md` items 11/12 plus a 2026-10-07 handoff
   section. History is appended or annotated, never rewritten: the rows and the record keep what was true
   when they were written and gain the correction beside it.
-- [ ] **WU2 — Archive `extraction-versioning-api`** (pending the owner's answer on the size above).
+- [x] **WU2 — Archive `extraction-versioning-api`** — `6e9a92c`. 25 requirement blocks merged into the
+  canonical store (16 `ADDED`, 9 `MODIFIED`), `workspace-permissions` created, the folder moved to
+  `archive/2026-10-07-extraction-versioning-api/` with its deltas intact, and the hand-written
+  `archive-report.md` carrying slice (a)'s caveat.
 - [ ] **WU3 — Archive `extraction-versioning-prompt`** (same).
 
 ## Non-goals
@@ -92,4 +95,16 @@ option as offered implied a move, not 47 semantic merges.
 
 ## Evidence log
 
-(one row per work unit, added as each lands)
+| Work unit | Commit | Evidence |
+| --- | --- | --- |
+| WU1 — prose reconciliation | `ef7a7bb` | No RED/GREEN: passive documentation with no test surface. `git diff --check` clean; a voseo scan of the added lines found nothing. The writer re-verified every code claim and **corrected one of mine**: `list_current_by_workspace` is at `export.py:102`, not `:105`. Parent's check: the `AGENTS.md` diff demotes the 2026-09-30 paragraph with its text intact and adds exactly one dated note covering the two sentences that were true on their date; the Docker-Compose and 2026-09-25 paragraphs are untouched. |
+| WU2 — archive (b) | `6e9a92c` | No test surface. The parent verified the merge **mechanically and independently of the writer**: a script compared all 25 delta requirement blocks against their canonical counterparts and found **25 identical, 0 differing**, with the 22 legacy requirements the deltas do not mention still in place. The first run reported one false differ — the extractor swallowed the `## ADDED Requirements` header that follows the last block of a section — which is recorded because it is the trap any future check of this kind will hit. |
+| correction | this commit | The two wrong numbers below, fixed in `AGENTS.md`, in `odd/tasks/extraction-versioning-090.md` and in the table above. No other claim changed. |
+
+**Two of my own numbers were wrong in the briefs, and a subagent caught both.** The mode split is 16
+`ADDED` / 9 `MODIFIED`, not 18/7 — I counted section headers, not requirements. And both `tasks.md` are
+**fully checked** — 79 and 47 checkbox lines, zero open — not "80/81 and 51/53": I searched for the
+string `[ ]` anywhere, which finds prose quoted inside dated notes. Both numbers were propagated into
+`AGENTS.md` and into the extraction-versioning record by WU1 before being caught, and both are corrected
+in the commit that follows. The lesson is narrow and worth keeping: **for these files, count checkbox
+lines, never string occurrences** — and a document this dense will punish a citation made from memory.

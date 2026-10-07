@@ -160,14 +160,17 @@ on the spec's earlier verification pass, not on new commits.
 - [x] 11. Apply slice (b) `extraction-versioning-api` **after (a) merges** — it inherits **D-a-1** as a
   named requirement (re-dispatch duplicates task rows, `extraction_task.py:441`).
   > **[Amended 2026-10-07 — applied, merged and deployed]** Slice (b) landed as PRs #31–#39, merged
-  > to `main` on 2026-10-02 and carried by `v0.10.0`. Its `tasks.md` closes at 80/81; the one
-  > remaining `[ ]` is deliberate and annotated in place with a dated note — the
-  > checkbox-checked + reason-field-focus half of a UI seam, deferred out of its task's letter.
+  > to `main` on 2026-10-02 and carried by `v0.10.0`. Its `tasks.md` is **complete: 79 checkbox
+  > lines, all `[x]`, zero open** (measured 2026-10-07). The single string that reads as an open box
+  > is prose inside a dated note quoting an interim revert; the seam it names — the checkbox-checked
+  > + reason-field-focus half — was closed the same day by the W6-B1 split, which delivered
+  > `TaskEditorProps`' `markDefaultChecked` / `reasonAutofocus` / `activeMark`.
 - [x] 12. Apply slice (c) `extraction-versioning-prompt`.
   > **[Amended 2026-10-07 — applied, merged and deployed]** Slice (c) landed as PRs #40–#50, merged
-  > to `main` on 2026-10-03 and carried by `v0.11.0`. Its `tasks.md` closes at 51/53; the two
-  > remaining `[ ]` annotations are deliberate — the live-Qdrant read-side cases and the part-(iv)
-  > deferral, each inside a dated WU3-part note in the file.
+  > to `main` on 2026-10-03 and carried by `v0.11.0`. Its `tasks.md` is **complete: 47 checkbox
+  > lines, all `[x]`, zero open** (measured 2026-10-07). The two strings that read as open boxes are
+  > prose inside dated WU3-part notes describing 3.1/3.2/3.3 and 3.9 as staying open; those boxes are
+  > checked today, and the notes are earlier snapshots rather than the current state.
 - [x] 8. Apply slice (a) — Schema Identity **and** Birth Through Allocation, merged into one green
   work unit (`1a90aff`, `1f2d573`), then Phase 3 in four tranches and Phase 4 in two
   - **RED landed 2026-09-29, uncommitted on purpose.** 14 new cases across three files;
@@ -1465,10 +1468,11 @@ history; every fact below was measured on 2026-10-07.
   and mark endpoints, prompt composition with project context and negative examples, and the shipped
   version selector (`frontend/src/components/react/VersionSelector.tsx`, consumed by
   `StoryDetail.tsx`, with its own test file).
-- **The slices' own `tasks.md` are 80/81 and 51/53.** The three remaining `[ ]` are deliberate
-  deferrals, each annotated in place with a dated note: (b)'s is the checkbox-checked +
-  reason-field-focus half of a UI seam; (c)'s two are the live-Qdrant read-side cases and the
-  part-(iv) deferral.
+- **Both slices' `tasks.md` are complete: 79 and 47 checkbox lines, all `[x]`, zero open.** Beware
+  the count: searching the string `[ ]` anywhere returns three hits, and all three are prose quoted
+  inside dated notes that describe an intermediate state. In (b), the UI seam that note names was
+  closed the same day by the W6-B1 split (`TaskEditorProps`: `markDefaultChecked` /
+  `reasonAutofocus` / `activeMark`). In (c), tasks 3.1/3.2/3.3 and 3.9 are checked today.
 - **The handoff sections above were written before (c)'s WU2 and WU3 ran.** They understate the
   state — several describe (b) as unapplied and D-a-5/D10 as open — and must be read as history,
   not as current truth. This section, and the amendment notes on items 11 and 12 above, are the
