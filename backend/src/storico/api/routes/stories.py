@@ -4,7 +4,7 @@ from dataclasses import replace
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 
 from storico.api.dependencies import (
     get_current_user,
@@ -478,6 +478,8 @@ async def delete_story(
     response_model_exclude_none=True,
 )
 async def import_stories(
+    # Unused; present for the rate limiter's tier registration (api/rate_limit.py).
+    request: Request,
     project_id: Annotated[UUID, Form()],
     file: UploadFile = File(...),
     ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),

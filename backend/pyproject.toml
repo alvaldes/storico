@@ -56,6 +56,12 @@ dependencies = [
     # transitive dependency is not a contract, and an unrelated bump could drop it.
     "cryptography>=50.0.1",
 
+    # Rate limiting — per-user request limits at the application edge (see
+    # api/rate_limit.py). Pinned below 0.2: the limiter dispatches through
+    # slowapi's own checking routine (Limiter._check_request_limit), which a
+    # major bump would be free to reshape, and the 429 contract rides on it.
+    "slowapi>=0.1.10,<0.2.0",
+
     # Environment
     "python-dotenv>=1.0.0",
 ]

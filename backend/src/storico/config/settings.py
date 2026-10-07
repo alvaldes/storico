@@ -81,6 +81,19 @@ class Settings(BaseSettings):
     # ``extra="ignore"`` hides for unknown env names, one level up.
     log_level: str = "INFO"
 
+    # Rate limiting (api/rate_limit.py) — per-key fixed-window limits, one minute.
+    # The key is the verified JWT subject, falling back to the client address;
+    # the health routes are exempt unconditionally (the deploy's readiness gate
+    # polls /health/ready with ``curl -sf``, so a limit there fails the deploy's
+    # own gate — see .github/workflows/deploy-backend.yml). The numbers below are
+    # code defaults on purpose: a missing environment variable must leave the
+    # protection at its production values, never silently disable it.
+    rate_limit_reads_per_minute: int = 120
+    rate_limit_writes_per_minute: int = 60
+    rate_limit_extraction_per_minute: int = 10
+    rate_limit_import_per_minute: int = 5
+    rate_limit_probes_per_minute: int = 10
+
     @field_validator("log_level")
     @classmethod
     def _log_level_must_be_a_real_level(cls, value: str) -> str:

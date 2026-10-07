@@ -1,5 +1,6 @@
 """pytest fixtures for Storico backend tests."""
 
+import os
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
 from uuid import UUID, uuid4
@@ -16,6 +17,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from storico.api.app import create_app
+from storico.config.settings import _reset_settings_cache
 from storico.domain.entities.project import Project
 from storico.domain.entities.user import User
 from storico.domain.entities.user_story import UserStory
@@ -34,6 +36,30 @@ from storico.infrastructure.database.session import get_session
 from tests._helpers import create_workspace
 
 TEST_DATABASE_URL = "sqlite+aiosqlite://"
+
+# ── Rate limiting: keep the suite under its own limiter ──────────────
+#
+# The rate limiter is live in every app the suite builds (its production
+# defaults live in the code on purpose — see api/rate_limit.py). Production
+# numbers — reads 120/min, writes 60/min — would fail the suite on itself:
+# the tests drive thousands of requests through one identity (``authed_client``)
+# and one client address (httpx's ASGITransport always presents 127.0.0.1), so
+# a read bucket would trip long before the run finished. These variables raise
+# every tier to 1,000,000/min for the pytest process only. This is a separate
+# app with different settings, not a switch that turns the feature off: the
+# dedicated limiter tests (tests/test_api/test_rate_limiting.py) build their
+# own apps with tight limits to prove the trip points.
+_SUITE_RATE_LIMITS = {
+    "STORICO_RATE_LIMIT_READS_PER_MINUTE": "1000000",
+    "STORICO_RATE_LIMIT_WRITES_PER_MINUTE": "1000000",
+    "STORICO_RATE_LIMIT_EXTRACTION_PER_MINUTE": "1000000",
+    "STORICO_RATE_LIMIT_IMPORT_PER_MINUTE": "1000000",
+    "STORICO_RATE_LIMIT_PROBES_PER_MINUTE": "1000000",
+}
+os.environ.update(_SUITE_RATE_LIMITS)
+# In case anything loaded Settings before this module ran, force a re-read so
+# the raised numbers are what every app in the suite actually builds with.
+_reset_settings_cache()
 
 
 @dataclass(frozen=True, slots=True)
