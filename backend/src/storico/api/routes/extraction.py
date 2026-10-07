@@ -20,7 +20,7 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 
 from storico.api.dependencies import (
     get_llm_config_repository,
@@ -153,6 +153,9 @@ async def _validate_story_belongs_to_workspace(
 @extraction_router.post("/", status_code=status.HTTP_202_ACCEPTED)
 async def extract_tasks(
     body: ExtractRequest,
+    # ``request`` is unused here; it exists because the rate limiter's tier
+    # registration (api/rate_limit.py) requires a request-taking signature.
+    request: Request,
     # The version-mutating gate (D13): extracting mints a new version, so only
     # the workspace owner or an admin may start a run. The dependency chains
     # ``get_workspace_for_user`` itself, so a non-member's 403

@@ -40,6 +40,7 @@ __all__ = [
     "PROVIDER_NAME_BUILTIN",
     "PROVIDER_NAME_RESERVED",
     "PROVIDER_NOT_IN_WORKSPACE",
+    "RATE_LIMIT_EXCEEDED",
     "REPOSITORY_ERROR",
     "REQUEST_VALIDATION_FAILED",
     "STORY_NOT_IN_WORKSPACE",
@@ -194,3 +195,11 @@ ACCOUNT_DELETE_BLOCKED = "ACCOUNT_DELETE_BLOCKED"
 # FastAPI's own body-validation 422 (``RequestValidationError``): the default
 # response carries no app code, only the ``detail`` list of validation errors.
 REQUEST_VALIDATION_FAILED = "REQUEST_VALIDATION_FAILED"
+
+# ── Rate limiter (api/rate_limit.py) ───────────────────────────
+
+# The in-application rate limiter: the caller outspent its per-key, one-minute
+# window for the addressed endpoint. 429 — the caller did nothing structurally
+# wrong, and the window resets on its own, so retrying after a pause is the
+# contract the code names.
+RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"

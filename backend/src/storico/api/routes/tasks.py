@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 
 from storico.api.dependencies import (
     get_current_user,
@@ -322,6 +322,8 @@ async def get_task(
 
 @router.put("/{task_id}")
 async def update_task(
+    # Unused; present for the rate limiter's tier registration (api/rate_limit.py).
+    request: Request,
     task_id: UUID,
     body: UpdateTaskRequest,
     current_user: User = Depends(get_current_user),

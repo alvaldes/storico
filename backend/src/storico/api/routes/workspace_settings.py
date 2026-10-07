@@ -18,7 +18,7 @@ from typing import Annotated
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 
 from storico.api.dependencies import (
     get_llm_config_repository,
@@ -277,6 +277,8 @@ async def upsert_llm_config(
 
 @router.post("/llm/test", response_model=LLMTestResponse)
 async def test_llm_connection(
+    # Unused; present for the rate limiter's tier registration (api/rate_limit.py).
+    request: Request,
     body: LLMTestRequest,
     ctx: tuple[Workspace, WorkspaceRole] = Depends(require_admin),
 ) -> LLMTestResponse:
@@ -901,6 +903,8 @@ async def _probe_models(probe: _ProbeInputs) -> list[ModelInfo]:
 
 @router.post("/llm/models")
 async def list_available_models(
+    # Unused; present for the rate limiter's tier registration (api/rate_limit.py).
+    request: Request,
     config_repo: LLMConfigRepoDep,
     ctx: tuple[Workspace, WorkspaceRole] = Depends(require_admin),
     body: LLMModelProbeRequest | None = None,

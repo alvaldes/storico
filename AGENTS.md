@@ -577,8 +577,8 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | 38  | Procesamiento asíncrono | `asyncio.create_task` en el bucle de eventos del proceso de la API; sin Celery, sin Redis y sin worker aparte |
 | 39  | Logging estructurado    | Campos estructurados con `extra=` en los logger (28 llamadas). **Sin correlation IDs**: no hay ninguno en el backend, aunque esta fila los anunciaba. |
 | 40  | Dockerización           | Docker Compose para dev                           |
-| 41  | Permisos y workspaces  | **Implementado** (migraciones 0007‑0012) | **Antes se indicaba “V2”.**  Ahora el modelo de workspaces y permisos ya está completo (admin crea workspaces, asigna usuarios a equipos). Los permisos quedan en **V2** solo para futuras extensiones (rate‑limiting, auditoría). |
-| 42  | Rate limiting           | V2                                                |
+| 41  | Permisos y workspaces  | **Implementado** (migraciones 0007‑0012) | **Antes se indicaba “V2”.**  Ahora el modelo de workspaces y permisos ya está completo (admin crea workspaces, asigna usuarios a equipos). Los permisos quedan en **V2** solo para futuras extensiones (auditoría). El rate limiting, que esta fila listaba junto con la auditoría, se implementó el 2026-10-07 y tiene su propia fila 42. |
+| 42  | Rate limiting           | **Implementado** (`slowapi` en la aplicación, 2026-10-07) | **Antes se indicaba “V2”.** Límite por usuario (el `sub` del JWT verificado, con la IP como fallback), cinco niveles desde `Settings` y las rutas de salud exentas; un `429` viaja en el sobre canónico con `RATE_LIMIT_EXCEEDED`. Contadores en el proceso: un segundo contenedor duplicaría cada límite. Ver `docs/security.md` y `odd/tasks/rate-limiting.md`. |
 
 ---
 

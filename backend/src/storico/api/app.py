@@ -5,9 +5,10 @@ import logging.config
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
 
 from storico.api.errors import (
     ApiError,
@@ -28,6 +29,11 @@ from storico.api.errors import (
     request_validation_error_handler,
     vector_store_error_handler,
     version_allocation_conflict_handler,
+)
+from storico.api.rate_limit import (
+    build_rate_limiter,
+    check_rate_limit,
+    rate_limit_exceeded_handler,
 )
 from storico.api.routes import (
     auth,
@@ -136,11 +142,20 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     settings = Settings.load()
     _configure_logging(settings)
+    # Built here, never at module import: a module-level limiter keeps its
+    # in-memory counters across every app a test builds (see api/rate_limit.py).
+    limiter = build_rate_limiter(settings)
+
     app = FastAPI(
         title="Storico API",
         version=package_version(),
         lifespan=lifespan,
+        # Rate limiting as a global dependency: it runs before every auth
+        # dependency, so unauthenticated requests count too, and no route needs
+        # anything. See api/rate_limit.py for the shape and its trade-offs.
+        dependencies=[Depends(check_rate_limit)],
     )
+    app.state.limiter = limiter
 
     # CORS middleware
     origins = [o.strip() for o in settings.auth_allowed_origins.split(",") if o.strip()]
@@ -186,6 +201,11 @@ def create_app() -> FastAPI:
     # would mislabel a legitimate "not found" as a missing route.
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.add_exception_handler(ApiError, api_error_handler)
+
+    # Rate limiting. Registered for its own class so the MRO resolves it here,
+    # before Starlette's default HTTPException handler (RateLimitExceeded
+    # subclasses it): the 429 body must be the canonical envelope.
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     app.add_exception_handler(Exception, generic_error_handler)  # type: ignore[arg-type]
 
