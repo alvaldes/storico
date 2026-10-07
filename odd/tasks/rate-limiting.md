@@ -73,10 +73,11 @@ fallback bucket that a legitimate caller with an expired token would have used.
 
 ## Tasks
 
-- [ ] **WU1 — the limiter, its key, its envelope and its exemptions** (backend + tests).
-- [ ] **WU2 — the frontend's 429 headline in both locales**, and the documents: `docs/security.md`,
+- [x] **WU1 — the limiter, its key, its envelope and its exemptions** (backend + tests).
+- [x] **WU2 — the frontend's 429 headline in both locales**, and the documents: `docs/security.md`,
   `AGENTS.md` feature row 42, `prod.todo.md`'s row, `docs/api.md` if the repo's convention puts error
-  codes there.
+  codes there. (It does — §Errores lists codes with their HTTP statuses — so `429` +
+  `RATE_LIMIT_EXCEEDED` landed in that table.)
 
 ## Non-goals
 
@@ -97,3 +98,8 @@ fallback bucket that a legitimate caller with an expired token would have used.
 ## Evidence log
 
 (one row per work unit, added as each lands)
+
+| Work unit | Commit | Evidence |
+| --- | --- | --- |
+| WU1 — limiter, key, envelope, exemptions | `813374f` | (The hash `226dcb1` named in the delegation does not resolve in this clone; `813374f` is the branch's WU1 commit — verified with `git show 813374f --stat`.) The commit touches 13 files, +637: new `api/rate_limit.py` (223 lines — limiter built in `create_app()`, verified-subject key function, tier table, health exemptions, canonical 429 handler) and `tests/test_api/test_rate_limiting.py` (301 lines); `slowapi` pinned `>=0.1.10,<0.2` in `pyproject.toml`; five endpoints gained an unused `request: Request` parameter; `.env.example` and `backend/.env.example` document the five `STORICO_RATE_LIMIT_*` variables. Focused rerun on this tree: `conda run -n storico python -m pytest tests/test_api/test_rate_limiting.py -q` → **9 passed**; full suite `conda run -n storico python -m pytest -q` → **1314 passed, 45 skipped**. |
+| WU2 — the 429 headline and the documents | (working tree, uncommitted — the parent owns commits) | RED observed first in the mirror guard `src/lib/__tests__/error-codes.test.ts`: `pnpm vitest run src/lib/__tests__/error-codes.test.ts` → **2 failed, 6 passed** — `RATE_LIMIT_EXCEEDED` missing from both `errorCodes` maps, and `EXPECTED_REGISTRY_COUNT` pinning 44 against a registry of 45. GREEN for everything inside this work unit's edit surfaces: the key added to `errorCodes` in `en.json` and `es.json` (“Too many requests in a short time. Wait a moment and try again.” / “Demasiadas solicitudes en poco tiempo. Espera un momento e inténtalo de nuevo.” — no retry time invented, matching the body's “slow down and retry shortly” and the absent `Retry-After`); `pnpm vitest run src/i18n` → **79 passed across 6 files** (the neutral-Spanish and locale-parity guards among them); `pnpm exec tsc --noEmit` → exit 0; backend suite as in WU1. **Deliberately left red at handoff, and closed by the parent**: the count pin (`EXPECTED_REGISTRY_COUNT` 44 → 45) lives in `src/lib/__tests__/error-codes.test.ts`, which is outside this work unit's allowed edit surfaces — the writer stopped and asked rather than touching an unauthorized file, which is the right call. The parent then verified the number from both sides (45 `NAME = value` lines and 45 entries in `__all__` inside `error_codes.py`) before applying the one line itself: **44 → 45**. What makes that safe is the guard's own message, "the backend registry grew or shrank: update EXPECTED_REGISTRY_COUNT and the map together" — it exists to force a deliberate update when the registry moves, not to block one. The map keys count (45 + 5 route codes) and the registry count both verify once that constant moves. Prose landed in `docs/security.md` (the open item closed with the in-process and IP-fallback limitations stated), `AGENTS.md` row 42, `prod.todo.md` § Seguridad, `docs/api.md` §Errores, and this record. |

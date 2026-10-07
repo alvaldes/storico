@@ -102,7 +102,8 @@
     "PROVIDER_DUPLICATE_NAME": "A custom provider with that name already exists here. Choose a different name and try again.",
     "PROVIDER_NAME_BUILTIN": "That provider is already built in. Select it directly instead of registering it as a custom one.",
     "PROVIDER_NAME_RESERVED": "That name is reserved by the provider selector. Choose a different name for your provider.",
-    "PROVIDER_MODELS_UNREACHABLE": "The provider could not be reached to list its models. Check the API key and Base URL, then retry."
+    "PROVIDER_MODELS_UNREACHABLE": "The provider could not be reached to list its models. Check the API key and Base URL, then retry.",
+    "RATE_LIMIT_EXCEEDED": "Too many requests in a short time. Wait a moment and try again."
   },
   "landing": {
     "hero_title": "Storico",

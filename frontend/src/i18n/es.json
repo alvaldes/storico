@@ -102,7 +102,8 @@
     "PROVIDER_DUPLICATE_NAME": "Ya existe un proveedor personalizado con ese nombre aquí. Elige otro nombre e inténtalo de nuevo.",
     "PROVIDER_NAME_BUILTIN": "Ese proveedor ya viene integrado. Selecciónalo directamente en lugar de registrarlo como personalizado.",
     "PROVIDER_NAME_RESERVED": "Ese nombre está reservado para el selector de proveedores. Elige otro nombre para tu proveedor.",
-    "PROVIDER_MODELS_UNREACHABLE": "No se pudo conectar con el proveedor para listar sus modelos. Revisa la API key y la Base URL."
+    "PROVIDER_MODELS_UNREACHABLE": "No se pudo conectar con el proveedor para listar sus modelos. Revisa la API key y la Base URL.",
+    "RATE_LIMIT_EXCEEDED": "Demasiadas solicitudes en poco tiempo. Espera un momento e inténtalo de nuevo."
   },
   "landing": {
     "hero_title": "Storico",

@@ -70,7 +70,7 @@ const ROUTE_ERROR_CODES = [
   'IMPORT_VALIDATION_FAILED',
 ] as const;
 
-const EXPECTED_REGISTRY_COUNT = 44;
+const EXPECTED_REGISTRY_COUNT = 45;
 
 /**
  * The one code emitted through a named constant rather than a literal or a

@@ -293,8 +293,14 @@ viaja **dentro** de `detail`, como objeto; el código nunca se anida dentro de `
 |------|-------------|
 | `ENTITY_NOT_FOUND` | 404 |
 | `DUPLICATE_ENTITY` | 409 |
+| `RATE_LIMIT_EXCEEDED` | 429 |
 | `REPOSITORY_ERROR` | 500 |
 | `INTERNAL_ERROR` | 500 |
+
+El límite de tasa por usuario (`slowapi` en la aplicación) responde `429` con `RATE_LIMIT_EXCEEDED`
+cuando un bucket se agota; el cuerpo no lleva `Retry-After`, así que la instrucción es reintentar
+más tarde sin prometer un tiempo. Las rutas de salud (`/health`, `/health/ready`,
+`/health/services`) están exentas.
 
 Los errores de validación de cuerpo de FastAPI (`422` por cuerpo malformado o campos
 inválidos) también llevan código de aplicación: `REQUEST_VALIDATION_FAILED`. El `detail`
