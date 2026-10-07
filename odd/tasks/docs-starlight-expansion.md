@@ -216,6 +216,11 @@ pages` for every docs route; it pre-exists this change and the build exits 0.
 
 ## Findings recorded, not fixed
 
+> **Moved to their own review agenda on 2026-10-07**: `odd/tasks/docs-pass-open-findings.md` carries
+these four items with their evidence, the decision each one needs, and the options with their costs.
+That document is the entry point for the review session; the list below is the summary that was kept
+here so this record stays self-contained.
+
 1. **`POST /api/v1/llm/test` is not workspace-scoped.** Any authenticated user can make the server send a request to an arbitrary host with an arbitrary API key (`backend/src/storico/api/routes/settings.py:146-311`). Documented factually in `roles-permissions`. Whether it should be gated is a behaviour decision for the owner.
 2. **An admin's `GET /settings/llm` returns the stored API key in plaintext** (`backend/tests/test_api/test_workspace_settings_llm_config.py:390-393`). Documented factually; masking is a product decision.
 3. **`csv-story-import` follow-ups 6, 10 and 11 stay open.** 11 in particular means the production composition has never carried a real upload; the new page documents the code contract only.
