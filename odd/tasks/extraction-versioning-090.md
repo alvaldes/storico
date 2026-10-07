@@ -157,9 +157,17 @@ on the spec's earlier verification pass, not on new commits.
 - [ ] 18. **Operational, needs the owner's hands:** log in again, then create the workspace LLM config in
   Configuración before any extraction — `resolve_llm_config` falls back to `provider = "ollama"` and
   production has no Ollama. The two api_key values must come from the AI Studio and nan.builders consoles.
-- [ ] 11. Apply slice (b) `extraction-versioning-api` **after (a) merges** — it inherits **D-a-1** as a
+- [x] 11. Apply slice (b) `extraction-versioning-api` **after (a) merges** — it inherits **D-a-1** as a
   named requirement (re-dispatch duplicates task rows, `extraction_task.py:441`).
-- [ ] 12. Apply slice (c) `extraction-versioning-prompt`.
+  > **[Amended 2026-10-07 — applied, merged and deployed]** Slice (b) landed as PRs #31–#39, merged
+  > to `main` on 2026-10-02 and carried by `v0.10.0`. Its `tasks.md` closes at 80/81; the one
+  > remaining `[ ]` is deliberate and annotated in place with a dated note — the
+  > checkbox-checked + reason-field-focus half of a UI seam, deferred out of its task's letter.
+- [x] 12. Apply slice (c) `extraction-versioning-prompt`.
+  > **[Amended 2026-10-07 — applied, merged and deployed]** Slice (c) landed as PRs #40–#50, merged
+  > to `main` on 2026-10-03 and carried by `v0.11.0`. Its `tasks.md` closes at 51/53; the two
+  > remaining `[ ]` annotations are deliberate — the live-Qdrant read-side cases and the part-(iv)
+  > deferral, each inside a dated WU3-part note in the file.
 - [x] 8. Apply slice (a) — Schema Identity **and** Birth Through Allocation, merged into one green
   work unit (`1a90aff`, `1f2d573`), then Phase 3 in four tranches and Phase 4 in two
   - **RED landed 2026-09-29, uncommitted on purpose.** 14 new cases across three files;
@@ -1443,3 +1451,44 @@ but nothing in it moves the vector flag, so today every mark excludes nothing fr
 and **nothing goes red**. The flag (`set_has_invalid_tasks`), the fail-closed
 `must: has_invalid_tasks = false` filter, the payload keys and indexes, and the refresh calls in (b)'s
 mark handlers are **slice (c) WU3 tasks 3.1–3.13**.
+
+## Session handoff — 2026-10-07: the record catches up with the shipped feature
+
+Written for a session that starts with nothing in context. Nothing here re-derives the release
+history; every fact below was measured on 2026-10-07.
+
+- **Slices (b) and (c) are applied, merged and deployed.** (b) merged 2026-10-02 as PRs #31–#39,
+  carried by `v0.10.0`; (c) merged 2026-10-03 as PRs #40–#50, carried by `v0.11.0`; `v0.12.0` was
+  published 2026-10-06. Production, verified read-only on 2026-10-07, reports `version: 0.12.0`
+  with `database` and `schema` ok and `/api/v1/health/ready` → 200; the retired creation endpoint
+  answers `410` with `TASK_CREATION_ENDPOINT_REMOVED`. The feature is live end to end: versioning
+  and mark endpoints, prompt composition with project context and negative examples, and the shipped
+  version selector (`frontend/src/components/react/VersionSelector.tsx`, consumed by
+  `StoryDetail.tsx`, with its own test file).
+- **The slices' own `tasks.md` are 80/81 and 51/53.** The three remaining `[ ]` are deliberate
+  deferrals, each annotated in place with a dated note: (b)'s is the checkbox-checked +
+  reason-field-focus half of a UI seam; (c)'s two are the live-Qdrant read-side cases and the
+  part-(iv) deferral.
+- **The handoff sections above were written before (c)'s WU2 and WU3 ran.** They understate the
+  state — several describe (b) as unapplied and D-a-5/D10 as open — and must be read as history,
+  not as current truth. This section, and the amendment notes on items 11 and 12 above, are the
+  current truth.
+- **What remains genuinely open:** the export offers no user-facing choice of version — it exports
+  only the current version and its only query parameter is `format` — the LLM-owned
+  `title`/`description` are still editable, and the three deferrals above. Also, still true since
+  WU3: `TaskRepository.list_by_story` and `list_by_workspace` remain version-blind and their only
+  wrapper, `TaskService.list_tasks_by_story` (`application/services/task_service.py:87`), has no
+  route caller — recorded dead-ish code, not deleted.
+- **The two completed changes are still not archived** under `openspec/changes/archive/` — only
+  slice (a) is (`2026-09-30-extraction-versioning-schema`). Remember what archiving means here: it
+  is a delta-to-canonical merge, not a folder move, and nothing validates the result (`openspec
+  validate` has never run in this repo). The real size of what would merge: **25 requirement blocks
+  across 7 capabilities for (b)** (`export-download` 1, `extraction-versioning` 7,
+  `extraction-workflow` 2, `kanban-board` 2, `task-editor` 6, `task-invalidation` 4,
+  `workspace-permissions` 3) and **22 across 4 for (c)** (`extraction-context` 8,
+  `extraction-versioning` 7, `few-shot-retrieval` 2, `vector-store-isolation` 5). Two of those
+  capabilities are new to the store (`workspace-permissions`, `extraction-context`); the rest merge
+  into capabilities that already hold slice (a)'s requirements.
+- **Still true and not superseded by any of this:** production has no workspace LLM configuration,
+  `resolve_llm_config` falls back to an Ollama that does not exist there, so the deployed app cannot
+  extract until the owner re-creates the configuration in Configuración.
