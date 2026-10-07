@@ -25,8 +25,16 @@ what that run's prompt contained.
 ### Requirement: The Prompt Carries the Project's Other Stories and Existing Tasks
 
 The rendered prompt MUST contain the text of the project's **other** user stories and the
-project's existing tasks — each task's title, its status and the story it belongs to — so the
+project's existing tasks — each task's title and the story it belongs to — so the
 provider sees what the project already says and has already produced.
+
+> **[Amended 2026-10-07 by owner decision]** This sentence also demanded each task's **status**,
+> which the default template never rendered (`grep -c status task_generation.j2` → 0). The change's
+> own task list never asked for it: task 1.6 builds the block without naming it, and task 1.7's RED
+> case pins "each existing task's title *with its owning story*". The code therefore matches what
+> was specified, implemented and tested, and the requirement was promising more. It is trimmed to
+> what the change specified. Consequence, recorded rather than implied: **this one block is no
+> longer byte-identical to the archived delta of slice (c)**, deliberately.
 
 #### Scenario: The other stories' text appears
 

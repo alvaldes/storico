@@ -176,6 +176,18 @@ que el `.env` no declaraba colección. "Una colección por entorno" es separaci�
 `odd/tasks/prod-purge-d-a-3.md` — era el pendiente de la sección D-a-3 de `prod.todo.md`, movida allí el
 2026-10-07 con una redirección en el lugar original; el ítem vivo sigue listado en `prod.todo.md`.
 
+**Riesgo aceptado el 2026-10-07, por decisión del owner: la separación entre dev y producción es
+lógica y se documenta, no se separa físicamente.** Las tres cosas que los dos entornos comparten,
+medidas: (1) el cluster de Qdrant, donde el nombre de la colección es el único separador; (2) el
+valor de `AUTH_SECRET` del frontend de producción, que es el mismo del `.env` de desarrollo y el
+mismo `STORICO_AUTH_JWT_SECRET` de la VM — o sea que **un token firmado en desarrollo es válido en
+producción**; y (3) el cliente OAuth de Google, que es el mismo en los dos entornos (el de GitHub
+sí está separado). No se crearon entornos separados de verdad —cluster y API key de Qdrant propios,
+cliente OAuth propio— porque el costo es trabajo en las consolas de Google y Qdrant más rehacer la
+auditoría de variables de entorno, y el riesgo se consideró aceptable para el estado actual del
+proyecto. Queda escrito para que la próxima persona lo herede sabiéndolo en vez de descubriéndolo:
+lo que la separación de nombre no protege es (2), y ningún cambio de documentación lo cambia.
+
 ### Variables de entorno requeridas
 
 Ver `.env.example` y `prod.todo.md` para la lista completa. En producción el contrato vive en

@@ -119,6 +119,17 @@ position. Every `MODIFIED` replacement was matched on its exact `### Requirement
 canonical block was touched; no title required guessing, and no canonical text outside the replaced
 blocks was altered. Delta files moved to the archive unchanged.
 
+**One block was amended after this archive, by owner decision on 2026-10-07.** The requirement
+"The Prompt Carries the Project's Other Stories and Existing Tasks" demanded each task's **status**
+as well as its title and owning story, and the default template never rendered it
+(`grep -c status task_generation.j2` → 0). This change's own task list never asked for it: task 1.6
+builds the block without naming it, and task 1.7's RED case pins title with owning story. The code
+matches what was specified and tested, so the owner chose to trim the requirement rather than add
+behaviour. The amended text carries a dated note in `openspec/specs/extraction-context/spec.md`, and
+the archived `tasks.md` and delta files were **not** touched. The consequence is stated so a future
+verifier is not misled by it: **every other block in this archive is byte-identical to its canonical
+counterpart, and this one is not, on purpose.**
+
 ## Active Same-Domain Change Warnings
 
 Sibling slice (b) `extraction-versioning-api` is **already archived** at

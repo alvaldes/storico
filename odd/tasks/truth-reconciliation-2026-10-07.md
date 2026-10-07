@@ -105,6 +105,8 @@ option as offered implied a move, not 47 semantic merges.
 | WU3 — archive (c) | `8992164` | Same method as WU2, same shape of evidence: the merge was verified mechanically and independently of the writer, and the (c) archive's own `archive-report.md` records the counts. |
 | verification — independent pass over all three archives | this commit | **No network probe, no test re-run.** The pass covered **all three archives** (`2026-09-30-extraction-versioning-schema`, `2026-10-07-extraction-versioning-api`, `2026-10-07-extraction-versioning-prompt`): **61 delta blocks, 61 identical, 0 differing**, legacy preservation checked per capability, 0 duplicate requirement titles. The verifier reproduced the mechanical result and additionally returned **10 stale claims and 1 semantic finding**. **Confirmed:** the mechanical merges of both archives, the reconciliation's code references, the task-count numbers (79/47 checkbox lines), the version tags and the archive layout. **Refuted:** the `title`/`description`-still-editable claim (F2 — corrected in `prod.todo.md` row 98, in `AGENTS.md` row 32, and in the 2026-10-07 handoff of `odd/tasks/extraction-versioning-090.md`) and the `extraction-context` status requirement the code does not satisfy (F1 — recorded, not absorbed, in `prod.todo.md`). **Could not verify:** the live production HTTP claims (`/api/v1/health`, `/api/v1/health/ready`, the `410` on `POST /api/v1/tasks/`) — no network probe was run, so those rest on the measurements recorded when they were taken — and the backend/frontend suites were not re-run. |
 | correction | this commit | The two wrong numbers below, fixed in `AGENTS.md`, in `odd/tasks/extraction-versioning-090.md` and in the table above. No other claim changed. |
+| production checklist cleanup | `80719a7` | `prod.todo.md` 403 → 153 lines. The closed D-a-3 post-mortem moved verbatim to `odd/tasks/prod-purge-d-a-3.md` — proved line-by-line: only 7 heading demotions and one dated correction — with a redirect left at the old path because archived OpenSpec records cite it there. Three live items surfaced at the top; 9 closed rows compressed after verifying their pointer targets really carry the detail; 10 left whole because their evidence exists only in that row. |
+| the owner's four decisions | this commit | **F1 → (ii)** align the requirement: the canonical sentence was trimmed with a dated note and the slice's archive report declares the byte-identity broken on purpose. **Version → `feat(api)`**: the probe commit was reworded from `fix(api)` (`a2897ae`), so the next bump cuts `0.13.0` and not the `0.12.1` that would understate a moved public path nor the `1.0.0` the roadmap reserved for observability; the base branch was rebased and the docs branch replayed onto it, with the base tree verified **identical** before and after (only the message changed). **Push → both branches, two stacked PRs**. **Environments → documented, not separated**: the accepted risk now names the three shared things, including that a token signed in development is valid in production. |
 
 **Two of my own numbers were wrong in the briefs, and a subagent caught both.** The mode split is 16
 `ADDED` / 9 `MODIFIED`, not 18/7 — I counted section headers, not requirements. And both `tasks.md` are
@@ -122,9 +124,12 @@ lines, never string occurrences** — and a document this dense will punish a ci
   (`openspec/specs/extraction-context/spec.md:25-29`). The service composes the status
   (`backend/src/storico/domain/services/extraction_service.py:80-90`); the template drops it
   (`backend/src/storico/infrastructure/llm/prompts/task_generation.j2:24`, zero `status`
-  occurrences). The canonical text was deliberately left untouched — byte-identity with the archived
-  delta is what makes the archive checkable — and the divergence is recorded in `prod.todo.md` with
-  the three resolutions for the owner to choose from.
+  occurrences). **Resolved 2026-10-07**: the owner chose to align the requirement, so the canonical
+  sentence was trimmed to what the change specified, implemented and tested — the title and the
+  owning story — with a dated note in the spec and a note in the slice's archive report recording
+  that this single block is deliberately no longer byte-identical to its delta. The archived
+  `tasks.md` and the delta files were not touched. The reasoning: the code matches its tasks and
+  tests, so it was the normative sentence that promised more than the change specified.
 - **F1's diagnosis, refined by reading the change's own task list: (c) never asked for the status.**
   Task 1.6 builds the `## Project Context` block without naming it, and task 1.7 — its RED case —
   pins "each existing task's title **with its owning story**". The only artifact that carries the
