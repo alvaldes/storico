@@ -563,7 +563,7 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | 29  | Dashboard de proyectos | Astro + React       | Vista general con cards de proyectos y métricas                                              |
 | 30  | Gestor de user stories | Astro + React       | Formulario estructurado + listado con estados                                                |
 | 31  | Kanban board visual    | Astro + React       | Columnas: Backlog → To Do → In Progress → Review → Done. **Nota:** el componente usa `@base-ui/react` (25 archivos) y **no tiene `@radix-ui**`. Preview de tareas antes de exportar |
-| 32  | Editor de resultados   | Astro + React       | Revisión/edición manual de tareas: editar título, descripción, etiquetas                     |
+| 32  | Editor de resultados   | Astro + React       | Revisión/edición manual de tareas: el `title` y la `description` generados por el LLM se muestran como texto de solo lectura, y lo editable es el estado, las etiquetas y las dependencias (matriz de campos D5/D21: `UpdateTaskRequest` sólo acepta esos tres y rechaza el resto con 422; `frontend/src/components/react/TaskEditor.tsx:376-389`) |
 | 33  | Selector de modelo LLM | Astro + React       | Configuración visual (modelo, temperatura, max tokens)                                       |
 | 34  | Toggle de tema         | Astro               | Claro / Oscuro / Auto con persistencia                                                       |
 | 35  | Layout responsivo      | Astro               | Sidebar + header + contenido. Mobile-first                                                   |

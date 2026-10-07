@@ -1478,21 +1478,30 @@ history; every fact below was measured on 2026-10-07.
   not as current truth. This section, and the amendment notes on items 11 and 12 above, are the
   current truth.
 - **What remains genuinely open:** the export offers no user-facing choice of version — it exports
-  only the current version and its only query parameter is `format` — the LLM-owned
-  `title`/`description` are still editable, and the three deferrals above. Also, still true since
-  WU3: `TaskRepository.list_by_story` and `list_by_workspace` remain version-blind and their only
+  only the current version and its only query parameter is `format`. Also, still true since WU3:
+  `TaskRepository.list_by_story` and `list_by_workspace` remain version-blind and their only
   wrapper, `TaskService.list_tasks_by_story` (`application/services/task_service.py:87`), has no
-  route caller — recorded dead-ish code, not deleted.
-- **The two completed changes are still not archived** under `openspec/changes/archive/` — only
-  slice (a) is (`2026-09-30-extraction-versioning-schema`). Remember what archiving means here: it
-  is a delta-to-canonical merge, not a folder move, and nothing validates the result (`openspec
-  validate` has never run in this repo). The real size of what would merge: **25 requirement blocks
-  across 7 capabilities for (b)** (`export-download` 1, `extraction-versioning` 7,
-  `extraction-workflow` 2, `kanban-board` 2, `task-editor` 6, `task-invalidation` 4,
-  `workspace-permissions` 3) and **22 across 4 for (c)** (`extraction-context` 8,
-  `extraction-versioning` 7, `few-shot-retrieval` 2, `vector-store-isolation` 5). Two of those
-  capabilities are new to the store (`workspace-permissions`, `extraction-context`); the rest merge
-  into capabilities that already hold slice (a)'s requirements.
+  route caller — recorded dead-ish code, not deleted. (The LLM-owned `title`/`description` clause
+  that used to sit in this bullet was wrong: the D5/D21 field matrix is implemented —
+  `UpdateTaskRequest` refuses them with 422 (`backend/src/storico/api/schemas/task.py:11-27`) and
+  the UI renders them read-only (`frontend/src/components/react/TaskEditor.tsx:376-389`) — and the
+  bullet was corrected on 2026-10-07.)
+- **Both completed changes are archived as of 2026-10-07.** `extraction-versioning-api` landed in
+  the canonical store as `6e9a92c` and `extraction-versioning-prompt` as `8992164`; the store now
+  holds **thirteen capabilities** and `openspec/changes/` holds only `archive/`. The mechanical
+  check compared every delta block against its canonical counterpart across all three archives:
+  **61 blocks, 61 identical, 0 differing**. The measured sizes were **25 requirement blocks across
+  7 capabilities for (b)** (`export-download` 1, `extraction-versioning` 7, `extraction-workflow` 2,
+  `kanban-board` 2, `task-editor` 6, `task-invalidation` 4, `workspace-permissions` 3) and **22
+  across 4 for (c)** (`extraction-context` 8, `extraction-versioning` 7, `few-shot-retrieval` 2,
+  `vector-store-isolation` 5), plus slice (a)'s 14. The caveat stands: `openspec validate` has
+  never run in this repo, so byte-identity is the only guarantee the archive carries. And byte
+  identity is exactly what the mechanical check cannot see through: the same day's semantic pass
+  found **F1** — the canonical `extraction-context` requirement demands each existing task's
+  **status** in the rendered prompt (`openspec/specs/extraction-context/spec.md:25-29`), the service
+  composes it (`backend/src/storico/domain/services/extraction_service.py:80-90`) and the template
+  drops it (`task_generation.j2:24`, zero `status` occurrences) — recorded as a known divergence in
+  `prod.todo.md` rather than absorbed into the canonical text.
 - **Still true and not superseded by any of this:** production has no workspace LLM configuration,
   `resolve_llm_config` falls back to an Ollama that does not exist there, so the deployed app cannot
   extract until the owner re-creates the configuration in Configuración.

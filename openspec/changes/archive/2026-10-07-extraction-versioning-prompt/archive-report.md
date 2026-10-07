@@ -85,7 +85,8 @@ before its canonical block was replaced. Those are formatting guarantees, not th
       pending action **D-a-6** (production has no LLM configuration; `resolve_llm_config` falls back to
       an Ollama that does not exist there): when the configuration is recreated, a 2.x model name will
       fail on the first extraction. D-a-6 remains outside this slice's evidence.
-- **Implementation:** merged to `main` on **2026-10-03** as the PR chain **#40–#50**, released in
+- **Implementation:** merged to `main` on **2026-10-03** as ten PRs — **#40, #41, #42, then #44
+  through #50**; #43 was closed unmerged and re-opened as #44 — released in
   **`v0.11.0`**. The head the change's own report verified is `55e9949` plus the report commit on the
   WU3-D branch (PR #50), as recorded in `verify-report.md`.
 - **Production state verified read-only on 2026-10-07**, by which time later releases had also
@@ -143,7 +144,8 @@ kind of evidence that should not exist in an archive report.
 
 ## Delivery Strategy Resolution
 
-Delivered as the PR chain **#40–#50**, merged 2026-10-03 and released in `v0.11.0`, with **#44 the
+Delivered as ten merged PRs — **#40, #41, #42, then #44 through #50**; #43 was closed unmerged and
+re-opened as #44 — merged 2026-10-03 and released in `v0.11.0`, with **#44 the
 re-opened WU2 split**. Per-unit diffstats are recorded in `apply-progress.md` where each unit closed
 (for example, W3-C's 496+/6− code+tests, W3-D's 465+/4−); this report does not restate a chain-wide
 size. Whether receipt-driven development mode was on at merge time is session state, not an artifact
