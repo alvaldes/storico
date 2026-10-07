@@ -105,7 +105,7 @@ probe: the sibling at `/settings/llm/models` also tests a *pending* selection, n
   the five branches of the moved route **and** by the models probe, whose inline version of the same
   logic at `workspace_settings.py:698-720` becomes the first caller. Tests: an adapter that raises
   with a marker in its message must not put that marker in the response, and must put it in the log.
-- [ ] **WU3 — Docs, checklist and agenda.** The prose documentation locations in Scope, the two
+- [x] **WU3 — Docs, checklist and agenda.** The prose documentation locations in Scope, the two
   `prod.todo.md` rows, and item A of the review agenda. The generated reference already landed in
   WU1.
 
@@ -128,6 +128,16 @@ probe: the sibling at `/settings/llm/models` also tests a *pending* selection, n
 | --- | --- | --- |
 | WU1 — relocate and gate | `d50dda0` | RED observed first, test file edited before any implementation edit: `pytest tests/test_api/test_llm_test_route.py -q` → **19 failed**, every failure a 404 on the new path (the route had no home there yet). GREEN after the move: same command → **19 passed**; `pytest -q -m unit` → **302 passed, 1038 deselected**; `ruff check src tests` and `ruff format --check src tests` clean (ruff caught two imports the deletion orphaned). Parent's independent spot check, run after the writer returned: the 180-line body diffed mechanically against `HEAD:backend/src/storico/api/routes/settings.py` is **byte-identical**; the 10 pre-existing tests changed only their client/URL plumbing, with assertions untouched; and after regenerating both locales, `pytest tests/test_api/test_llm_test_route.py tests/test_api_reference.py -q` → **24 passed**. |
 | WU2 — classify the transport failure | `b9ce87d` | RED observed first: `pytest ...::TestTransportFailureMessages -q` → **10 failed**, the marker reaching the response body on all five branches under both classifications. GREEN: the probe file's **29 passed**; the sibling's suite **32 passed**, so its contract is visibly unchanged; `-m unit` → **302 passed, 1048 deselected**; ruff clean. Parent's spot check: the sibling's `detail` string, `502`, `PROVIDER_MODELS_UNREACHABLE` and log line are untouched, and each branch's failure prefix is intact with only `{e}` replaced. The generated reference was regenerated **again** in this commit — the route's docstring is rendered into the page — and `pytest tests/test_api/test_llm_test_route.py tests/test_api/test_workspace_settings_models.py tests/test_api_reference.py -q` → **66 passed**. |
+| WU3 — prose, checklist and agenda | `b70b8d0` | **No RED, and none is possible**: this is a passive documentation change whose subject behaviour was already fixed and covered by WU1's and WU2's tests. `pnpm vitest run src/i18n` (from `frontend/`) → **79 passed across 6 files**, which is the guard that keeps the two locales structurally parallel and the Spanish free of voseo; `pnpm exec tsc --noEmit` exit 0. Parent's spot check and two corrections, both in this commit: the new `roles-permissions` row is `Admin` rather than "Owner or admin", which is the truthful minimum because `require_admin` compares the role and an owner may hold `member` (ADR-003); a `prod.todo.md` row had cited the blank-credential test as evidence for the authorization fix when the authorization tests are `TestAuthorization` (`:103-170`); and a TS comment was reflowed to the repo's print width. Nothing here was measured against production and no production claim was added. |
+
+**Deliberately left alone.** Every historical record under `odd/` that names the old path
+(`llm-probe-credential-leak.md`, `drop-per-user-llm-config.md`, `docs-starlight-expansion.md`,
+`llm-model-probe-selection.md`, `prod-checklist-honesty.md`, `prod-honesty-followups.md`,
+`normalize-blank-llm-fields.md`, `provider-literal-and-copy-drift.md`) keeps naming it, because a
+record is what was true when it was written. The two `prod.todo.md` row *titles* do the same, and
+both rows carry their closure in the detail. The generated `api-reference.md:1104` still says
+`` POST /llm/test ``: that is a router-relative mention copied from the handler's own docstring,
+and `:1150` gives the full path.
 
 **A citation of mine was wrong and the writer caught it.** The `## Tasks` section for WU2 pointed at
 an `except httpx.HTTPError` "around line 520" of `workspace_settings.py`. There is no such handler
