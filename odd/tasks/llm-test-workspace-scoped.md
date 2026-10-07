@@ -99,7 +99,7 @@ probe: the sibling at `/settings/llm/models` also tests a *pending* selection, n
   reference (`frontend/src/content/docs/{en,es}/docs/api-reference.md`) is regenerated **in this same
   commit**, not in WU3: the drift guard compares committed bytes against a fresh render, so leaving
   it for the docs work unit would have left the tree red in between.
-- [ ] **WU2 — Stop echoing the transport error.** One shared helper that classifies a transport
+- [x] **WU2 — Stop echoing the transport error.** One shared helper that classifies a transport
   failure into something this application owns (`HTTP {status}`, or "the provider could not be
   reached"), with the exception text going to the log at `logger.warning(..., exc_info=e)`. Used by
   the five branches of the moved route **and** by the models probe, whose inline version of the same
@@ -127,6 +127,18 @@ probe: the sibling at `/settings/llm/models` also tests a *pending* selection, n
 | Work unit | Commit | Evidence |
 | --- | --- | --- |
 | WU1 — relocate and gate | `d50dda0` | RED observed first, test file edited before any implementation edit: `pytest tests/test_api/test_llm_test_route.py -q` → **19 failed**, every failure a 404 on the new path (the route had no home there yet). GREEN after the move: same command → **19 passed**; `pytest -q -m unit` → **302 passed, 1038 deselected**; `ruff check src tests` and `ruff format --check src tests` clean (ruff caught two imports the deletion orphaned). Parent's independent spot check, run after the writer returned: the 180-line body diffed mechanically against `HEAD:backend/src/storico/api/routes/settings.py` is **byte-identical**; the 10 pre-existing tests changed only their client/URL plumbing, with assertions untouched; and after regenerating both locales, `pytest tests/test_api/test_llm_test_route.py tests/test_api_reference.py -q` → **24 passed**. |
+| WU2 — classify the transport failure | `b9ce87d` | RED observed first: `pytest ...::TestTransportFailureMessages -q` → **10 failed**, the marker reaching the response body on all five branches under both classifications. GREEN: the probe file's **29 passed**; the sibling's suite **32 passed**, so its contract is visibly unchanged; `-m unit` → **302 passed, 1048 deselected**; ruff clean. Parent's spot check: the sibling's `detail` string, `502`, `PROVIDER_MODELS_UNREACHABLE` and log line are untouched, and each branch's failure prefix is intact with only `{e}` replaced. The generated reference was regenerated **again** in this commit — the route's docstring is rendered into the page — and `pytest tests/test_api/test_llm_test_route.py tests/test_api/test_workspace_settings_models.py tests/test_api_reference.py -q` → **66 passed**. |
+
+**A citation of mine was wrong and the writer caught it.** The `## Tasks` section for WU2 pointed at
+an `except httpx.HTTPError` "around line 520" of `workspace_settings.py`. There is no such handler
+there: the two that exist are at `:749` and `:928`, because WU1's insertion shifted every line below
+it, and my number was read off the pre-WU1 file. The writer verified both before reporting.
+
+**A real follow-up question that came out of checking it, answered.** `fetch_openai_compatible_models`
+stores the transport error at `:750` and re-raises it at `:769`, so that raw exception is not caught
+where it is raised. It still never reaches a caller as text: `_probe_models` is called from exactly
+one place, `:927`, inside the handler that classifies it. That is a single-path property, not an
+accident of the message format, which is why it was worth confirming rather than assuming.
 
 ## Limitations carried forward
 
@@ -134,6 +146,15 @@ probe: the sibling at `/settings/llm/models` also tests a *pending* selection, n
   adapters' exception messages for the same class of text, and it does not verify whether an SDK's
   error text ever contained a credential. That stays unmeasured, and this document does not claim
   otherwise.
+- The success branches still echo the provider's own answer (`"Ollama responded: {response.text[:100]}"`).
+  That is deliberate — it is the probe's purpose — but it does mean the response carries provider
+  output, truncated to 100 characters, to whoever called.
+- One theoretical divergence in the model probe, introduced by extracting the helper: the old inline
+  code read `response.status_code` directly, so an exception carrying a response object *without* a
+  `status_code` would have raised `AttributeError` inside the handler (a 500). The helper reads it with
+  `getattr`, so that case now classifies as "the provider could not be reached". No such exception type
+  exists in `httpx`, so nothing observable changed; it is recorded because the mandate was that the
+  sibling's behaviour must not change at all.
 - The route remains reachable by any **admin of any workspace they belong to**, which is the trust
   boundary the sibling already uses. Whether that is the right boundary for a credential the caller
   types is the same question item B of the agenda leaves open for the stored key.
