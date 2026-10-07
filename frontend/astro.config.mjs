@@ -79,6 +79,11 @@ export default defineConfig({
           link: '/docs/story-format',
         },
         {
+          label: 'Import from CSV',
+          translations: { es: 'Importar desde CSV' },
+          link: '/docs/story-import',
+        },
+        {
           label: 'LLM providers',
           translations: { es: 'Proveedores de LLM' },
           link: '/docs/llm-providers',

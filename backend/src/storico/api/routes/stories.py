@@ -103,7 +103,8 @@ async def create_story(
     """Create a new user story.
 
     The story's project must belong to a workspace the user is a member of.
-    Duplicate stories (same raw_text) within the same project are not allowed.
+    Duplicate stories (same actor, feature and benefit) within the same project are
+    not allowed.
     """
     # Validate the user has access to the project's workspace
     project = await project_repo.find_by_id(body.project_id)

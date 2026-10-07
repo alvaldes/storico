@@ -1,6 +1,6 @@
 ---
 title: Exportación
-description: Descarga las tareas de tu espacio de trabajo como JSON o Markdown.
+description: Descarga las tareas de tu espacio de trabajo como JSON o Markdown, y exactamente qué termina en el archivo.
 ---
 
 ## Exportación a JSON y Markdown
@@ -9,11 +9,19 @@ Exporta tus tareas a JSON o Markdown con un clic. Compatible con tu flujo de tra
 
 Abre la página de exportación, selecciona un espacio de trabajo, elige **JSON** o **Markdown** y haz clic en **Descargar**. El backend devuelve el archivo como descarga: JSON como un arreglo de tareas y Markdown con una sección por historia. Un espacio de trabajo vacío descarga un arreglo JSON válido (`[]`) o un documento Markdown con solo el encabezado `# Tasks Export`.
 
-Estos son los únicos dos formatos disponibles: CSV y XML no están soportados. Cualquier otro valor de formato se rechaza con HTTP 400 y el código de error `UNSUPPORTED_EXPORT_FORMAT`.
+Estos son los únicos dos formatos disponibles: CSV y XML no están soportados. El formato es un parámetro de consulta que por defecto vale `json`, y cualquier otro valor se rechaza con HTTP 400 y el código de error `UNSUPPORTED_EXPORT_FORMAT`.
+
+## El alcance de una exportación
+
+Una exportación abarca **todo el espacio de trabajo y no tiene filtros**:
+
+- no hay filtro por proyecto, ni por historia, ni por rango de fechas;
+- la respuesta no está paginada: todas las tareas que contienen las versiones actuales del espacio de trabajo caben en un solo archivo;
+- el endpoint es `GET /api/v1/workspaces/{workspace_id}/export/tasks`, y cualquier miembro del espacio de trabajo puede llamarlo.
 
 ## El formato JSON
 
-La exportación a JSON es un arreglo de objetos de tarea con formato legible (sangría de dos espacios), uno por tarea exportada, servido como `application/json`. Cada objeto lleva exactamente estos campos:
+La exportación a JSON es un arreglo de objetos de tarea con formato legible (sangría de dos espacios), uno por tarea exportada, servido como `application/json` con UTF-8. Cada objeto lleva exactamente estos campos:
 
 | Campo | Significado |
 | --- | --- |
@@ -30,7 +38,9 @@ La exportación a JSON es un arreglo de objetos de tarea con formato legible (sa
 
 ## El formato Markdown
 
-La exportación a Markdown, servida como `text/markdown`, empieza con un encabezado `# Tasks Export` y tiene una sección `## {story}` por historia, donde `{story}` es el texto original de la historia —o `Untitled story` cuando no tiene—. Dentro de cada sección, cada tarea es una viñeta con la forma `- **{title}** — {description}`, con las etiquetas de la tarea añadidas como marcadores `#label` y sus dependencias añadidas como `→ {resolved title}`. Una dependencia se resuelve al título de la tarea referenciada y vuelve a la referencia original cuando ningún título coincide.
+La exportación a Markdown, servida como `text/markdown` con UTF-8, empieza con un encabezado `# Tasks Export` y tiene una sección `## {story}` por historia, donde `{story}` es el texto original de la historia —o `Untitled story` cuando no tiene—. Dentro de cada sección, cada tarea es una viñeta con la forma `- **{title}** — {description}`, con las etiquetas de la tarea añadidas como marcadores `#label` y sus dependencias añadidas como `→ {resolved title}`.
+
+Una referencia de dependencia se resuelve en dos pasadas: primero contra los identificadores de las tareas exportadas, después contra sus títulos comparados sin distinguir mayúsculas y sin espacios en los extremos. Cuando ninguna coincide, se escribe la referencia original tal cual.
 
 ## La descarga
 

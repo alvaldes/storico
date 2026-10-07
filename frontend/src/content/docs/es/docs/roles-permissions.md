@@ -1,6 +1,6 @@
 ---
 title: Roles y permisos
-description: Los dos roles de un espacio de trabajo, quién es su propietario y qué puede hacer cada uno.
+description: Los dos roles de un espacio de trabajo, quién es su propietario y una tabla de quién puede hacer qué, operación por operación.
 ---
 
 ## Dos roles, y un propietario que no es un rol
@@ -11,32 +11,38 @@ Cada miembro de un espacio de trabajo tiene exactamente uno de dos roles: **admi
 
 Cualquier usuario autenticado puede crear un espacio de trabajo. Quien lo crea se convierte automáticamente en su propietario y en miembro administrador. No interviene ningún otro permiso.
 
-## Lo que pueden hacer los administradores
+## Quién puede hacer qué
 
-Solo los administradores pueden:
+| Operación | Quién |
+| --- | --- |
+| Crear un espacio de trabajo | Cualquier usuario autenticado, que pasa a ser su propietario y administrador |
+| Leer, actualizar o eliminar un espacio de trabajo | Propietario o administrador |
+| Listar miembros, añadir un miembro, cambiar el rol de un miembro, quitar un miembro | Propietario o administrador |
+| Transferir la propiedad a otro administrador | **Solo el propietario** |
+| Leer la configuración de LLM, cambiarla, editar los prompts, gestionar los proveedores personalizados y consultar los modelos de un proveedor | Administrador |
+| Leer si el espacio de trabajo puede extraer y qué campos faltan | Cualquier miembro: es la única lectura de configuración que un miembro sin rol de administrador puede llamar |
+| Iniciar una extracción | Propietario o administrador |
+| Eliminar una historia | Propietario o administrador |
+| Marcar una tarea como inválida o quitar una marca de invalidación | Propietario o administrador |
+| Crear, listar, actualizar o eliminar proyectos | Cualquier miembro |
+| Crear y editar historias de usuario; leer las historias, sus versiones y su historial de invalidaciones | Cualquier miembro |
+| Importar historias desde un CSV | Cualquier miembro |
+| Consultar el estado de una extracción en curso | Cualquier miembro |
+| Exportar las tareas del espacio de trabajo | Cualquier miembro |
+| Leer tareas y actualizarlas: su estado y sus etiquetas en cualquier versión, sus dependencias solo en la versión actual | Cualquier miembro |
 
-- actualizar o eliminar el espacio de trabajo;
-- gestionar sus miembros: listarlos, añadir a un usuario por correo, cambiar el rol de un miembro y quitar a un miembro;
-- leer y cambiar la configuración de LLM, los proveedores personalizados y los prompts del espacio de trabajo, y consultar qué modelos ofrece un proveedor.
+Dos notas al pie de esa tabla:
 
-Dos protecciones se superponen a la gestión de miembros: el rol del propietario no se puede cambiar (primero hay que transferir la propiedad) y al propietario no se le puede quitar del espacio de trabajo.
+- **Iniciar una extracción crea una versión nueva de la historia**, así que queda reservado al propietario o a un administrador. Eliminar una historia de usuario lleva la misma regla, y también los extremos que mutan el historial de invalidaciones.
+- **`POST /api/v1/llm/test` no está acotado a un espacio de trabajo.** Existe para que quien llama pueda probar credenciales antes de guardarlas, y solo exige un usuario autenticado; no verifica la pertenencia a ningún espacio de trabajo. Todas las demás rutas de LLM de esta página sí están acotadas y protegidas.
 
-## Lo que solo puede hacer el propietario
+## Las protecciones alrededor de la membresía
 
-Transferir la propiedad del espacio de trabajo a otro administrador es la única operación reservada al propietario.
+- El rol del propietario no se puede cambiar: primero hay que transferir la propiedad.
+- Al propietario no se le puede quitar del espacio de trabajo.
+- Un administrador no puede quitarse a sí mismo mientras sea el último administrador del espacio de trabajo: la solicitud se rechaza con HTTP 400 y `LAST_ADMIN_ERROR`.
+- Añadir un miembro asigna siempre el rol de **miembro**; llegar a administrador es un cambio de rol, no una opción de invitación.
 
-## Lo que requiere el propietario o un administrador
+## Operaciones que dependen de otro servicio
 
-Iniciar una extracción crea una nueva versión de la historia, así que queda reservado al propietario del espacio de trabajo o a un administrador. La misma regla se aplica a eliminar una historia de usuario, y a marcar una tarea como inválida o quitar una marca de invalidación: los extremos que mutan el historial de invalidaciones.
-
-## Lo que puede hacer cualquier miembro
-
-Los miembros sin rol de administrador pueden trabajar con el contenido del espacio de trabajo:
-
-- crear, listar, actualizar y eliminar proyectos;
-- crear y editar historias de usuario, y leer las historias, sus versiones y su historial de invalidaciones;
-- consultar el estado de una extracción en curso;
-- exportar las tareas del espacio de trabajo;
-- leer tareas y actualizarlas (su estado y sus etiquetas; las dependencias solo en la versión actual).
-
-Eliminar una historia es la excepción: requiere al propietario o a un administrador, igual que iniciar una extracción.
+Algunas operaciones protegidas por permisos pueden fallar por un motivo que no tiene nada que ver con los permisos: eliminar una historia, y marcar o quitar una invalidación, deben actualizar el almacén vectorial. Cuando Qdrant está configurado pero no es accesible, se rechazan con HTTP 503 y `VECTOR_STORE_UNAVAILABLE`. Consulta [Contexto histórico](/es/docs/embeddings-rag).

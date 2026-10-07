@@ -9,6 +9,8 @@ Cuando una ejecución termina, el servidor la escribe en una base de datos vecto
 
 Toda búsqueda está acotada al espacio de trabajo y lleva tres reglas incondicionales: nunca lee los puntos de otro espacio de trabajo, nunca devuelve una extracción pasada cuyas tareas incluyan alguna marcada como inválida, y nunca devuelve las ejecuciones anteriores de la propia historia como ejemplos para ella misma.
 
+La regla de las tareas inválidas está escrita como una **exigencia de que la marca de validez del punto sea `false`**, no como una prohibición de `true`. La diferencia práctica es qué pasa con un punto que no lleva la marca en absoluto: una exigencia positiva no lo encuentra, así que un punto viejo cuya validez se desconoce queda fuera de los ejemplos en lugar de darse por bueno.
+
 ## Los tres ajustes
 
 La recuperación few-shot se configura por espacio de trabajo y está **activada por defecto**:
@@ -23,17 +25,23 @@ El umbral lo aplica el propio almacén vectorial: un punto solo regresa si su si
 
 ## Dónde viven los puntos
 
-Cada entorno usa su propia colección, porque los vectores de modelos de embedding distintos no son comparables. El nombre de la colección viene del ajuste `STORICO_QDRANT_COLLECTION` y por defecto es `storico_extractions`; el valor que usa cada despliegue forma parte de la configuración de ese entorno. Además del vector, un punto guardado lleva el texto de la historia, el resumen de tareas, el modelo usado, el número de versión de la ejecución, los identificadores del espacio de trabajo, del proyecto y de la historia, una marca de validez, la puntuación opcional del juez y la fecha de creación.
+Cada entorno usa su propia colección, porque los vectores de modelos de embedding distintos no son comparables. El nombre de la colección viene del ajuste `STORICO_QDRANT_COLLECTION` y por defecto es `storico_extractions`; el valor que usa cada despliegue forma parte de la configuración de ese entorno. Las dimensiones configuradas deben coincidir con el modelo de embedding que llena la colección, o el adaptador se niega a arrancar en lugar de guardar vectores que no se podrán buscar.
+
+Además del vector, un punto guardado lleva el texto de la historia, el resumen de tareas, el modelo usado, el número de versión de la ejecución, los identificadores del espacio de trabajo, del proyecto y de la historia, una marca de validez, la puntuación opcional del juez y la fecha de creación.
+
+El **identificador de un punto es el de la extracción**. Eso es lo que hace que la invalidación funcione sin una búsqueda: marcar una tarea como inválida cambia la marca de validez exactamente en el punto que la produjo, por identificador. Eliminar una historia quita sus puntos de la misma manera.
 
 ## Cuando el almacén vectorial no está disponible
 
-La recuperación y el almacenamiento son ambos de mejor esfuerzo, y ninguno puede hacer fallar una extracción:
+La recuperación y el almacenamiento son ambos de mejor esfuerzo durante una extracción, y ninguno puede hacerla fallar:
 
 - Si el servicio de embeddings no responde, el embedding vuelve vacío, la búsqueda no devuelve nada y la extracción continúa sin ejemplos.
 - Si Qdrant no responde, la búsqueda no devuelve nada y la extracción continúa sin ejemplos.
 - Guardar el punto de una ejecución terminada también puede fallar en silencio: el fallo queda registrado en el log y la extracción —ya guardada en la base de datos— sigue siendo exitosa.
 
 Dicho de otro modo: una extracción igual termina con éxito sin ejemplos cuando el almacén vectorial no está disponible. El único coste es el contexto: el prompt se genera sin la sección de ejemplos few-shot hasta que el almacén vuelva.
+
+Esa misma tolerancia **no** se extiende a las operaciones que mantienen los dos almacenes consistentes. Marcar o quitar una invalidación, y eliminar una historia, deben actualizar o borrar puntos; si Qdrant está configurado pero no es accesible, esas operaciones se rechazan con HTTP 503 y `VECTOR_STORE_UNAVAILABLE` en lugar de dejar la base de datos y el almacén vectorial en desacuerdo sobre qué es válido.
 
 ## Lo que esta función no hace
 
