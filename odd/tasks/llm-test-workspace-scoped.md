@@ -15,6 +15,12 @@ echo — in the same two work units.
 
 ## Problem, measured
 
+**Every line number in this table is a citation of the tree *before* the change, measured on
+`main` at `2e52147`.** WU1's own insertion moved everything below it in `workspace_settings.py`, so
+none of these pointers resolve on the branch. The rows that describe the *finding* keep the
+pre-change numbers on purpose — that is the tree the measurement was taken against — and the rows
+that describe the *remaining* code use the current ones.
+
 | Claim | Evidence |
 | --- | --- |
 | The route depends only on an authenticated user | `backend/src/storico/api/routes/settings.py:147-150` (`_current_user: CurrentUserDep`), with `CurrentUserDep = Annotated[User, Depends(get_current_user)]` at `:39` |
@@ -67,7 +73,7 @@ probe: the sibling at `/settings/llm/models` also tests a *pending* selection, n
   documents the gap stops being true and is folded into the permission table.
 - `frontend/src/content/docs/{en,es}/docs/llm-providers.md:72` — the new path, and the claim that the
   response carries "the connection error message" is withdrawn.
-- `frontend/src/content/docs/{en,es}/docs/api-reference.md:296` — regenerated from the app, never
+- `frontend/src/content/docs/{en,es}/docs/api-reference.md` — regenerated from the app, never
   hand-edited.
 - `docs/api.md:208` (path) and `:218` ("Requiere admin", which is the one false sentence left after
   `2e52147` corrected the other).
@@ -128,7 +134,10 @@ probe: the sibling at `/settings/llm/models` also tests a *pending* selection, n
 | --- | --- | --- |
 | WU1 — relocate and gate | `d50dda0` | RED observed first, test file edited before any implementation edit: `pytest tests/test_api/test_llm_test_route.py -q` → **19 failed**, every failure a 404 on the new path (the route had no home there yet). GREEN after the move: same command → **19 passed**; `pytest -q -m unit` → **302 passed, 1038 deselected**; `ruff check src tests` and `ruff format --check src tests` clean (ruff caught two imports the deletion orphaned). Parent's independent spot check, run after the writer returned: the 180-line body diffed mechanically against `HEAD:backend/src/storico/api/routes/settings.py` is **byte-identical**; the 10 pre-existing tests changed only their client/URL plumbing, with assertions untouched; and after regenerating both locales, `pytest tests/test_api/test_llm_test_route.py tests/test_api_reference.py -q` → **24 passed**. |
 | WU2 — classify the transport failure | `b9ce87d` | RED observed first: `pytest ...::TestTransportFailureMessages -q` → **10 failed**, the marker reaching the response body on all five branches under both classifications. GREEN: the probe file's **29 passed**; the sibling's suite **32 passed**, so its contract is visibly unchanged; `-m unit` → **302 passed, 1048 deselected**; ruff clean. Parent's spot check: the sibling's `detail` string, `502`, `PROVIDER_MODELS_UNREACHABLE` and log line are untouched, and each branch's failure prefix is intact with only `{e}` replaced. The generated reference was regenerated **again** in this commit — the route's docstring is rendered into the page — and `pytest tests/test_api/test_llm_test_route.py tests/test_api/test_workspace_settings_models.py tests/test_api_reference.py -q` → **66 passed**. |
-| WU3 — prose, checklist and agenda | `b70b8d0` | **No RED, and none is possible**: this is a passive documentation change whose subject behaviour was already fixed and covered by WU1's and WU2's tests. `pnpm vitest run src/i18n` (from `frontend/`) → **79 passed across 6 files**, which is the guard that keeps the two locales structurally parallel and the Spanish free of voseo; `pnpm exec tsc --noEmit` exit 0. Parent's spot check and two corrections, both in this commit: the new `roles-permissions` row is `Admin` rather than "Owner or admin", which is the truthful minimum because `require_admin` compares the role and an owner may hold `member` (ADR-003); a `prod.todo.md` row had cited the blank-credential test as evidence for the authorization fix when the authorization tests are `TestAuthorization` (`:103-170`); and a TS comment was reflowed to the repo's print width. Nothing here was measured against production and no production claim was added. |
+| WU3 — prose, checklist and agenda | `b70b8d0` | **No RED, and none is possible**: this is a passive documentation change whose subject behaviour was already fixed and covered by WU1's and WU2's tests. `pnpm vitest run src/i18n` (from `frontend/`) → **79 passed across 6 files**, which is the guard that keeps the two locales structurally parallel and the Spanish free of voseo; `pnpm exec tsc --noEmit` exit 0. Parent's spot check and two corrections, both in this commit: the new `roles-permissions` row is `Admin` rather than "Owner or admin", which is the truthful minimum because `require_admin` compares the role and an owner can hold `member` in the schema — though not through
+this API, which refuses to change an owner's role (`OWNER_ROLE_IMMUTABLE`, `api/routes/workspaces.py:264-268`) and demotes the
+previous owner to admin on transfer, so "Admin" is the gate's literal description and the schema
+fact is the weaker of the two reasons; a `prod.todo.md` row had cited the blank-credential test as evidence for the authorization fix when the authorization tests are `TestAuthorization` (`:103-170`); and a TS comment was reflowed to the repo's print width. Nothing here was measured against production and no production claim was added. |
 
 **Deliberately left alone.** Every historical record under `odd/` that names the old path
 (`llm-probe-credential-leak.md`, `drop-per-user-llm-config.md`, `docs-starlight-expansion.md`,
@@ -145,10 +154,56 @@ there: the two that exist are at `:749` and `:928`, because WU1's insertion shif
 it, and my number was read off the pre-WU1 file. The writer verified both before reporting.
 
 **A real follow-up question that came out of checking it, answered.** `fetch_openai_compatible_models`
-stores the transport error at `:750` and re-raises it at `:769`, so that raw exception is not caught
+stores the transport error at `:750` and re-raises it at `:768`, so that raw exception is not caught
 where it is raised. It still never reaches a caller as text: `_probe_models` is called from exactly
 one place, `:927`, inside the handler that classifies it. That is a single-path property, not an
 accident of the message format, which is why it was worth confirming rather than assuming.
+
+## Independent verification
+
+Run read-only by a separate verifier after all three work units landed, instructed to falsify rather
+than restate. Its verdicts:
+
+- **The old path is gone and the new one is real.** `create_app().openapi()["paths"]` exposes 36
+  paths and exactly one containing `llm/test`, the workspace-scoped one; ASGI dispatch answers 404 on
+  the old path and 401 for an anonymous call on the new one. Checked against the running application,
+  not against the diff.
+- **The gate is not decorative.** `require_admin` is a `Depends`, so FastAPI resolves it before the
+  handler body — which is where every adapter is built. And the four adapter classes the route can
+  construct are exactly the four the recording fixture patches (`OllamaAdapter`, `GeminiAdapter`,
+  `OpenAIAdapter`, `AnthropicAdapter`), so `adapter_kwargs == []` is a real assertion rather than a
+  vacuous one. That was the specific way this test could have failed silently.
+- **Every `except` site in the module was read** (`:336`, `:370`, `:404`, `:438`, `:480`, `:749`,
+  `:752`, `:928`). The six that build a response use the helper, and no `{e}`, `str(e)`, `repr(e)` or
+  `__cause__` reaches a caller. The raw re-raise at `:768` is safe for a structural reason rather
+  than a formatting one: its only caller is inside the handler that classifies it.
+- **The sibling's contract is byte-identical** — the verifier diffed the `raise ApiError` blocks — and
+  the reference drift guard passes.
+- **Suites, on this tree**: backend **1305 passed, 45 skipped**; **302 passed, 1048 deselected** for
+  `-m unit`; frontend **831 passed across 73 files**; `tsc --noEmit` exit 0; ruff clean. The skips are
+  a Docker daemon unavailable to testcontainers and the two opt-in live-service flags. This is the
+  full suite, not the unit subset the work units ran.
+- **Nothing was mutated**: `git status --short` was clean before and after.
+
+**Four corrections, all applied above.** Three were stale citations of mine: the `api-reference.md:296`
+pointer, `:769` where `raise last_error` is at `:768`, and every line number in the pre-change
+measurement table, which now says which tree it describes. The fourth was an overstatement: "an owner
+may hold `member`" is true of the schema and false of this API, which refuses to change an owner's
+role (`OWNER_ROLE_IMMUTABLE`). The wording kept for the permission table survives on the stronger
+reason — `require_admin` compares the role — and the schema fact is recorded as the weaker one.
+
+**One nuance to the byte-identical claim, recorded rather than smoothed.** The comparison above
+started at `from storico.domain.ports import LLMConfig`, the first line of the function's *body*, and
+covered the 180 lines from there to the end. It deliberately excluded the docstring, which WU1 and
+WU2 both extended. The verifier compared the whole function by AST and found exactly two
+differences: the gate parameter line and the added docstring. So the claim is precise as written and
+must not be read as covering the whole function.
+
+What it could not re-verify: the historical RED and GREEN runs. Those were observed once, by the
+process that made the change, and cannot be re-observed on a tree that already contains the fix. The
+current counts are consistent with them, and the adversarial checks it substituted — the four
+adapter classes, the eight `except` sites, the old path answering 404 — are the ones that would have
+caught the failure this class of change actually has.
 
 ## Limitations carried forward
 
