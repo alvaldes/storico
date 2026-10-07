@@ -114,9 +114,16 @@ on the spec's earlier verification pass, not on new commits.
   deliberately, the equivalence CHECK stays whole, and `0028` was edited rather than superseded because
   it is unreleased. Cost of finding out: the "it is latent because no user-deletion route exists"
   argument used to justify it was **false** — that is defect **D-a-4**, carried into slice (b).
-- [ ] 13. **D-a-4** — `DELETE /api/v1/users/me` (`api/routes/settings.py:335`) has no `IntegrityError`
+- [x] 13. **D-a-4** — `DELETE /api/v1/users/me` (`api/routes/settings.py:335`) has no `IntegrityError`
   mapping, so once a revocation row can exist the refusal is an HTTP 500. Belongs to slice (b), with the
   route's first DELETE-verb test.
+  **[Closed 2026-10-07, verified against slice (b)'s archive before marking]** slice (b) closed it with
+  task **5.14**, checked at `openspec/changes/archive/2026-10-07-extraction-versioning-api/tasks.md:699`:
+  the owner chose the designed **409** — code `ACCOUNT_DELETE_BLOCKED`, produced by a pre-check that
+  names the blocking marks, with the account and the mark rows left intact — and the route's first
+  DELETE-verb tests live in `backend/tests/test_api/test_account_deletion.py`. The shipped code confirms
+  it (`api/routes/settings.py` answers the 409 with that error code), and the archive report records the
+  closure (`archive-report.md:47`). Item 15 remains open.
 - [x] 14. ~~Production `workspace_llm_configs.provider = 'Nan'`~~ — **withdrawn, it was never a defect.**
   Measured against the table that defines the value: `custom_providers` holds one row whose `name` md5
   equals md5('Nan'), and one `workspace_llm_configs` row references it with a real encrypted key.
@@ -157,9 +164,20 @@ on the spec's earlier verification pass, not on new commits.
 - [ ] 18. **Operational, needs the owner's hands:** log in again, then create the workspace LLM config in
   Configuración before any extraction — `resolve_llm_config` falls back to `provider = "ollama"` and
   production has no Ollama. The two api_key values must come from the AI Studio and nan.builders consoles.
-- [ ] 11. Apply slice (b) `extraction-versioning-api` **after (a) merges** — it inherits **D-a-1** as a
+- [x] 11. Apply slice (b) `extraction-versioning-api` **after (a) merges** — it inherits **D-a-1** as a
   named requirement (re-dispatch duplicates task rows, `extraction_task.py:441`).
-- [ ] 12. Apply slice (c) `extraction-versioning-prompt`.
+  > **[Amended 2026-10-07 — applied, merged and deployed]** Slice (b) landed as PRs #31–#39, merged
+  > to `main` on 2026-10-02 and carried by `v0.10.0`. Its `tasks.md` is **complete: 79 checkbox
+  > lines, all `[x]`, zero open** (measured 2026-10-07). The single string that reads as an open box
+  > is prose inside a dated note quoting an interim revert; the seam it names — the checkbox-checked
+  > + reason-field-focus half — was closed the same day by the W6-B1 split, which delivered
+  > `TaskEditorProps`' `markDefaultChecked` / `reasonAutofocus` / `activeMark`.
+- [x] 12. Apply slice (c) `extraction-versioning-prompt`.
+  > **[Amended 2026-10-07 — applied, merged and deployed]** Slice (c) landed as PRs #40–#50, merged
+  > to `main` on 2026-10-03 and carried by `v0.11.0`. Its `tasks.md` is **complete: 47 checkbox
+  > lines, all `[x]`, zero open** (measured 2026-10-07). The two strings that read as open boxes are
+  > prose inside dated WU3-part notes describing 3.1/3.2/3.3 and 3.9 as staying open; those boxes are
+  > checked today, and the notes are earlier snapshots rather than the current state.
 - [x] 8. Apply slice (a) — Schema Identity **and** Birth Through Allocation, merged into one green
   work unit (`1a90aff`, `1f2d573`), then Phase 3 in four tranches and Phase 4 in two
   - **RED landed 2026-09-29, uncommitted on purpose.** 14 new cases across three files;
@@ -1443,3 +1461,54 @@ but nothing in it moves the vector flag, so today every mark excludes nothing fr
 and **nothing goes red**. The flag (`set_has_invalid_tasks`), the fail-closed
 `must: has_invalid_tasks = false` filter, the payload keys and indexes, and the refresh calls in (b)'s
 mark handlers are **slice (c) WU3 tasks 3.1–3.13**.
+
+## Session handoff — 2026-10-07: the record catches up with the shipped feature
+
+Written for a session that starts with nothing in context. Nothing here re-derives the release
+history; every fact below was measured on 2026-10-07.
+
+- **Slices (b) and (c) are applied, merged and deployed.** (b) merged 2026-10-02 as PRs #31–#39,
+  carried by `v0.10.0`; (c) merged 2026-10-03 as PRs #40–#50, carried by `v0.11.0`; `v0.12.0` was
+  published 2026-10-06. Production, verified read-only on 2026-10-07, reports `version: 0.12.0`
+  with `database` and `schema` ok and `/api/v1/health/ready` → 200; the retired creation endpoint
+  answers `410` with `TASK_CREATION_ENDPOINT_REMOVED`. The feature is live end to end: versioning
+  and mark endpoints, prompt composition with project context and negative examples, and the shipped
+  version selector (`frontend/src/components/react/VersionSelector.tsx`, consumed by
+  `StoryDetail.tsx`, with its own test file).
+- **Both slices' `tasks.md` are complete: 79 and 47 checkbox lines, all `[x]`, zero open.** Beware
+  the count: searching the string `[ ]` anywhere returns three hits, and all three are prose quoted
+  inside dated notes that describe an intermediate state. In (b), the UI seam that note names was
+  closed the same day by the W6-B1 split (`TaskEditorProps`: `markDefaultChecked` /
+  `reasonAutofocus` / `activeMark`). In (c), tasks 3.1/3.2/3.3 and 3.9 are checked today.
+- **The handoff sections above were written before (c)'s WU2 and WU3 ran.** They understate the
+  state — several describe (b) as unapplied and D-a-5/D10 as open — and must be read as history,
+  not as current truth. This section, and the amendment notes on items 11 and 12 above, are the
+  current truth.
+- **What remains genuinely open:** the export offers no user-facing choice of version — it exports
+  only the current version and its only query parameter is `format`. Also, still true since WU3:
+  `TaskRepository.list_by_story` and `list_by_workspace` remain version-blind and their only
+  wrapper, `TaskService.list_tasks_by_story` (`application/services/task_service.py:87`), has no
+  route caller — recorded dead-ish code, not deleted. (The LLM-owned `title`/`description` clause
+  that used to sit in this bullet was wrong: the D5/D21 field matrix is implemented —
+  `UpdateTaskRequest` refuses them with 422 (`backend/src/storico/api/schemas/task.py:11-27`) and
+  the UI renders them read-only (`frontend/src/components/react/TaskEditor.tsx:376-389`) — and the
+  bullet was corrected on 2026-10-07.)
+- **Both completed changes are archived as of 2026-10-07.** `extraction-versioning-api` landed in
+  the canonical store as `6e9a92c` and `extraction-versioning-prompt` as `8992164`; the store now
+  holds **thirteen capabilities** and `openspec/changes/` holds only `archive/`. The mechanical
+  check compared every delta block against its canonical counterpart across all three archives:
+  **61 blocks, 61 identical, 0 differing**. The measured sizes were **25 requirement blocks across
+  7 capabilities for (b)** (`export-download` 1, `extraction-versioning` 7, `extraction-workflow` 2,
+  `kanban-board` 2, `task-editor` 6, `task-invalidation` 4, `workspace-permissions` 3) and **22
+  across 4 for (c)** (`extraction-context` 8, `extraction-versioning` 7, `few-shot-retrieval` 2,
+  `vector-store-isolation` 5), plus slice (a)'s 14. The caveat stands: `openspec validate` has
+  never run in this repo, so byte-identity is the only guarantee the archive carries. And byte
+  identity is exactly what the mechanical check cannot see through: the same day's semantic pass
+  found **F1** — the canonical `extraction-context` requirement demands each existing task's
+  **status** in the rendered prompt (`openspec/specs/extraction-context/spec.md:25-29`), the service
+  composes it (`backend/src/storico/domain/services/extraction_service.py:80-90`) and the template
+  drops it (`task_generation.j2:24`, zero `status` occurrences) — recorded as a known divergence in
+  `prod.todo.md` rather than absorbed into the canonical text.
+- **Still true and not superseded by any of this:** production has no workspace LLM configuration,
+  `resolve_llm_config` falls back to an Ollama that does not exist there, so the deployed app cannot
+  extract until the owner re-creates the configuration in Configuración.
