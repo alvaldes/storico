@@ -205,7 +205,7 @@ regla **antes** de crear la extracción y responde `400` con `error_code:
 | PUT | `/api/v1/workspaces/{wsId}/settings/llm` | Actualizar config LLM |
 | GET | `/api/v1/workspaces/{wsId}/settings/llm/status` | ¿Está completa la config LLM? |
 | POST | `/api/v1/workspaces/{wsId}/settings/llm/models` | Modelos disponibles del proveedor |
-| POST | `/api/v1/llm/test` | Test de conexión LLM |
+| POST | `/api/v1/workspaces/{wsId}/settings/llm/test` | Test de conexión LLM |
 
 `POST /settings/llm/models` acepta un body opcional con la selección que el formulario
 tiene en pantalla (`provider`, `base_url`, `api_key`), para que la respuesta describa el
@@ -215,7 +215,12 @@ para esa consulta y nunca se toma de la fila guardada —tomarla enviaría la cr
 un proveedor al endpoint de otro—. Sin body (o sin `provider`) se responde por la config
 guardada del workspace. Es `POST` y no `GET` con query string porque la selección puede
 llevar una API Key, y una query string la escribe en los logs de acceso; `POST
-/api/v1/llm/test` transporta credenciales pendientes de la misma forma. Requiere admin.
+/api/v1/workspaces/{wsId}/settings/llm/test` transporta credenciales pendientes de la
+misma forma. Como toda escritura del módulo de settings, depende de `require_admin`:
+exige pertenencia al workspace y rol de administrador, y la verificación ocurre antes
+de construir ningún adaptador. Si falla, la respuesta nombra al proveedor y una razón
+clasificada (un código HTTP, o que no se pudo alcanzar al proveedor); el texto de la
+excepción original va al log, nunca al cuerpo de la respuesta.
 
 ### Proveedores personalizados (scoped a workspace)
 

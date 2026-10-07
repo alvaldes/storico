@@ -1,6 +1,8 @@
 # Open findings for review: docs-starlight-expansion
 
-> **Status**: **open** — nothing here is in flight and nothing here is authorized work. This is a
+> **Status**: **open** for items B, C and D; **item A is closed** — authorized by the owner on
+> 2026-10-07 and implemented on branch `fix/llm-test-workspace-scoped` (`d50dda0`, `b9ce87d`).
+> Nothing else here is in flight and nothing else is authorized work. This is a
 > review agenda, not an implementation.
 > **Created**: 2026-10-07
 > **Workflow**: Organic Driven Development (ODD)
@@ -29,8 +31,20 @@ says so, and nothing was changed in advance of that.
 
 ## A. `POST /api/v1/llm/test` is not workspace-scoped and does not require admin
 
-**Status**: NEW — measured 2026-10-07 during the docs pass. Not previously recorded as an
-authorization gap.
+**Status**: **CLOSED 2026-10-07** — measured as new during the docs pass, then authorized by the
+owner the same day and implemented as option (a) plus the neighbouring echo fix. The measurement
+below is kept as written, because it is what the decision was made against.
+
+**The outcome, appended rather than rewritten.** The owner chose **(a) gate it**, and the route is
+now `POST /api/v1/workspaces/{workspace_id}/settings/llm/test` inside the workspace settings
+router, behind `require_admin`. The exact path differs from the one this item proposed
+(`/workspaces/{id}/llm/test`): every other workspace LLM route lives under `/settings/llm*`, so the
+probe joined that family instead of inventing a sibling prefix. The five failure branches, which
+this item did not cover, stopped echoing the transport error in the same batch. Full record:
+`odd/tasks/llm-test-workspace-scoped.md`. Note which document was actually false: `docs/api.md:218`
+was, and so was the `prod.todo.md` row until `2e52147` corrected it; the public Starlight page
+`roles-permissions.md:37` had documented the gap truthfully in both locales, and the generated
+reference never claimed admin at all.
 
 **What was measured**
 

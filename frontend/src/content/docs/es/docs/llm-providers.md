@@ -69,7 +69,7 @@ La respuesta es una **lista vacía**, no un error, cuando no hay con qué consul
 
 Cuando el proveedor en sí no se puede alcanzar, la ruta responde HTTP 502 y `PROVIDER_MODELS_UNREACHABLE`.
 
-`POST /api/v1/llm/test` es la ruta hermana que prueba una conexión en lugar de listar modelos: envía un prompt mínimo (`Hello`) por el mismo adaptador que usa la extracción y reporta el resultado, incluido el mensaje de error de conexión cuando lo hay. Ambas rutas llevan las credenciales pendientes en el cuerpo y no en la cadena de consulta, para que una API key nunca termine en un registro de acceso.
+`POST /api/v1/workspaces/{workspace_id}/settings/llm/test` es la ruta hermana que prueba una conexión en lugar de listar modelos: envía un prompt mínimo (`Hello`) por el mismo adaptador que usa la extracción y reporta el resultado. Cuando la conexión falla, la respuesta nombra al proveedor y una razón clasificada —un código HTTP, o el hecho de que no se pudo alcanzar al proveedor—, mientras que el texto de error de la dependencia va al registro y no a la respuesta. Ambas rutas llevan las credenciales pendientes en el cuerpo y no en la cadena de consulta, para que una API key nunca termine en un registro de acceso.
 
 ## Dónde vive la API key
 

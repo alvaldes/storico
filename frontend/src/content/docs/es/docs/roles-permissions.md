@@ -20,6 +20,7 @@ Cualquier usuario autenticado puede crear un espacio de trabajo. Quien lo crea s
 | Listar miembros, añadir un miembro, cambiar el rol de un miembro, quitar un miembro | Propietario o administrador |
 | Transferir la propiedad a otro administrador | **Solo el propietario** |
 | Leer la configuración de LLM, cambiarla, editar los prompts, gestionar los proveedores personalizados y consultar los modelos de un proveedor | Administrador |
+| Probar una conexión de LLM con credenciales que aún no están guardadas | Administrador |
 | Leer si el espacio de trabajo puede extraer y qué campos faltan | Cualquier miembro: es la única lectura de configuración que un miembro sin rol de administrador puede llamar |
 | Iniciar una extracción | Propietario o administrador |
 | Eliminar una historia | Propietario o administrador |
@@ -31,10 +32,9 @@ Cualquier usuario autenticado puede crear un espacio de trabajo. Quien lo crea s
 | Exportar las tareas del espacio de trabajo | Cualquier miembro |
 | Leer tareas y actualizarlas: su estado y sus etiquetas en cualquier versión, sus dependencias solo en la versión actual | Cualquier miembro |
 
-Dos notas al pie de esa tabla:
+Una nota al pie de esa tabla:
 
 - **Iniciar una extracción crea una versión nueva de la historia**, así que queda reservado al propietario o a un administrador. Eliminar una historia de usuario lleva la misma regla, y también los extremos que mutan el historial de invalidaciones.
-- **`POST /api/v1/llm/test` no está acotado a un espacio de trabajo.** Existe para que quien llama pueda probar credenciales antes de guardarlas, y solo exige un usuario autenticado; no verifica la pertenencia a ningún espacio de trabajo. Todas las demás rutas de LLM de esta página sí están acotadas y protegidas.
 
 ## Las protecciones alrededor de la membresía
 

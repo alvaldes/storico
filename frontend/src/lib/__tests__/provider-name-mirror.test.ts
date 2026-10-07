@@ -69,7 +69,8 @@ describe('hand-kept provider vocabulary mirrors', () => {
  * `KNOWN_PROVIDERS` and its frontend mirror are guarded above, and migration `0021`'s frozen copy
  * is deliberately separate. What had no guard at all was a *second* rendering of the same list
  * inside the API schemas: `LLMTestRequest.provider` was a `Literal[...]` of the four names, so
- * `POST /api/v1/llm/test` answered `422` for every workspace-registered name that
+ * `POST /api/v1/workspaces/{workspace_id}/settings/llm/test` answered `422` for every
+ * workspace-registered name that
  * `_build_llm_port` routes to the OpenAI-compatible adapter — and the branch meant to handle those
  * names was unreachable.
  *

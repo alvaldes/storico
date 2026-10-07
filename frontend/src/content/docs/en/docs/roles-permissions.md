@@ -20,6 +20,7 @@ Any authenticated user can create a workspace. The creator automatically becomes
 | List members, add a member, change a member's role, remove a member | Owner or admin |
 | Transfer ownership to another admin | **Owner only** |
 | Read the LLM configuration, change it, edit prompts, manage custom providers, probe a provider's models | Admin |
+| Test an LLM connection with credentials that are not saved yet | Admin |
 | Read whether the workspace can extract, and which fields are missing | Any member — this is the one configuration read a plain member may call |
 | Start an extraction | Owner or admin |
 | Delete a story | Owner or admin |
@@ -31,10 +32,9 @@ Any authenticated user can create a workspace. The creator automatically becomes
 | Export the workspace's tasks | Any member |
 | Read tasks and update them — their state and labels anywhere, their dependencies only on the current version | Any member |
 
-Two footnotes to that table:
+One footnote to that table:
 
 - **Starting an extraction mints a new version of the story**, so it is reserved to the owner or an admin. Deleting a user story takes the same gate, and so do the mutating ends of the invalidation history.
-- **`POST /api/v1/llm/test` is not workspace-scoped.** It exists so a caller can test credentials before saving them, and it requires only an authenticated user; it does not check membership in any workspace. Every other LLM route here is scoped and gated.
 
 ## The protections around membership
 

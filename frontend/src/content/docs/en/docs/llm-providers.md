@@ -69,7 +69,7 @@ The answer is an **empty list**, not an error, when there is nothing to ask with
 
 When the provider itself cannot be reached, the route answers HTTP 502 and `PROVIDER_MODELS_UNREACHABLE`.
 
-`POST /api/v1/llm/test` is the sibling that tests a connection instead of listing models: it sends a minimal prompt (`Hello`) through the same adapter routing extraction uses and reports the result, including the connection error message when there is one. Both routes carry pending credentials in a body rather than a query string, so an API key never lands in an access log.
+`POST /api/v1/workspaces/{workspace_id}/settings/llm/test` is the sibling that tests a connection instead of listing models: it sends a minimal prompt (`Hello`) through the same adapter routing extraction uses and reports the result. When the connection fails, the response names the provider and a classified reason — an HTTP status, or the fact that the provider could not be reached — while the dependency's own error text goes to the log instead of the response. Both routes carry pending credentials in a body rather than a query string, so an API key never lands in an access log.
 
 ## Where the API key lives
 
