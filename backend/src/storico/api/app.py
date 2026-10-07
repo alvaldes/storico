@@ -199,7 +199,6 @@ def create_app() -> FastAPI:
     app.include_router(users.router)
     app.include_router(extraction.router)
     app.include_router(settings_routes.settings_router)
-    app.include_router(settings_routes.test_router)
 
     # Workspace routes
     app.include_router(workspaces.router)

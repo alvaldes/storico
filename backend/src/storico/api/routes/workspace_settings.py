@@ -1,4 +1,4 @@
-"""Workspace settings API routes — LLM config and prompt management.
+"""Workspace settings API routes — LLM config, connection probe and prompt management.
 
 Every route under ``/api/v1/workspaces/{workspace_id}/settings`` requires the admin
 role for the target workspace, with one deliberate exception: ``GET /llm/status`` is
@@ -11,6 +11,7 @@ the missing field names and never with a value.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Annotated
@@ -40,6 +41,7 @@ from storico.api.schemas.custom_provider import (
     CustomProviderRequest,
     CustomProviderResponse,
 )
+from storico.api.schemas.settings import LLMTestRequest, LLMTestResponse
 from storico.api.schemas.workspace_llm_config import (
     LLMConfigRequest,
     LLMConfigResponse,
@@ -167,6 +169,21 @@ async def resolve_prompt(
 # ── LLM Config endpoints ──────────────────────────────────────────
 
 
+def _transport_failure_reason(e: Exception) -> str:
+    """Classify a provider transport failure into a reason this application owns.
+
+    Returns ``HTTP {status}`` when the exception carries a response with a status code,
+    otherwise "the provider could not be reached". The exception's own text is never
+    returned: it is a dependency's message, it changes between versions, and for ``httpx``
+    errors it embeds the request URL — which one provider historically filled with the API
+    key. The single source of this classification is what keeps the model probe and the
+    connection probe from drifting apart; each caller logs the raw exception itself.
+    """
+    response = getattr(e, "response", None)
+    status_code = getattr(response, "status_code", None)
+    return f"HTTP {status_code}" if status_code is not None else "the provider could not be reached"
+
+
 @router.get("/llm")
 async def get_llm_config(
     config_repo: LLMConfigRepoDep,
@@ -256,6 +273,218 @@ async def upsert_llm_config(
 
     await config_repo.upsert(merged)
     return await resolve_llm_config(workspace.id, config_repo, settings)
+
+
+@router.post("/llm/test", response_model=LLMTestResponse)
+async def test_llm_connection(
+    body: LLMTestRequest,
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(require_admin),
+) -> LLMTestResponse:
+    """Test a connection to the specified LLM provider.
+
+    Sends a minimal prompt (\"Hello\") and returns the result.
+    Each of the four built-in providers constructs its own adapter (Ollama, Gemini, OpenAI,
+    or Anthropic) and returns the raw response or a connection error message. Any other name
+    is a workspace-registered custom provider, tested against its OpenAI-compatible endpoint
+    the same way ``_build_llm_port`` routes extraction.
+
+    The endpoint and the credential come from the request body — that is what a probe of
+    not-yet-saved values is — so the workspace gate in front of this handler is what keeps
+    that pair from being aimed at an arbitrary host by a caller with no stake here.
+    Admin only, like every other write route in this module.
+
+    On failure, the message names the provider and a classified reason only. The branch
+    catches a broad ``Exception`` rather than a transport-specific one, so a non-transport
+    failure is classified as "the provider could not be reached" — the classification is an
+    approximation, not an exact diagnosis. The detail that would tell the two apart is the
+    exception's own text, and that text is deliberately never echoed to the caller (it can
+    embed the request URL, and one provider historically put the API key in that URL); it
+    goes to the log at warning level instead, where an operator can read it and a caller
+    cannot.
+    """
+    from storico.domain.ports import LLMConfig
+
+    start = time.monotonic()
+
+    # This route takes the endpoint and the credential from the request body, so a blank one
+    # has to mean "absent" here too — otherwise a string of spaces is handed to an adapter,
+    # which is the disagreement the workspace row used to have (see ``normalize_optional``).
+    base_url = normalize_optional(body.base_url)
+    api_key = normalize_optional(body.api_key)
+
+    if body.provider == "ollama":
+        base_url = base_url or Settings.load().ollama_host
+        from storico.infrastructure.llm import OllamaAdapter
+
+        adapter = OllamaAdapter(base_url=base_url)
+        config = LLMConfig(
+            model=body.model,
+            temperature=0.1,
+            max_tokens=10,
+            timeout=30,
+        )
+
+        try:
+            response = await adapter.generate("Hello", config)
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=True,
+                message=f"Ollama responded: {response.text[:100]}",
+                model=body.model,
+                latency_ms=elapsed,
+            )
+        except Exception as e:
+            logger.warning("Connection probe failed for %s: %s", body.provider, e, exc_info=e)
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=False,
+                message=f"Ollama connection failed: {_transport_failure_reason(e)}",
+                latency_ms=elapsed,
+            )
+
+    if body.provider == "gemini":
+        if not api_key:
+            return LLMTestResponse(
+                success=False,
+                message="Gemini API key is required. Set it in workspace settings.",
+            )
+        from storico.infrastructure.llm import GeminiAdapter
+
+        adapter = GeminiAdapter(api_key=api_key)
+        config = LLMConfig(
+            model=body.model,
+            temperature=0.1,
+            max_tokens=10,
+            timeout=30,
+        )
+
+        try:
+            response = await adapter.generate("Hello", config)
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=True,
+                message=f"Gemini responded: {response.text[:100]}",
+                model=body.model,
+                latency_ms=elapsed,
+            )
+        except Exception as e:
+            logger.warning("Connection probe failed for %s: %s", body.provider, e, exc_info=e)
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=False,
+                message=f"Gemini connection failed: {_transport_failure_reason(e)}",
+                latency_ms=elapsed,
+            )
+
+    if body.provider == "openai":
+        if not api_key:
+            return LLMTestResponse(
+                success=False,
+                message="OpenAI API key is required. Set it in workspace settings.",
+            )
+        from storico.infrastructure.llm import OpenAIAdapter
+
+        adapter = OpenAIAdapter(api_key=api_key, base_url=base_url)
+        config = LLMConfig(
+            model=body.model,
+            temperature=0.1,
+            max_tokens=10,
+            timeout=30,
+        )
+
+        try:
+            response = await adapter.generate("Hello", config)
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=True,
+                message=f"OpenAI responded: {response.text[:100]}",
+                model=body.model,
+                latency_ms=elapsed,
+            )
+        except Exception as e:
+            logger.warning("Connection probe failed for %s: %s", body.provider, e, exc_info=e)
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=False,
+                message=f"OpenAI connection failed: {_transport_failure_reason(e)}",
+                latency_ms=elapsed,
+            )
+
+    if body.provider == "anthropic":
+        if not api_key:
+            return LLMTestResponse(
+                success=False,
+                message="Anthropic API key is required. Set it in workspace settings.",
+            )
+        from storico.infrastructure.llm import AnthropicAdapter
+
+        adapter = AnthropicAdapter(api_key=api_key, base_url=base_url)
+        config = LLMConfig(
+            model=body.model,
+            temperature=0.1,
+            max_tokens=10,
+            timeout=30,
+        )
+
+        try:
+            response = await adapter.generate("Hello", config)
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=True,
+                message=f"Anthropic responded: {response.text[:100]}",
+                model=body.model,
+                latency_ms=elapsed,
+            )
+        except Exception as e:
+            logger.warning("Connection probe failed for %s: %s", body.provider, e, exc_info=e)
+            elapsed = int((time.monotonic() - start) * 1000)
+            return LLMTestResponse(
+                success=False,
+                message=f"Anthropic connection failed: {_transport_failure_reason(e)}",
+                latency_ms=elapsed,
+            )
+
+    # Anything outside the four built-in names is a workspace-registered custom provider,
+    # which ``_build_llm_port`` already sends to the OpenAI-compatible adapter. Refusing it
+    # here as "not yet implemented" made this endpoint disagree with extraction about a
+    # provider extraction supports; the endpoint requirement is the same rule as there, and
+    # stated as a refused test rather than an exception because this is a probe, not a run.
+    if not base_url:
+        return LLMTestResponse(
+            success=False,
+            message=(
+                f"Base URL is required for the custom provider '{body.provider}'. "
+                "Set it in workspace settings."
+            ),
+        )
+
+    from storico.infrastructure.llm import CUSTOM_PROVIDER_PLACEHOLDER_KEY, OpenAIAdapter
+
+    adapter = OpenAIAdapter(api_key=api_key or CUSTOM_PROVIDER_PLACEHOLDER_KEY, base_url=base_url)
+    config = LLMConfig(
+        model=body.model,
+        temperature=0.1,
+        max_tokens=10,
+        timeout=30,
+    )
+
+    try:
+        response = await adapter.generate("Hello", config)
+        elapsed = int((time.monotonic() - start) * 1000)
+        return LLMTestResponse(
+            success=True,
+            message=f"{body.provider} responded: {response.text[:100]}",
+            model=body.model,
+            latency_ms=elapsed,
+        )
+    except Exception as e:
+        logger.warning("Connection probe failed for %s: %s", body.provider, e, exc_info=e)
+        elapsed = int((time.monotonic() - start) * 1000)
+        return LLMTestResponse(
+            success=False,
+            message=f"{body.provider} connection failed: {_transport_failure_reason(e)}",
+            latency_ms=elapsed,
+        )
 
 
 # ── Custom provider endpoints ─────────────────────────────────────
@@ -685,7 +914,8 @@ async def list_available_models(
 
     ``POST`` rather than ``GET`` with query parameters because the pending
     selection carries an API key, and a query string writes it into access logs.
-    The sibling ``POST /api/v1/llm/test`` carries pending credentials the same way.
+    The sibling ``POST /llm/test`` in this module carries pending credentials the
+    same way.
     """
     workspace, _ = ctx
     probe = _resolve_probe(body, await config_repo.get(workspace.id))
@@ -702,12 +932,7 @@ async def list_available_models(
         # key in that URL. It goes to the log instead, where an operator can read it and a caller
         # cannot.
         logger.warning("Model probe failed for %s: %s", probe.provider, e, exc_info=e)
-        response = getattr(e, "response", None)
-        reason = (
-            f"HTTP {response.status_code}"
-            if response is not None
-            else "the provider could not be reached"
-        )
+        reason = _transport_failure_reason(e)
         raise ApiError(
             status_code=status.HTTP_502_BAD_GATEWAY,
             error_code=PROVIDER_MODELS_UNREACHABLE,

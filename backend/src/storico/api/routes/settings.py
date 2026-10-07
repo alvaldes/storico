@@ -1,8 +1,7 @@
-"""Settings API routes — user preferences CRUD + LLM test + account deletion."""
+"""Settings API routes — user preferences CRUD + account deletion."""
 
 from __future__ import annotations
 
-import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
@@ -15,14 +14,10 @@ from storico.api.schemas.settings import (
     RETIRED_EXPORT_FORMATS,
     AppSettings,
     DeleteAccountResponse,
-    LLMTestRequest,
-    LLMTestResponse,
     UserPreferencesResponse,
     UserPreferencesUpdate,
 )
-from storico.config.settings import Settings
 from storico.domain.entities import User
-from storico.domain.services.llm_config_readiness import normalize_optional
 from storico.infrastructure.database.repositories import (
     SQLAlchemyTaskInvalidationRepository,
     SQLAlchemyUserPreferencesRepository,
@@ -133,207 +128,6 @@ async def update_settings(
         preferences=AppSettings(**_for_schema(prefs.preferences)),
         updated_at=prefs.updated_at,
     )
-
-
-# ── LLM Test Router ───────────────────────────────────────────────────────────
-
-test_router = APIRouter(
-    prefix="/api/v1/llm",
-    tags=["llm"],
-)
-
-
-@test_router.post("/test", response_model=LLMTestResponse)
-async def test_llm_connection(
-    body: LLMTestRequest,
-    _current_user: CurrentUserDep,
-) -> LLMTestResponse:
-    """Test a connection to the specified LLM provider.
-
-    Sends a minimal prompt (\"Hello\") and returns the result.
-    Each of the four built-in providers constructs its own adapter (Ollama, Gemini, OpenAI,
-    or Anthropic) and returns the raw response or a connection error message. Any other name
-    is a workspace-registered custom provider, tested against its OpenAI-compatible endpoint
-    the same way ``_build_llm_port`` routes extraction.
-    """
-    from storico.domain.ports import LLMConfig
-
-    start = time.monotonic()
-
-    # This route takes the endpoint and the credential from the request body, so a blank one
-    # has to mean "absent" here too — otherwise a string of spaces is handed to an adapter,
-    # which is the disagreement the workspace row used to have (see ``normalize_optional``).
-    base_url = normalize_optional(body.base_url)
-    api_key = normalize_optional(body.api_key)
-
-    if body.provider == "ollama":
-        base_url = base_url or Settings.load().ollama_host
-        from storico.infrastructure.llm import OllamaAdapter
-
-        adapter = OllamaAdapter(base_url=base_url)
-        config = LLMConfig(
-            model=body.model,
-            temperature=0.1,
-            max_tokens=10,
-            timeout=30,
-        )
-
-        try:
-            response = await adapter.generate("Hello", config)
-            elapsed = int((time.monotonic() - start) * 1000)
-            return LLMTestResponse(
-                success=True,
-                message=f"Ollama responded: {response.text[:100]}",
-                model=body.model,
-                latency_ms=elapsed,
-            )
-        except Exception as e:
-            elapsed = int((time.monotonic() - start) * 1000)
-            return LLMTestResponse(
-                success=False,
-                message=f"Ollama connection failed: {e}",
-                latency_ms=elapsed,
-            )
-
-    if body.provider == "gemini":
-        if not api_key:
-            return LLMTestResponse(
-                success=False,
-                message="Gemini API key is required. Set it in workspace settings.",
-            )
-        from storico.infrastructure.llm import GeminiAdapter
-
-        adapter = GeminiAdapter(api_key=api_key)
-        config = LLMConfig(
-            model=body.model,
-            temperature=0.1,
-            max_tokens=10,
-            timeout=30,
-        )
-
-        try:
-            response = await adapter.generate("Hello", config)
-            elapsed = int((time.monotonic() - start) * 1000)
-            return LLMTestResponse(
-                success=True,
-                message=f"Gemini responded: {response.text[:100]}",
-                model=body.model,
-                latency_ms=elapsed,
-            )
-        except Exception as e:
-            elapsed = int((time.monotonic() - start) * 1000)
-            return LLMTestResponse(
-                success=False,
-                message=f"Gemini connection failed: {e}",
-                latency_ms=elapsed,
-            )
-
-    if body.provider == "openai":
-        if not api_key:
-            return LLMTestResponse(
-                success=False,
-                message="OpenAI API key is required. Set it in workspace settings.",
-            )
-        from storico.infrastructure.llm import OpenAIAdapter
-
-        adapter = OpenAIAdapter(api_key=api_key, base_url=base_url)
-        config = LLMConfig(
-            model=body.model,
-            temperature=0.1,
-            max_tokens=10,
-            timeout=30,
-        )
-
-        try:
-            response = await adapter.generate("Hello", config)
-            elapsed = int((time.monotonic() - start) * 1000)
-            return LLMTestResponse(
-                success=True,
-                message=f"OpenAI responded: {response.text[:100]}",
-                model=body.model,
-                latency_ms=elapsed,
-            )
-        except Exception as e:
-            elapsed = int((time.monotonic() - start) * 1000)
-            return LLMTestResponse(
-                success=False,
-                message=f"OpenAI connection failed: {e}",
-                latency_ms=elapsed,
-            )
-
-    if body.provider == "anthropic":
-        if not api_key:
-            return LLMTestResponse(
-                success=False,
-                message="Anthropic API key is required. Set it in workspace settings.",
-            )
-        from storico.infrastructure.llm import AnthropicAdapter
-
-        adapter = AnthropicAdapter(api_key=api_key, base_url=base_url)
-        config = LLMConfig(
-            model=body.model,
-            temperature=0.1,
-            max_tokens=10,
-            timeout=30,
-        )
-
-        try:
-            response = await adapter.generate("Hello", config)
-            elapsed = int((time.monotonic() - start) * 1000)
-            return LLMTestResponse(
-                success=True,
-                message=f"Anthropic responded: {response.text[:100]}",
-                model=body.model,
-                latency_ms=elapsed,
-            )
-        except Exception as e:
-            elapsed = int((time.monotonic() - start) * 1000)
-            return LLMTestResponse(
-                success=False,
-                message=f"Anthropic connection failed: {e}",
-                latency_ms=elapsed,
-            )
-
-    # Anything outside the four built-in names is a workspace-registered custom provider,
-    # which ``_build_llm_port`` already sends to the OpenAI-compatible adapter. Refusing it
-    # here as "not yet implemented" made this endpoint disagree with extraction about a
-    # provider extraction supports; the endpoint requirement is the same rule as there, and
-    # stated as a refused test rather than an exception because this is a probe, not a run.
-    if not base_url:
-        return LLMTestResponse(
-            success=False,
-            message=(
-                f"Base URL is required for the custom provider '{body.provider}'. "
-                "Set it in workspace settings."
-            ),
-        )
-
-    from storico.infrastructure.llm import CUSTOM_PROVIDER_PLACEHOLDER_KEY, OpenAIAdapter
-
-    adapter = OpenAIAdapter(api_key=api_key or CUSTOM_PROVIDER_PLACEHOLDER_KEY, base_url=base_url)
-    config = LLMConfig(
-        model=body.model,
-        temperature=0.1,
-        max_tokens=10,
-        timeout=30,
-    )
-
-    try:
-        response = await adapter.generate("Hello", config)
-        elapsed = int((time.monotonic() - start) * 1000)
-        return LLMTestResponse(
-            success=True,
-            message=f"{body.provider} responded: {response.text[:100]}",
-            model=body.model,
-            latency_ms=elapsed,
-        )
-    except Exception as e:
-        elapsed = int((time.monotonic() - start) * 1000)
-        return LLMTestResponse(
-            success=False,
-            message=f"{body.provider} connection failed: {e}",
-            latency_ms=elapsed,
-        )
 
 
 # ── Account Deletion ──────────────────────────────────────────────────────────
