@@ -291,40 +291,6 @@ _Sin parámetros._
 | --- | --- | --- |
 | `200` | Successful Response | — |
 
-## llm
-
-### `POST` `/api/v1/llm/test`
-
-Test Llm Connection
-
-Test a connection to the specified LLM provider.
-
-Sends a minimal prompt ("Hello") and returns the result.
-Each of the four built-in providers constructs its own adapter (Ollama, Gemini, OpenAI,
-or Anthropic) and returns the raw response or a connection error message. Any other name
-is a workspace-registered custom provider, tested against its OpenAI-compatible endpoint
-the same way ``_build_llm_port`` routes extraction.
-
-**Parámetros**
-
-_Sin parámetros._
-
-**Cuerpo de la petición** (`application/json`)
-
-| Campo | Tipo | Obligatorio |
-| --- | --- | --- |
-| `provider` | `string` | sí |
-| `baseUrl` | `string | null` | no |
-| `apiKey` | `string | null` | no |
-| `model` | `string` | no |
-
-**Respuestas**
-
-| Estado | Descripción | Esquema |
-| --- | --- | --- |
-| `200` | Successful Response | `LLMTestResponse` |
-| `422` | Validation Error | `HTTPValidationError` |
-
 ## projects
 
 ### `GET` `/api/v1/workspaces/{workspace_id}/projects/`
@@ -1135,7 +1101,8 @@ probed, which is what keeps the persisted state observable.
 
 ``POST`` rather than ``GET`` with query parameters because the pending
 selection carries an API key, and a query string writes it into access logs.
-The sibling ``POST /api/v1/llm/test`` carries pending credentials the same way.
+The sibling ``POST /llm/test`` in this module carries pending credentials the
+same way.
 
 **Parámetros**
 
@@ -1178,6 +1145,45 @@ An unconfigured workspace resolves to Ollama, so its single gap is the model.
 | Estado | Descripción | Esquema |
 | --- | --- | --- |
 | `200` | Successful Response | `LLMConfigStatusResponse` |
+| `422` | Validation Error | `HTTPValidationError` |
+
+### `POST` `/api/v1/workspaces/{workspace_id}/settings/llm/test`
+
+Test Llm Connection
+
+Test a connection to the specified LLM provider.
+
+Sends a minimal prompt ("Hello") and returns the result.
+Each of the four built-in providers constructs its own adapter (Ollama, Gemini, OpenAI,
+or Anthropic) and returns the raw response or a connection error message. Any other name
+is a workspace-registered custom provider, tested against its OpenAI-compatible endpoint
+the same way ``_build_llm_port`` routes extraction.
+
+The endpoint and the credential come from the request body — that is what a probe of
+not-yet-saved values is — so the workspace gate in front of this handler is what keeps
+that pair from being aimed at an arbitrary host by a caller with no stake here.
+Admin only, like every other write route in this module.
+
+**Parámetros**
+
+| Nombre | Ubicación | Obligatorio | Tipo |
+| --- | --- | --- | --- |
+| `workspace_id` | `path` | sí | `string` |
+
+**Cuerpo de la petición** (`application/json`)
+
+| Campo | Tipo | Obligatorio |
+| --- | --- | --- |
+| `provider` | `string` | sí |
+| `baseUrl` | `string | null` | no |
+| `apiKey` | `string | null` | no |
+| `model` | `string` | no |
+
+**Respuestas**
+
+| Estado | Descripción | Esquema |
+| --- | --- | --- |
+| `200` | Successful Response | `LLMTestResponse` |
 | `422` | Validation Error | `HTTPValidationError` |
 
 ### `GET` `/api/v1/workspaces/{workspace_id}/settings/prompts`

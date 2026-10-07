@@ -87,7 +87,7 @@ class UserPreferencesUpdate(CamelCaseModel):
 
 
 class LLMTestRequest(CamelCaseModel):
-    """Request body for POST /llm/test."""
+    """Request body for POST /api/v1/workspaces/{workspace_id}/settings/llm/test."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -115,7 +115,7 @@ class LLMTestRequest(CamelCaseModel):
 
 
 class LLMTestResponse(CamelCaseModel):
-    """Response returned by POST /llm/test."""
+    """Response returned by POST /api/v1/workspaces/{workspace_id}/settings/llm/test."""
 
     success: bool
     message: str
