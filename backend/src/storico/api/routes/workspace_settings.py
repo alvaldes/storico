@@ -169,6 +169,21 @@ async def resolve_prompt(
 # ── LLM Config endpoints ──────────────────────────────────────────
 
 
+def _transport_failure_reason(e: Exception) -> str:
+    """Classify a provider transport failure into a reason this application owns.
+
+    Returns ``HTTP {status}`` when the exception carries a response with a status code,
+    otherwise "the provider could not be reached". The exception's own text is never
+    returned: it is a dependency's message, it changes between versions, and for ``httpx``
+    errors it embeds the request URL — which one provider historically filled with the API
+    key. The single source of this classification is what keeps the model probe and the
+    connection probe from drifting apart; each caller logs the raw exception itself.
+    """
+    response = getattr(e, "response", None)
+    status_code = getattr(response, "status_code", None)
+    return f"HTTP {status_code}" if status_code is not None else "the provider could not be reached"
+
+
 @router.get("/llm")
 async def get_llm_config(
     config_repo: LLMConfigRepoDep,
@@ -277,6 +292,15 @@ async def test_llm_connection(
     not-yet-saved values is — so the workspace gate in front of this handler is what keeps
     that pair from being aimed at an arbitrary host by a caller with no stake here.
     Admin only, like every other write route in this module.
+
+    On failure, the message names the provider and a classified reason only. The branch
+    catches a broad ``Exception`` rather than a transport-specific one, so a non-transport
+    failure is classified as "the provider could not be reached" — the classification is an
+    approximation, not an exact diagnosis. The detail that would tell the two apart is the
+    exception's own text, and that text is deliberately never echoed to the caller (it can
+    embed the request URL, and one provider historically put the API key in that URL); it
+    goes to the log at warning level instead, where an operator can read it and a caller
+    cannot.
     """
     from storico.domain.ports import LLMConfig
 
@@ -310,10 +334,11 @@ async def test_llm_connection(
                 latency_ms=elapsed,
             )
         except Exception as e:
+            logger.warning("Connection probe failed for %s: %s", body.provider, e, exc_info=e)
             elapsed = int((time.monotonic() - start) * 1000)
             return LLMTestResponse(
                 success=False,
-                message=f"Ollama connection failed: {e}",
+                message=f"Ollama connection failed: {_transport_failure_reason(e)}",
                 latency_ms=elapsed,
             )
 
@@ -343,10 +368,11 @@ async def test_llm_connection(
                 latency_ms=elapsed,
             )
         except Exception as e:
+            logger.warning("Connection probe failed for %s: %s", body.provider, e, exc_info=e)
             elapsed = int((time.monotonic() - start) * 1000)
             return LLMTestResponse(
                 success=False,
-                message=f"Gemini connection failed: {e}",
+                message=f"Gemini connection failed: {_transport_failure_reason(e)}",
                 latency_ms=elapsed,
             )
 
@@ -376,10 +402,11 @@ async def test_llm_connection(
                 latency_ms=elapsed,
             )
         except Exception as e:
+            logger.warning("Connection probe failed for %s: %s", body.provider, e, exc_info=e)
             elapsed = int((time.monotonic() - start) * 1000)
             return LLMTestResponse(
                 success=False,
-                message=f"OpenAI connection failed: {e}",
+                message=f"OpenAI connection failed: {_transport_failure_reason(e)}",
                 latency_ms=elapsed,
             )
 
@@ -409,10 +436,11 @@ async def test_llm_connection(
                 latency_ms=elapsed,
             )
         except Exception as e:
+            logger.warning("Connection probe failed for %s: %s", body.provider, e, exc_info=e)
             elapsed = int((time.monotonic() - start) * 1000)
             return LLMTestResponse(
                 success=False,
-                message=f"Anthropic connection failed: {e}",
+                message=f"Anthropic connection failed: {_transport_failure_reason(e)}",
                 latency_ms=elapsed,
             )
 
@@ -450,10 +478,11 @@ async def test_llm_connection(
             latency_ms=elapsed,
         )
     except Exception as e:
+        logger.warning("Connection probe failed for %s: %s", body.provider, e, exc_info=e)
         elapsed = int((time.monotonic() - start) * 1000)
         return LLMTestResponse(
             success=False,
-            message=f"{body.provider} connection failed: {e}",
+            message=f"{body.provider} connection failed: {_transport_failure_reason(e)}",
             latency_ms=elapsed,
         )
 
@@ -903,12 +932,7 @@ async def list_available_models(
         # key in that URL. It goes to the log instead, where an operator can read it and a caller
         # cannot.
         logger.warning("Model probe failed for %s: %s", probe.provider, e, exc_info=e)
-        response = getattr(e, "response", None)
-        reason = (
-            f"HTTP {response.status_code}"
-            if response is not None
-            else "the provider could not be reached"
-        )
+        reason = _transport_failure_reason(e)
         raise ApiError(
             status_code=status.HTTP_502_BAD_GATEWAY,
             error_code=PROVIDER_MODELS_UNREACHABLE,

@@ -1164,6 +1164,15 @@ not-yet-saved values is — so the workspace gate in front of this handler is wh
 that pair from being aimed at an arbitrary host by a caller with no stake here.
 Admin only, like every other write route in this module.
 
+On failure, the message names the provider and a classified reason only. The branch
+catches a broad ``Exception`` rather than a transport-specific one, so a non-transport
+failure is classified as "the provider could not be reached" — the classification is an
+approximation, not an exact diagnosis. The detail that would tell the two apart is the
+exception's own text, and that text is deliberately never echoed to the caller (it can
+embed the request URL, and one provider historically put the API key in that URL); it
+goes to the log at warning level instead, where an operator can read it and a caller
+cannot.
+
 **Parámetros**
 
 | Nombre | Ubicación | Obligatorio | Tipo |
