@@ -220,6 +220,52 @@ shows.
 - **THEN** the localized "No tasks yet" copy is absent
 - **AND** it appears only once a read has settled with no tasks for the filters the bar shows
 
+### Requirement: Kanban Cards Name Their Context
+
+Every board card MUST name the project and the story its task belongs to, as chips in the card's
+metadata row, ordered **project → story → the task's own labels → the version**. The two context
+chips MUST use the same badge variant and sizing as the labels and the version chip so the row reads
+as one set, and MUST be visually muted relative to the task's own labels: the labels describe what
+the task is, the context chips say where it came from.
+
+The story chip MUST show the same short story identifier the story list and the story detail surface
+show, reused from that one implementation rather than sliced at the call site, so the surfaces cannot
+drift into two different names for one story.
+
+The project chip MUST show the project's name and MUST NOT be a link: the card's single click target
+is its title. A long name MUST be bounded and ellipsized, with the full value available on hover, so
+that it cannot push the labels or the version chip out of the card.
+
+A chip whose data the task response does not carry MUST NOT render — no empty badge and no
+placeholder.
+
+#### Scenario: A card shows its context, its labels and its version in order
+
+- **GIVEN** a task whose response carries a project label, a story id, labels and a version number
+- **WHEN** its card renders on the board
+- **THEN** its metadata row shows the project name, the story's short identifier, its labels and its version, in that order
+
+#### Scenario: A long project name does not break the row
+
+- **GIVEN** a task whose project name is long enough to overflow a card column
+- **WHEN** its card renders
+- **THEN** the project chip is bounded and its visible text is ellipsized
+- **AND** the full name is available on hover
+- **AND** the labels and the version chip remain in the row
+
+#### Scenario: A missing label renders no chip
+
+- **GIVEN** a task whose response carries no project label
+- **WHEN** its card renders
+- **THEN** no project chip is rendered
+- **AND** its story chip, its labels and its version render as they otherwise would
+
+#### Scenario: The story chip agrees with the story surfaces
+
+- **GIVEN** a story shown in the story list and one of its tasks shown on the board
+- **WHEN** both render their short story identifier
+- **THEN** the two strings are identical, produced by the same function
+
 ### Requirement: Kanban Drag-and-Drop Status Update
 
 When a task is dragged from one column to another and dropped, the island MUST

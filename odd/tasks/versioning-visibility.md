@@ -116,10 +116,16 @@ Two measured limits that shape the design, both pre-existing and neither introdu
 
 ## Limits and follow-ups
 
-- **Regenerating the API reference is part of any unit that changes a response schema.**
-  `tests/test_api_reference.py` fails otherwise, and the generator writes outside the unit's own
-  files; the worker must be given those two page paths in its allowed surfaces (recorded policy:
-  ask first only when a render would touch a file outside that pair).
+- **Regenerating the API reference is part of a unit only when the change alters what the generator
+  renders** — a new or renamed component schema, or a route whose shape or summary moves. A field
+  added to an existing response model does **not** change the rendered pages: the generator names
+  component schemas without expanding their fields, so both pages stay byte-identical and
+  `tests/test_api_reference.py` passes unedited. **Corrected on 2026-10-08:** this note used to claim
+  the test fails otherwise, and the claim was false for field-level changes — measured when
+  `TaskResponse` gained `project_id`/`project_name` (`dbbfab8`, feature `kanban-card-project-story`),
+  where `python -m storico.scripts.render_api_reference` reported "already current" with zero diff.
+  The two page paths still belong in a worker's surfaces whenever a render is expected, because the
+  generator writes outside the unit's own files.
 - The board's `size=100` cap is unchanged (D-non-goal) and is the reason the cascade is strict:
   project → story → version, with no workspace-wide story select.
 - `version_summary` is projected on three read paths; a future write path that returns

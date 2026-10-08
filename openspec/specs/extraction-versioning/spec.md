@@ -229,7 +229,10 @@ reads one specific version of that story — a frozen version's tasks stay addre
 refuse an `extraction_id` that does not belong to the requested story. A story with no
 `completed` version MUST answer an empty list, not an error. Every task a task read returns MUST
 carry `extraction_id`, the run that produced it, and `version_number`, the number of the version
-it belongs to, resolved for the whole page in one batched lookup.
+it belongs to, resolved for the whole page in one batched lookup. It MUST also carry its
+`project_id` and `project_name`, resolved for the whole page from the page's distinct story ids in
+one batched read, and MUST answer `null` for both when the story cannot be resolved rather than
+failing the read.
 
 #### Scenario: A second completed run does not double the story's task list
 
