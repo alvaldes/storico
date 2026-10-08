@@ -7,6 +7,7 @@ workspace — ``POST /`` included, which resolves the walk from its ``user_story
 body field before it persists anything.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -794,21 +795,31 @@ class TestTaskVersionFields:
 
 class TestTaskStoryContext:
     """The card's context-chip data (D14 of feature ``kanban-card-project-story``,
-    widened by D19 of feature ``kanban-context-tooltips``).
+    widened by D19 of feature ``kanban-context-tooltips`` and by D24 of feature
+    ``kanban-project-icons``).
 
-    ``TaskResponse`` gains ``project_id``, ``project_name`` and the story's own
-    ``story_raw_text`` (the tooltip's sentence); every construction site in the
-    tasks route resolves them from one batched read, so the board's card can
-    name where the task came from and what the story says, and a ``PUT``
-    response merged into a moved card cannot erase that with a ``null`` — the
-    same posture the version chip's fields (D8) already take.
+    ``TaskResponse`` gains ``project_id``, ``project_name``, the story's own
+    ``story_raw_text`` (the tooltip's sentence) and the project's own icon
+    name; every construction site in the tasks route resolves them from one
+    batched read, so the board's card can name where the task came from, what
+    the story says and which icon the project picked, and a ``PUT`` response
+    merged into a moved card cannot erase that with a ``null`` — the same
+    posture the version chip's fields (D8) already take.
     """
+
+    async def _give_the_project_its_icon(self, db_session: AsyncSession, project_id: UUID) -> None:
+        """Re-save the seeded project with an icon so the read has one to name."""
+        project_repo = SQLAlchemyProjectRepository(db_session)
+        project = await project_repo.find_by_id(project_id)
+        assert project is not None
+        await project_repo.save(replace(project, icon="rocket-launch"))
 
     async def test_list_items_carry_the_story_context(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ):
         """The list path resolves the story context in one batched call."""
         seeded = await seed_workspace()
+        await self._give_the_project_its_icon(db_session, seeded.project_id)
         task = await seed_task(db_session, seeded.story_id, "Labelled task")
         story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
 
@@ -818,6 +829,7 @@ class TestTaskStoryContext:
         item = next(i for i in response.json()["items"] if i["id"] == str(task.id))
         assert item["project_id"] == str(seeded.project_id)
         assert item["project_name"] == "Seeded Project"
+        assert item["project_icon"] == "rocket-launch"
         assert item["story_raw_text"] == story.raw_text
 
     async def test_get_carries_the_story_context(
@@ -825,6 +837,7 @@ class TestTaskStoryContext:
     ):
         """The single-task read names the story context too."""
         seeded = await seed_workspace()
+        await self._give_the_project_its_icon(db_session, seeded.project_id)
         task = await seed_task(db_session, seeded.story_id, "Single task")
         story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
 
@@ -833,6 +846,7 @@ class TestTaskStoryContext:
         assert response.status_code == 200
         assert response.json()["project_id"] == str(seeded.project_id)
         assert response.json()["project_name"] == "Seeded Project"
+        assert response.json()["project_icon"] == "rocket-launch"
         assert response.json()["story_raw_text"] == story.raw_text
 
     async def test_a_status_change_keeps_the_story_context_on_the_put_response(
@@ -846,6 +860,7 @@ class TestTaskStoryContext:
         guard against.
         """
         seeded = await seed_workspace()
+        await self._give_the_project_its_icon(db_session, seeded.project_id)
         task = await seed_task(db_session, seeded.story_id, "Moved task")
         story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
 
@@ -859,6 +874,7 @@ class TestTaskStoryContext:
         assert data["status"] == "todo"
         assert data["project_id"] == str(seeded.project_id)
         assert data["project_name"] == "Seeded Project"
+        assert data["project_icon"] == "rocket-launch"
         assert data["story_raw_text"] == story.raw_text
 
     async def test_an_unresolvable_story_answers_null_fields_not_a_failure(
@@ -898,7 +914,29 @@ class TestTaskStoryContext:
         item = next(i for i in response.json()["items"] if i["id"] == str(task.id))
         assert item["project_id"] is None
         assert item["project_name"] is None
+        assert item["project_icon"] is None
         assert item["story_raw_text"] is None
+
+    async def test_a_project_without_an_icon_answers_a_null_icon_not_a_null_project(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """An icon-less project is an ordinary project, not an absent one.
+
+        ``icon`` is nullable on the model while ``name`` is not (decision D22
+        of feature ``kanban-project-icons``): the seeded project carries no
+        icon, so the field answers ``None`` while the project label stays —
+        the card keeps its project chip and renders the app's fallback icon.
+        """
+        seeded = await seed_workspace()
+        task = await seed_task(db_session, seeded.story_id, "Bare project task")
+
+        response = await authed_client.get("/api/v1/tasks/")
+
+        assert response.status_code == 200
+        item = next(i for i in response.json()["items"] if i["id"] == str(task.id))
+        assert item["project_id"] == str(seeded.project_id)
+        assert item["project_name"] == "Seeded Project"
+        assert item["project_icon"] is None
 
 
 class TestGetTask:

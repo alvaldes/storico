@@ -29,14 +29,28 @@ class StoryCardContext:
     What a board card needs to name its story and where it came from: the
     project label (decision D14 of feature ``kanban-card-project-story``)
     plus the story's own sentence (decision D19 of feature
-    ``kanban-context-tooltips``), whose purpose is the story chip's tooltip.
-    Like ``StoryContextRow`` above, the projection selects the columns the
-    caller reads instead of hydrating whole ``UserStory`` rows.
+    ``kanban-context-tooltips``), whose purpose is the story chip's tooltip,
+    plus the project's own icon name (decision D24 of feature
+    ``kanban-project-icons``) — the same kebab-case name the project pages
+    render through ``IconDisplay``. Like ``StoryContextRow`` above, the
+    projection selects the columns the caller reads instead of hydrating
+    whole ``UserStory`` rows.
     """
 
     project_id: UUID
     project_name: str
-    story_raw_text: str
+    # ``icon`` is nullable on the model while ``name`` is not, so an icon-less
+    # project is an ordinary project (decision D22): the three values are
+    # independent facts about one story's project, and only the icon may be
+    # absent — a ``None`` icon never takes the label's place.
+    project_icon: str | None
+    # ``str | None`` because the repository answers ``None`` for a story whose
+    # sentence is empty: the column is NOT NULL but carries no ``min_length``,
+    # so an empty string is reachable and must read as "no sentence" rather
+    # than as an empty tooltip. The annotation said ``str`` while the mapping
+    # already produced ``None`` — a type that lied about its own values until a
+    # reviewer compared the two.
+    story_raw_text: str | None
 
 
 class UserStoryRepository(ABC):
@@ -139,15 +153,18 @@ class UserStoryRepository(ABC):
 
     @abstractmethod
     async def story_context_for(self, story_ids: list[UUID]) -> dict[UUID, StoryCardContext]:
-        """Batch story → its card context — project label plus the story's text, one statement.
+        """Batch story → its card context — project label, icon and story text, one statement.
 
         The card's context-chip data: the project label is decision D14 of
         feature ``kanban-card-project-story``; the story's ``raw_text`` joined
         into the same statement is decision D19 of feature
         ``kanban-context-tooltips`` — the story chip's tooltip needs the full
-        sentence the story list already shows, and the read that was already
-        walking ``task → story → project`` simply answers one more column.
-        Never a second query and never a per-task lookup.
+        sentence the story list already shows; and the project's ``icon`` in
+        the same statement is decision D24 of feature
+        ``kanban-project-icons`` — the card draws the project's own icon, not
+        a hardcoded one. The read that was already walking
+        ``task → story → project`` simply answers one more column. Never a
+        second query and never a per-task lookup.
 
         This is a repository-level read by design, not a lazy ORM traversal:
         the route sees domain entities, which carry no relationships to lean

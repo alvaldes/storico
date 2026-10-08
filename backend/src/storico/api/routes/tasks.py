@@ -121,13 +121,14 @@ async def _story_context(
     """Resolve one task's story context through the batched read (one id, one call).
 
     The card's context-chip data: the project label is decision D14 of feature
-    ``kanban-card-project-story`` and the story's sentence is decision D19 of
-    feature ``kanban-context-tooltips``. The single-task handlers go through
-    the same batched port method the list page uses, just with one id — so a
-    ``PUT`` response merged into a moved card cannot erase a chip with a
-    ``null``, the same guarantee the version fields take from
-    ``_version_number``. An unresolvable story answers ``None``, never a
-    failure and never a fabricated label or an empty tooltip.
+    ``kanban-card-project-story``, the story's sentence is decision D19 of
+    feature ``kanban-context-tooltips``, and the project's own icon name is
+    decision D24 of feature ``kanban-project-icons``. The single-task handlers
+    go through the same batched port method the list page uses, just with one
+    id — so a ``PUT`` response merged into a moved card cannot erase a chip
+    with a ``null``, the same guarantee the version fields take from
+    ``_version_number``. An unresolvable story answers ``None`` for all four
+    values, never a failure and never a fabricated label or an empty tooltip.
     """
     contexts = await story_repo.story_context_for([story_id])
     return contexts.get(story_id)
@@ -362,8 +363,9 @@ async def list_tasks(
     # One batched story-context read for the whole page's distinct story ids —
     # the context chips' data (D14 of feature ``kanban-card-project-story``,
     # widened by D19 of feature ``kanban-context-tooltips`` with the story's
-    # own sentence), never one lookup per card; a page whose tasks all belong
-    # to one story still costs exactly one statement.
+    # own sentence and by D24 of feature ``kanban-project-icons`` with the
+    # project's own icon), never one lookup per card; a page whose tasks all
+    # belong to one story still costs exactly one statement.
     contexts = await story_repo.story_context_for(list({t.user_story_id for t in page}))
     items = []
     for t in page:
@@ -385,6 +387,7 @@ async def list_tasks(
                 story_raw_text=context.story_raw_text if context else None,
                 project_id=context.project_id if context else None,
                 project_name=context.project_name if context else None,
+                project_icon=context.project_icon if context else None,
             )
         )
     return PaginatedResponse(
@@ -431,6 +434,7 @@ async def get_task(
         story_raw_text=context.story_raw_text if context else None,
         project_id=context.project_id if context else None,
         project_name=context.project_name if context else None,
+        project_icon=context.project_icon if context else None,
     )
 
 
@@ -544,6 +548,7 @@ async def update_task(
         story_raw_text=context.story_raw_text if context else None,
         project_id=context.project_id if context else None,
         project_name=context.project_name if context else None,
+        project_icon=context.project_icon if context else None,
     )
 
 

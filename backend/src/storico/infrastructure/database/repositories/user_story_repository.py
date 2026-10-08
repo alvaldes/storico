@@ -204,12 +204,13 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
         return [StoryContextRow(id=row.id, raw_text=row.raw_text) for row in result]
 
     async def story_context_for(self, story_ids: list[UUID]) -> dict[UUID, StoryCardContext]:
-        """Batch story → card context (project label plus the story's text) — one statement.
+        """Batch story → card context (project label, icon and story text) — one statement.
 
         The port's docstring carries the why (D14 of feature
         ``kanban-card-project-story``, widened by D19 of feature
-        ``kanban-context-tooltips``); the statement itself selects only the
-        four columns the mapping reads, never whole ORM rows.
+        ``kanban-context-tooltips`` and by D24 of feature
+        ``kanban-project-icons``); the statement itself selects only the
+        five columns the mapping reads, never whole ORM rows.
         """
         if not story_ids:
             return {}
@@ -219,6 +220,7 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
                 UserStoryModel.project_id,
                 UserStoryModel.raw_text,
                 ProjectModel.name,
+                ProjectModel.icon,
             )
             .join(ProjectModel, UserStoryModel.project_id == ProjectModel.id)
             .where(UserStoryModel.id.in_(story_ids))
@@ -228,6 +230,11 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
             row.id: StoryCardContext(
                 project_id=row.project_id,
                 project_name=row.name,
+                # An absent icon is an ordinary project without one (D22), never
+                # a substitute for the label: the three values are independent
+                # facts about the same story's project, and only the icon may
+                # degrade — exactly how ``story_raw_text`` behaves below.
+                project_icon=row.icon,
                 # An empty sentence is a missing sentence, never an empty tooltip —
                 # but it must not cost the caller the project label, which is an
                 # independent fact about the same story. Only the text degrades.

@@ -117,6 +117,16 @@ class TaskResponse(BaseModel):
     story the read cannot resolve answers ``None`` rather than failing — the
     card simply loses its chip.
 
+    ``project_icon`` is the project's own icon name (decision D24 of feature
+    ``kanban-project-icons``), the same kebab-case name the project pages
+    render through ``IconDisplay``, riding the same batched read as the
+    label — one more column of the one statement. It is nullable because the
+    column is: a project without an icon answers ``None`` for the icon and
+    keeps its ``project_name`` (decision D22) — the three values are
+    independent facts about one story's project, and only the icon may be
+    absent; the frontend falls back to the app's own default, never to the
+    label.
+
     ``story_raw_text`` is the story chip's tooltip data (decision D19 of
     feature ``kanban-context-tooltips``): the story's full sentence, the same
     column the story response names ``raw_text`` — projected on the tasks
@@ -142,4 +152,5 @@ class TaskResponse(BaseModel):
     version_number: int | None = None
     project_id: UUID | None = None
     project_name: str | None = None
+    project_icon: str | None = None
     story_raw_text: str | None = None
