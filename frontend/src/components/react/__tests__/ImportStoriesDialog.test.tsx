@@ -402,6 +402,49 @@ describe('ImportStoriesDialog', () => {
     expect(screen.queryByText(/2097152/)).not.toBeInTheDocument();
   });
 
+  it('refuses a file over the 2 MB cap locally, before any request leaves the browser', async () => {
+    const user = userEvent.setup();
+    const oversized = makeFile('big.csv');
+    Object.defineProperty(oversized, 'size', { value: 3 * 1024 * 1024 });
+
+    renderDialog();
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, oversized);
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+
+    // The same sentence the backend's 413 renders, with the same cap — but the
+    // upload never happens: the refusal is local.
+    expect(await screen.findByText('The file is larger than 2 MB.')).toBeInTheDocument();
+    expect(importStories).not.toHaveBeenCalled();
+  });
+
+  it('refuses an oversized file at selection time and clears a stale success report', async () => {
+    const user = userEvent.setup();
+    importStories.mockResolvedValue({
+      created: 3,
+      skipped: 0,
+      totalRows: 3,
+      duplicates: [],
+      storyIds: ['s1', 's2', 's3'],
+    });
+    const oversized = makeFile('big.csv');
+    Object.defineProperty(oversized, 'size', { value: 3 * 1024 * 1024 });
+
+    renderDialog();
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, makeFile());
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+    expect(await screen.findByText('Import finished')).toBeInTheDocument();
+
+    // A success report is on screen and the same form still holds the file
+    // input: selecting an oversized file now must clear the report, refuse the
+    // file, and never send anything.
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, oversized);
+
+    expect(await screen.findByText('The file is larger than 2 MB.')).toBeInTheDocument();
+    expect(screen.queryByText('Import finished')).not.toBeInTheDocument();
+    expect(screen.queryByText('3 created, 0 skipped')).not.toBeInTheDocument();
+    expect(importStories).toHaveBeenCalledTimes(1);
+  });
+
   it('renders ErrorDisplay for an unexpected error instead of crashing', async () => {
     const user = userEvent.setup();
     importStories.mockRejectedValue(new Error('boom'));

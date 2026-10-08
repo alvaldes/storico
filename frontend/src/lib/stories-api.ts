@@ -57,6 +57,16 @@ export async function deleteStory(id: string): Promise<void> {
 
 /* ── CSV import ── */
 
+/**
+ * Mirror of the backend import cap (`MAX_FILE_BYTES` in
+ * `backend/src/storico/infrastructure/parsers/story_csv.py`). The backend is
+ * authoritative; this copy exists so the dialog can refuse an oversized file
+ * before any request leaves the browser. Kept in step by
+ * `src/lib/__tests__/import-file-size-mirror.test.ts`, which reads the backend
+ * source and fails if either number drifts.
+ */
+export const IMPORT_MAX_FILE_BYTES = 2 * 1024 * 1024;
+
 export interface ImportStoriesParams {
   workspaceId: string;
   projectId: string;
