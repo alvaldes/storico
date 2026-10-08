@@ -28,10 +28,12 @@ means **every level change issues a request**. Three consequences, all observed 
 | D3 | What the overlay covers | **Superseded in part by D6 (2026-10-08).** As first written: initial load, every filter-driven task refetch, the retry, and the cascade's own option reads (stories, versions). D6 keeps the first entry on the full veil and moves the other two cases to a per-select loader and a board-internal loader. |
 | D4 | What the overlay does not cover | The no-workspace prompt (there is no read to wait for, and covering it would hide the instruction the user needs), and drag-and-drop status updates (that path is optimistic, shows a card-level spinner and reports failure by toast — a full-screen veil would fight the interaction it is meant to confirm). |
 | D5 | Delay or debounce | **None.** The owner asked to see that it is loading; an artificial delay would hide it exactly when the response is fast. If the overlay turns out to flash on quick responses, adding a delay is a follow-up, not a part of this increment. |
-| D6 | How many loading levels | **Owner's choice (2026-10-08): three, not one.** The full-viewport veil belongs to **entering the board** — the first read — and nothing else. Each select carries **its own loader** while its options are being read. The board shows an **internal loader** while the task read is in flight. A card moved inside the board raises **none** of them: it shows only its own in-flight state and must not interrupt the flow. |
-| D7 | Whether a workspace switch is a first entry | **Yes.** The whole board context changes — every filter is cleared and every card is replaced — and the user has not seen this board yet, so it gets the full veil like an arrival. One line to reverse if it reads as too heavy; it is recorded as a decision rather than left to be inferred from the code. |
+| D6 | How many loading levels | **Owner's choice (2026-10-08): three, not one.** The full-viewport veil belongs to **entering the board** — the first read — and nothing else. Each select carries **its own loader** while its options are being read. The board shows an **internal loader** while the task read is in flight. A card moved inside the board raises **none** of them: it shows only its own in-flight state and must not interrupt the flow. **Its first level and D7 are superseded the same day by D10:** the board never raises the veil, not even on entry. The other three levels stand and are what shipped. |
+| D7 | Whether a workspace switch is a first entry | **Superseded by D10.** As decided: yes, the full veil. Once the board stopped raising the veil at all, the question dissolved — a workspace switch is now an internal-loader read like any other. Kept here because the owner reversed it deliberately, and a reader deserves to know the reversal was considered rather than never asked. |
 | D8 | Whether the internal loader covers the columns | **It replaces them, not floats over them.** Leaving the previous filter's cards on screen during a read presents stale data as the answer to the filter now in the bar — the same lie the version-badge rule and the empty-copy gate exist to prevent. The filter bar itself is never covered and never disabled: changing filters while a read is in flight is a supported interaction, and the store's staleness token already discards the answer that arrives out of order. |
 | D9 | Which read each select loader reflects | One per select, from that select's own read: the project select from `projectStore.loading`, the story select from the stories read, the version select from the versions read. The point is that a pending read is attributable to the control that caused it, instead of all three sharing one global signal. |
+| D10 | Whether the board ever raises the full veil | **Owner's choice (2026-10-08), reversing D6's first level and D7: no.** Opening `/kanban` shows the internal loader in the columns area, exactly like every other board read. The full-viewport veil belongs to mutations, which is the only thing it ever meant. `seenWorkspace` and the failed-first-read exception went with it: a board read is a board read, and the retry is no longer special. |
+| D11 | Whether a card move raises the mutation veil | **Owner's report (2026-10-08), reproduced and fixed: it must not.** `PUT /api/v1/tasks/{id}` joins `BLOCKING_EXCLUSIONS` in `blocking-requests.ts`. The drop is optimistic, the card already carries its own in-flight indicator, and a page-wide overlay interrupts the very gesture it is meant to confirm — the same reasoning the extraction exclusion already uses (the surface owns its pending UI). |
 
 ## Non-goals
 
@@ -48,7 +50,7 @@ means **every level change issues a request**. Three consequences, all observed 
   `LoadingVeil.tsx` (one accessible region, one z-index rationale, two consumers); `FullPageLoader`
   became the mutation-driven wrapper over it and its test passed unmodified. The board raises the
   same veil for all three of its reads — tasks, stories, versions — and `common.loading` supplies
-  the copy, so no i18n key was added.
+  the copy, so no i18n key was added. **(Superseded by WU11: the board raises no veil at all.)**
 - [x] **WU8 — Spec delta and closure** → `1b15dd0`. `openspec/specs/kanban-board/spec.md` gained
   the read-feedback requirement (7 requirements and 18 scenarios → 8 and 24) and this document
   closed with the gate evidence below.
@@ -56,68 +58,77 @@ means **every level change issues a request**. Three consequences, all observed 
   `seenWorkspace !== workspaceId` for the veil, per-select loaders from each read's own flag, an
   internal loader in place of the columns, and a card move raising none of it. Each select trigger
   also carries `aria-busy`. The three superseded WU7 tests were rewritten, and the review added the
-  `aria-busy` assertions.
+  `aria-busy` assertions. **(Its veil level is superseded by WU11; the per-select loaders and the
+  internal loader are what shipped.)**
 - [x] **WU10 — Spec delta and closure** → `a8578d7`. The read-feedback requirement now states the
   four levels (8 requirements, 6 → 8 scenarios, replacing rather than adding) and this document
   closed with the new evidence.
+- [x] **WU11 — The board never veils, and a card move never blocks (frontend)** → `129c382`
+  (D10) and `16fc6f3` (D11). The board's loader condition is `loading` alone, `seenWorkspace` and
+  the failed-first-read exception are gone, and `PUT /api/v1/tasks/{id}` is the fourth
+  `BLOCKING_EXCLUSIONS` entry with its `why`. Two disjoint file sets, committed separately.
+- [x] **WU12 — Spec delta and closure** → `e61e2f9` plus the closing commit of this document. The
+  read-feedback requirement lost its entry level and gained the exemption rule with its bound
+  (8 requirements, 24 → 26 scenarios across the two rewrites of this block).
 
 ## Verified facts (with evidence)
 
 | Fact | Evidence |
 |------|----------|
-| The inline spinner cannot fire on a refetch | `KanbanBoard.tsx:392` guards on `initialLoad && loading`, and only `reload()` raises `initialLoad` again |
-| A mutation-driven full-page veil already exists and is deliberately mutation-only | `FullPageLoader.tsx:19-33`; `blocking-requests.ts` (reads never raise the store) |
-| The cascade's reads are story and version lists with no loading state | `KanbanBoard.tsx:110-146` — both effects set options to `[]` first, then either fill or leave them empty on failure |
+| The inline spinner could not fire on a refetch | **Historical —** the guard was `initialLoad && loading` and only `reload()` raised `initialLoad`. WU11 deleted both the spinner branch and `initialLoad`: that guard is what made a refetch silent, and it is gone rather than fixed. |
+| A mutation-driven full-page veil exists and is deliberately mutation-only | `FullPageLoader.tsx`; `blocking-requests.ts` (reads never raise the store); `FullPageLoader`'s own test passes unchanged after the `LoadingVeil` extraction |
+| The cascade's reads carry their own pending flags | `KanbanBoard.tsx` — the stories effect holds `storiesLoading` and the versions effect `versionsLoading` for the duration of their reads; each select renders its own spinner from its own flag |
 | The board's task read already exposes `loading` | `taskStore.ts` — `fetchTasksForWorkspace` claims `loading` for its own request and releases it guarded by the staleness token |
 | **A card move already raises no board-level loading** | `taskStore.ts`'s `updateTaskStatus` never touches `loading`: it awaits the PUT, then patches `tasks`/`workspaceTasks` in place, and the board's `handleDragEnd` reverts with a local `setLocalTasks` on failure rather than a refetch. So D6's fourth level is a rule to preserve and pin, not a bug to fix. |
 | **A loader fits inside the select control** | `ui/select.tsx:29-52` — `SelectTrigger` renders `{children}` and then its chevron, so a spinner can sit inside the trigger beside the value |
 | **The project list already has its own loading flag** | `projectStore.ts:69,75,78` — `fetchProjects` claims and releases `loading`, so the project select needs no new state |
+| **The board's entry veil was a real, visible behavior** | ego-browser, `http://localhost:4321/en/kanban`, dev stack on `:4321` + `:8000`: `waitForSelector('div[role="status"]')` catches `Loading...` with class `fixed inset-0 z-[60] …` while the first read is in flight |
+| **A card move does take the blocking path (D11)** | ego-browser, in the running app: `import('/src/lib/blocking-requests.ts')` → `shouldBlockRequest('PUT', '/api/v1/tasks/<uuid>') === true`, while `shouldBlockRequest('GET', '/api/v1/tasks/?…') === false`; and a `MutationObserver` recorded the `Processing...` veil appearing during a real card drag |
+| **A local backend hides that veil, and why** | The same drag on `localhost` sometimes rose the veil and sometimes did not: the loader only appears after `BLOCKING_LOADER_DELAY_MS` (250 ms, `loadingStore.ts`) and a local PUT often beats it. Against Supabase's pooler (seconds) it is reliably visible, which is the latency the owner sees. Recorded so a future reviewer on a fast stack does not conclude the bug is gone. |
 
 ## Limits and follow-ups
 
-- **A fast API makes the overlay a flash.** Accepted by decision D5. If it proves annoying in use,
-  a delay of a few hundred milliseconds before showing the veil (while keeping it immediate after
-  that) is the standard fix and a small follow-up.
+- **The internal loader can flash.** Accepted by D5. If it proves annoying in use, a delay of a few
+  hundred milliseconds before showing it (immediate after that) is the standard fix and a small
+  follow-up. The mutation veil already has that delay and a minimum-visible floor; the board's
+  loader deliberately has neither.
 - **The number of requests per level change is unchanged**: selecting a project costs the stories
   read plus the tasks read, selecting a story costs the versions read plus the tasks read. That is
-  the accepted cost of D1.
-- **The empty-copy gate has two halves and only one of them is pinned by a test.** The worker's
-  suite pins the in-flight half ("does not paint the empty-board copy while a read is in flight").
-  The other half — the frame between a filter change and the effect that starts the read, where
-  nothing is in flight yet and `workspaceTasks` is still the previous answer — is closed by
-  `loadedFiltersKey` (an empty board is only called empty once a read has settled *for the filters
-  the bar shows*). That frame cannot be observed from a test: React flushes effects inside `act`
-  before an assertion can see it. The flag is therefore reasoned rather than pinned, and it is
-  four lines with its rationale next to it. Stated here so nobody reads the suite as covering it.
-- **The board's veil and the mutation veil are two states with one look.** If a read and a write
-  are ever in flight together, they render the same markup and the same copy family
-  (`common.loading` / `common.processing`), so the pair reads as one indicator. That is intended
-  (one visual language) but it does mean the two are indistinguishable on screen.
-- **Two levels, two ARIA roles, and that is my call, not a measured fact.** The full veil is a
-  `role="status"` live region (inherited from `LoadingVeil`); the internal loader is a
-  `role="progressbar"` with an `aria-label`. Keeping them distinct lets assistive tech announce the
-  two states differently, and it also lets every test tell them apart by role. If one role for both
-  is preferred, aligning the internal loader to `role="status"` is a small follow-up — it would
-  cost the tests that distinction.
+  the accepted cost of D1 — the owner weighed a preload endpoint against it and chose the reads.
+- **The empty-copy gate has two halves and only one of them is pinned by a test.** The suite pins
+  the in-flight half ("does not paint the empty-board copy while a read is in flight"). The other
+  half — the frame between a filter change and the effect that starts the read, where nothing is in
+  flight yet and `workspaceTasks` is still the previous answer — is closed by `loadedFiltersKey` (an
+  empty board is only called empty once a read has settled *for the filters the bar shows*). That
+  frame cannot be observed from a test: React flushes effects inside `act` before an assertion can
+  see it. The flag is therefore reasoned rather than pinned, and it is four lines with its rationale
+  next to it. Stated here so nobody reads the suite as covering it.
+- **The never-veil tests are absence assertions, and they carry a positive control.** "No
+  `role="status"`" would also pass on a board that rendered nothing at all, so each of them also
+  asserts the internal loader appears and settles. Worth knowing before someone simplifies those
+  tests by dropping the control.
+- **The board's loader and the mutation veil now differ in kind, not only in size.** The board's is a
+  `role="progressbar"` in the columns area with `common.loading`; the mutation veil is a
+  `role="status"` live region covering the viewport with `common.processing`. Two roles rather than
+  one is my call, not a measured fact: it lets assistive tech announce an in-page refresh and a
+  blocked page differently, and it is what lets every test tell them apart. Unifying them is a small
+  follow-up that would cost the tests that distinction.
 - **The select spinners report `aria-busy` on the trigger**, added on review: an `aria-label` on a
   bare `<svg>` is ignored by several screen readers, and "this control is still loading" is a
-  property of the control. The test pins `aria-busy="true"` while the read is pending and
-  `"false"` after, which is also what proves React renders the attribute rather than dropping it.
-- **The D7 test pins the behavior, not the mechanism.** A workspace switch would show a veil
-  whether or not `seenWorkspace` had been set first, so the test cannot prove the flag did the
-  work; the "never again for that workspace" test pins the flag's effect from the other side. The
-  pair is what makes the mechanism credible, and neither alone would.
-- **`seenWorkspace` resets per mount, not per session.** Navigating away from the board and back
-  re-enters with the full veil. That matches "entering the board", and it is worth knowing before
-  someone reads a remount's veil as a bug.
-- **The `settled` gate now reads `!loading` alone**, because the cascade's reads no longer hide the
-  board: while the stories or versions read is pending, the last settled board stays visible and
-  the pending state lives in the select. The `loadedFiltersKey` half is unchanged and still pinned.
+  property of the control. The test pins `aria-busy="true"` while the read is pending and `"false"`
+  after, which is also what proves React renders the attribute rather than dropping it.
+- **The `settled` gate reads `!loading` alone**, because the cascade's reads no longer hide the
+  board: while the stories or versions read is pending, the last settled board stays visible and the
+  pending state lives in the select. The `loadedFiltersKey` half is unchanged and still pinned.
+- **The task exemption is path-scoped and method-agnostic**, like the three entries before it. Any
+  hypothetical non-PUT write to `/api/v1/tasks/{id}` would also be exempt. That is the convention
+  the onboarding entry already documents (`lib/user-api.ts` calls its path with PATCH), and it is
+  recorded here so a future reader does not read the exemption as PUT-specific.
 
 ## Closure
 
 Branch `feat/versioning-visibility`, on top of the `versioning-visibility` slice's nine commits.
-Five commits for this increment:
+Nine commits for this increment:
 
 | Commit | Unit |
 |--------|------|
@@ -126,19 +137,62 @@ Five commits for this increment:
 | `bfa6415` | WU8 — closure of the first model |
 | `a67bb67` | WU9 — the three levels that replaced it (D6–D9) |
 | `a8578d7` | WU10 — the spec rewritten for the three levels |
+| `c757f36` | WU10 — closure of the three levels |
+| `129c382` | WU11 — D10: the board never veils |
+| `16fc6f3` | WU11 — D11: a card move never blocks |
+| `e61e2f9` | WU12 — the spec rewritten a third time |
 
-The closing commit for this document follows the five above and adds no behavior.
+The closing commit for this document follows the nine above and adds no behavior.
 
-Gates, run by the orchestrator on the full tree after WU9 and after the review fix: `pnpm exec
-tsc --noEmit` exit 0 and `npm test` **77 files / 874 tests** passing. `FullPageLoader`'s own test is
-still unchanged and passing, which is what proves the veil extraction preserved the mutation veil's
-rendering. No backend file was touched in this increment, so no backend gate was re-run for it.
+Gates, run by the orchestrator on the full tree after WU11: `pnpm exec tsc --noEmit` exit 0 and
+`npm test` **77 files / 877 tests** passing. `FullPageLoader`'s own test is still unchanged and
+passing, which is what proves the veil extraction preserved the mutation veil's rendering. No
+backend file was touched in this increment, so no backend gate was re-run for it.
+
+### Verified in a real browser, not only in tests
+
+ego-browser against the dev stack (`:4321` + `:8000`, real data: 7 tasks in a workspace):
+
+- **The entry veil was real.** `waitForSelector('div[role="status"]')` on `/en/kanban` caught
+  `Loading...` with class `fixed inset-0 z-[60] …`. After WU11 the board renders its cards with no
+  `div[role="status"]` present at all.
+- **The card-move overlay was real, and its cause was measurable.** In the running app,
+  `import('/src/lib/blocking-requests.ts')` returned
+  `shouldBlockRequest('PUT', '/api/v1/tasks/<uuid>') === true`, and a `MutationObserver` recorded the
+  `Processing...` veil appearing during a real drag. After WU11 the same call returns `false`, a
+  query string cannot flip it back (`false`), a task sub-resource still blocks (`true`), and a
+  **committed** drag — the board went `backlog=0, todo=3` and the server agreed — produced **no veil
+  sighting of any kind**.
+
+Three things that cost time and are worth inheriting:
+
+- **`hello-pangea/dnd` ignores ordinary synthetic drags.** `dragAndDrop()` and the high-level mouse
+  sequence both did nothing, and the keyboard sensor never lifted either. Raw CDP works, and the
+  piece that was missing is `buttons: 1` on the `mouseMoved` events. The gesture is still
+  probabilistic — the same sequence committed on one run and silently did nothing on the next — so
+  the verification retries and checks the outcome instead of trusting the gesture.
+- **A GET read through the page can answer from cache.** One read said the moved card was back in
+  `backlog` while the server had it in `todo`; a cache-busting parameter settled it. Any check that
+  decides whether a write landed must bust the cache first, or it reports the opposite of the truth.
+- **Importing an app store from the page can create a second instance.** Vite serves a distinct
+  module for the app after HMR, so `import('/src/stores/taskStore.ts')` in a probe saw an empty
+  store while the board on screen was full. Mechanism-level probes survive that (`blocking-requests.ts`
+  is pure); state probes do not.
 
 ### What the owner changed, and what that cost
 
-WU7 shipped one model and WU9 shipped another, one day apart, and the honest accounting is that the
-first model was over-broad rather than wrong: it answered "the board says nothing" and ignored that
-a filter change is a refresh of one region, not an arrival. The rewrite was cheap in code and not
-cheap in tests — three WU7 tests asserted the superseded contract and had to be rewritten, which is
-the visible price of deciding a contract in code before deciding it with the person who lives in it.
-They were rewritten rather than deleted so the change stays readable in the diff.
+This increment shipped three loading models in two days: WU7 veiled every board read, WU9 veiled
+only the entry, WU11 veils nothing. The honest accounting is that each earlier model was over-broad
+rather than wrong — WU7 answered "the board says nothing" without asking whether a filter change is
+an arrival, and WU9 answered "the entry is an arrival" without asking whether the user wants an
+arrival announced that way. Each reversal was cheap in code and expensive in tests: **six test
+rewrites across two reversals**, all done in place rather than by deletion, so the history of the
+contract stays readable in the diffs.
+
+The other half, D11, was never a design question at all: the drag had been raising the mutation veil
+since before this increment and nothing about the feature touched it. It surfaced because the owner
+used the board, not because anyone reasoned about it — which is the argument for having driven the
+browser during this slice at all.
+
+The lesson this document keeps instead of an apology: a loading state is a claim about what the user
+is waiting for, and the only reliable way to find which claims are wrong is to watch someone use it.
