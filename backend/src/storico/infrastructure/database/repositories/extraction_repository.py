@@ -408,6 +408,23 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
             for row in result
         }
 
+    async def version_numbers(self, extraction_ids: list[UUID]) -> dict[UUID, int]:
+        """Batch version number for a page of tasks — one statement, not one per task.
+
+        A plain keyed read over ``extractions`` by primary key — index-backed
+        for free, the batch is the IN list itself. An empty ``extraction_ids``
+        is answered here rather than sent as ``IN ()``, matching
+        ``version_summaries``; ids with no row are absent from the dict, never
+        ``None`` entries.
+        """
+        if not extraction_ids:
+            return {}
+        stmt = select(ExtractionModel.id, ExtractionModel.version_number).where(
+            ExtractionModel.id.in_(extraction_ids)
+        )
+        result = await self._session.execute(stmt)
+        return {row.id: row.version_number for row in result}
+
     async def list(self) -> list[Extraction]:
         result = await self._session.execute(select(ExtractionModel))
         return [self._to_domain(row) for row in result.scalars()]

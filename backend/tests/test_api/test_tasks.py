@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.api.dependencies import get_vector_store
 from storico.api.routes import tasks as task_routes
-from storico.domain.entities import User, UserStory
+from storico.domain.entities import Project, User, UserStory
 from storico.domain.entities.exceptions import VectorStoreError
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.task import TaskStatus
@@ -28,6 +28,7 @@ from storico.domain.ports.vector_store_port import VectorStorePort
 from storico.infrastructure.database.models import TaskInvalidationModel
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
+    SQLAlchemyProjectRepository,
     SQLAlchemyTaskInvalidationRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
@@ -628,6 +629,166 @@ class TestListTasksVersionReads:
         data = historical.json()
         assert data["total"] == 2
         assert {item["title"] for item in data["items"]} == {"v1 task one", "v1 task two"}
+
+
+class TestProjectFilter:
+    """GET /api/v1/tasks/?project_id= — the project scope (versioning-visibility WU2).
+
+    Decision D6: the scope mirrors the workspace branch of ``list_page``, so a
+    project-scoped board shows each story's current version, like the
+    workspace board does. Decision D7: several scope filters at once are
+    refused with 422 in the route, before any repository call — the old
+    ``if``/``elif`` silently preferred ``workspace_id`` over ``user_story_id``.
+    """
+
+    async def test_project_filter_returns_only_that_projects_tasks(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """Two projects in one workspace: only the asked project's tasks come back.
+
+        The sibling project's task is in the same workspace, so the answer's
+        narrowness is the scope's doing, not the membership walk's.
+        """
+        seeded = await seed_workspace(stories=2)
+        mine_story, other_story = seeded.story_ids
+        other_project = await SQLAlchemyProjectRepository(db_session).save(
+            Project(name="Other project", workspace_id=seeded.workspace_id)
+        )
+        other_project_story = await SQLAlchemyUserStoryRepository(db_session).save(
+            UserStory(
+                project_id=other_project.id,
+                actor="user",
+                feature="other project feature",
+                benefit="value",
+                raw_text="As a user, I want the other project feature so that value",
+            )
+        )
+        await seed_task(db_session, mine_story, "Mine task")
+        await seed_task(db_session, other_story, "Same project task")
+        await seed_task(db_session, other_project_story.id, "Other project task")
+
+        response = await authed_client.get(f"/api/v1/tasks/?project_id={seeded.project_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        assert {item["title"] for item in data["items"]} == {"Mine task", "Same project task"}
+
+    async def test_project_filter_refuses_a_non_member_with_the_workspace_code(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A caller outside the project's workspace gets 403 NOT_A_WORKSPACE_MEMBER.
+
+        The wording is the same refusal every other scope of this route answers
+        with — the walk is ``project → workspace → membership``.
+        """
+        seeded = await seed_workspace(member=False)
+
+        response = await authed_client.get(f"/api/v1/tasks/?project_id={seeded.project_id}")
+
+        assert response.status_code == 403
+        assert response.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
+
+    async def test_project_filter_answers_404_for_an_unknown_project(self, authed_client):
+        """A project id that does not exist is a 404, like ``list_stories`` answers."""
+        response = await authed_client.get(f"/api/v1/tasks/?project_id={uuid4()}")
+
+        assert response.status_code == 404
+        assert response.json()["error_code"] == "ENTITY_NOT_FOUND"
+
+    async def test_two_scope_filters_refuse_with_422_before_any_repository_call(
+        self, authed_client, seed_workspace
+    ):
+        """Two scopes at once are refused with 422 REQUEST_VALIDATION_FAILED.
+
+        Decision D7: a deliberate tightening — today the route silently prefers
+        ``workspace_id`` over ``user_story_id``. No known client sends two
+        scopes (``frontend/src/lib/tasks-api.ts``), so nothing breaks, and the
+        refusal says so. The pinned detail text is the contract.
+        """
+        seeded = await seed_workspace()
+
+        response = await authed_client.get(
+            f"/api/v1/tasks/?project_id={seeded.project_id}&workspace_id={seeded.workspace_id}"
+        )
+
+        assert response.status_code == 422
+        body = response.json()
+        assert body["error_code"] == "REQUEST_VALIDATION_FAILED"
+        assert "mutually exclusive" in body["detail"]
+        assert "No known client" in body["detail"]
+
+        # The pair the old if/elif silently resolved (workspace over story)
+        # refuses now too.
+        response = await authed_client.get(
+            f"/api/v1/tasks/?workspace_id={seeded.workspace_id}&user_story_id={seeded.story_id}"
+        )
+        assert response.status_code == 422
+        assert response.json()["error_code"] == "REQUEST_VALIDATION_FAILED"
+
+
+class TestTaskVersionFields:
+    """The version chip's data (decision D8): every task read names its version.
+
+    ``TaskResponse`` gains ``extraction_id`` and ``version_number``; all three
+    construction sites populate them, so the board store's merge of a ``PUT``
+    response cannot erase the chip with a ``null``.
+    """
+
+    async def test_list_items_carry_extraction_id_and_version_number(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The list path resolves the version number in one batched call."""
+        story_id = (await seed_workspace()).story_id
+        task = await seed_task(db_session, story_id, "Chipped task")
+
+        response = await authed_client.get("/api/v1/tasks/")
+
+        assert response.status_code == 200
+        item = next(i for i in response.json()["items"] if i["id"] == str(task.id))
+        assert item["extraction_id"] == str(task.extraction_id)
+        assert item["version_number"] == 1
+
+    async def test_get_carries_extraction_id_and_version_number(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The single-task read names the version, even a superseded one."""
+        story_id = (await seed_workspace()).story_id
+        v1 = await seed_extraction(db_session, story_id, status=ExtractionStatus.COMPLETED)
+        task = await seed_task(db_session, story_id, "Superseded task", extraction=v1)
+        # A second completed version supersedes the task's one; the read is by
+        # id, so the chip still names v1.
+        await seed_extraction(db_session, story_id, status=ExtractionStatus.COMPLETED)
+
+        response = await authed_client.get(f"/api/v1/tasks/{task.id}")
+
+        assert response.status_code == 200
+        assert response.json()["extraction_id"] == str(v1.id)
+        assert response.json()["version_number"] == 1
+
+    async def test_a_status_change_keeps_the_version_on_the_put_response(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The important case: the PUT response still names the version.
+
+        The board store merges the ``PUT`` response into the card it just
+        moved — a ``null`` ``version_number`` there would erase the version
+        chip on drop.
+        """
+        story_id = (await seed_workspace()).story_id
+        task = await seed_task(db_session, story_id, "Moved task")
+        assert task.status is TaskStatus.BACKLOG
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{task.id}",
+            json={"status": "todo"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "todo"
+        assert data["extraction_id"] == str(task.extraction_id)
+        assert data["version_number"] == 1
 
 
 class TestGetTask:

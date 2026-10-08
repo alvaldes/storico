@@ -327,6 +327,17 @@ async def test_list_page_refuses_two_scopes(db_session: AsyncSession, workspace_
             offset=0,
         )
 
+    # The ``project_id`` scope joins the mutual exclusion (versioning-visibility
+    # WU2): it refuses every other scope pairwise.
+    with pytest.raises(ValueError):
+        await repo.list_page(project_id=uuid4(), workspace_id=workspace_id, limit=10, offset=0)
+
+    with pytest.raises(ValueError):
+        await repo.list_page(project_id=uuid4(), user_story_id=story.id, limit=10, offset=0)
+
+    with pytest.raises(ValueError):
+        await repo.list_page(project_id=uuid4(), workspace_ids=[workspace_id], limit=10, offset=0)
+
 
 @pytest.mark.asyncio
 async def test_list_page_pins_the_order_rule_in_sql(
@@ -545,6 +556,71 @@ async def _mark(
     return await SQLAlchemyTaskInvalidationRepository(db_session).create(
         TaskInvalidation(task_id=task_id, reason=reason)
     )
+
+
+class TestProjectScope:
+    """The ``project_id`` scope of ``list_page`` (versioning-visibility WU2).
+
+    D6: a mirror of the workspace branch — the same ``task → story → project``
+    walk and the same ``_current_version_only`` predicate, so a project-scoped
+    board obeys the same currency contract as the workspace board and its
+    ``total`` cannot keep counting rows the page dropped.
+    """
+
+    @pytest.mark.asyncio
+    async def test_project_scope_answers_only_that_projects_current_tasks(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """Two projects in one workspace: only the asked project's current-version tasks.
+
+        The superseded version of the asked project's story contributes nothing
+        (the same predicate the workspace arm carries), the sibling project's
+        task never leaks in, and ``total`` agrees with the rows returned.
+        """
+        repo = SQLAlchemyTaskRepository(db_session)
+        mine = await SQLAlchemyProjectRepository(db_session).save(
+            Project(name="Mine", workspace_id=workspace_id)
+        )
+        other = await SQLAlchemyProjectRepository(db_session).save(
+            Project(name="Other", workspace_id=workspace_id)
+        )
+        mine_story = await _seed_story_in(db_session, mine, "mine story")
+        other_story = await _seed_story_in(db_session, other, "other story")
+
+        mine_v1 = await seed_extraction(
+            db_session, mine_story.id, status=ExtractionStatus.COMPLETED
+        )
+        await _seed_task(db_session, mine_story.id, "mine-v1", extraction=mine_v1)
+        mine_v2 = await seed_extraction(
+            db_session, mine_story.id, status=ExtractionStatus.COMPLETED
+        )
+        await _seed_task(db_session, mine_story.id, "mine-v2-a", extraction=mine_v2)
+        await _seed_task(db_session, mine_story.id, "mine-v2-b", extraction=mine_v2)
+        other_v = await seed_extraction(
+            db_session, other_story.id, status=ExtractionStatus.COMPLETED
+        )
+        await _seed_task(db_session, other_story.id, "other-task", extraction=other_v)
+
+        page, total = await repo.list_page(project_id=mine.id, limit=10, offset=0)
+
+        assert total == len(page) == 2
+        assert {t.title for t in page} == {"mine-v2-a", "mine-v2-b"}
+        assert all(t.user_story_id == mine_story.id for t in page)
+
+    @pytest.mark.asyncio
+    async def test_project_scope_for_a_project_with_no_stories_answers_empty(
+        self, db_session: AsyncSession, workspace_id: UUID
+    ) -> None:
+        """A real project with no stories: an empty page and total 0."""
+        repo = SQLAlchemyTaskRepository(db_session)
+        project = await SQLAlchemyProjectRepository(db_session).save(
+            Project(name="Empty", workspace_id=workspace_id)
+        )
+
+        page, total = await repo.list_page(project_id=project.id, limit=10, offset=0)
+
+        assert page == []
+        assert total == 0
 
 
 class TestListForContext:

@@ -100,7 +100,15 @@ class RepetitionResponse(BaseModel):
 
 
 class TaskResponse(BaseModel):
-    """Response body representing a task."""
+    """Response body representing a task.
+
+    ``extraction_id`` and ``version_number`` are the version chip's data
+    (decision D8 of feature ``versioning-visibility``): every construction
+    site in the tasks route resolves them, so a board card can say which
+    version it belongs to and a ``PUT`` response merged into a moved card
+    cannot erase that with a ``null``. Both default to ``None`` so the export
+    route (decision D9) keeps its current shape untouched.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -114,3 +122,5 @@ class TaskResponse(BaseModel):
     dependencies: list[str]
     created_at: datetime
     updated_at: datetime
+    extraction_id: UUID | None = None
+    version_number: int | None = None

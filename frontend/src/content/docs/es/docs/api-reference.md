@@ -780,19 +780,29 @@ Filters:
   A version that does not belong to the requested story — or does not
   exist — is refused with 422 ``REQUEST_VALIDATION_FAILED``.
 - ``workspace_id``: filter by workspace (requires workspace membership).
+- ``project_id``: filter by project (requires membership of the project's
+  workspace). Like the workspace board, it answers each story's current
+  version only.
 
 ``extraction_id`` is a story-scoped question: supplying it without
 ``user_story_id`` is refused with 422 before any repository call (the
 repository's own ``ValueError`` for that shape is an internal invariant,
 not an HTTP contract).
 
-If neither scope filter is provided, returns tasks from all workspaces
+The three scope filters are mutually exclusive: several at once are
+refused with 422 ``REQUEST_VALIDATION_FAILED`` before any repository call
+(decision D7) — an ``if``/``elif`` chain would silently answer one of
+them, a wrong answer shaped like a right one.
+
+If no scope filter is provided, returns tasks from all workspaces
 the current user is a member of.
 
 The page and its total come from one statement in the database —
 ``count(*) OVER ()`` rides on the rows' own query, so no separate
 ``SELECT COUNT(*)`` is issued. The order is ``created_at DESC, id DESC``,
-which makes the paging deterministic.
+which makes the paging deterministic. Every item's ``version_number`` is
+resolved from **one** batched read of the page's distinct extraction ids —
+never one lookup per card (decision D8).
 
 **Parámetros**
 
@@ -800,6 +810,7 @@ which makes the paging deterministic.
 | --- | --- | --- | --- |
 | `extraction_id` | `query` | no | `string | null` |
 | `page` | `query` | no | `integer` |
+| `project_id` | `query` | no | `string | null` |
 | `size` | `query` | no | `integer` |
 | `user_story_id` | `query` | no | `string | null` |
 | `workspace_id` | `query` | no | `string | null` |
@@ -818,6 +829,8 @@ Get Task
 Get a task by its ID.
 
 The user must be a member of the workspace that owns the task's user story project.
+The response carries the version chip's data (decision D8): one batched
+read resolves the task version's number.
 
 **Parámetros**
 
@@ -845,6 +858,11 @@ refused with 409 ``TASK_VERSION_FROZEN``. For ``labels`` and
 ``dependencies`` on an editable task:
 - ``None`` means keep existing values.
 - ``[]`` means clear the list.
+
+The response carries the version chip's data (decision D8) resolved from
+the saved task: the board store merges this response into the card it
+just moved, so a ``null`` ``version_number`` here would erase the chip on
+drop.
 
 The user must be a member of the workspace that owns the task's user story project.
 

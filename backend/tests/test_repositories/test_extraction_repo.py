@@ -426,7 +426,9 @@ def test_the_port_exposes_no_delete_and_no_whole_row_writer() -> None:
     not own. The exact method list is pinned, so a future re-add fails visibly
     instead of silently widening the surface. Task 3.5 added ``list_versions``: the
     version selector's read, sanctioned by the change's design (one unpaginated
-    story-scoped read), not a silent widening.
+    story-scoped read), not a silent widening. ``version_summaries`` (WU1) and
+    ``version_numbers`` (WU2 of feature ``versioning-visibility``) joined as
+    batched aggregate *reads*, never writes.
     """
 
     abstract_methods = {
@@ -444,8 +446,9 @@ def test_the_port_exposes_no_delete_and_no_whole_row_writer() -> None:
         "find_current_version",
         "list_page",
         "list_versions",
-        "list",
         "version_summaries",
+        "version_numbers",
+        "list",
     }
     assert not hasattr(ExtractionRepository, "delete")
     assert not hasattr(ExtractionRepository, "save")
@@ -878,3 +881,73 @@ async def test_version_summaries_issues_exactly_one_statement_for_the_batch(
 
     summary_queries = [s for s in statements if "FROM extractions" in s]
     assert len(summary_queries) == 1, statements
+
+
+# --- Task version numbers (versioning-visibility WU2): the board-chip batch read ---
+
+
+@pytest.mark.asyncio
+async def test_version_numbers_resolves_a_batch_in_one_statement(
+    db_session: AsyncSession, test_engine: AsyncEngine, workspace_id: UUID
+) -> None:
+    """Two versions in one call: their numbers keyed by id, absent ids omitted.
+
+    The board chip's data (decision D8 of feature ``versioning-visibility``):
+    a list page resolves its distinct extraction ids in one read, never one
+    per card — the same batched-read convention ``version_summaries`` follows.
+    Statement capture follows ``test_list_page_with_empty_workspace_ids``.
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyExtractionRepository(db_session)
+    first = await _seed_story(db_session, workspace_id, "First")
+    second = await _seed_story(db_session, workspace_id, "Second")
+    v1 = await repo.create_next_version(_versioned(first.id, "first-run"))
+    v2 = await repo.create_next_version(_versioned(first.id, "second-run"))
+    other = await repo.create_next_version(_versioned(second.id, "other-story-run"))
+    for run in (v1, v2, other):
+        await repo.mark_completed(
+            run.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+        )
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        numbers = await repo.version_numbers([v1.id, v2.id, other.id, uuid4()])
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    # ``version_number`` mints per story: the first story's second run is 2,
+    # the other story's only run is its own 1 — and the absent id is omitted.
+    assert numbers == {v1.id: 1, v2.id: 2, other.id: 1}
+    number_queries = [s for s in statements if "FROM extractions" in s]
+    assert len(number_queries) == 1, statements
+
+
+@pytest.mark.asyncio
+async def test_version_numbers_with_empty_input_answers_empty_without_a_statement(
+    db_session: AsyncSession, test_engine: AsyncEngine
+) -> None:
+    """An empty ``extraction_ids`` returns ``{}`` without issuing any statement.
+
+    An empty page of tasks means no rows, not ``IN ()`` — the same posture
+    ``version_summaries`` takes, and for the same reason (against the dev
+    pooler a statement costs ~2s).
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyExtractionRepository(db_session)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        numbers = await repo.version_numbers([])
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    assert numbers == {}
+    assert statements == [], statements

@@ -94,6 +94,26 @@ WorkspaceRepoDep = Annotated[
 ]
 
 
+async def _version_number(
+    extraction_repo: SQLAlchemyExtractionRepository, extraction_id: UUID | None
+) -> int | None:
+    """Resolve one task's version number through the batched read (one id, one call).
+
+    The chip's data (decision D8 of feature ``versioning-visibility``): the
+    single-task handlers go through the same batched port method the list
+    page uses, just with one id, so a superseded task still names its own
+    version — the read is by id, never by currency.
+    """
+    if extraction_id is None:
+        # ``task.extraction_id`` is ``UUID | None`` on the entity while the
+        # column is NOT NULL, so a handler that read the row always has an id;
+        # an entity that never met the runner has none to name, and no
+        # statement is spent asking for it.
+        return None
+    numbers = await extraction_repo.version_numbers([extraction_id])
+    return numbers.get(extraction_id)
+
+
 async def _validate_task_workspace_access(
     task_id: UUID,
     current_user: User,
@@ -177,6 +197,7 @@ async def list_tasks(
     user_story_id: UUID | None = None,
     workspace_id: UUID | None = None,
     extraction_id: UUID | None = None,
+    project_id: UUID | None = None,
 ) -> PaginatedResponse[TaskResponse]:
     """List tasks with optional filters and pagination.
 
@@ -188,19 +209,29 @@ async def list_tasks(
       A version that does not belong to the requested story — or does not
       exist — is refused with 422 ``REQUEST_VALIDATION_FAILED``.
     - ``workspace_id``: filter by workspace (requires workspace membership).
+    - ``project_id``: filter by project (requires membership of the project's
+      workspace). Like the workspace board, it answers each story's current
+      version only.
 
     ``extraction_id`` is a story-scoped question: supplying it without
     ``user_story_id`` is refused with 422 before any repository call (the
     repository's own ``ValueError`` for that shape is an internal invariant,
     not an HTTP contract).
 
-    If neither scope filter is provided, returns tasks from all workspaces
+    The three scope filters are mutually exclusive: several at once are
+    refused with 422 ``REQUEST_VALIDATION_FAILED`` before any repository call
+    (decision D7) — an ``if``/``elif`` chain would silently answer one of
+    them, a wrong answer shaped like a right one.
+
+    If no scope filter is provided, returns tasks from all workspaces
     the current user is a member of.
 
     The page and its total come from one statement in the database —
     ``count(*) OVER ()`` rides on the rows' own query, so no separate
     ``SELECT COUNT(*)`` is issued. The order is ``created_at DESC, id DESC``,
-    which makes the paging deterministic.
+    which makes the paging deterministic. Every item's ``version_number`` is
+    resolved from **one** batched read of the page's distinct extraction ids —
+    never one lookup per card (decision D8).
     """
     offset = (params.page - 1) * params.size
     # The shape refusal is the route's own answer and comes before every
@@ -213,6 +244,30 @@ async def list_tasks(
             detail=(
                 "extraction_id requires user_story_id: reading a named version "
                 "is a story-scoped question."
+            ),
+        )
+    # Several scopes at once are refused, not resolved (decision D7 of feature
+    # versioning-visibility): the if/elif below used to silently prefer
+    # workspace_id over user_story_id. No known client sends two scopes
+    # (frontend/src/lib/tasks-api.ts), so nothing breaks — the refusal is
+    # deliberate tightening, answered here, before any repository call.
+    scope_names = [
+        name
+        for name, value in (
+            ("workspace_id", workspace_id),
+            ("user_story_id", user_story_id),
+            ("project_id", project_id),
+        )
+        if value is not None
+    ]
+    if len(scope_names) > 1:
+        raise ApiError(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            error_code=REQUEST_VALIDATION_FAILED,
+            detail=(
+                "workspace_id, user_story_id and project_id are mutually "
+                "exclusive: pass exactly one. No known client sends more than "
+                "one scope filter."
             ),
         )
     # Validate workspace access
@@ -255,6 +310,21 @@ async def list_tasks(
             limit=params.size,
             offset=offset,
         )
+    elif project_id is not None:
+        # Validate the project exists, then the caller's membership of its
+        # workspace — the same walk and the same refusal wording list_stories
+        # answers with for the same two cases.
+        project = await project_repo.find_by_id(project_id)
+        if project is None:
+            raise EntityNotFound("Project", str(project_id))
+        member = await member_repo.find_by_workspace_and_user(project.workspace_id, current_user.id)
+        if member is None:
+            raise ApiError(
+                status_code=status.HTTP_403_FORBIDDEN,
+                error_code=NOT_A_WORKSPACE_MEMBER,
+                detail="Not a member of this workspace",
+            )
+        page, total = await repo.list_page(project_id=project_id, limit=params.size, offset=offset)
     else:
         # No filter provided: return tasks from all workspaces the user is a member of
         memberships = await member_repo.list_by_user(current_user.id)
@@ -267,6 +337,9 @@ async def list_tasks(
             workspace_ids=workspace_ids, limit=params.size, offset=offset
         )
 
+    # One batched version-number read for the whole page's distinct extraction
+    # ids — the version chip's data (decision D8), never one lookup per card.
+    numbers = await extraction_repo.version_numbers(list({t.extraction_id for t in page}))
     items = [
         TaskResponse(
             id=t.id,
@@ -279,6 +352,8 @@ async def list_tasks(
             dependencies=t.dependencies,
             created_at=t.created_at,
             updated_at=t.updated_at,
+            extraction_id=t.extraction_id,
+            version_number=numbers.get(t.extraction_id),
         )
         for t in page
     ]
@@ -298,10 +373,13 @@ async def get_task(
     story_repo: StoryRepoDep = None,  # type: ignore[assignment]
     project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
     member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
 ) -> TaskResponse:
     """Get a task by its ID.
 
     The user must be a member of the workspace that owns the task's user story project.
+    The response carries the version chip's data (decision D8): one batched
+    read resolves the task version's number.
     """
     task = await _validate_task_workspace_access(
         task_id, current_user, repo, story_repo, project_repo, member_repo
@@ -317,6 +395,8 @@ async def get_task(
         dependencies=task.dependencies,
         created_at=task.created_at,
         updated_at=task.updated_at,
+        extraction_id=task.extraction_id,
+        version_number=await _version_number(extraction_repo, task.extraction_id),
     )
 
 
@@ -342,6 +422,11 @@ async def update_task(
     ``dependencies`` on an editable task:
     - ``None`` means keep existing values.
     - ``[]`` means clear the list.
+
+    The response carries the version chip's data (decision D8) resolved from
+    the saved task: the board store merges this response into the card it
+    just moved, so a ``null`` ``version_number`` here would erase the chip on
+    drop.
 
     The user must be a member of the workspace that owns the task's user story project.
     """
@@ -419,6 +504,8 @@ async def update_task(
         dependencies=result.dependencies,
         created_at=result.created_at,
         updated_at=result.updated_at,
+        extraction_id=result.extraction_id,
+        version_number=await _version_number(extraction_repo, result.extraction_id),
     )
 
 

@@ -193,6 +193,18 @@ class ExtractionRepository(ABC):
         ...
 
     @abstractmethod
+    async def version_numbers(self, extraction_ids: list[UUID]) -> dict[UUID, int]:
+        """Batch version number for a page of tasks, keyed by extraction id.
+
+        One statement for the whole batch — a list page's distinct extraction
+        ids in one read, never a per-card lookup (decision D8 of feature
+        ``versioning-visibility``: the version chip's data). Absent ids are
+        simply absent from the dict, and an empty ``extraction_ids`` answers
+        ``{}`` without issuing a statement, matching ``version_summaries``.
+        """
+        ...
+
+    @abstractmethod
     async def list(self) -> list[Extraction]:
         """Return all extractions."""
         ...
