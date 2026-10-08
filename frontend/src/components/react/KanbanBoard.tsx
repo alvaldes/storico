@@ -10,7 +10,8 @@ import { listVersions } from '@/lib/versioning-api';
 import type { WorkspaceTaskFilters } from '@/lib/tasks-api';
 import type { StoryVersion, UserStory } from '@/types/story';
 import { useTranslations, type Locale } from '@/i18n/utils';
-import { Loader2, AlertCircle, X } from 'lucide-react';
+import { AlertCircle, X } from 'lucide-react';
+import { LoadingVeil } from '@/components/react/LoadingVeil';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -53,7 +54,6 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     updateTaskStatus,
   } = useTaskStore();
 
-  const [initialLoad, setInitialLoad] = useState(true);
   // The cascade (D5): project → story → version. `null` at a level means "not
   // filtered here"; choosing a project enables the story select, a story the
   // version select. Moving up the cascade clears everything below it, so the
@@ -64,7 +64,18 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   // The story and version options are the selected project's/story's data, read
   // straight from their APIs into local state: `useStoryStore` belongs to the
   // stories page, and the board must not write into it (the page's list, cache
-  // and selectors would all see the board's reads).
+  // and selectors would all see the board's reads). Each read also carries its
+  // own pending flag: the veil has to cover the cascade's option reads (D3),
+  // and an empty select must not be indistinguishable from a loading one.
+  const [storiesLoading, setStoriesLoading] = useState(false);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  // Which board scope the last settled read answered for, as a string key. The
+  // empty states below are only honest once a read has settled *for the filters
+  // currently in the bar*: without this, the first paint (and the first paint
+  // after a workspace switch) renders an empty `workspaceTasks` as "no tasks
+  // yet" for one frame, before the effect has even started the request. A false
+  // "no tasks" is the same class of lie as a false "current" badge.
+  const [loadedFiltersKey, setLoadedFiltersKey] = useState<string | null>(null);
   const [storyOptions, setStoryOptions] = useState<UserStory[]>([]);
   const [versionOptions, setVersionOptions] = useState<StoryVersion[]>([]);
   const [localTasks, setLocalTasks] = useState<Record<ColumnId, Task[]>>({
@@ -107,20 +118,29 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
 
   // Stories of the selected project, capped at 100 like every story list read.
   // A failed read leaves the select empty (and so unusable); it never blocks
-  // the unfiltered board.
+  // the unfiltered board. While the read is pending `storiesLoading` holds the
+  // veil up (D3) — an empty select must not look like a loaded one.
   useEffect(() => {
     if (!projectFilter) {
       setStoryOptions([]);
+      setStoriesLoading(false);
       return;
     }
     let active = true;
     setStoryOptions([]);
+    setStoriesLoading(true);
     listStories(projectFilter, 1, 100, workspaceId)
       .then((page) => {
-        if (active) setStoryOptions(page.items);
+        if (active) {
+          setStoryOptions(page.items);
+          setStoriesLoading(false);
+        }
       })
       .catch(() => {
-        if (active) setStoryOptions([]);
+        if (active) {
+          setStoryOptions([]);
+          setStoriesLoading(false);
+        }
       });
     return () => {
       active = false;
@@ -128,19 +148,28 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   }, [projectFilter, workspaceId]);
 
   // Versions of the selected story, ordered `version_number DESC` by the read.
+  // Same pending-flag contract as the stories read above.
   useEffect(() => {
     if (!storyFilter) {
       setVersionOptions([]);
+      setVersionsLoading(false);
       return;
     }
     let active = true;
     setVersionOptions([]);
+    setVersionsLoading(true);
     listVersions(storyFilter)
       .then((history) => {
-        if (active) setVersionOptions(history);
+        if (active) {
+          setVersionOptions(history);
+          setVersionsLoading(false);
+        }
       })
       .catch(() => {
-        if (active) setVersionOptions([]);
+        if (active) {
+          setVersionOptions([]);
+          setVersionsLoading(false);
+        }
       });
     return () => {
       active = false;
@@ -175,6 +204,12 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     [fetchTasksForWorkspace, activeFilters],
   );
 
+  /** The identity of the read the board currently wants: workspace plus cascade. */
+  const filtersKey = useMemo(
+    () => `${workspaceId ?? ''}|${JSON.stringify(activeFilters ?? null)}`,
+    [workspaceId, activeFilters],
+  );
+
   // Fetch tasks on mount, and refetch whenever the cascade changes.
   //
   // `fetchTasksForWorkspace` never rejects: the store swallows the failure and records it
@@ -182,11 +217,9 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   // could not run, which is why the board had an error branch nothing could reach.
   useEffect(() => {
     if (workspaceId) {
-      loadTasks(workspaceId).then(() => setInitialLoad(false));
-    } else {
-      setInitialLoad(false);
+      void loadTasks(workspaceId).then(() => setLoadedFiltersKey(filtersKey));
     }
-  }, [loadTasks, workspaceId]);
+  }, [loadTasks, workspaceId, filtersKey]);
 
   // Group tasks by status whenever workspaceTasks changes
   useEffect(() => {
@@ -371,13 +404,15 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     [localTasks, updateTaskStatus],
   );
 
-  if (initialLoad && loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  // WU7 (D2/D3): the veil covers every board read — the tasks fetch (the store
+  // claims `loading` for its own request and releases it when it settles), the
+  // cascade's stories read and its versions read. It does NOT cover the
+  // no-workspace prompt (nothing is being read; the prompt returns below before
+  // the veil renders) or a drag-and-drop status update (that path is optimistic,
+  // shows the card-level spinner and reports failure by toast — D4). The error
+  // branch also wins over the veil: a failed read replaces the page with the
+  // error card, veil or not.
+  const boardReadInFlight = loading || storiesLoading || versionsLoading;
 
   if (!workspaceId) {
     return (
@@ -390,17 +425,17 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   /**
    * Retry the board load, with the filters the bar currently shows.
    *
-   * `initialLoad` goes back to true first so a retry shows the spinner instead of the
-   * empty-board copy while it is in flight: the guard is `initialLoad && loading`, and a
-   * retry starts with `initialLoad` already false. A retry that fails again still lands on
-   * the error branch, because that guard needs `loading` too.
+   * `fetchTasksForWorkspace` raises the store's `loading` before it awaits, so
+   * the retry holds the veil up for as long as it is in flight — the same
+   * mechanism as every other board read since the inline spinner retired. A
+   * retry that fails again still lands on the error branch, which wins over
+   * the veil.
    *
    * `loadTasks` reads the cascade from its closure, so the retry refetches the
    * filtered query — a failed filtered load must not quietly become a whole-
    * workspace load with the bar still naming the filter.
    */
   const reload = () => {
-    setInitialLoad(true);
     if (workspaceId) void loadTasks(workspaceId);
   };
 
@@ -427,11 +462,22 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   // not outlive the filter that emptied it. The filter bar renders in both cases,
   // so an empty workspace can still gain its first filter and a filtered one can
   // always be cleared.
-  const unfilteredEmpty = workspaceTasks.length === 0 && !hasActiveFilter;
-  const filteredEmpty = workspaceTasks.length === 0 && hasActiveFilter;
+  //
+  // Neither copy may render while a board read is in flight (WU7), and neither
+  // may render before one has settled *for the filters the bar currently shows*:
+  // an empty `workspaceTasks` is not evidence of an empty board, it is only
+  // evidence that no answer has arrived yet. `loadedFiltersKey` supplies that
+  // proof, so a slow first load cannot paint "no tasks yet" behind the veil or
+  // into the accessibility tree.
+  const settled = !boardReadInFlight && loadedFiltersKey === filtersKey;
+  const unfilteredEmpty = settled && workspaceTasks.length === 0 && !hasActiveFilter;
+  const filteredEmpty = settled && workspaceTasks.length === 0 && hasActiveFilter;
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden">
+      {/* Board reads in flight: full-screen veil (WU7). Sits after the error and
+          no-workspace returns, so it can only ever cover a settled-layout read. */}
+      {boardReadInFlight && <LoadingVeil label={t.common.loading} />}
       {/* Invalid drop toast */}
       {invalidDropToast.show && (
         <div className="fixed top-4 right-4 z-50 max-w-md animate-slide-in">

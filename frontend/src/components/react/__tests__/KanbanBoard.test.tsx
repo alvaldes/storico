@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { KanbanBoard } from '@/components/react/KanbanBoard';
 import { useTaskStore } from '@/stores/taskStore';
@@ -152,6 +152,31 @@ describe('KanbanBoard', () => {
     // The locked card has no drag handle, so it cannot be re-dragged.
     const handles = document.querySelectorAll('[data-rfd-drag-handle-draggable-id]');
     expect(handles).toHaveLength(mockTasks.length - 1);
+  });
+
+  it('does not raise the board veil while a drag-and-drop status update is in flight (D4)', async () => {
+    // The drag path is optimistic: the card locks with its own spinner
+    // (`updatingTaskId`) and failure is reported by toast. It never raises the
+    // board's read state (the store's `loading` is the tasks read alone), so the
+    // full-screen veil must stay down — asserted here explicitly, not inferred.
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    useTaskStore.setState({
+      updatingTaskId: 'task-1',
+      updateTaskStatus: vi.fn().mockReturnValue(pending),
+    });
+
+    render(<KanbanBoard locale="en" />);
+
+    // The board itself is settled and the card-level spinner is up...
+    expect(await screen.findByText('DB schema')).toBeInTheDocument();
+    expect(screen.getByLabelText('Loading...')).toBeInTheDocument();
+    // ...and the veil never is.
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+    release();
   });
 
   it('shows an announced error and a retry when the board cannot load', async () => {
@@ -659,6 +684,214 @@ describe('KanbanBoard — cascade filters', () => {
     // argument slot is empty, so nothing can 403 or hollow out the board.
     expect(workspace2Calls.length).toBe(1);
     expect(workspace2Calls[0][1]).toBeUndefined();
+  });
+});
+
+/* ── Board loading veil (WU7, D2–D4) ──
+ *
+ * Every board read — the tasks fetch, the cascade's stories read and its
+ * versions read — shows the full-screen veil while it is in flight, and the
+ * veil never covers the no-workspace prompt (nothing is being read there) or a
+ * drag-and-drop status update (covered in the first describe above). The empty
+ * states stay quiet while a read is pending, so a slow load cannot paint "no
+ * tasks yet" behind the veil or into the accessibility tree.
+ */
+describe('KanbanBoard — board loading veil', () => {
+  /** A promise the test holds shut until it wants the read to settle. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  }
+
+  /** Open the select whose accessible name is `label` and pick `optionLabel`. */
+  async function chooseOption(
+    user: ReturnType<typeof userEvent.setup>,
+    label: string,
+    optionLabel: string,
+  ) {
+    await user.click(await screen.findByRole('combobox', { name: label }));
+    await user.click(await screen.findByRole('option', { name: optionLabel }));
+  }
+
+  const mockProjects: Project[] = [
+    {
+      id: 'project-1',
+      name: 'Alpha',
+      description: '',
+      workspaceId: 'workspace-1',
+      createdBy: null,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      storyCount: 1,
+    },
+  ];
+
+  const mockStories: UserStory[] = [
+    {
+      id: 'story-1',
+      projectId: 'project-1',
+      actor: 'user',
+      feature: 'to log in',
+      benefit: 'to access my account',
+      rawText: 'As a user, I want to log in, so that I can access my account',
+      status: 'extracted',
+      createdAt: '2026-01-01T00:00:00Z',
+    },
+  ];
+
+  const storyPage: PaginatedResponse<UserStory> = {
+    items: mockStories,
+    total: mockStories.length,
+    page: 1,
+    size: 100,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspace: {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        ownerId: 'user-1',
+        role: 'admin',
+        memberCount: 1,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      } as Workspace,
+      loading: false,
+      saving: false,
+    });
+    useProjectStore.setState({
+      projects: mockProjects,
+      loading: false,
+      error: null,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    useTaskStore.setState({
+      tasks: {},
+      workspaceTasks: [],
+      extractions: {},
+      loading: false,
+      error: null,
+      updatingTaskId: null,
+      allowedTransitions: {},
+      fetchTasksForWorkspace: realFetchTasksForWorkspace,
+      updateTaskStatus: vi.fn().mockResolvedValue(undefined),
+    });
+    vi.mocked(listStories).mockResolvedValue(storyPage);
+    vi.mocked(listVersions).mockResolvedValue([]);
+  });
+
+  it('shows the veil during the initial task load and hides it once the read settles', async () => {
+    const gate = deferred<Task[]>();
+    vi.mocked(listTasksByWorkspace).mockReturnValue(gate.promise);
+
+    render(<KanbanBoard locale="en" />);
+
+    const veil = await screen.findByRole('status');
+    expect(veil).toHaveTextContent(t.common.loading);
+
+    act(() => gate.resolve([]));
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    // The settled empty board is the honest end state of this read.
+    expect(await screen.findByText(t.kanban.empty_board)).toBeInTheDocument();
+  });
+
+  it('shows the veil on a filter change while the task refetch is still pending', async () => {
+    const user = userEvent.setup();
+    // Mount read settles at once; the refetch the project pick starts does not.
+    const gate = deferred<Task[]>();
+    vi.mocked(listTasksByWorkspace)
+      .mockResolvedValueOnce([])
+      .mockReturnValueOnce(gate.promise);
+
+    render(<KanbanBoard locale="en" />);
+    await waitFor(() => expect(listTasksByWorkspace).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    await chooseOption(user, t.kanban.filter_project, 'Alpha');
+
+    // The case that motivated WU7: the old guard (`initialLoad && loading`) showed
+    // nothing here, because a refetch starts with `initialLoad` already false.
+    expect(await screen.findByRole('status')).toHaveTextContent(t.common.loading);
+
+    act(() => gate.resolve([]));
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(listTasksByWorkspace).toHaveBeenLastCalledWith('workspace-1', {
+        projectId: 'project-1',
+      }),
+    );
+  });
+
+  it('shows the veil while the stories read is pending after a project pick', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
+    const gate = deferred<PaginatedResponse<UserStory>>();
+    vi.mocked(listStories).mockReturnValue(gate.promise);
+
+    render(<KanbanBoard locale="en" />);
+    // The task read settled; the veil is down before the pick.
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    await chooseOption(user, t.kanban.filter_project, 'Alpha');
+
+    // The empty-select case: without this, an empty select and a loading one
+    // looked identical.
+    expect(await screen.findByRole('status')).toHaveTextContent(t.common.loading);
+
+    act(() => gate.resolve(storyPage));
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+  });
+
+  it('shows the veil while the versions read is pending after a story pick', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
+
+    render(<KanbanBoard locale="en" />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    await chooseOption(user, t.kanban.filter_project, 'Alpha');
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    const gate = deferred<StoryVersion[]>();
+    vi.mocked(listVersions).mockReturnValue(gate.promise);
+    await chooseOption(user, t.kanban.filter_story, 'user: to log in');
+
+    expect(await screen.findByRole('status')).toHaveTextContent(t.common.loading);
+
+    act(() => gate.resolve([]));
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+  });
+
+  it('does not show the veil when no workspace is selected — the prompt renders instead (D4)', async () => {
+    useWorkspaceStore.setState({ currentWorkspace: null });
+    vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
+
+    render(<KanbanBoard locale="en" />);
+
+    expect(await screen.findByText(t.kanban.no_workspace)).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('does not paint the empty-board copy while a read is in flight', async () => {
+    const gate = deferred<Task[]>();
+    vi.mocked(listTasksByWorkspace).mockReturnValue(gate.promise);
+
+    render(<KanbanBoard locale="en" />);
+
+    await screen.findByRole('status');
+    // A slow first load must not claim the workspace is empty behind the veil.
+    expect(screen.queryByText(t.kanban.empty_board)).not.toBeInTheDocument();
+    expect(screen.queryByText(t.kanban.empty_board_hint)).not.toBeInTheDocument();
+
+    act(() => gate.resolve([]));
+    expect(await screen.findByText(t.kanban.empty_board)).toBeInTheDocument();
   });
 });
 
