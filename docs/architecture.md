@@ -1,7 +1,7 @@
 # Architecture
 
 > Decisiones arquitectónicas de Storico, extraídas de `AGENTS.md`.
-> Última actualización: 2026-09-28
+> Última actualización: 2026-10-07
 
 ## Stack
 
@@ -24,7 +24,7 @@
 | Autenticación | Auth.js (OAuth) con Google + GitHub |
 | Testing | pytest + pytest-asyncio + httpx (backend), Vitest (frontend) |
 | Internacionalización | Astro i18n (en/es) |
-| Contenedores | Docker / Docker Compose |
+| Contenedores | Docker (prod); `docker-compose.yml` provisto en el repo, camino Compose no verificado en dev — este entorno corre contra Supabase |
 
 ## Diagrama de Arquitectura
 
@@ -138,7 +138,7 @@
 
 **Status**: ✅ Implementado (producción en marcha desde 2026-09)
 
-**Decisión**: Docker Compose para desarrollo. Producción: el frontend Astro se sirve desde Vercel, el backend FastAPI corre en un contenedor Docker sobre una VM de Oracle, la base de datos relacional está en Neon y el vector store en Qdrant Cloud —un solo cluster, con una colección por entorno—.
+**Decisión**: Desarrollo, medido en el entorno de este equipo: base en Supabase y sin Docker instalado (2026-09-30). El repo provee además un camino Compose (`docker-compose.yml`, cuatro servicios) no verificado en ese entorno. Producción: el frontend Astro se sirve desde Vercel, el backend FastAPI corre en un contenedor Docker sobre una VM de Oracle, la base de datos relacional está en Neon y el vector store en Qdrant Cloud —un solo cluster, con una colección por entorno—.
 
 **Contexto**: El backend se despliega con `.github/workflows/deploy-backend.yml`, que entra por SSH a la VM (el host sale del secret `DEPLOY_HOST`), resetea el árbol de trabajo a `origin/main`, reconstruye la imagen y arranca con `docker run --network host --env-file /home/ubuntu/storico/backend/.env`. Las migraciones se aplican en una ventana de mantenimiento, entre el `docker stop` y el `docker run`. El detalle de variables y caminos por entorno está en `docs/deployment.md`, que es la autoridad de despliegue: este ADR sólo registra la decisión.
 

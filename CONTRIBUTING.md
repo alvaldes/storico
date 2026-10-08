@@ -32,7 +32,13 @@ A few notes to keep the project maintainable:
 
 ## Building
 
-### Full stack (Docker Compose — recommended)
+### Full stack (Docker Compose)
+
+> **Note**: the repository carries this Compose path (`docker-compose.yml`, 4 services), but it is
+> **not verified** by the development environment of the team that maintains Storico: that
+> environment has no Docker installed and runs its database on Supabase. It is not known whether the
+> Compose path works on any other machine. If you use it and something misbehaves, please say so in
+> your issue or PR.
 
 ```bash
 cp .env.example .env

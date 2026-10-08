@@ -1,6 +1,6 @@
 # Storico — Documentation
 
-> **Última actualización**: 2026-07-15
+> **Última actualización**: 2026-10-07
 
 Índice de la documentación técnica del proyecto Storico.
 
@@ -13,7 +13,7 @@
 | [API](api.md) | Referencia de endpoints REST |
 | [Testing](testing.md) | Estrategia de tests, cómo correrlos |
 | [Estado Frontend](frontend-state.md) | Stores Zustand, modelo de datos |
-| [Despliegue](deployment.md) | Docker Compose; producción: frontend en Vercel, API en la VM |
+| [Despliegue](deployment.md) | Desarrollo: Supabase en el entorno medido (el camino Compose del repo no está verificado ahí); producción: frontend en Vercel, API en la VM |
 | [Internacionalización](i18n.md) | Cómo funciona i18n, agregar idiomas |
 | [Seguridad](security.md) | Auth, OAuth, permisos |
 | [Deuda conocida](known-issues.md) | Deuda aceptada: falsos positivos y ruido de análisis estático |

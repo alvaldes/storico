@@ -1,16 +1,27 @@
 # Deployment
 
 > Guía de despliegue para Storico.
-> Última actualización: 2026-09-25
+> Última actualización: 2026-10-07
 
-## Desarrollo (Docker Compose)
+## Desarrollo
+
+Dev corre **sin Docker** en el entorno de este equipo: la base de datos está en **Supabase** (ver
+[La base de datos de desarrollo (Supabase)](#la-base-de-datos-de-desarrollo-supabase), más abajo) y el
+backend y el frontend se corren standalone (secciones más abajo). Esa es la única configuración medida
+en este entorno.
+
+El repo provee además un camino Compose: `docker-compose.yml` define cuatro servicios (API, Ollama,
+PostgreSQL, Qdrant) y los targets `make build` / `make up` / `make down` lo manejan. **Ese camino no
+está verificado en el entorno de este equipo** — ahí no hay Docker instalado (medido el 2026-09-30) —
+y nada en el repo afirma que funcione o que esté abandonado: no fue medido.
 
 ### Requisitos
 
-- Docker + Docker Compose
-- Git
+- Para el camino standalone (el medido en este entorno): Git, Python 3.12+ con el entorno conda
+  `storico` (bootstrap en `AGENTS.md`) y Node.js 20+ con pnpm
+- Para el camino Compose (no verificado en este entorno): Docker + Docker Compose
 
-### Inicio rápido
+### Inicio rápido (camino Compose)
 
 ```bash
 cp .env.example .env
@@ -18,6 +29,9 @@ make build      # Build imágenes
 make up         # Start servicios
 make ps         # Verificar salud
 ```
+
+Estos son los comandos del camino Compose descrito arriba; no es la configuración que este entorno
+usa para desarrollar.
 
 Servicios disponibles:
 
