@@ -130,35 +130,76 @@ chosen in one workspace is never applied to another.
 
 ### Requirement: Kanban Board Read Feedback
 
-While any board read is in flight — the task read, the stories read behind a project pick, or the
-versions read behind a story pick — the island MUST show a blocking full-viewport loading veil
-carrying a single `aria-live="polite"` status region with a localized label, so that a filter
-change is never silent and an empty select is never indistinguishable from a loading one. The
-veil MUST be raised by the board's own read state and MUST NOT be raised through the
-mutation-only global loading store, so that a board read never signals a write in flight. The
-veil MUST NOT cover the no-workspace prompt, and MUST NOT be raised by a drag-and-drop status
-update: that path is optimistic, shows a card-level indicator and reports failure through a
-toast. A read that fails MUST win over the veil and replace the board with its error state.
+The island MUST distinguish four levels of read feedback, and the level MUST be the message.
 
-#### Scenario: A filter change is visible while it is in flight
+**Entering the board** — the first task read for the current workspace, a switch to another
+workspace, and the retry from the error card after a failed first read — MUST raise a blocking
+full-viewport veil carrying a single `aria-live="polite"` status region with a localized label. A
+workspace switch counts as entering because every filter is cleared and every card replaced; a
+failed first read counts as never having entered, because the user has seen only the error card.
 
-- **GIVEN** a board with tasks in its columns
+**Every other task read** — a filter change, and a retry once a board has been seen — MUST show an
+internal loader inside the board area, in place of the columns, and MUST NOT raise the veil. The
+internal loader MUST NOT cover or disable the filter bar: changing filters while a read is in
+flight is supported, and an out-of-order answer MUST be discarded rather than applied. It MUST
+replace the columns rather than float over them, so the previous filter's cards are never
+presented as the answer to the filter now in the bar.
+
+**While a select's own options are being read**, that select MUST carry its own loader and MUST
+set `aria-busy` on its trigger, so that a pending read is attributable to the control that caused
+it and an empty select is never indistinguishable from a loading one. Each select MUST reflect
+only its own read.
+
+**A task status change from a card move** MUST raise none of the above: that path is optimistic
+and MUST show only its own card-level in-flight state.
+
+In every level the feedback MUST be raised by the island's own read state and MUST NOT be raised
+through the mutation-only global loading store, so that a board read never signals a write in
+flight. A read that fails MUST win over any loader and replace the board with its error state. An
+empty board MUST NOT be reported as empty until a read has settled for the filters the bar
+currently shows.
+
+#### Scenario: Entering the board raises the full veil
+
+- **GIVEN** a workspace is selected and no board has been read yet
+- **WHEN** the user opens `/[locale]/kanban`
+- **THEN** the full-viewport veil covers the page until the first task read settles
+- **AND** it does not return for that workspace afterwards
+
+#### Scenario: A filter change shows the internal loader, not the veil
+
+- **GIVEN** a board that has already been read
 - **WHEN** the user picks a project and the task read is still in flight
-- **THEN** the loading veil covers the board until the read settles
-- **AND** the board does not keep showing the previous filter's cards as if they answered the new one
+- **THEN** the internal loader shows in place of the columns
+- **AND** no full-viewport veil is raised
+- **AND** the filter bar stays rendered and usable
 
-#### Scenario: A project pick shows the veil while its stories read is pending
+#### Scenario: A workspace switch is a new entry
 
-- **GIVEN** a workspace with projects
-- **WHEN** the user picks a project and the stories read has not answered yet
-- **THEN** the loading veil covers the board
-- **AND** the empty story select is never presented as a project without stories
+- **GIVEN** a board read for workspace A
+- **WHEN** the user switches the selected workspace to workspace B
+- **THEN** the full-viewport veil covers the page until B's first task read settles
 
-#### Scenario: A story pick shows the veil while its versions read is pending
+#### Scenario: The retry after a failed first read still enters the board
 
-- **GIVEN** a project chosen and one of its stories chosen
-- **WHEN** the versions read has not answered yet
-- **THEN** the loading veil covers the board
+- **GIVEN** a first board read that failed, with the error card on screen
+- **WHEN** the user retries
+- **THEN** the full-viewport veil covers the page until the retry settles
+
+#### Scenario: A select shows its own loader while its read is pending
+
+- **GIVEN** a board that has already been read and a project picked
+- **WHEN** the stories read for the story select has not answered yet
+- **THEN** the story select shows its own loader and reports `aria-busy`
+- **AND** the other selects are quiet, because each reflects only its own read
+- **AND** no full-viewport veil is raised
+
+#### Scenario: A card move raises no board-level loading
+
+- **GIVEN** a loaded board with a task in a column
+- **WHEN** the user drags the card to another column and the status update is in flight
+- **THEN** neither the veil nor the internal loader is raised
+- **AND** the card keeps its own in-flight indicator and the optimistic move stands
 
 #### Scenario: No workspace selected is not covered by the veil
 
@@ -166,13 +207,6 @@ toast. A read that fails MUST win over the veil and replace the board with its e
 - **WHEN** the user opens `/[locale]/kanban`
 - **THEN** the localized "Select a workspace" prompt renders
 - **AND** no loading veil covers it, because no read is in flight
-
-#### Scenario: A drag-and-drop update does not raise the veil
-
-- **GIVEN** the board is loaded with a task in a column
-- **WHEN** the user drags the card to another column and the status update is in flight
-- **THEN** no full-viewport veil is raised
-- **AND** the card keeps its own in-flight indicator and the optimistic move stands
 
 #### Scenario: An empty board is not called empty before an answer arrives
 
