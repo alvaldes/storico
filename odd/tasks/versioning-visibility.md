@@ -79,6 +79,7 @@ Two measured limits that shape the design, both pre-existing and neither introdu
 | The board read is one scope, current-version-only | `task_repository.py:122-168`. |
 | The board keeps no filter state | `KanbanBoard.tsx:31-58`; `taskStore.fetchTasksForWorkspace` (`stores/taskStore.ts:397`). |
 | `ExportPanel` shares the same store slot and fetch | `ExportPanel.tsx:19,101,143`. |
+| A third story-list surface exists, and it is in scope by owner decision | `Dashboard.tsx:89-130` ("Recent stories") lists stories with project name and status and no version; WU3b adds the badge there. |
 | A schema change makes the committed API-reference pages stale, and a test enforces it | `backend/tests/test_api_reference.py::test_committed_pages_match_a_fresh_render`; the fix is `conda run -n storico python -m storico.scripts.render_api_reference` from `backend/`, which writes `frontend/src/content/docs/{en,es}/docs/api-reference.md`. WU1 hit it. |
 
 ## Tasks
@@ -92,8 +93,11 @@ Two measured limits that shape the design, both pre-existing and neither introdu
   `TaskRepository.list_page` gains the `project_id` branch; the route accepts `project_id` with
   membership validation and refuses multiple scopes with 422; backend tests.
 - [ ] **WU3 — Story card version badge (frontend)**: `StoriesList.tsx` renders `v{n} · current` /
-  `v{n} · {status}` and the version count; `UserStory` type gains `versionSummary`; i18n keys;
-  component tests.
+  `v{n}` and the version count; `UserStory` type gains `versionSummary`; i18n keys; component tests.
+- [ ] **WU3b — Dashboard recent-stories version badge (frontend)**: same badge and copy on
+  `Dashboard.tsx`'s "Recent stories" rows (owner's decision, 2026-10-07). The row is a third
+  surface of the same data and the payload already carries it — no backend change. The badge must
+  come from one shared piece so the three surfaces cannot drift.
 - [ ] **WU4 — Kanban cascade filters (frontend)**: project → story → version selects, `taskStore`
   and `tasks-api` filter plumbing, filter-aware empty state; tests.
 - [ ] **WU5 — Kanban version chip (frontend)**: `KanbanCard.tsx` shows the version of the task;

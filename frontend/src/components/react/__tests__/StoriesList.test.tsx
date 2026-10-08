@@ -117,6 +117,122 @@ describe('StoriesList — workspace scoping', () => {
   });
 });
 
+/* ── Story card version badge (versioning-visibility, WU3) ── */
+
+function makeStory(overrides: Partial<UserStory> = {}): UserStory {
+  return {
+    id: 'story-1',
+    projectId: 'project-a',
+    actor: 'user',
+    feature: 'log in',
+    benefit: 'access my account',
+    rawText: 'As a user, I want to log in, so that I can access my account',
+    status: 'extracted',
+    createdAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+async function renderStoryCard(story: UserStory) {
+  useStoryStore.setState({
+    stories: [story],
+    loading: false,
+    saving: false,
+    fetchStories: vi.fn().mockResolvedValue(undefined),
+  });
+  render(<StoriesList locale="en" />);
+  // The card's identity line (the actor) is the stable sign the row rendered.
+  await screen.findByText(story.actor);
+}
+
+describe('StoriesList — story card version badge', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useProjectStore.setState({
+      projects: [makeProject('project-a', 'Project A', 'ws-a')],
+      loading: false,
+      saving: false,
+      error: null,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    useStoryStore.setState({
+      stories: [],
+      loading: false,
+      saving: false,
+      fetchStories: vi.fn().mockResolvedValue(undefined),
+    });
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace('ws-a')],
+      currentWorkspace: makeWorkspace('ws-a'),
+      loading: false,
+      saving: false,
+    });
+  });
+
+  it('marks the current version and shows the count when a completed run exists', async () => {
+    await renderStoryCard(
+      makeStory({
+        versionSummary: {
+          count: 3,
+          currentNumber: 2,
+          latestNumber: 2,
+          latestStatus: 'completed',
+        },
+      }),
+    );
+
+    expect(screen.getByText(`v2 · ${t.versionSelector.current}`)).toBeInTheDocument();
+    expect(screen.getByText('3 versions')).toBeInTheDocument();
+  });
+
+  it('shows the newest version without the current marker when no run completed', async () => {
+    await renderStoryCard(
+      makeStory({
+        status: 'failed_extraction',
+        versionSummary: {
+          count: 2,
+          currentNumber: null,
+          latestNumber: 2,
+          latestStatus: 'failed',
+        },
+      }),
+    );
+
+    // The badge names the newest run, but never claims it is current: the
+    // story-status badge next to it already carries the failure.
+    expect(screen.getByText('v2')).toBeInTheDocument();
+    expect(screen.queryByText(`v2 · ${t.versionSelector.current}`)).not.toBeInTheDocument();
+    expect(screen.queryByText(t.versionSelector.current)).not.toBeInTheDocument();
+  });
+
+  it('invents no version badge or count for a story with no runs', async () => {
+    await renderStoryCard(makeStory({ versionSummary: null }));
+
+    expect(screen.queryByText(/^v\d/)).not.toBeInTheDocument();
+    expect(screen.queryByText('1 version')).not.toBeInTheDocument();
+    expect(screen.queryByText('2 versions')).not.toBeInTheDocument();
+    // The rest of the card is untouched.
+    expect(screen.getByText(t.stories.status_extracted)).toBeInTheDocument();
+  });
+
+  it('uses the singular count for exactly one version', async () => {
+    await renderStoryCard(
+      makeStory({
+        versionSummary: {
+          count: 1,
+          currentNumber: 1,
+          latestNumber: 1,
+          latestStatus: 'completed',
+        },
+      }),
+    );
+
+    expect(screen.getByText('v1 · current')).toBeInTheDocument();
+    expect(screen.getByText(t.stories.version_count_one)).toBeInTheDocument();
+    expect(screen.queryByText('1 versions')).not.toBeInTheDocument();
+  });
+});
+
 /* ── Delete dialog version count (0.9.0 slice b, W6-A) ── */
 
 function makeVersion(overrides: Partial<StoryVersion> = {}): StoryVersion {

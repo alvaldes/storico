@@ -434,6 +434,27 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
+                  {/* Version badge (D1): the current completed run gets the
+                      currency marker; with no completed run the newest run is
+                      shown muted and unmarked — never lie about currency. The
+                      story-status badge next to it names that run's outcome.
+                      A story with no runs (versionSummary null) shows nothing. */}
+                  {story.versionSummary && (
+                    <Badge
+                      variant={
+                        story.versionSummary.currentNumber !== null ? 'default' : 'outline'
+                      }
+                      className={
+                        story.versionSummary.currentNumber !== null
+                          ? undefined
+                          : 'text-muted-foreground'
+                      }
+                    >
+                      {story.versionSummary.currentNumber !== null
+                        ? `v${story.versionSummary.currentNumber} · ${t.versionSelector.current}`
+                        : `v${story.versionSummary.latestNumber}`}
+                    </Badge>
+                  )}
                   <Badge variant={STATUS_VARIANTS[story.status] ?? 'outline'}>
                     {
                       t.stories[
@@ -441,6 +462,16 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
                       ]
                     }
                   </Badge>
+                  {story.versionSummary && story.versionSummary.count >= 1 && (
+                    <span className="text-xs text-muted-foreground">
+                      {story.versionSummary.count === 1
+                        ? t.stories.version_count_one
+                        : t.stories.version_count_other.replace(
+                            '{count}',
+                            String(story.versionSummary.count),
+                          )}
+                    </span>
+                  )}
                   <span className="text-xs text-muted-foreground">
                     {new Date(story.createdAt).toLocaleDateString(
                       locale === 'es' ? 'es-MX' : 'en-US',

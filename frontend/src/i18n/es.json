@@ -226,6 +226,8 @@
     "delete_confirm_description": "Esto eliminará permanentemente la historia de usuario y sus tareas generadas. Esta acción no se puede deshacer.",
     "delete_confirm_versions": "{count} versiones de extracción se destruirán con ella.",
     "delete_confirm_versions_unknown": "Las versiones de extracción que contiene también se destruirán con ella.",
+    "version_count_one": "1 versión",
+    "version_count_other": "{count} versiones",
     "extract_confirm_title": "Extraer tareas — crear una nueva versión",
     "extract_confirm_body": "La extracción crea la versión {newVersion} y congela la versión {currentVersion}. La versión congelada mantiene sus tareas legibles, pero sus dependencias ya no se pueden cambiar.",
     "extract_confirm_body_first": "La extracción crea la versión {newVersion}. No hay una versión anterior que congelar.",
