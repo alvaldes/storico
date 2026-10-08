@@ -4,8 +4,9 @@ import { Draggable } from '@hello-pangea/dnd';
 import { GripVertical, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { IconDisplay } from '@/components/ui/icon-display';
 import { useTranslations, type Locale } from '@/i18n/utils';
-import { projectTreatment, storyCardTreatment } from '@/lib/context-treatment';
+import { CARD_PROJECT_CAP, projectTreatment, storyCardTreatment } from '@/lib/context-treatment';
 import { useTaskStore } from '@/stores/taskStore';
 import type { Task } from '@/types/task';
 
@@ -22,8 +23,14 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
   const isUpdating = useTaskStore((s) => s.updatingTaskId === task.id);
   // The context chips' treatment comes from the one shared definition in
   // ``lib/context-treatment.ts`` — the same functions the cascade's selects
-  // consume, so the two surfaces cannot drift (WU17).
-  const projectChip = task.projectName ? projectTreatment(task.projectName) : null;
+  // consume, so the two surfaces cannot drift (WU17). The project's icon comes
+  // from the task payload (D24 of feature ``kanban-project-icons``): the same
+  // batched read that resolves the label, so the card never depends on the
+  // capped project list. A null icon draws the folder fallback (D22) and
+  // touches neither the label nor the tooltip.
+  const projectChip = task.projectName
+    ? projectTreatment(task.projectName, CARD_PROJECT_CAP, task.projectIcon ?? null)
+    : null;
   const storyChip = task.storyId
     ? storyCardTreatment(task.storyId, task.storyRawText ?? null)
     : null;
@@ -101,7 +108,11 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
                           />
                         }
                       >
-                        <projectChip.Icon className="h-3 w-3" />
+                        <IconDisplay
+                          name={projectChip.iconName}
+                          fallback={projectChip.fallback}
+                          className="h-3 w-3"
+                        />
                         <span className="min-w-0 truncate">{projectChip.label}</span>
                       </TooltipTrigger>
                       <TooltipContent>{projectChip.tooltip}</TooltipContent>
@@ -117,7 +128,11 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
                           />
                         }
                       >
-                        <storyChip.Icon className="h-3 w-3" />
+                        <IconDisplay
+                          name={storyChip.iconName}
+                          fallback={storyChip.fallback}
+                          className="h-3 w-3"
+                        />
                         {storyChip.label}
                       </TooltipTrigger>
                       <TooltipContent>{storyChip.tooltip}</TooltipContent>

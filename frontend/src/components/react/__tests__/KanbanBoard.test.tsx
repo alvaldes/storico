@@ -1665,3 +1665,193 @@ describe('KanbanBoard — context treatment on chips and selects (WU17)', () => 
     expect(await screen.findByText(SENTENCE)).toBeInTheDocument();
   });
 });
+
+/* ── The project's own icon on the chips and rows (WU20, D22–D24 of feature
+ * ``kanban-project-icons``) ──
+ *
+ * Both the card's project chip and the cascade's project rows used to draw the
+ * same hardcoded `FolderKanban` for every project. Now the icon is data — the
+ * project's own name from the payload/row — rendered through `IconDisplay`
+ * with `FolderKanban` as the fallback, the same one the rest of the app uses
+ * for an icon-less project. The story keeps the fixed fingerprint either way:
+ * `'fingerprint'` is not in `IconDisplay`'s map, so the story's icon is a
+ * fallback, never a name. The board renders through the real cards and the
+ * real selects, which is where both surfaces live.
+ */
+describe('KanbanBoard — the project’s own icon on chips and rows (WU20)', () => {
+  const STORY_ID = '01a10dee-6d92-7d13-812f-bc39dfd8e767';
+  const SENTENCE = 'As a user, I want to log in, so that I can access my account';
+  const PROJECT_NAME = 'Alpha';
+
+  function chipTask(fields: Partial<Task> & Pick<Task, 'id'>): Task {
+    return {
+      storyId: STORY_ID,
+      title: `Task ${fields.id}`,
+      description: '',
+      status: 'todo',
+      priority: 'medium',
+      labels: [],
+      dependencies: [],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      extractionId: 'extraction-1',
+      versionNumber: null,
+      projectId: 'project-1',
+      projectName: PROJECT_NAME,
+      projectIcon: null,
+      storyRawText: SENTENCE,
+      ...fields,
+    };
+  }
+
+  function projectFixture(icon: string | null): Project {
+    return {
+      id: 'project-1',
+      name: PROJECT_NAME,
+      description: '',
+      icon,
+      workspaceId: 'workspace-1',
+      createdBy: null,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      storyCount: 1,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspace: {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        ownerId: 'user-1',
+        role: 'admin',
+        memberCount: 1,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      } as Workspace,
+      loading: false,
+      saving: false,
+    });
+    useTaskStore.setState({
+      tasks: {},
+      workspaceTasks: [],
+      extractions: {},
+      loading: false,
+      error: null,
+      updatingTaskId: null,
+      allowedTransitions: {},
+      fetchTasksForWorkspace: vi.fn().mockResolvedValue(undefined),
+      updateTaskStatus: vi.fn().mockResolvedValue(undefined),
+    });
+  });
+
+  it('renders the project’s own icon on the card chip when the task payload carries one (D24)', async () => {
+    useTaskStore.setState({
+      workspaceTasks: [chipTask({ id: 'task-icon', projectIcon: 'database' })],
+    });
+
+    render(<KanbanBoard locale="en" />);
+
+    // The icon is the payload's name resolved by `IconDisplay`, not the folder.
+    const chip = (await screen.findByText(PROJECT_NAME)).closest(
+      '[data-base-ui-tooltip-trigger]',
+    ) as HTMLElement;
+    expect(chip.querySelector('.lucide-database')).not.toBeNull();
+    expect(chip.querySelector('.lucide-folder-kanban')).toBeNull();
+  });
+
+  it('renders the folder fallback on the card chip when the project has no icon, leaving label and tooltip alone', async () => {
+    const user = userEvent.setup();
+    useTaskStore.setState({
+      workspaceTasks: [chipTask({ id: 'task-noicon', projectIcon: null })],
+    });
+
+    render(<KanbanBoard locale="en" />);
+
+    // An icon-less project draws the app's own default for one (D22).
+    const chip = (await screen.findByText(PROJECT_NAME)).closest(
+      '[data-base-ui-tooltip-trigger]',
+    ) as HTMLElement;
+    expect(chip.querySelector('.lucide-folder-kanban')).not.toBeNull();
+    // A null icon must not touch the label or the tooltip: the name is intact
+    // and the hover still names the project in full.
+    expect(chip.textContent).toContain(PROJECT_NAME);
+    await user.hover(chip);
+    // The full name lives in the opened tooltip popup (the chip itself already
+    // shows the truncated label, so the popup is queried directly).
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe(
+        PROJECT_NAME,
+      ),
+    );
+  });
+
+  it('keeps the fingerprint on the story chip whether or not the project has an icon', async () => {
+    for (const projectIcon of ['database', null]) {
+      useTaskStore.setState({
+        workspaceTasks: [chipTask({ id: 'task-story', projectIcon })],
+      });
+
+      const { unmount } = render(<KanbanBoard locale="en" />);
+
+      // The story's icon is a fixed fallback — never a name — so it stays the
+      // fingerprint whatever the project's own icon is.
+      const storyChip = await screen.findByText(shortUUID(STORY_ID));
+      expect(
+        storyChip.closest('[data-base-ui-tooltip-trigger]')?.querySelector('.lucide-fingerprint'),
+      ).not.toBeNull();
+
+      unmount();
+    }
+  });
+
+  it('uses the project’s own icon in the project select’s rows, matching the card’s for the same project (D22)', async () => {
+    const user = userEvent.setup();
+    useProjectStore.setState({
+      projects: [projectFixture('database')],
+      loading: false,
+      error: null,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    useTaskStore.setState({
+      workspaceTasks: [chipTask({ id: 'task-icon', projectIcon: 'database' })],
+    });
+
+    render(<KanbanBoard locale="en" />);
+
+    // The card draws the payload's icon...
+    const cardChip = (await screen.findByText(PROJECT_NAME)).closest(
+      '[data-base-ui-tooltip-trigger]',
+    ) as HTMLElement;
+    expect(cardChip.querySelector('.lucide-database')).not.toBeNull();
+
+    // ...and the select's row for the same project draws the project's own
+    // icon — the name the project row it lists carries — not the folder.
+    await user.click(await screen.findByRole('combobox', { name: t.kanban.filter_project }));
+    const option = await screen.findByRole('option', { name: PROJECT_NAME });
+    expect(option.querySelector('.lucide-database')).not.toBeNull();
+    expect(option.querySelector('.lucide-folder-kanban')).toBeNull();
+  });
+
+  it('renders the folder fallback on a project row whose project has no icon', async () => {
+    const user = userEvent.setup();
+    useProjectStore.setState({
+      projects: [projectFixture(null)],
+      loading: false,
+      error: null,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    useTaskStore.setState({ workspaceTasks: [] });
+
+    render(<KanbanBoard locale="en" />);
+
+    await user.click(await screen.findByRole('combobox', { name: t.kanban.filter_project }));
+    const option = await screen.findByRole('option', { name: PROJECT_NAME });
+    console.log('DEBUG-HTML', option.outerHTML);
+    expect(option.querySelector('.lucide-folder-kanban')).not.toBeNull();
+    expect(option.querySelector('.lucide-database')).toBeNull();
+  });
+});

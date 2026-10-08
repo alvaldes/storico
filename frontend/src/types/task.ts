@@ -67,6 +67,16 @@ export interface Task {
    * fall back to the story's id when it is null or absent.
    */
   storyRawText?: string | null;
+  /**
+   * The project's own icon name (WU20 of feature ``kanban-project-icons``),
+   * mirroring ``TaskResponse``'s ``project_icon``. Optional, not
+   * required-nullable, for the same reason as ``projectName``: the legacy,
+   * uncalled mapper in ``lib/api.ts`` (deliberately untouched) still produces
+   * ``Task`` objects without it — ``mapTaskItem`` always sets it. Cards must
+   * draw the folder fallback when it is null or absent (D22: an icon-less
+   * project gets the app's own default, and the label/tooltip are unaffected).
+   */
+  projectIcon?: string | null;
 }
 
 /** Raw task from API (snake_case). */
@@ -88,6 +98,10 @@ export interface RawTaskItem {
   /** The story's sentence, joined into the same batched read for the chip
    * tooltips (WU16/D19) — one more column, no second query. */
   story_raw_text: string | null;
+  /** The project's own icon name, joined into the same batched read for the
+   * chip's icon (WU20/D24 of feature ``kanban-project-icons``) — one more
+   * column, no second query. */
+  project_icon: string | null;
 }
 
 /* ── Invalidation marks (0.9.0 slice b) ── */

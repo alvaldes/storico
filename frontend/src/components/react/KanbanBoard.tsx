@@ -10,13 +10,15 @@ import { listVersions } from '@/lib/versioning-api';
 import type { WorkspaceTaskFilters } from '@/lib/tasks-api';
 import type { StoryVersion, UserStory } from '@/types/story';
 import { useTranslations, type Locale } from '@/i18n/utils';
-import { AlertCircle, LoaderCircle, X, type LucideIcon } from 'lucide-react';
+import { AlertCircle, LoaderCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { IconDisplay } from '@/components/ui/icon-display';
 import {
   projectTreatment,
   SELECT_PROJECT_CAP,
   storySelectTreatment,
+  type ContextTreatment,
 } from '@/lib/context-treatment';
 import {
   Select,
@@ -47,13 +49,15 @@ interface InvalidDropToast {
  * `title` is the full value the listbox option exposes as a native `title`
  * (D18 of feature ``kanban-context-tooltips``: a Tooltip per option fights the
  * listbox's focus and keyboard navigation, so the listbox keeps the native
- * mechanism and the trigger gets the real one); `Icon` is the shared context
- * treatment's icon, `null` for the "All …" rows that name no project or story. */
+ * mechanism and the trigger gets the real one); `treatment` is the shared
+ * context treatment — its icon is a name plus fallback rendered through
+ * ``IconDisplay`` (D23 of feature ``kanban-project-icons``) —, `null` for the
+ * "All …" rows that name no project or story. */
 interface ContextSelectItem {
   label: string;
   value: string | null;
   title: string | null;
-  Icon: LucideIcon | null;
+  treatment: ContextTreatment | null;
 }
 
 export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
@@ -323,13 +327,16 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   // ``lib/context-treatment.ts``, the same functions the card's chips consume. The options
   // truncate at the select's wider cap (D21) — a dropdown row must stay
   // choosable without hovering, which the card's 12-character cap would make
-  // impossible — and carry the full value as a native `title` (D18).
+  // impossible — and carry the full value as a native `title` (D18). The project
+  // rows pass the icon name the project row already carries (D24 of feature
+  // ``kanban-project-icons``): the same icon the card shows for the same
+  // project, through the same treatment.
   const projectItems = useMemo<ContextSelectItem[]>(
     () => [
-      { label: t.stories.allProjects, value: null, title: null, Icon: null },
+      { label: t.stories.allProjects, value: null, title: null, treatment: null },
       ...projects.map((p) => {
-        const treatment = projectTreatment(p.name, SELECT_PROJECT_CAP);
-        return { label: treatment.label, value: p.id, title: treatment.tooltip, Icon: treatment.Icon };
+        const treatment = projectTreatment(p.name, SELECT_PROJECT_CAP, p.icon ?? null);
+        return { label: treatment.label, value: p.id, title: treatment.tooltip, treatment };
       }),
     ],
     [projects, t],
@@ -337,11 +344,11 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
 
   const storyItems = useMemo<ContextSelectItem[]>(
     () => [
-      { label: t.kanban.filter_all_stories, value: null, title: null, Icon: null },
+      { label: t.kanban.filter_all_stories, value: null, title: null, treatment: null },
       ...storyOptions.map((s) => {
         // D16: the human label `${actor}: ${feature}`, not the short id.
         const treatment = storySelectTreatment(s);
-        return { label: treatment.label, value: s.id, title: treatment.tooltip, Icon: treatment.Icon };
+        return { label: treatment.label, value: s.id, title: treatment.tooltip, treatment };
       }),
     ],
     [storyOptions, t],
@@ -610,7 +617,14 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
                       value={item.value}
                       title={item.title ?? undefined}
                     >
-                      {item.Icon && <item.Icon aria-hidden="true" />}
+                      {item.treatment && (
+                        <span aria-hidden="true">
+                          <IconDisplay
+                            name={item.treatment.iconName}
+                            fallback={item.treatment.fallback}
+                          />
+                        </span>
+                      )}
                       {item.label}
                     </SelectItem>
                   ))}
@@ -655,7 +669,14 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
                       value={item.value}
                       title={item.title ?? undefined}
                     >
-                      {item.Icon && <item.Icon aria-hidden="true" />}
+                      {item.treatment && (
+                        <span aria-hidden="true">
+                          <IconDisplay
+                            name={item.treatment.iconName}
+                            fallback={item.treatment.fallback}
+                          />
+                        </span>
+                      )}
                       {item.label}
                     </SelectItem>
                   ))}

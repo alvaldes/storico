@@ -8,7 +8,7 @@
  * ``kanban-context-tooltips``).
  *
  * This is not a generic helper, which is why it is not in ``utils.ts``: it
- * carries UI decisions — an icon component per kind, a truncation cap per
+ * carries UI decisions — an icon name plus fallback per kind, a truncation cap per
  * surface — and ``utils.ts`` is imported by 41 modules that have no business
  * pulling an icon library for ``cn()``.
  */
@@ -33,22 +33,43 @@ export const CARD_PROJECT_CAP = 12;
  * every option. */
 export const SELECT_PROJECT_CAP = 32;
 
-/** What one surface shows for a project or a story: the icon, the visible
- * (truncated) label and the tooltip's full value (D17). */
+/** What one surface shows for a project or a story: the icon — a **name plus
+ * a fallback component** for `IconDisplay` (D23 of feature
+ * ``kanban-project-icons``: the project's icon is a kebab-case name from the
+ * picker, while the story's fingerprint is a fixed component that name map
+ * does not contain, so a purely name-based treatment would draw the story a
+ * folder) —, the visible (truncated) label and the tooltip's full value (D17).
+ * Both surfaces render through `<IconDisplay name={t.iconName}
+ * fallback={t.fallback} />`. */
 export interface ContextTreatment {
-  Icon: LucideIcon;
+  /** The icon name `IconDisplay` resolves, or `null` when the kind has no
+   * name — the story's is a fixed component, never a name. */
+  iconName: string | null;
+  /** The fallback `IconDisplay` draws when the name is null or unknown. */
+  fallback: LucideIcon;
   label: string;
   tooltip: string;
 }
 
-/** The project treatment: the full name in the tooltip, the name truncated at
- * `maxCharacters` as the label. The card calls it with the default (its
- * 12-character cap); the select's options and trigger pass `SELECT_PROJECT_CAP`. */
+/** The project treatment: the project's own icon name — the card passes the
+ * task payload's, the select the project row's (D24) — falling back to
+ * `FolderKanban`, which is what the rest of the app already draws for a
+ * project without an icon (`ProjectForm` seeds `'folder-kanban'`), so the
+ * fallback is not a second opinion (D22). The full name in the tooltip, the
+ * name truncated at `maxCharacters` as the label. The card calls it with the
+ * default (its 12-character cap); the select's options and trigger pass
+ * `SELECT_PROJECT_CAP`. */
 export function projectTreatment(
   name: string,
   maxCharacters: number = CARD_PROJECT_CAP,
+  iconName: string | null = null,
 ): ContextTreatment {
-  return { Icon: FolderKanban, label: shortProjectTitle(name, maxCharacters), tooltip: name };
+  return {
+    iconName,
+    fallback: FolderKanban,
+    label: shortProjectTitle(name, maxCharacters),
+    tooltip: name,
+  };
 }
 
 /** The story treatment on the card: the same ``shortUUID`` label the story
@@ -56,7 +77,10 @@ export function projectTreatment(
  * missing sentence (``story_raw_text`` null) falls back to the id — the
  * tooltip shows what the card has, never an empty popup. */
 export function storyCardTreatment(storyId: string, sentence: string | null): ContextTreatment {
-  return { Icon: Fingerprint, label: shortUUID(storyId), tooltip: sentence ?? storyId };
+  // The story has no icon name: `'fingerprint'` is absent from `IconDisplay`'s
+  // map, so the fingerprint must stay a fallback, never a name (D23) — a name
+  // here would silently draw a folder.
+  return { iconName: null, fallback: Fingerprint, label: shortUUID(storyId), tooltip: sentence ?? storyId };
 }
 
 /** The story treatment in the cascade's select: the human label
@@ -69,5 +93,5 @@ export function storySelectTreatment(story: {
   rawText: string | null;
 }): ContextTreatment {
   const label = `${story.actor}: ${story.feature}`;
-  return { Icon: Fingerprint, label, tooltip: story.rawText ?? label };
+  return { iconName: null, fallback: Fingerprint, label, tooltip: story.rawText ?? label };
 }
