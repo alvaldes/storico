@@ -29,6 +29,10 @@ export const BLOCKING_EXCLUSIONS: readonly {
     match: /^\/api\/v1\/workspaces\/[^/]+\/extract\/$/,
     why: 'Extraction start answers 202 immediately and the story page already owns the pending UI (version selector, toast, poll), so a page-wide overlay would be a second, contradicting signal.',
   },
+  {
+    match: /^\/api\/v1\/tasks\/[^/]+$/,
+    why: 'Task update from a card move: the drop is optimistic and the card already carries its own in-flight indicator, so a page-wide overlay would interrupt the gesture it is meant to confirm — the surface owns its pending UI, as with the extraction start. The same PUT /api/v1/tasks/{id} serves the task editor\'s save, which has its own `saving` spinner and success toast, so the exclusion holds for both callers for the same reason.',
+  },
 ] as const;
 
 const BLOCKING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
