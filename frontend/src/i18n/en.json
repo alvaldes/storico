@@ -340,7 +340,16 @@
     "invalid_drop": "Cannot move task from {from} to {to}. Allowed: {allowed}",
     "backend_invalid_transition": "Server rejected move from {from} to {to}. Allowed: {allowed}",
     "empty_board": "No tasks in this workspace yet",
-    "empty_board_hint": "Extract tasks from a user story to see them here."
+    "empty_board_hint": "Extract tasks from a user story to see them here.",
+    "filter_project": "Project",
+    "filter_story": "Story",
+    "filter_version": "Version",
+    "filter_all_stories": "All stories",
+    "filter_all_versions": "All versions",
+    "filter_select_story": "Select a story first",
+    "filter_clear": "Clear filters",
+    "empty_filtered": "No tasks match the selected filters",
+    "empty_filtered_hint": "Adjust or clear the filters to see more tasks."
   },
   "taskEditor": {
     "title": "Edit Task",

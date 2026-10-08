@@ -1,12 +1,25 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import { KanbanColumn } from '@/components/react/KanbanColumn';
 import { DndErrorBoundary } from '@/components/react/DndErrorBoundary';
 import { useTaskStore } from '@/stores/taskStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { listStories } from '@/lib/stories-api';
+import { listVersions } from '@/lib/versioning-api';
+import type { WorkspaceTaskFilters } from '@/lib/tasks-api';
+import type { StoryVersion, UserStory } from '@/types/story';
 import { useTranslations, type Locale } from '@/i18n/utils';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { Task, TaskStatus } from '@/types/task';
 import { getAllowedTaskTransitions, TASK_STATUSES } from '@/types/task';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
@@ -27,6 +40,7 @@ interface InvalidDropToast {
 export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   const t = useTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
+  const { projects, fetchProjects } = useProjectStore();
   const {
     workspaceTasks,
     loading,
@@ -40,6 +54,19 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   } = useTaskStore();
 
   const [initialLoad, setInitialLoad] = useState(true);
+  // The cascade (D5): project → story → version. `null` at a level means "not
+  // filtered here"; choosing a project enables the story select, a story the
+  // version select. Moving up the cascade clears everything below it, so the
+  // resolved query never carries a scope orphaned from its parent.
+  const [projectFilter, setProjectFilter] = useState<string | null>(null);
+  const [storyFilter, setStoryFilter] = useState<string | null>(null);
+  const [versionFilter, setVersionFilter] = useState<string | null>(null);
+  // The story and version options are the selected project's/story's data, read
+  // straight from their APIs into local state: `useStoryStore` belongs to the
+  // stories page, and the board must not write into it (the page's list, cache
+  // and selectors would all see the board's reads).
+  const [storyOptions, setStoryOptions] = useState<UserStory[]>([]);
+  const [versionOptions, setVersionOptions] = useState<StoryVersion[]>([]);
   const [localTasks, setLocalTasks] = useState<Record<ColumnId, Task[]>>({
     backlog: [],
     todo: [],
@@ -53,18 +80,113 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     allowed: [],
   });
 
-  // Fetch tasks on mount.
+  // Filters do not survive a workspace switch: a project chosen in workspace A is
+  // meaningless in B, where `project_id` belongs to another workspace and would
+  // answer 403 or an empty board with the bar still naming it. The reset happens
+  // during render (the "adjust state when a prop changes" pattern) rather than in
+  // an effect, so the fetch effect committed for the new workspace already sees
+  // cleared filters and the board refetches the new workspace unfiltered — an
+  // effect here would run one commit late, after a mis-scoped fetch had left.
+  const [prevWorkspaceId, setPrevWorkspaceId] = useState(workspaceId);
+  if (prevWorkspaceId !== workspaceId) {
+    setPrevWorkspaceId(workspaceId);
+    setProjectFilter(null);
+    setStoryFilter(null);
+    setVersionFilter(null);
+    setStoryOptions([]);
+    setVersionOptions([]);
+  }
+
+  // Fetch projects if they haven't been loaded yet (needed for the filter dropdown),
+  // exactly as StoriesList feeds its project select.
+  useEffect(() => {
+    if (projects.length === 0) {
+      fetchProjects();
+    }
+  }, [fetchProjects, projects.length]);
+
+  // Stories of the selected project, capped at 100 like every story list read.
+  // A failed read leaves the select empty (and so unusable); it never blocks
+  // the unfiltered board.
+  useEffect(() => {
+    if (!projectFilter) {
+      setStoryOptions([]);
+      return;
+    }
+    let active = true;
+    setStoryOptions([]);
+    listStories(projectFilter, 1, 100, workspaceId)
+      .then((page) => {
+        if (active) setStoryOptions(page.items);
+      })
+      .catch(() => {
+        if (active) setStoryOptions([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectFilter, workspaceId]);
+
+  // Versions of the selected story, ordered `version_number DESC` by the read.
+  useEffect(() => {
+    if (!storyFilter) {
+      setVersionOptions([]);
+      return;
+    }
+    let active = true;
+    setVersionOptions([]);
+    listVersions(storyFilter)
+      .then((history) => {
+        if (active) setVersionOptions(history);
+      })
+      .catch(() => {
+        if (active) setVersionOptions([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [storyFilter]);
+
+  // The cascade as it stands, resolved to the API's most-specific-wins shape (D5):
+  // only the most specific scope the user picked is ever handed downstream, so the
+  // request that leaves the client can never name two scopes — the backend refuses
+  // those with 422 `REQUEST_VALIDATION_FAILED`. (`listTasksByWorkspace` re-resolves
+  // with the same rule for any caller that passes a wider set; this board resolves
+  // first because it owns the cascade.) `undefined` when nothing is filtered, so the
+  // unfiltered call is byte-identical to the pre-filtering one `ExportPanel` makes.
+  const activeFilters: WorkspaceTaskFilters | undefined = useMemo(() => {
+    if (storyFilter) {
+      return versionFilter
+        ? { storyId: storyFilter, versionId: versionFilter }
+        : { storyId: storyFilter };
+    }
+    if (projectFilter) return { projectId: projectFilter };
+    return undefined;
+  }, [projectFilter, storyFilter, versionFilter]);
+
+  /** The board load, with whatever filters are selected right now.
+   *
+   * Every path — mount effect, cascade change, and the error retry below —
+   * goes through this one closure, so a retried load carries the same filters
+   * the bar shows instead of silently swapping back to the whole workspace.
+   */
+  const loadTasks = useCallback(
+    (wsId: string) => fetchTasksForWorkspace(wsId, activeFilters),
+    [fetchTasksForWorkspace, activeFilters],
+  );
+
+  // Fetch tasks on mount, and refetch whenever the cascade changes.
   //
   // `fetchTasksForWorkspace` never rejects: the store swallows the failure and records it
   // in `error`, which is the channel rendered above. The `.catch()` that used to live here
   // could not run, which is why the board had an error branch nothing could reach.
   useEffect(() => {
     if (workspaceId) {
-      fetchTasksForWorkspace(workspaceId).then(() => setInitialLoad(false));
+      loadTasks(workspaceId).then(() => setInitialLoad(false));
     } else {
       setInitialLoad(false);
     }
-  }, [fetchTasksForWorkspace, workspaceId]);
+  }, [loadTasks, workspaceId]);
 
   // Group tasks by status whenever workspaceTasks changes
   useEffect(() => {
@@ -109,6 +231,68 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
       head.removeChild = originalRemoveChild;
     };
   }, []);
+
+  // ── Filter handlers ──
+  // Moving up the cascade clears everything below it, so no fetch ever carries a
+  // scope orphaned from its parent and the API's one-scope contract is never raced.
+  const handleProjectChange = useCallback((value: string | null) => {
+    setProjectFilter(value ?? null);
+    setStoryFilter(null);
+    setVersionFilter(null);
+  }, []);
+
+  const handleStoryChange = useCallback((value: string | null) => {
+    setStoryFilter(value ?? null);
+    setVersionFilter(null);
+  }, []);
+
+  const handleVersionChange = useCallback((value: string | null) => {
+    setVersionFilter(value ?? null);
+  }, []);
+
+  const hasActiveFilter =
+    projectFilter !== null || storyFilter !== null || versionFilter !== null;
+
+  const clearFilters = useCallback(() => {
+    setProjectFilter(null);
+    setStoryFilter(null);
+    setVersionFilter(null);
+  }, []);
+
+  // Select options: an "All …" entry (value `null`) means "not filtered at this
+  // level", the same null-means-unfiltered convention StoriesList's project
+  // select uses. "All projects" reuses the stories page's copy — same idea, one key.
+  const projectItems = useMemo(
+    () => [
+      { label: t.stories.allProjects, value: null as string | null },
+      ...projects.map((p) => ({ label: p.name, value: p.id as string | null })),
+    ],
+    [projects, t],
+  );
+
+  const storyItems = useMemo(
+    () => [
+      { label: t.kanban.filter_all_stories, value: null as string | null },
+      ...storyOptions.map((s) => ({ label: `${s.actor}: ${s.feature}`, value: s.id as string | null })),
+    ],
+    [storyOptions, t],
+  );
+
+  // D10: the label is `v{n}` plus the currency marker, reusing
+  // `versionSelector.current` — not the full model-and-date label the story
+  // page's selector needs, which is not a filter key.
+  const versionItems = useMemo(
+    () => [
+      { label: t.kanban.filter_all_versions, value: null as string | null },
+      ...versionOptions.map((v) => ({
+        label: v.isCurrent
+          ? `v${v.versionNumber ?? '?'} · ${t.versionSelector.current}`
+          : `v${v.versionNumber ?? '?'}`,
+        value: v.id as string | null,
+      })),
+    ],
+    [versionOptions, t],
+  );
 
   const handleDragEnd = useCallback(
     async (result: DropResult) => {
@@ -204,16 +388,20 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   }
 
   /**
-   * Retry the board load.
+   * Retry the board load, with the filters the bar currently shows.
    *
    * `initialLoad` goes back to true first so a retry shows the spinner instead of the
    * empty-board copy while it is in flight: the guard is `initialLoad && loading`, and a
    * retry starts with `initialLoad` already false. A retry that fails again still lands on
    * the error branch, because that guard needs `loading` too.
+   *
+   * `loadTasks` reads the cascade from its closure, so the retry refetches the
+   * filtered query — a failed filtered load must not quietly become a whole-
+   * workspace load with the bar still naming the filter.
    */
   const reload = () => {
     setInitialLoad(true);
-    if (workspaceId) void fetchTasksForWorkspace(workspaceId);
+    if (workspaceId) void loadTasks(workspaceId);
   };
 
   if (loadError) {
@@ -233,16 +421,14 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     );
   }
 
-  // Workspace selected but with no tasks: distinct empty state from the
-  // "no workspace" prompt, with a hint to extract tasks from a story.
-  if (workspaceTasks.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
-        <p className="text-sm font-medium text-foreground">{t.kanban.empty_board}</p>
-        <p className="mt-2 text-sm text-muted-foreground">{t.kanban.empty_board_hint}</p>
-      </div>
-    );
-  }
+  // Workspace selected but with no tasks and no filter: today's empty copy, with
+  // its hint to extract tasks from a story. A board emptied by a filter gets the
+  // filtered copy below — the workspace may well have tasks, and the claim must
+  // not outlive the filter that emptied it. The filter bar renders in both cases,
+  // so an empty workspace can still gain its first filter and a filtered one can
+  // always be cleared.
+  const unfilteredEmpty = workspaceTasks.length === 0 && !hasActiveFilter;
+  const filteredEmpty = workspaceTasks.length === 0 && hasActiveFilter;
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden">
@@ -274,22 +460,108 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
           </span>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-hidden overflow-x-auto px-4 lg:px-6 pb-4 lg:pb-6 pt-4">
-          <DndErrorBoundary>
-            <DragDropContext onDragEnd={handleDragEnd}>
-              <div className="flex gap-4 h-full items-stretch" style={{ minWidth: 'fit-content' }}>
-                {COLUMNS.map((colId) => (
-                  <KanbanColumn
-                    key={colId}
-                    columnId={colId}
-                    title={t.kanban.columns[colId]}
-                    tasks={localTasks[colId]}
-                    locale={locale}
-                  />
+        {/* Filter bar: cascade Project → Story → Version, resolved server-side by
+            most specific wins (D5). Each "All …" option means "not filtered at
+            this level"; a select below an unchosen parent stays disabled and says
+            what to pick first. */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0 px-4 lg:px-6 pt-3">
+          <Select
+            items={projectItems}
+            value={projectFilter ?? null}
+            onValueChange={handleProjectChange}
+          >
+            <SelectTrigger className="w-44" aria-label={t.kanban.filter_project}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {projectItems.map((item) => (
+                  <SelectItem key={item.value ?? '_all_projects'} value={item.value}>
+                    {item.label}
+                  </SelectItem>
                 ))}
-              </div>
-            </DragDropContext>
-          </DndErrorBoundary>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Select
+            items={storyItems}
+            value={storyFilter ?? null}
+            onValueChange={handleStoryChange}
+            disabled={!projectFilter}
+          >
+            <SelectTrigger className="w-52" aria-label={t.kanban.filter_story}>
+              {/* While the parent is unchosen the select is disabled; the value
+                  is null and the placeholder — not the "All stories" label —
+                  names what to pick first. */}
+              <SelectValue>{projectFilter ? undefined : t.stories.selectProjectFirst}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {storyItems.map((item) => (
+                  <SelectItem key={item.value ?? '_all_stories'} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Select
+            items={versionItems}
+            value={versionFilter ?? null}
+            onValueChange={handleVersionChange}
+            disabled={!storyFilter}
+          >
+            <SelectTrigger className="w-44" aria-label={t.kanban.filter_version}>
+              <SelectValue>{storyFilter ? undefined : t.kanban.filter_select_story}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {versionItems.map((item) => (
+                  <SelectItem key={item.value ?? '_all_versions'} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          {hasActiveFilter && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              <X className="h-4 w-4" />
+              {t.kanban.filter_clear}
+            </Button>
+          )}
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-hidden overflow-x-auto px-4 lg:px-6 pb-4 lg:pb-6 pt-4">
+          {filteredEmpty ? (
+            // The filter emptied the board — the workspace may well have tasks.
+            // Its own copy, with the hint that leads back out via the bar above.
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
+              <p className="text-sm font-medium text-foreground">{t.kanban.empty_filtered}</p>
+              <p className="mt-2 text-sm text-muted-foreground">{t.kanban.empty_filtered_hint}</p>
+            </div>
+          ) : unfilteredEmpty ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
+              <p className="text-sm font-medium text-foreground">{t.kanban.empty_board}</p>
+              <p className="mt-2 text-sm text-muted-foreground">{t.kanban.empty_board_hint}</p>
+            </div>
+          ) : (
+            <DndErrorBoundary>
+              <DragDropContext onDragEnd={handleDragEnd}>
+                <div className="flex gap-4 h-full items-stretch" style={{ minWidth: 'fit-content' }}>
+                  {COLUMNS.map((colId) => (
+                    <KanbanColumn
+                      key={colId}
+                      columnId={colId}
+                      title={t.kanban.columns[colId]}
+                      tasks={localTasks[colId]}
+                      locale={locale}
+                    />
+                  ))}
+                </div>
+              </DragDropContext>
+            </DndErrorBoundary>
+          )}
         </div>
       </div>
     </div>

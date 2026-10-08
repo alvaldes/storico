@@ -34,10 +34,59 @@ export async function listTasks(storyId: string, extractionId?: string): Promise
   return raw.items.map(mapTaskItem);
 }
 
-/** Fetch all tasks for a workspace (for the Kanban board / export). */
-export async function listTasksByWorkspace(workspaceId: string): Promise<Task[]> {
+/** Filter set for the workspace task read.
+ *
+ * The three keys cascade (D5): a `versionId` is only meaningful beside the
+ * `storyId` it belongs to, and a `storyId` beside the `projectId` it belongs
+ * to. The caller may pass any combination; `listTasksByWorkspace` resolves
+ * the combination to exactly one server-side scope, because the backend
+ * refuses a read that names two scopes with 422 `REQUEST_VALIDATION_FAILED`
+ * — the exclusion is the backend's contract, and this resolution is what
+ * makes the client unable to trigger it.
+ */
+export interface WorkspaceTaskFilters {
+  /** Narrow the board to one project's current-version tasks. */
+  projectId?: string;
+  /** Narrow the board to one story's current version. */
+  storyId?: string;
+  /** Read exactly this version's tasks; honored only alongside `storyId`. */
+  versionId?: string;
+}
+
+/** Fetch all tasks for a workspace (for the Kanban board / export).
+ *
+ * `filters` resolves by **most specific wins** (D5), so exactly one scope
+ * ever leaves the client:
+ *
+ * - `storyId` + `versionId` → `user_story_id` + `extraction_id` (a frozen
+ *   version shows its own set, the same read the story page uses);
+ * - `storyId` alone → `user_story_id` (the backend applies its
+ *   current-version predicate, so the story's current tasks come back);
+ * - `projectId` alone → `project_id`;
+ * - nothing → `workspace_id` (the whole board, as before this existed).
+ *
+ * A `versionId` without a `storyId` is ignored — the cascade that produces
+ * these filters clears the version whenever the story changes, so the case
+ * is unreachable from the board; resolving it to the next applicable scope
+ * keeps a stray key from producing a two-scope request.
+ */
+export async function listTasksByWorkspace(
+  workspaceId: string,
+  filters?: WorkspaceTaskFilters,
+): Promise<Task[]> {
+  let scopeQuery: string;
+  if (filters?.storyId) {
+    const versionQuery = filters.versionId
+      ? `&extraction_id=${encodeURIComponent(filters.versionId)}`
+      : '';
+    scopeQuery = `user_story_id=${encodeURIComponent(filters.storyId)}${versionQuery}`;
+  } else if (filters?.projectId) {
+    scopeQuery = `project_id=${encodeURIComponent(filters.projectId)}`;
+  } else {
+    scopeQuery = `workspace_id=${encodeURIComponent(workspaceId)}`;
+  }
   const raw = await api.get<{ items: RawTaskItem[] }>(
-    `/api/v1/tasks/?workspace_id=${workspaceId}&page=1&size=100`,
+    `/api/v1/tasks/?${scopeQuery}&page=1&size=100`,
   );
   return raw.items.map(mapTaskItem);
 }

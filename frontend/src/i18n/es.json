@@ -340,7 +340,16 @@
     "invalid_drop": "No se puede mover la tarea de {from} a {to}. Permitidos: {allowed}",
     "backend_invalid_transition": "El servidor rechazó mover de {from} a {to}. Permitidos: {allowed}",
     "empty_board": "Aún no hay tareas en este workspace",
-    "empty_board_hint": "Extrae tareas de una historia de usuario para verlas aquí."
+    "empty_board_hint": "Extrae tareas de una historia de usuario para verlas aquí.",
+    "filter_project": "Proyecto",
+    "filter_story": "Historia",
+    "filter_version": "Versión",
+    "filter_all_stories": "Todas las historias",
+    "filter_all_versions": "Todas las versiones",
+    "filter_select_story": "Selecciona primero una historia",
+    "filter_clear": "Borrar filtros",
+    "empty_filtered": "No hay tareas que coincidan con los filtros seleccionados",
+    "empty_filtered_hint": "Ajusta o borra los filtros para ver más tareas."
   },
   "taskEditor": {
     "title": "Editar Tarea",
