@@ -93,6 +93,18 @@ enough to exercise the card's 12-character cap.
   `UI designer: to redesign the Resources page` with the fingerprint icon and the sentence as its
   `title`. "All …" rows carry no icon, as designed.
 - The project's trigger hover raises the real tooltip with the full name.
+- **The first pass of this verification was insufficient, and the owner found the hole.** The
+  tooltips were mounted without a `TooltipProvider`, so Base UI's 600 ms hover delay applied and a
+  hover-and-move-on showed nothing: the chips looked like they had no tooltip at all. The checks
+  above still passed, because they read the tooltip's `textContent` after a 900 ms wait — they
+  proved the content and never the responsiveness, and a DOM node that exists is not a tooltip a
+  person sees. Fixed in `e8fe5a1` by mounting the provider with `delay={0}` inside the island
+  (Astro hydrates each island as its own tree, so the layout cannot provide it), and re-measured:
+  **614 ms before, 0 ms after**. A new test bounds the appearance at 150 ms, tighter than the
+  default, so putting the delay back fails it — verified by putting it back.
+- The lesson worth keeping is about the shape of the check, not the bug: an assertion that waits a
+  second cannot tell "immediate" from "eventually", and the tooltip's visibility is a property of
+  what the eye catches, not of the DOM.
 - **The drag suppression works**: with the chip tooltip open, starting a real drag (`You have lifted
   an item in position 1`) closes it — no popup travels with the pointer. Dropping the card back in
   its own column is a no-op, so that check wrote nothing.
@@ -120,6 +132,11 @@ enough to exercise the card's 12-character cap.
   implementer chose: `actor: feature` is a sentence-like string, and cutting it at a character count
   loses the part that distinguishes one story from another. The trigger clamps visually
   (`line-clamp-1`), but an option row with a very long feature widens the popup.
+- **`delay={0}` is the house default, and it is a knob.** Instant tooltips can feel twitchy when the
+  pointer crosses a row of chips; Base UI's `timeout` (400 ms) already makes an adjacent tooltip open
+  instantly once one is open, which mitigates it. If it reads as too eager, raising `delay` a notch
+  is one number — but the responsiveness is now pinned by a test, so it cannot silently return to
+  600 ms.
 - **A tooltip is unreachable on touch.** The owner asked for hover, and hover is what this delivers;
   the chip's text and its accessible name are the only content a touch user gets, which is unchanged
   from before this increment.
