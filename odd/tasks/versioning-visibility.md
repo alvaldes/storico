@@ -84,22 +84,25 @@ Two measured limits that shape the design, both pre-existing and neither introdu
 
 ## Tasks
 
-- [ ] **WU1 — Story version summary (backend)**: `ExtractionRepository` aggregate read
-  (`version_summaries(ids)`, plural — the batched-read convention `list_page` uses) + port read
-  model `StoryVersionSummary` + `version_summary` on `UserStoryResponse` + projection in
+- [x] **WU1 — Story version summary (backend)** → `e9d0a4b`. `ExtractionRepository` aggregate
+  read (`version_summaries(ids)`, plural — the batched-read convention `list_page` uses) + port
+  read model `StoryVersionSummary` + `version_summary` on `UserStoryResponse` + projection in
   `list_stories`, `get_story`, `update_story` + backend tests + API-reference regeneration.
-- [ ] **WU2 — Task version projection and `project_id` scope (backend)**: `TaskResponse` gains
-  `extraction_id`/`version_number`; the list route resolves version numbers in one batched lookup;
-  `TaskRepository.list_page` gains the `project_id` branch; the route accepts `project_id` with
-  membership validation and refuses multiple scopes with 422; backend tests.
-- [ ] **WU3 — Story card version badge (frontend)**: `StoriesList.tsx` renders `v{n} · current` /
-  `v{n}` and the version count; `UserStory` type gains `versionSummary`; i18n keys; component tests.
-- [ ] **WU3b — Dashboard recent-stories version badge (frontend)**: same badge and copy on
-  `Dashboard.tsx`'s "Recent stories" rows (owner's decision, 2026-10-07). The row is a third
-  surface of the same data and the payload already carries it — no backend change. The badge must
-  come from one shared piece so the three surfaces cannot drift.
-- [ ] **WU4 — Kanban cascade filters (frontend)**: project → story → version selects, `taskStore`
-  and `tasks-api` filter plumbing, filter-aware empty state; tests.
+- [x] **WU2 — Task version projection and `project_id` scope (backend)** → `eaecad6`.
+  `TaskResponse` gains `extraction_id`/`version_number`; the list route resolves version numbers
+  in one batched lookup; `TaskRepository.list_page` gains the `project_id` branch; the route
+  accepts `project_id` with membership validation and refuses multiple scopes with 422.
+- [x] **WU3 — Story card version badge (frontend)** → `1b654c6`. `UserStory` type gains
+  `versionSummary`; i18n keys; component tests.
+- [x] **WU3b — Dashboard recent-stories version badge (frontend)** → `e875553` (owner's decision,
+  2026-10-07). The row is a third surface of the same data and the payload already carried it — no
+  backend change. The badge and the count label are now one shared piece
+  (`StoryVersionBadge.tsx`), which is what the three surfaces needed to stop being three copies.
+- [x] **WU4 — Kanban cascade filters (frontend)** → `70f0793`. The cascade resolves to a single
+  server-side scope before the request leaves; the retry carries the active filters and a
+  workspace switch clears them, both pinned by tests that assert the query, not the select's
+  rendered value. Nine `kanban.*` keys added, `stories.allProjects`/`stories.selectProjectFirst`
+  reused instead of duplicated.
 - [ ] **WU5 — Kanban version chip (frontend)**: `KanbanCard.tsx` shows the version of the task;
   tests.
 - [ ] **WU6 — Specs and docs**: `openspec/specs/extraction-versioning/spec.md` (story version
@@ -116,3 +119,18 @@ Two measured limits that shape the design, both pre-existing and neither introdu
   project → story → version, with no workspace-wide story select.
 - `version_summary` is projected on three read paths; a future write path that returns
   `UserStoryResponse` must project it too or answer `null` knowingly.
+- **The cascade's story select is capped at 100** (`listStories(projectId, 1, 100, workspaceId)`),
+  so a project with more than 100 stories has unselectable ones. Accepted for the same reason the
+  board's task read is capped: this slice is about naming what is on the board, not about paging
+  the selectors. A story's *versions* are not capped — `listVersions` returns the whole history,
+  which is bounded by how many times the story was extracted.
+- **The filter bar's story options are labelled with a raw `actor: feature` pair** — an
+  implementer's choice for a select-sized label, **not** the stories page's copy: `StoriesList`
+  renders the full sentence (`As a(n) X, I want Y, so that Z`, `StoriesList.tsx:469-476`), and the
+  condensed pair is neither translated nor guaranteed unique within a project. Two options can
+  therefore read identically. Nobody records a decision here because none was asked for; if the
+  label needs to match the page's voice, that is a follow-up, not a defect of this slice.
+- **Nine `kanban.*` keys were added and two `stories.*` keys reused.** `stories.allProjects` and
+  `stories.selectProjectFirst` already carried exactly those ideas, so `kanban.filter_all_projects`
+  and `kanban.filter_select_project` do not exist. A reader looking for the project select's
+  "All …" copy will find it under `stories.*`.
