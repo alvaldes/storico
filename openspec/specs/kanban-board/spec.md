@@ -220,51 +220,90 @@ shows.
 - **THEN** the localized "No tasks yet" copy is absent
 - **AND** it appears only once a read has settled with no tasks for the filters the bar shows
 
-### Requirement: Kanban Cards Name Their Context
+### Requirement: Kanban Cards and Selects Name Their Context
 
 Every board card MUST name the project and the story its task belongs to, as chips in the card's
-metadata row, ordered **project → story → the task's own labels → the version**. The two context
-chips MUST use the same badge variant and sizing as the labels and the version chip so the row reads
-as one set, and MUST be visually muted relative to the task's own labels: the labels describe what
-the task is, the context chips say where it came from.
+metadata row, ordered **project → story → version → the task's own labels**: the three context chips
+lead and the task's own attributes trail. The context chips MUST use the same badge variant and
+sizing as the version chip and MUST be visually muted relative to the task's own labels.
 
-The story chip MUST show the same short story identifier the story list and the story detail surface
-show, reused from that one implementation rather than sliced at the call site, so the surfaces cannot
-drift into two different names for one story.
+The cascade's project and story selects MUST name the same two things under the same rules, so that
+one surface is not a second, differing answer to where a card came from. The icon for each kind, the
+label rule and the tooltip text MUST come from **one shared definition** both surfaces consume,
+rather than from two implementations that happen to agree today.
 
-The project chip MUST show the project's name and MUST NOT be a link: the card's single click target
-is its title. A long name MUST be bounded and ellipsized, with the full value available on hover, so
-that it cannot push the labels or the version chip out of the card.
+The label rules differ per surface, deliberately and only where they must:
 
-A chip whose data the task response does not carry MUST NOT render — no empty badge and no
+- the **project** shows its name, truncated by a character cap that is **smaller on the card chip
+  than in the select's options**, because a dropdown row must stay choosable without hovering every
+  option;
+- the **story** shows its short identifier on the card — the same short identifier the story list and
+  the story detail surface show, reused from that one implementation — and its human label
+  `${actor}: ${feature}` in the select, because a list of identifier prefixes is not something a
+  person can choose from.
+
+Every one of those chips and rows MUST reveal its full value on hover: the project's **full name**,
+the story's **full sentence**. The value MUST come from the same shared definition as the label, so
+the truncated text and the tooltip cannot disagree. A hover MUST NOT raise an empty popup, and a chip
+or row whose data the response does not carry MUST NOT render at all — no empty badge, no
 placeholder.
 
-#### Scenario: A card shows its context, its labels and its version in order
+On the board's card the tooltip MUST be the application's own tooltip, and the chips MUST NOT also
+carry a native `title`: one hover must not raise two tooltips. Inside a select's listbox the options
+MUST keep a native `title` instead, because a tooltip per option competes with the listbox's focus
+and keyboard navigation; the select's trigger carries the real tooltip with its full selected value.
+
+A card being dragged MUST NOT show a tooltip: the drag preview is a copy of the card, so an open
+popup would travel with the pointer.
+
+#### Scenario: A card shows its context, then its version, then its labels
 
 - **GIVEN** a task whose response carries a project label, a story id, labels and a version number
 - **WHEN** its card renders on the board
-- **THEN** its metadata row shows the project name, the story's short identifier, its labels and its version, in that order
+- **THEN** its metadata row shows the project name, the story's short identifier, the version and its labels, in that order
+
+#### Scenario: A hover reveals the full value the chip had to shorten
+
+- **GIVEN** a card whose project name is longer than the card's cap and whose story carries a sentence
+- **WHEN** the user hovers the project chip and then the story chip
+- **THEN** the project's tooltip shows the name in full
+- **AND** the story's tooltip shows the story's full sentence
 
 #### Scenario: A long project name does not break the row
 
 - **GIVEN** a task whose project name is long enough to overflow a card column
 - **WHEN** its card renders
-- **THEN** the project chip is bounded and its visible text is ellipsized
-- **AND** the full name is available on hover
+- **THEN** the project chip is bounded and its visible text is truncated
 - **AND** the labels and the version chip remain in the row
 
-#### Scenario: A missing label renders no chip
+#### Scenario: A missing label renders no chip and no empty popup
 
-- **GIVEN** a task whose response carries no project label
-- **WHEN** its card renders
-- **THEN** no project chip is rendered
-- **AND** its story chip, its labels and its version render as they otherwise would
+- **GIVEN** a task whose response carries no project label, or a story with no sentence
+- **WHEN** its card renders and the user hovers what is there
+- **THEN** no project chip is rendered in the first case
+- **AND** no tooltip is empty in the second: the story's tooltip falls back to what the card has
 
-#### Scenario: The story chip agrees with the story surfaces
+#### Scenario: The select names a story the way a person can choose it
 
-- **GIVEN** a story shown in the story list and one of its tasks shown on the board
-- **WHEN** both render their short story identifier
-- **THEN** the two strings are identical, produced by the same function
+- **GIVEN** a project whose stories have actor and feature text
+- **WHEN** the user opens the story select
+- **THEN** each option shows the story's `${actor}: ${feature}` label with its icon, not its short identifier
+- **AND** each option reveals the story's full sentence on hover
+- **AND** the option's visible label is truncated at the select's wider cap, not the card chip's
+
+#### Scenario: The card and the select consume one definition
+
+- **GIVEN** the rules for the icon, the label and the tooltip text of each kind
+- **WHEN** the card's chips and the select's rows render
+- **THEN** both take those rules from the same shared definition
+- **AND** a change to it changes both surfaces
+
+#### Scenario: A dragged card carries no popup
+
+- **GIVEN** a card whose chip tooltip is open
+- **WHEN** the user starts dragging that card
+- **THEN** the tooltip closes and no popup travels with the drag
+
 
 ### Requirement: Kanban Drag-and-Drop Status Update
 
