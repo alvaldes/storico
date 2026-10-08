@@ -1,10 +1,33 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from storico.domain.entities.extraction import Extraction
+from storico.domain.entities.extraction import Extraction, ExtractionStatus
+
+
+@dataclass(frozen=True, slots=True)
+class StoryVersionSummary:
+    """One story's version summary — a read model, not an entity.
+
+    The story-card badge's whole data set: how many runs the story has, which
+    one is current and which one is newest. ``current_number`` is the highest
+    ``completed`` run's number — ``None`` when there is no completed run — the
+    same derivation ``find_current_version`` makes; ``latest_number`` and
+    ``latest_status`` describe the newest run of any status, so a story whose
+    only run failed renders ``v1 · failed`` instead of lying with "current".
+    Returning an ``Extraction`` would drag the raw response, the prompt and
+    the provider snapshot through a read that never reads them.
+
+    Precedent: ``TaskContextRow`` in ``domain/ports/task_repository.py``.
+    """
+
+    count: int
+    current_number: int | None
+    latest_number: int
+    latest_status: ExtractionStatus
 
 
 class ExtractionRepository(ABC):
@@ -154,6 +177,18 @@ class ExtractionRepository(ABC):
         The total rides on the rows' own statement as ``count(*) OVER ()``,
         so no separate ``SELECT COUNT(*)`` is issued on the normal path, and
         results are ordered by ``created_at DESC, id DESC`` in SQL.
+        """
+        ...
+
+    @abstractmethod
+    async def version_summaries(self, story_ids: list[UUID]) -> dict[UUID, StoryVersionSummary]:
+        """Batch version summary for a page of stories, keyed by story id.
+
+        One statement for the whole batch — a list page's ids in one read, never
+        a per-story loop. Stories with no versions are simply absent from the
+        dict (the caller answers ``null`` for them, which is the honest answer
+        for a story with no runs), and an empty ``story_ids`` answers ``{}``
+        without issuing a statement, matching ``UserStoryRepository.list_page``.
         """
         ...
 

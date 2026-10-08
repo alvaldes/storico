@@ -1313,3 +1313,125 @@ class TestStoryInvalidationsEndpoint:
         assert missing.status_code == 404
         assert forbidden.status_code == 403
         assert forbidden.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
+
+
+class TestStoryVersionSummaryProjection:
+    """The ``version_summary`` field projected on the story read paths.
+
+    WU1 of feature ``versioning-visibility`` (decision D4): the story card's
+    badge data rides on the story reads themselves — one batched statement for
+    a whole list page — never one request per card. ``create_story`` answers
+    ``null`` on purpose: a story just created has no history. The failed-newest
+    edge is pinned here at the wire: ``latest_status`` names the newest run of
+    any status while ``current_number`` still names the last completed run.
+    """
+
+    async def _create_story(self, authed_client, seeded) -> str:
+        """Create one story through the API and return its id as a string."""
+        response = await authed_client.post(
+            "/api/v1/stories/",
+            json={
+                "project_id": str(seeded.project_id),
+                "actor": "user",
+                "feature": "log in",
+                "benefit": "access my account",
+                "raw_text": RAW_TEXT,
+            },
+        )
+        assert response.status_code == 201
+        return response.json()["id"]
+
+    async def _seed_failed_on_top_of_completed(
+        self, db_session: AsyncSession, story_id: str
+    ) -> None:
+        """v1 completed, v2 failed — the newest run is a failure, the current is v1."""
+        await seed_extraction(
+            db_session,
+            UUID(story_id),
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        await seed_extraction(
+            db_session,
+            UUID(story_id),
+            status=ExtractionStatus.FAILED,
+            error_info="model unreachable",
+        )
+
+    async def test_list_items_carry_the_version_summary(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """GET /api/v1/stories/ items carry the badge's whole data set."""
+        seeded = await seed_workspace(stories=0)
+        story_id = await self._create_story(authed_client, seeded)
+        await self._seed_failed_on_top_of_completed(db_session, story_id)
+
+        response = await authed_client.get(f"/api/v1/stories/?project_id={seeded.project_id}")
+
+        assert response.status_code == 200
+        items = response.json()["items"]
+        assert len(items) == 1
+        assert items[0]["id"] == story_id
+        assert items[0]["version_summary"] == {
+            "count": 2,
+            "current_number": 1,
+            "latest_number": 2,
+            "latest_status": "failed",
+        }
+
+    async def test_get_story_reports_the_version_summary(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """GET /api/v1/stories/{id} carries the same projection."""
+        seeded = await seed_workspace(stories=0)
+        story_id = await self._create_story(authed_client, seeded)
+        await self._seed_failed_on_top_of_completed(db_session, story_id)
+
+        response = await authed_client.get(f"/api/v1/stories/{story_id}")
+
+        assert response.status_code == 200
+        assert response.json()["version_summary"] == {
+            "count": 2,
+            "current_number": 1,
+            "latest_number": 2,
+            "latest_status": "failed",
+        }
+
+    async def test_update_story_reports_the_version_summary(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """PUT /api/v1/stories/{id} still projects the summary: leaving it None
+        would report a version count of zero for a story that has versions."""
+        seeded = await seed_workspace(stories=0)
+        story_id = await self._create_story(authed_client, seeded)
+        await self._seed_failed_on_top_of_completed(db_session, story_id)
+
+        response = await authed_client.put(
+            f"/api/v1/stories/{story_id}", json={"feature": "log in with SSO"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["feature"] == "log in with SSO"
+        assert response.json()["version_summary"] == {
+            "count": 2,
+            "current_number": 1,
+            "latest_number": 2,
+            "latest_status": "failed",
+        }
+
+    async def test_a_fresh_story_answers_version_summary_null(self, authed_client, seed_workspace):
+        """A story just created has no history: ``null`` is the honest answer."""
+        seeded = await seed_workspace(stories=0)
+        response = await authed_client.post(
+            "/api/v1/stories/",
+            json={
+                "project_id": str(seeded.project_id),
+                "actor": "user",
+                "feature": "log in",
+                "benefit": "access my account",
+                "raw_text": RAW_TEXT,
+            },
+        )
+
+        assert response.status_code == 201
+        assert response.json()["version_summary"] is None

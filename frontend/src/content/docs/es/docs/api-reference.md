@@ -528,6 +528,11 @@ The page and its total come from one statement in the database —
 ``SELECT COUNT(*)`` is issued. The order is ``created_at DESC, id DESC``,
 which makes the paging deterministic.
 
+Each item's ``version_summary`` is projected from **one** batched read for
+the whole page's story ids — never one per card (decision D4/D2 of feature
+``versioning-visibility``). A story with no versions answers ``null``, and
+an empty page answers without a statement at all.
+
 **Parámetros**
 
 | Nombre | Ubicación | Obligatorio | Tipo |
@@ -582,6 +587,8 @@ Get Story
 Get a user story by its ID.
 
 The user must be a member of the workspace that owns the story's project.
+The response projects the story's ``version_summary`` — one read for the
+one story, the same projection the list page carries (decision D4).
 
 **Parámetros**
 
@@ -603,6 +610,9 @@ Update Story
 Update an existing user story.
 
 The user must be a member of the workspace that owns the story's project.
+The response projects the story's ``version_summary`` like the reads do:
+answering ``null`` here would report a version count of zero for a story
+that has versions (decision D4).
 
 **Parámetros**
 

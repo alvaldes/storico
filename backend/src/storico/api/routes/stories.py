@@ -27,6 +27,7 @@ from storico.api.schemas.story import (
     StoryImportErrorItem,
     StoryImportResponse,
     StoryVersionResponse,
+    StoryVersionSummaryResponse,
     UpdateUserStoryRequest,
     UserStoryResponse,
 )
@@ -34,6 +35,7 @@ from storico.api.schemas.task import StoryInvalidationResponse
 from storico.application.services.story_deletion_service import StoryDeletionService
 from storico.domain.entities import EntityNotFound, User, UserStory, Workspace, WorkspaceRole
 from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.ports.extraction_repository import StoryVersionSummary
 from storico.domain.ports.vector_store_port import VectorStorePort
 from storico.domain.services.story_import import ImportRow, validate_import
 from storico.infrastructure.database.repositories import (
@@ -90,6 +92,27 @@ WorkspaceRepoDep = Annotated[
     SQLAlchemyWorkspaceRepository,
     Depends(get_repository(SQLAlchemyWorkspaceRepository)),
 ]
+
+
+def _version_summary_response(
+    summary: StoryVersionSummary | None,
+) -> StoryVersionSummaryResponse | None:
+    """Project the read model onto the response schema, explicitly.
+
+    ``UserStoryResponse`` is built field by field here (its
+    ``from_attributes`` would not coerce a plain dataclass nested in the
+    constructor anyway), so the projection is a plain mapping — and ``None``
+    stays ``None``: that is the "no runs at all" answer, distinct from "not
+    projected".
+    """
+    if summary is None:
+        return None
+    return StoryVersionSummaryResponse(
+        count=summary.count,
+        current_number=summary.current_number,
+        latest_number=summary.latest_number,
+        latest_status=summary.latest_status,
+    )
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
@@ -160,6 +183,7 @@ async def list_stories(
     repo: StoryRepoDep = None,  # type: ignore[assignment]
     project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
     member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
     project_id: UUID | None = None,
     workspace_id: UUID | None = None,
 ) -> PaginatedResponse[UserStoryResponse]:
@@ -176,6 +200,11 @@ async def list_stories(
     ``count(*) OVER ()`` rides on the rows' own query, so no separate
     ``SELECT COUNT(*)`` is issued. The order is ``created_at DESC, id DESC``,
     which makes the paging deterministic.
+
+    Each item's ``version_summary`` is projected from **one** batched read for
+    the whole page's story ids — never one per card (decision D4/D2 of feature
+    ``versioning-visibility``). A story with no versions answers ``null``, and
+    an empty page answers without a statement at all.
     """
     offset = (params.page - 1) * params.size
     # Validate workspace access and get authorized workspace IDs
@@ -216,6 +245,8 @@ async def list_stories(
             workspace_ids=workspace_ids, limit=params.size, offset=offset
         )
 
+    # One batched summary read for the whole page, never one per card.
+    summaries = await extraction_repo.version_summaries([s.id for s in page])
     items = [
         UserStoryResponse(
             id=s.id,
@@ -226,6 +257,7 @@ async def list_stories(
             raw_text=s.raw_text,
             created_at=s.created_at,
             status=s.status,
+            version_summary=_version_summary_response(summaries.get(s.id)),
         )
         for s in page
     ]
@@ -244,10 +276,13 @@ async def get_story(
     repo: StoryRepoDep = None,  # type: ignore[assignment]
     project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
     member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
 ) -> UserStoryResponse:
     """Get a user story by its ID.
 
     The user must be a member of the workspace that owns the story's project.
+    The response projects the story's ``version_summary`` — one read for the
+    one story, the same projection the list page carries (decision D4).
     """
     story = await require_story_workspace_access(
         story_id,
@@ -256,6 +291,7 @@ async def get_story(
         project_repo=project_repo,
         member_repo=member_repo,
     )
+    summaries = await extraction_repo.version_summaries([story.id])
     return UserStoryResponse(
         id=story.id,
         project_id=story.project_id,
@@ -265,6 +301,7 @@ async def get_story(
         raw_text=story.raw_text,
         created_at=story.created_at,
         status=story.status,
+        version_summary=_version_summary_response(summaries.get(story.id)),
     )
 
 
@@ -379,10 +416,14 @@ async def update_story(
     repo: StoryRepoDep = None,  # type: ignore[assignment]
     project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
     member_repo: MemberRepoDep = None,  # type: ignore[assignment]
+    extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
 ) -> UserStoryResponse:
     """Update an existing user story.
 
     The user must be a member of the workspace that owns the story's project.
+    The response projects the story's ``version_summary`` like the reads do:
+    answering ``null`` here would report a version count of zero for a story
+    that has versions (decision D4).
     """
     existing = await require_story_workspace_access(
         story_id,
@@ -404,6 +445,7 @@ async def update_story(
 
     updated = replace(existing, **kwargs)
     result = await repo.save(updated)
+    summaries = await extraction_repo.version_summaries([result.id])
     return UserStoryResponse(
         id=result.id,
         project_id=result.project_id,
@@ -413,6 +455,7 @@ async def update_story(
         raw_text=result.raw_text,
         created_at=result.created_at,
         status=result.status,
+        version_summary=_version_summary_response(summaries.get(result.id)),
     )
 
 

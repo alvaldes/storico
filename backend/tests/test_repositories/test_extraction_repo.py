@@ -445,6 +445,7 @@ def test_the_port_exposes_no_delete_and_no_whole_row_writer() -> None:
         "list_page",
         "list_versions",
         "list",
+        "version_summaries",
     }
     assert not hasattr(ExtractionRepository, "delete")
     assert not hasattr(ExtractionRepository, "save")
@@ -743,3 +744,137 @@ async def test_find_current_version_agrees_with_list_versions_first_completed(
     assert current is not None
     assert current.id == first_completed.id
     assert current.version_number == first_completed.version_number == 3
+
+
+# --- Story version summary (versioning-visibility WU1): the story-card batch read ---
+
+
+@pytest.mark.asyncio
+async def test_version_summaries_reports_count_current_and_latest_for_the_batch(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """v1 completed + v2 failed + v3 pending: count 3, current v1, latest v3 pending.
+
+    ``current_number`` keeps the ``find_current_version`` derivation — the highest
+    *completed* number — while ``latest_number``/``latest_status`` name the newest
+    run of any status, so a story whose only run failed can render ``v1 · failed``
+    instead of lying with "current". A story with no versions is absent from the
+    dict, not a zero-count entry; a second story's rows never leak into another
+    story's summary.
+    """
+    repo = SQLAlchemyExtractionRepository(db_session)
+    story = await _seed_story(db_session, workspace_id, "Summarised")
+    other = await _seed_story(db_session, workspace_id, "Other summarised")
+    empty = await _seed_story(db_session, workspace_id, "No versions")
+
+    v1 = await repo.create_next_version(_versioned(story.id, "v1-completed"))
+    await repo.mark_completed(
+        v1.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+    )
+    v2 = await repo.create_next_version(_versioned(story.id, "v2-failed"))
+    await repo.mark_failed(v2.id, error_info="LLM call failed", completed_at=datetime.now(UTC))
+    await repo.create_next_version(_versioned(story.id, "v3-pending"))  # still pending
+
+    other_run = await repo.create_next_version(_versioned(other.id, "only-completed"))
+    await repo.mark_completed(
+        other_run.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+    )
+
+    summaries = await repo.version_summaries([story.id, other.id, empty.id])
+
+    assert set(summaries) == {story.id, other.id}
+    first = summaries[story.id]
+    assert first.count == 3
+    assert first.current_number == 1
+    assert first.latest_number == 3
+    assert first.latest_status is ExtractionStatus.PENDING
+    second = summaries[other.id]
+    assert second.count == 1
+    assert second.current_number == 1
+    assert second.latest_number == 1
+    assert second.latest_status is ExtractionStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_version_summaries_for_a_failed_only_story_names_no_current(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """A story whose only run failed: ``current_number`` is None, latest is the failure.
+
+    The badge contract (decision D1) forbids lying with "current" — with no
+    completed run there is none, and the newest run is the failed one.
+    """
+    repo = SQLAlchemyExtractionRepository(db_session)
+    story = await _seed_story(db_session, workspace_id, "Failed only")
+    run = await repo.create_next_version(_versioned(story.id, "v1-failed"))
+    await repo.mark_failed(run.id, error_info="LLM call failed", completed_at=datetime.now(UTC))
+
+    summaries = await repo.version_summaries([story.id])
+
+    summary = summaries[story.id]
+    assert summary.count == 1
+    assert summary.current_number is None
+    assert summary.latest_number == 1
+    assert summary.latest_status is ExtractionStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_version_summaries_with_empty_input_answers_empty_without_a_statement(
+    db_session: AsyncSession, test_engine: AsyncEngine
+) -> None:
+    """An empty ``story_ids`` returns ``{}`` without issuing any statement.
+
+    An empty page of stories means no rows, not ``IN ()``: against the dev
+    pooler where a statement costs ~2s, an unasked statement is pure latency.
+    Statement capture follows ``test_list_page_with_empty_workspace_ids``.
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyExtractionRepository(db_session)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        summaries = await repo.version_summaries([])
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    assert summaries == {}
+    assert statements == [], statements
+
+
+@pytest.mark.asyncio
+async def test_version_summaries_issues_exactly_one_statement_for_the_batch(
+    db_session: AsyncSession, test_engine: AsyncEngine, workspace_id: UUID
+) -> None:
+    """Two stories in one call cost one statement, not one per story.
+
+    The projection is a read model for a list page (decision D2 of feature
+    ``versioning-visibility``): its whole point is that 100 cards cost one
+    batched read instead of 100. Statement capture follows
+    ``test_list_page_with_empty_workspace_ids``.
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyExtractionRepository(db_session)
+    first = await _seed_story(db_session, workspace_id, "First")
+    second = await _seed_story(db_session, workspace_id, "Second")
+    for story in (first, second):
+        run = await repo.create_next_version(_versioned(story.id, "completed-run"))
+        await repo.mark_completed(
+            run.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+        )
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        await repo.version_summaries([first.id, second.id])
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    summary_queries = [s for s in statements if "FROM extractions" in s]
+    assert len(summary_queries) == 1, statements

@@ -32,6 +32,25 @@ class UpdateUserStoryRequest(BaseModel):
     raw_text: str | None = Field(None, max_length=2000)
 
 
+class StoryVersionSummaryResponse(BaseModel):
+    """One story's version summary, as the story-card badge reads it.
+
+    Projected by the story read paths (``list_stories``, ``get_story``,
+    ``update_story``) from one batched statement over the page's story ids —
+    never one request per card. ``current_number`` is the highest completed
+    run's number (``None`` when there is no completed run); ``latest_number``
+    and ``latest_status`` describe the newest run of any status, so a story
+    whose only run failed renders ``v1 · failed`` instead of lying with
+    "current". ``null`` on the response means the story has no runs at all —
+    which is exactly what ``create_story`` answers for a story just created.
+    """
+
+    count: int
+    current_number: int | None
+    latest_number: int
+    latest_status: ExtractionStatus
+
+
 class UserStoryResponse(BaseModel):
     """Response body representing a user story."""
 
@@ -45,6 +64,7 @@ class UserStoryResponse(BaseModel):
     raw_text: str
     created_at: datetime
     status: UserStoryStatus = UserStoryStatus.PENDING_EXTRACTION
+    version_summary: StoryVersionSummaryResponse | None = None
 
 
 class StoryVersionResponse(BaseModel):

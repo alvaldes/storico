@@ -15,6 +15,7 @@ from storico.domain.entities.exceptions import VersionAllocationConflictError
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import ExtractionRepository
+from storico.domain.ports.extraction_repository import StoryVersionSummary
 from storico.infrastructure.database.models import ExtractionModel, ProjectModel, UserStoryModel
 from storico.infrastructure.database.pagination import fetch_page, with_total
 
@@ -347,6 +348,65 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
             self._session, with_total(stmt), count_stmt, limit=limit, offset=offset
         )
         return [self._to_domain(model) for model, _total in rows], total
+
+    async def version_summaries(self, story_ids: list[UUID]) -> dict[UUID, StoryVersionSummary]:
+        """Batch version summary for a page of stories — one statement, not one per story.
+
+        A window-function read over the matching rows, index-backed on
+        ``extractions.user_story_id`` (the FK every scope of this repository
+        already filters on): ``row_number()`` and ``count(*)`` partitioned by
+        story, and the highest-numbered completed run via ``max(version_number)
+        FILTER (WHERE status = 'completed')`` — the same "current" derivation
+        ``find_current_version`` makes, computed for every story at once. Only
+        the ``row_number = 1`` row per story survives (the newest run by
+        ``version_number``), so its own ``version_number`` and ``status`` are
+        the ``latest_*`` fields; the other values ride on that same row, so no
+        second pass is needed.
+
+        An empty ``story_ids`` is answered here rather than sent as ``IN ()``:
+        no stories means no rows, not a statement — the same posture
+        ``UserStoryRepository.list_page`` and ``list_page(workspace_ids=[])``
+        take, and for the same reason (against the dev pooler a statement
+        costs ~2s). Stories without versions are absent from the returned
+        dict, never zero-count entries.
+        """
+        if not story_ids:
+            return {}
+        partition = ExtractionModel.user_story_id
+        ranked = (
+            select(
+                ExtractionModel.user_story_id.label("story_id"),
+                ExtractionModel.status.label("status"),
+                ExtractionModel.version_number.label("version_number"),
+                func.count().over(partition_by=partition).label("run_count"),
+                func.max(ExtractionModel.version_number)
+                .filter(ExtractionModel.status == ExtractionStatus.COMPLETED)
+                .over(partition_by=partition)
+                .label("current_number"),
+                func.row_number()
+                .over(partition_by=partition, order_by=ExtractionModel.version_number.desc())
+                .label("recency"),
+            )
+            .where(ExtractionModel.user_story_id.in_(story_ids))
+            .subquery()
+        )
+        stmt = select(
+            ranked.c.story_id,
+            ranked.c.status,
+            ranked.c.run_count,
+            ranked.c.current_number,
+            ranked.c.version_number,
+        ).where(ranked.c.recency == 1)
+        result = await self._session.execute(stmt)
+        return {
+            row.story_id: StoryVersionSummary(
+                count=row.run_count,
+                current_number=row.current_number,
+                latest_number=row.version_number,
+                latest_status=ExtractionStatus(row.status),
+            )
+            for row in result
+        }
 
     async def list(self) -> list[Extraction]:
         result = await self._session.execute(select(ExtractionModel))
