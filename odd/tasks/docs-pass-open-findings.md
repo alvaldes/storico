@@ -94,7 +94,10 @@ primitive would remain.
 
 ## B. The admin's `GET /settings/llm` returns the stored API key decrypted
 
-**Status**: ALREADY DECIDED — listed only so a future review knows it is not an oversight.
+**Status**: **CLOSED 2026-10-07 — re-confirmed, not changed.** The owner read this item again on
+2026-10-07, in the same session that authorized the wider item D correction, and decided to keep the
+behaviour. The measurement below is kept as written, because it is what the decision was made
+against.
 
 The read is admin-only, the key is encrypted at rest with Fernet, and the response returns it in
 plaintext so the settings form can round-trip it. That is deliberate and already written down, with
@@ -113,6 +116,15 @@ pre-filled, and "test the saved configuration" has to work without the value.
 
 **Nothing was changed.** The docs pass documented this as the real behaviour rather than as a
 finding, and the description in `docs/security.md` needed no correction.
+
+**The outcome, appended rather than rewritten.** The operator kept it. No file in this repository
+moved for this item: `docs/security.md:88` already named the trade-off, the response shape already
+matches what the UI needs (`api_key_set: bool` with a blind replace on write would require the settings
+form to stop pre-filling the field and to test the saved configuration without the value), and
+`test_the_admin_reads_back_the_key_it_saved` already pins the intent. The item closes as re-confirmed,
+so a future review reads a decision that was re-examined rather than one that was never revisited.
+What remains true and worth remembering: the member-readable `GET /settings/llm/status` is the narrow
+read, and the admin-only plaintext response is the deliberate one.
 
 ---
 
