@@ -16,6 +16,8 @@ function mapTaskItem(raw: RawTaskItem): Task {
     dependencies: raw.dependencies,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
+    extractionId: raw.extraction_id ?? null,
+    versionNumber: raw.version_number ?? null,
   };
 }
 

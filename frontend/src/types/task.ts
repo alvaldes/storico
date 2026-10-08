@@ -37,6 +37,16 @@ export interface Task {
   priority: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The version chip's data (D8 of feature ``versioning-visibility``), mirroring
+   * ``TaskResponse``'s ``extraction_id``/``version_number``. Optional, not
+   * required-nullable, because the legacy, uncalled mapper in ``lib/api.ts``
+   * (deliberately untouched) still produces ``Task`` objects without them —
+   * ``mapTaskItem`` always sets both. Cards must render no chip when
+   * ``versionNumber`` is null or absent.
+   */
+  extractionId?: string | null;
+  versionNumber?: number | null;
 }
 
 /** Raw task from API (snake_case). */
@@ -51,6 +61,8 @@ export interface RawTaskItem {
   dependencies: string[];
   created_at: string;
   updated_at: string;
+  extraction_id: string | null;
+  version_number: number | null;
 }
 
 /* ── Invalidation marks (0.9.0 slice b) ── */

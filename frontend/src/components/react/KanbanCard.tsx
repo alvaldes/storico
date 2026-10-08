@@ -57,7 +57,7 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
                   {task.description}
                 </p>
               )}
-              {task.labels.length > 0 && (
+              {(task.labels.length > 0 || task.versionNumber !== null) && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {task.labels.map((label) => (
                     <Badge
@@ -68,6 +68,21 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
                       {label}
                     </Badge>
                   ))}
+                  {/*
+                    Bare `v{n}`: never a currency marker. A card cannot tell a
+                    current-version board read from a frozen-version read — only the
+                    story's summary knows which run is current (D1/D8 of feature
+                    ``versioning-visibility``) — so `v2 · current` here would be a lie.
+                    Null renders nothing, not a degraded badge.
+                  */}
+                  {task.versionNumber !== null && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] leading-none px-1.5 py-0.5 text-muted-foreground"
+                    >
+                      {`v${task.versionNumber}`}
+                    </Badge>
+                  )}
                 </div>
               )}
             </div>

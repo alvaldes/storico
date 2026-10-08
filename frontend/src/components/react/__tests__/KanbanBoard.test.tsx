@@ -63,6 +63,8 @@ const mockTasks: Task[] = [
     dependencies: ['task-0'],
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
+    extractionId: null,
+    versionNumber: null,
   },
   {
     id: 'task-2',
@@ -75,6 +77,8 @@ const mockTasks: Task[] = [
     dependencies: [],
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
+    extractionId: null,
+    versionNumber: null,
   },
 ];
 
@@ -253,6 +257,8 @@ describe('KanbanBoard — current-version-only workspace reads', () => {
       dependencies: [],
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-01T00:00:00Z',
+      extractionId: null,
+      versionNumber: null,
     };
   }
 
@@ -699,5 +705,106 @@ describe('listTasksByWorkspace — query precedence', () => {
     expect(vi.mocked(api.get)).toHaveBeenLastCalledWith(
       '/api/v1/tasks/?workspace_id=ws-1&page=1&size=100',
     );
+  });
+});
+
+/* ── KanbanCard version chip (WU5) ──
+ *
+ * The board renders through the real cards, which is where the chip lives. The
+ * chip is a bare `v{n}` and **never** a currency marker (D1's honesty rule, D8):
+ * a card cannot tell a current-version board read from a frozen-version read —
+ * only the story's summary knows which run is current — so marking a card
+ * `v2 · current` would be exactly the lie D1 forbids. A null `version_number`
+ * (reachable: the backend's `_version_number` answers None when the task's
+ * entity carries no `extraction_id` or the batched lookup misses) renders no
+ * chip at all — not `vnull`, not `v?`, not an empty badge.
+ */
+describe('KanbanCard — version chip', () => {
+  function chipTask(fields: Partial<Task> & Pick<Task, 'id' | 'versionNumber'>): Task {
+    return {
+      storyId: 'story-1',
+      title: `Task ${fields.id}`,
+      description: '',
+      status: 'todo',
+      priority: 'medium',
+      labels: [],
+      dependencies: [],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      extractionId: 'extraction-1',
+      ...fields,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspace: {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        ownerId: 'user-1',
+        role: 'admin',
+        memberCount: 1,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      } as Workspace,
+      loading: false,
+      saving: false,
+    });
+    useTaskStore.setState({
+      tasks: {},
+      workspaceTasks: [],
+      extractions: {},
+      loading: false,
+      error: null,
+      updatingTaskId: null,
+      allowedTransitions: {},
+      fetchTasksForWorkspace: vi.fn().mockResolvedValue(undefined),
+      updateTaskStatus: vi.fn().mockResolvedValue(undefined),
+    });
+  });
+
+  it('shows the task version as a bare v{n} badge next to its labels', async () => {
+    useTaskStore.setState({
+      workspaceTasks: [chipTask({ id: 'task-v', versionNumber: 2, labels: ['db', 'backend'] })],
+    });
+
+    render(<KanbanBoard locale="en" />);
+
+    expect(await screen.findByText('v2')).toBeInTheDocument();
+    // The labels still render beside it.
+    expect(screen.getByText('db')).toBeInTheDocument();
+    expect(screen.getByText('backend')).toBeInTheDocument();
+  });
+
+  it('renders no chip at all when version_number is null', async () => {
+    useTaskStore.setState({
+      workspaceTasks: [chipTask({ id: 'task-null', versionNumber: null, labels: ['db'] })],
+    });
+
+    render(<KanbanBoard locale="en" />);
+
+    expect(await screen.findByText('Task task-null')).toBeInTheDocument();
+    // None of the degraded shapes: no `vnull`, no `v?`, no empty badge.
+    expect(screen.queryByText('vnull')).not.toBeInTheDocument();
+    expect(screen.queryByText('v?')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^v\d*$/)).not.toBeInTheDocument();
+  });
+
+  it('shows the bare v{n} on a version-filtered board and never the current marker', async () => {
+    // A version-filtered read returns a frozen version's tasks (D8/D5); the card
+    // cannot know whether that run is current, so it must not claim it.
+    useTaskStore.setState({
+      workspaceTasks: [chipTask({ id: 'task-frozen', versionNumber: 1 })],
+    });
+
+    render(<KanbanBoard locale="en" />);
+
+    expect(await screen.findByText('v1')).toBeInTheDocument();
+    // The current marker's rendered text, as StoryVersionBadge and the cascade's
+    // version select produce it: `v1 · current`. Its absence is the pin.
+    expect(screen.queryByText('v1 · current')).not.toBeInTheDocument();
   });
 });
