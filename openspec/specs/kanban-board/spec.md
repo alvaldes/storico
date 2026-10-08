@@ -128,6 +128,59 @@ chosen in one workspace is never applied to another.
 - **THEN** the filters are cleared and the board fetches workspace B unfiltered
 - **AND** no project of workspace A is ever applied to a request scoped to workspace B
 
+### Requirement: Kanban Board Read Feedback
+
+While any board read is in flight — the task read, the stories read behind a project pick, or the
+versions read behind a story pick — the island MUST show a blocking full-viewport loading veil
+carrying a single `aria-live="polite"` status region with a localized label, so that a filter
+change is never silent and an empty select is never indistinguishable from a loading one. The
+veil MUST be raised by the board's own read state and MUST NOT be raised through the
+mutation-only global loading store, so that a board read never signals a write in flight. The
+veil MUST NOT cover the no-workspace prompt, and MUST NOT be raised by a drag-and-drop status
+update: that path is optimistic, shows a card-level indicator and reports failure through a
+toast. A read that fails MUST win over the veil and replace the board with its error state.
+
+#### Scenario: A filter change is visible while it is in flight
+
+- **GIVEN** a board with tasks in its columns
+- **WHEN** the user picks a project and the task read is still in flight
+- **THEN** the loading veil covers the board until the read settles
+- **AND** the board does not keep showing the previous filter's cards as if they answered the new one
+
+#### Scenario: A project pick shows the veil while its stories read is pending
+
+- **GIVEN** a workspace with projects
+- **WHEN** the user picks a project and the stories read has not answered yet
+- **THEN** the loading veil covers the board
+- **AND** the empty story select is never presented as a project without stories
+
+#### Scenario: A story pick shows the veil while its versions read is pending
+
+- **GIVEN** a project chosen and one of its stories chosen
+- **WHEN** the versions read has not answered yet
+- **THEN** the loading veil covers the board
+
+#### Scenario: No workspace selected is not covered by the veil
+
+- **GIVEN** no workspace is selected
+- **WHEN** the user opens `/[locale]/kanban`
+- **THEN** the localized "Select a workspace" prompt renders
+- **AND** no loading veil covers it, because no read is in flight
+
+#### Scenario: A drag-and-drop update does not raise the veil
+
+- **GIVEN** the board is loaded with a task in a column
+- **WHEN** the user drags the card to another column and the status update is in flight
+- **THEN** no full-viewport veil is raised
+- **AND** the card keeps its own in-flight indicator and the optimistic move stands
+
+#### Scenario: An empty board is not called empty before an answer arrives
+
+- **GIVEN** a workspace selected and a first board read that has not settled yet
+- **WHEN** the board renders
+- **THEN** the localized "No tasks yet" copy is absent
+- **AND** it appears only once a read has settled with no tasks for the filters the bar shows
+
 ### Requirement: Kanban Drag-and-Drop Status Update
 
 When a task is dragged from one column to another and dropped, the island MUST
