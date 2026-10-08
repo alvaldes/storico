@@ -241,6 +241,28 @@ What this settles and what it does not is written out in full in `odd/tasks/csv-
 follow-up 11. The short version: the Vercel hop carries the file, the backend's 2 MB cap is the
 binding one (Vercel documents 4.5 MB), and the bytes arrive intact rather than truncated.
 
+### WU6 — the independent verification's two hardening findings
+
+Opened by the independent verification of 2026-10-07, which confirmed the five claims and returned
+three low-severity findings. Two of them made **this feature's own guards** weaker than they read, so
+they are fixed here; the third is a different defect and is recorded, not fixed.
+
+- **F1 — the mirror test read the first declaration, Python uses the last.** The original regex
+  matched with `String.match(...)[1]` under `/m`, so a second `MAX_FILE_BYTES = …` later in the file
+  would have been ignored while the backend used it. Fixed by collecting every assignment and
+  requiring exactly one, which refuses ambiguity instead of guessing which one is the intent.
+- **F2 — the two existing 413 tests were aliased with the new local pre-check.** Both render the same
+  sentence, so a local refusal would have satisfied them while the backend branch they exist to pin
+  never ran. Fixed by asserting `importStories` was called exactly once in each; the new
+  local-refusal test asserts the opposite, so the pair now separates the two paths.
+- **F3 — recorded as item F of the agenda, not fixed.** The label and dependency remove buttons in
+  `TaskEditor.tsx` are icon-only with no accessible name, so a screen reader hears identical unlabeled
+  buttons when there are two or more. It is pre-existing, outside the four collision sites, and a
+  different defect class (absent names, not colliding ones) — the guard filters empty names on purpose,
+  so it is right that it does not catch it. Fixing it is its own decision.
+
+**Acceptance**: each of the two fixes is shown to go red when the defect it guards is reintroduced.
+
 ## Evidence
 
 | Work unit | Commit | What gates it |
@@ -250,3 +272,4 @@ binding one (Vercel documents 4.5 MB), and the bytes arrive intact rather than t
 | WU3 | `da06691` | No test applies — passive documentation. The check is the grep inventory: no categorical claim (`Docker Compose para dev`, `Dev: Docker Compose`, `Compose — recommended`) survives in those six files, and `git diff --name-only` shows the public quickstart pages, `frontend/docs/design-brief.md` and `openspec/changes/archive/**` untouched. Scope was wider than item D named, on the owner's 2026-10-07 authorization. Two header dates (`docs/architecture.md`, `docs/README.md`) were moved to 2026-10-07 by the parent because those files changed. |
 | WU4 | `b94a29a` | Record only; no test applies. The check is that no file moved for it: `git show --stat b94a29a` touches `odd/tasks/docs-pass-open-findings.md` alone, which is the claim the work unit makes. |
 | WU5 | no commit of its own — the evidence lives in `odd/tasks/csv-story-import.md` follow-up 11, committed with the closure | The check is the measurement itself, and it was made falsifiable before it ran: the file's report was computed locally from the repository's own `parse_story_csv` + `validate_import` first (`blocked: True`, error on line 1000), so the production answer matching the predicted line number is a test result rather than an observation. Captured in-page by instrumenting `window.fetch`: `422`, `fileSize 1988029`, `created: 0`, `total_rows: 999`, error at `line: 1000`. Zero rows verified a second way from the project page. Throwaway project deleted, deletion verified. |
+| WU6 | no commit of its own — folded into the closure, see the evidence row below | Both REDs observed by reintroducing each defect in a temporary mutation and reverting it. F1: appending a second `MAX_FILE_BYTES = 5` to the backend file made the mirror fail with `story_csv.py declares MAX_FILE_BYTES exactly once: expected [ …(2) ] to have a length of 1 but got 2`. F2: making the local pre-check fire for every file made both 413 tests fail at `expect(importStories).toHaveBeenCalledTimes(1)` (`ImportStoriesDialog.test.tsx:341`, `:408`). Green after both: 2 files / 21 tests, `tsc --noEmit` exit 0, `git status` showing only the two intended test files. |

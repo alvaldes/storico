@@ -335,6 +335,10 @@ describe('ImportStoriesDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Import' }));
 
     expect(await screen.findByText('The file is larger than 2 MB.')).toBeInTheDocument();
+    // The refusal has to come from the BACKEND for this test to mean anything. The
+    // local size pre-check renders the same sentence, so without this assertion the
+    // store stub could stop being reached entirely and the test would still pass.
+    expect(importStories).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Import' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument();
@@ -399,6 +403,9 @@ describe('ImportStoriesDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Import' }));
 
     expect(await screen.findByText('The file is larger than 2 MB.')).toBeInTheDocument();
+    // Size comes from the response, not from the local pre-check: same reason as the
+    // footer test above.
+    expect(importStories).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/2097152/)).not.toBeInTheDocument();
   });
 

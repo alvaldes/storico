@@ -2,8 +2,9 @@
 
 > **Status**: **exhausted 2026-10-07.** Item A closed by `fix/llm-test-workspace-scoped` (`d50dda0`,
 > `b9ce87d`). Items B, C and D closed the same day by `fix/open-findings-closure`, whose work units
-> are recorded in `odd/tasks/open-findings-closure.md`. Item E was opened by that work and is the
-> only thing still open here.
+> are recorded in `odd/tasks/open-findings-closure.md`. Items **E and F** were opened by that work —
+> E by the production measurement, F by its independent verification — and are what is still open
+> here. Both are measured records, not authorized work.
 > **Created**: 2026-10-07
 > **Workflow**: Organic Driven Development (ODD)
 > **Receipt-driven development**: off in this clone.
@@ -227,6 +228,31 @@ absent. The second row above is a question before it is a correction.
 
 **What would close it.** The owner's answer about the LLM configuration, and the paragraph restated
 as what was true on which date.
+
+---
+
+## F. `TaskEditor`'s label and dependency remove buttons have no accessible name
+
+**Status**: **OPEN** — recorded 2026-10-07, measured, not fixed.
+
+Found by the independent verification of `fix/open-findings-closure` while it was attacking the guard
+that item C's follow-up 10 produced. It is the same neighbourhood as follow-up 10 and the opposite
+defect: not two buttons sharing one name, but two buttons with no name at all.
+
+`frontend/src/components/react/TaskEditor.tsx` renders a remove button for every label (`:426-430`)
+and every dependency (`:458-464`). Each is an icon-only `<button>` wrapping an `<X>` with no
+`aria-label`, no `aria-labelledby` and no text. One such button is merely unlabeled; **two or more
+make a screen reader announce identical controls**, and the user cannot tell which label they are
+removing. The guard added by WU1 filters empty names on purpose, so it neither catches this nor should
+it: an absent name is a different rule from a colliding one.
+
+**Why it is not fixed here.** It is pre-existing, it is outside the four sites follow-up 10
+enumerated, and every remedy is a copy decision — `aria-label={t.taskEditor.remove_label}` with the
+label's own value interpolated, which needs a new key in both locales and a decision about whether the
+button names the label it removes. That is a small feature, not a repair.
+
+**What would close it.** The remedy above with its tests, or a decision that icon-only remove buttons
+are acceptable here and the reason written down.
 
 ---
 

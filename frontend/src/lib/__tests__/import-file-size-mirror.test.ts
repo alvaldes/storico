@@ -30,9 +30,18 @@ describe('the frontend import size cap mirrors the backend parser', () => {
   );
 
   it('matches the backend MAX_FILE_BYTES exactly', () => {
-    const declared = backendSource.match(/^MAX_FILE_BYTES = (.+)$/m)?.[1];
+    // Python keeps the LAST assignment when a module rebinds a name, so the first
+    // match would be the wrong one to compare against. Rather than guess which
+    // assignment is the intent, an ambiguous declaration is refused: this
+    // collects every assignment and requires exactly one. Reading the first
+    // match silently passed while the backend used a different number.
+    const declarations = backendSource.match(/^MAX_FILE_BYTES = (.+)$/gm) ?? [];
 
-    expect(declared, 'the backend declares MAX_FILE_BYTES in story_csv.py').not.toBeUndefined();
+    expect(declarations, 'story_csv.py declares MAX_FILE_BYTES exactly once').toHaveLength(1);
+
+    const declared = (declarations[0] ?? '').replace('MAX_FILE_BYTES = ', '');
+
+    expect(declared, 'the declaration carries a value').not.toBe('');
 
     // The backend writes the cap as an arithmetic expression (`2 * 1024 * 1024`),
     // not a literal, so evaluate the multiplication rather than comparing the
