@@ -267,7 +267,7 @@
     "extractionAuthError": "Authentication error — please try signing in again",
     "extraction_pending": "Extracting...",
     "extraction_complete": "Extracted",
-    "extraction_retry": "Retry",
+    "extraction_retry": "Retry extraction",
     "extraction_tasks_in_progress": "Extracting tasks...",
     "extraction_takes_up_to_minute": "This can take up to a minute",
     "create_duplicate_error": "A user story with the same actor, feature, and benefit already exists in this project",
@@ -394,7 +394,8 @@
     "error_fetch": "Failed to load tasks for export",
     "error_download": "Download failed — please try again",
     "no_workspace": "Select a workspace to export tasks.",
-    "no_tasks": "No tasks to export in this workspace."
+    "no_tasks": "No tasks to export in this workspace.",
+    "retry_download": "Retry download"
   },
   "settings": {
     "page_title": "Settings",

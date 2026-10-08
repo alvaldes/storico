@@ -267,7 +267,7 @@
     "extractionAuthError": "Error de autenticación — intenta iniciar sesión de nuevo",
     "extraction_pending": "Extrayendo...",
     "extraction_complete": "Extraído",
-    "extraction_retry": "Reintentar",
+    "extraction_retry": "Reintentar la extracción",
     "extraction_tasks_in_progress": "Extrayendo tareas...",
     "extraction_takes_up_to_minute": "Esto puede tardar hasta un minuto",
     "create_duplicate_error": "Ya existe una historia de usuario con el mismo actor, funcionalidad y beneficio en este proyecto",
@@ -394,7 +394,8 @@
     "error_fetch": "Error al cargar tareas para exportar",
     "error_download": "Error al descargar — intenta de nuevo",
     "no_workspace": "Selecciona un espacio de trabajo para exportar tareas.",
-    "no_tasks": "No hay tareas para exportar en este espacio de trabajo."
+    "no_tasks": "No hay tareas para exportar en este espacio de trabajo.",
+    "retry_download": "Reintentar la descarga"
   },
   "settings": {
     "page_title": "Configuración",

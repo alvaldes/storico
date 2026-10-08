@@ -554,7 +554,7 @@ export function TaskEditor({
               rawDetail={saveError.rawError.rawBody}
               status={saveError.status}
               errorCode={saveError.errorCode}
-              retryLabel={t.taskEditor.save}
+              retryLabel={t.common.retry}
               onRetry={handleSave}
               onDismiss={() => setSaveError(null)}
               locale={locale}
