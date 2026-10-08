@@ -130,41 +130,43 @@ chosen in one workspace is never applied to another.
 
 ### Requirement: Kanban Board Read Feedback
 
-The island MUST distinguish four levels of read feedback, and the level MUST be the message.
+The board MUST distinguish its reads from a mutation, and the distinction MUST be visible.
 
-**Entering the board** — the first task read for the current workspace, a switch to another
-workspace, and the retry from the error card after a failed first read — MUST raise a blocking
-full-viewport veil carrying a single `aria-live="polite"` status region with a localized label. A
-workspace switch counts as entering because every filter is cleared and every card replaced; a
-failed first read counts as never having entered, because the user has seen only the error card.
+**Every board read** — the first read when the board opens, a workspace switch, a filter change and
+a retry — MUST show an internal loader inside the board area, in place of the columns. The board
+MUST NOT raise the full-viewport veil: that veil means a mutation is in flight, and opening a board
+is not one. A workspace switch counts as a board read like any other, and a retry after a failed
+read is likewise a board read rather than a special case.
 
-**Every other task read** — a filter change, and a retry once a board has been seen — MUST show an
-internal loader inside the board area, in place of the columns, and MUST NOT raise the veil. The
-internal loader MUST NOT cover or disable the filter bar: changing filters while a read is in
+The internal loader MUST NOT cover or disable the filter bar: changing filters while a read is in
 flight is supported, and an out-of-order answer MUST be discarded rather than applied. It MUST
-replace the columns rather than float over them, so the previous filter's cards are never
-presented as the answer to the filter now in the bar.
+replace the columns rather than float over them, so the previous filter's cards are never presented
+as the answer to the filter now in the bar.
 
-**While a select's own options are being read**, that select MUST carry its own loader and MUST
-set `aria-busy` on its trigger, so that a pending read is attributable to the control that caused
-it and an empty select is never indistinguishable from a loading one. Each select MUST reflect
-only its own read.
+**While a select's own options are being read**, that select MUST carry its own loader and MUST set
+`aria-busy` on its trigger, so that a pending read is attributable to the control that caused it and
+an empty select is never indistinguishable from a loading one. Each select MUST reflect only its own
+read.
 
-**A task status change from a card move** MUST raise none of the above: that path is optimistic
-and MUST show only its own card-level in-flight state.
+**A task status change from a card move** MUST raise neither the internal loader nor the
+full-viewport veil. The request it sends — `PUT /api/v1/tasks/{task_id}` — MUST be exempt from the
+blocking set, because the drop is optimistic and the card carries its own in-flight indicator, so a
+page-wide overlay would interrupt the gesture it is meant to confirm. The exemption MUST cover
+exactly that one task resource: a task sub-resource or a prefix-sharing sibling path MUST still
+block.
 
-In every level the feedback MUST be raised by the island's own read state and MUST NOT be raised
+In every case the feedback MUST be raised by the island's own read state and MUST NOT be raised
 through the mutation-only global loading store, so that a board read never signals a write in
 flight. A read that fails MUST win over any loader and replace the board with its error state. An
-empty board MUST NOT be reported as empty until a read has settled for the filters the bar
-currently shows.
+empty board MUST NOT be reported as empty until a read has settled for the filters the bar currently
+shows.
 
-#### Scenario: Entering the board raises the full veil
+#### Scenario: Opening the board shows the internal loader, never the full veil
 
 - **GIVEN** a workspace is selected and no board has been read yet
 - **WHEN** the user opens `/[locale]/kanban`
-- **THEN** the full-viewport veil covers the page until the first task read settles
-- **AND** it does not return for that workspace afterwards
+- **THEN** the internal loader shows in place of the columns while the first task read is in flight
+- **AND** no full-viewport veil is raised at any point
 
 #### Scenario: A filter change shows the internal loader, not the veil
 
@@ -174,17 +176,27 @@ currently shows.
 - **AND** no full-viewport veil is raised
 - **AND** the filter bar stays rendered and usable
 
-#### Scenario: A workspace switch is a new entry
+#### Scenario: A workspace switch is a board read like any other
 
 - **GIVEN** a board read for workspace A
 - **WHEN** the user switches the selected workspace to workspace B
-- **THEN** the full-viewport veil covers the page until B's first task read settles
+- **THEN** the internal loader shows in place of the columns while B's first read is in flight
+- **AND** no full-viewport veil is raised
 
-#### Scenario: The retry after a failed first read still enters the board
+#### Scenario: A card move raises no board-level loading and no overlay
 
-- **GIVEN** a first board read that failed, with the error card on screen
-- **WHEN** the user retries
-- **THEN** the full-viewport veil covers the page until the retry settles
+- **GIVEN** a loaded board with a task in a column
+- **WHEN** the user drags the card to another column and the status update is in flight
+- **THEN** neither the internal loader nor the full-viewport veil is raised
+- **AND** the `PUT /api/v1/tasks/{task_id}` it sends does not hold the blocking loader open
+- **AND** the card keeps its own in-flight indicator and the optimistic move stands
+
+#### Scenario: The task exemption does not widen to lookalike paths
+
+- **GIVEN** the blocking decision for a mutating request
+- **WHEN** the request targets a task sub-resource such as `/api/v1/tasks/{task_id}/comments`, or a
+  path that merely shares the prefix such as `/api/v1/tasks-bulk/x`
+- **THEN** the request still holds the blocking loader open
 
 #### Scenario: A select shows its own loader while its read is pending
 
@@ -194,19 +206,12 @@ currently shows.
 - **AND** the other selects are quiet, because each reflects only its own read
 - **AND** no full-viewport veil is raised
 
-#### Scenario: A card move raises no board-level loading
-
-- **GIVEN** a loaded board with a task in a column
-- **WHEN** the user drags the card to another column and the status update is in flight
-- **THEN** neither the veil nor the internal loader is raised
-- **AND** the card keeps its own in-flight indicator and the optimistic move stands
-
-#### Scenario: No workspace selected is not covered by the veil
+#### Scenario: No workspace selected is not covered by a loader
 
 - **GIVEN** no workspace is selected
 - **WHEN** the user opens `/[locale]/kanban`
 - **THEN** the localized "Select a workspace" prompt renders
-- **AND** no loading veil covers it, because no read is in flight
+- **AND** no loader covers it, because no read is in flight
 
 #### Scenario: An empty board is not called empty before an answer arrives
 
