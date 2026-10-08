@@ -243,7 +243,9 @@ The label rules differ per surface, deliberately and only where they must:
   person can choose from.
 
 Every one of those chips and rows MUST reveal its full value on hover: the project's **full name**,
-the story's **full sentence**. The value MUST come from the same shared definition as the label, so
+the story's **full sentence**. The tooltip MUST open as the pointer settles on the chip, with no
+hover pause a user would notice, because a delay long enough to be perceived reads as a chip that has
+no tooltip at all. The value MUST come from the same shared definition as the label, so
 the truncated text and the tooltip cannot disagree. A hover MUST NOT raise an empty popup, and a chip
 or row whose data the response does not carry MUST NOT render at all — no empty badge, no
 placeholder.
@@ -261,6 +263,13 @@ popup would travel with the pointer.
 - **GIVEN** a task whose response carries a project label, a story id, labels and a version number
 - **WHEN** its card renders on the board
 - **THEN** its metadata row shows the project name, the story's short identifier, the version and its labels, in that order
+
+#### Scenario: A hover reveals the value without a perceptible pause
+
+- **GIVEN** a card whose chips carry tooltips and a pointer resting elsewhere
+- **WHEN** the user moves the pointer onto a chip
+- **THEN** the tooltip is open, not scheduled for a later moment
+- **AND** a hover that moves on within a fraction of a second still sees it
 
 #### Scenario: A hover reveals the full value the chip had to shorten
 
