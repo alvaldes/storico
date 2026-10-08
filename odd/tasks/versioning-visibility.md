@@ -103,11 +103,16 @@ Two measured limits that shape the design, both pre-existing and neither introdu
   workspace switch clears them, both pinned by tests that assert the query, not the select's
   rendered value. Nine `kanban.*` keys added, `stories.allProjects`/`stories.selectProjectFirst`
   reused instead of duplicated.
-- [ ] **WU5 — Kanban version chip (frontend)**: `KanbanCard.tsx` shows the version of the task;
-  tests.
-- [ ] **WU6 — Specs and docs**: `openspec/specs/extraction-versioning/spec.md` (story version
-  summary), `openspec/specs/kanban-board/spec.md` (filters, `project_id` scope, chip); closure of
-  this document with commit evidence.
+- [x] **WU5 — Kanban version chip (frontend)** → `2947a83`. `Task`/`RawTaskItem` gained
+  `extractionId`/`versionNumber`, `mapTaskItem` maps them, and `KanbanCard.tsx` renders a bare
+  `v{n}` in the label row — never a currency marker, because the card cannot tell a frozen
+  version's tasks from a current one's. `null` renders nothing. Three board-level tests pin it,
+  including the absence of `v{n} · current` on a version-filtered board.
+- [x] **WU6 — Specs and docs** → `7d8037f`. `extraction-versioning` gained the one-scope task
+  read and the story version-summary requirement (22 → 23 requirements, 70 → 75 scenarios);
+  `kanban-board` gained the Filter Cascade and Card-Version requirements and the third empty
+  state (5 → 7 requirements, 8 → 18 scenarios). Both files are now the record of what the slice
+  shipped, not of what preceded it.
 
 ## Limits and follow-ups
 
@@ -134,3 +139,61 @@ Two measured limits that shape the design, both pre-existing and neither introdu
   `stories.selectProjectFirst` already carried exactly those ideas, so `kanban.filter_all_projects`
   and `kanban.filter_select_project` do not exist. A reader looking for the project select's
   "All …" copy will find it under `stories.*`.
+- **D10 is implemented in part: `versionSelector.failed` is not used.** D10 names
+  `versionSelector.current` / `versionSelector.failed` as the cascade's copy. The select reuses
+  only `current`; a `failed` version reads as a bare `v{n}`, so the bar says less about it than
+  the decision text anticipated. Recorded as a deviation, not a defect: the version is still
+  selectable and the story page's selector names its status. If the bar should say so too, that
+  is a follow-up.
+- **`Task.extractionId`/`versionNumber` are optional, not required-nullable.** The truthful type
+  is required-nullable — `TaskResponse` declares both and the API always sends them — but the
+  legacy, uncalled mapper in `frontend/src/lib/api.ts` also constructs `Task` and was outside every
+  unit's scope. `mapTaskItem` always sets both, and the type's docstring records the cause.
+  Tightening is a one-liner once that mapper goes; deleting it is a separate cleanup.
+- **The statement-count pins were measured, and there is no gap.** The tasks endpoint's page now
+  issues one extra statement against `extractions` (WU2's batched version-number lookup).
+  `test_unfiltered_list_queries.py` pins statements *against the endpoint's own table*, so its
+  `1` for `tasks` is still exactly true; the extra read is pinned one level down by
+  `test_version_numbers_resolves_a_batch_in_one_statement` and, for WU1,
+  `test_version_summaries_issues_exactly_one_statement_for_the_batch` (with their two
+  empty-input cases asserting zero statements). A comment was added to the endpoint pin so a
+  future reader does not mistake it for a whole-endpoint count.
+- **The cascade's story options are read once per project selection**, `listStories(projectId,
+  1, 100, workspaceId)` from the board's own effect, never through `useStoryStore` — the stories
+  page owns that store, and a board read must not overwrite the list it renders.
+
+## Closure
+
+Branch `feat/versioning-visibility`, off `main` at `b3403d7`. The slice is one work unit per task,
+nine commits:
+
+| Commit | Unit |
+|--------|------|
+| `9aedb2d` | plan (this document) |
+| `e9d0a4b` | WU1 — story version summary projection |
+| `eaecad6` | WU2 — task version projection and `project_id` scope |
+| `1b654c6` | WU3 — story card version badge |
+| `e875553` | WU3b — shared badge on the Dashboard's recent stories |
+| `70f0793` | WU4 — kanban cascade filters |
+| `71e52a4` | doc record for WU1–WU4 |
+| `2947a83` | WU5 — kanban card version chip |
+| `7d8037f` | WU6 — spec deltas, the pin comment and the `AGENTS.md` entry |
+
+Gates, each run by the orchestrator on the full tree and not only on a worker's slice:
+
+- `frontend`: `pnpm exec tsc --noEmit` exit 0, `npm test` 76 files / 862 tests passing, and
+  `pnpm build` completing (the Astro build is the one gate vitest and `tsc` cannot cover).
+- `backend`: `python -m ruff check src tests` clean, `python -m ruff format --check src tests`
+  reporting 277 files already formatted, and the full suite — `python -m pytest -q` — at
+  **1333 passed, 45 skipped**. The skips are the suite's own environment conditions and were
+  neither added nor removed here: 21 for the missing Docker daemon (testcontainers Postgres),
+  22 for `STORICO_TEST_LIVE_QDRANT` and 2 for `STORICO_TEST_LIVE_OLLAMA`. So the Docker-gated
+  integration paths were **not exercised** by this run, and no claim in this document rests on
+  them.
+- The i18n key-parity and neutral-Spanish guards ran inside the frontend suite, so D11 holds by
+  test and not by reading.
+
+Left open, deliberately, and recorded above rather than fixed here: the D10 `versionSelector.failed`
+copy the bar does not use, `Task`'s optional version fields (caused by the dead legacy mapper),
+the 100-story select cap, the untranslated `actor: feature` story label, and the dead
+`api.listTasksByWorkspace` / `mapTaskResponse` pair in `frontend/src/lib/api.ts`.
