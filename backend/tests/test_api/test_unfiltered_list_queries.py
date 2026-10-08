@@ -108,6 +108,10 @@ async def test_unfiltered_list_reads_its_table_once(
         for seeded in three_workspaces:
             await seed_listed_rows(seeded)
 
+    # Per-table by design: the tasks page read also issues one statement against
+    # ``extractions`` (the batched version-number lookup, versioning-visibility WU2),
+    # which this pin does not and should not count — that read is pinned at the
+    # repository level by ``test_version_numbers_resolves_a_batch_in_one_statement``.
     with ReadsOf(test_engine, table) as reads:
         response = await authed_client.get(endpoint)
 
