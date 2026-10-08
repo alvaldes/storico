@@ -11,7 +11,6 @@ import type { WorkspaceTaskFilters } from '@/lib/tasks-api';
 import type { StoryVersion, UserStory } from '@/types/story';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { AlertCircle, LoaderCircle, X } from 'lucide-react';
-import { LoadingVeil } from '@/components/react/LoadingVeil';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -77,17 +76,6 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   // yet" for one frame, before the effect has even started the request. A false
   // "no tasks" is the same class of lie as a false "current" badge.
   const [loadedFiltersKey, setLoadedFiltersKey] = useState<string | null>(null);
-  // Whether the board for the current workspace has ever been seen (D6/D7). The
-  // full-viewport veil belongs to entering the board: the first task read for
-  // this workspace, and nothing else. A workspace switch is a first entry too
-  // (D7) — every filter is cleared and every card replaced — and the
-  // comparison against `workspaceId` below resets the flag for free. A read
-  // that settles into the error card has shown no board, so the retry from it
-  // is still a first entry: `fetchTasksForWorkspace` never rejects and records
-  // its failure in the store's `error`, so "the read settled" alone is not
-  // proof a board was ever seen — the flag is only set when a read settles
-  // without one.
-  const [seenWorkspace, setSeenWorkspace] = useState<string | null>(null);
   const [storyOptions, setStoryOptions] = useState<UserStory[]>([]);
   const [versionOptions, setVersionOptions] = useState<StoryVersion[]>([]);
   const [localTasks, setLocalTasks] = useState<Record<ColumnId, Task[]>>({
@@ -232,12 +220,6 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     if (workspaceId) {
       void loadTasks(workspaceId).then(() => {
         setLoadedFiltersKey(filtersKey);
-        // A failed read leaves the user on the error card having never seen a
-        // board, so it must not count as an entry: only a settled read without
-        // a recorded failure marks the workspace as seen.
-        if (useTaskStore.getState().error === null) {
-          setSeenWorkspace(workspaceId);
-        }
       });
     }
   }, [loadTasks, workspaceId, filtersKey]);
@@ -425,26 +407,18 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     [localTasks, updateTaskStatus],
   );
 
-  // ── Loading levels (D6–D9) ──
+  // ── Loading levels (D8–D10) ──
   //
-  // Level 1 — the full-viewport veil, only when the board is entered: the
-  // first task read for the current workspace (D6), or a workspace switch
-  // (D7). After that no filter change, refetch or retry raises it again. The
-  // cascade's option reads (stories, versions) never touch it: each select
-  // carries its own loader (D9). It does NOT cover the no-workspace prompt
-  // (nothing is being read; the prompt returns below before the veil renders).
-  // The error branch wins over the veil: a failed read replaces the page with
-  // the error card, veil or not.
-  const firstEntryReadInFlight = loading && seenWorkspace !== workspaceId;
-  // Level 3 — the internal board loader, rendered in place of the columns (D8)
-  // for any non-first task read: a filter change, or the retry after the error
-  // card once a board has been seen. It never covers or disables the filter
-  // bar, and the store's staleness token already discards an answer that
-  // arrives out of order. Level 4 — a card move raises none of this: the
-  // store's `updateTaskStatus` never touches `loading`, so this flag cannot
-  // see one, and the board reverts a failed move with a local `setLocalTasks`
-  // instead of a refetch.
-  const taskRefetchInFlight = loading && seenWorkspace === workspaceId;
+  // The board never raises the full-viewport veil (D10): every task read it
+  // makes — first entry, workspace switch, filter change, retry — renders the
+  // internal loader in place of the columns, exactly alike. The full veil
+  // belongs to mutations, which is the only thing it ever meant. The cascade's
+  // option reads (stories, versions) never touch this flag: each select
+  // carries its own loader (D9). A card move raises none of this: the store's
+  // `updateTaskStatus` never touches `loading`, so this flag cannot see one,
+  // and the board reverts a failed move with a local `setLocalTasks` instead
+  // of a refetch.
+  const taskRefetchInFlight = loading;
 
   if (!workspaceId) {
     return (
@@ -458,10 +432,9 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
    * Retry the board load, with the filters the bar currently shows.
    *
    * `fetchTasksForWorkspace` raises the store's `loading` before it awaits, so
-   * the retry holds a loader up for as long as it is in flight: the full veil
-   * if no board was ever seen (a failed first read), the internal loader once
-   * one has. A retry that fails again still lands on the error branch, which
-   * wins over either loader.
+   * the retry holds the internal loader up for as long as it is in flight —
+   * the same read shape as any other (D10). A retry that fails again still
+   * lands on the error branch, which wins over the loader.
    *
    * `loadTasks` reads the cascade from its closure, so the retry refetches the
    * filtered query — a failed filtered load must not quietly become a whole-
@@ -499,18 +472,14 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   // render before one has settled *for the filters the bar currently shows*:
   // an empty `workspaceTasks` is not evidence of an empty board, it is only
   // evidence that no answer has arrived yet. `loadedFiltersKey` supplies that
-  // proof, so a slow first load cannot paint "no tasks yet" behind the veil or
-  // into the accessibility tree.
+  // proof, so a slow first load cannot paint "no tasks yet" behind the loader
+  // or into the accessibility tree.
   const settled = !loading && loadedFiltersKey === filtersKey;
   const unfilteredEmpty = settled && workspaceTasks.length === 0 && !hasActiveFilter;
   const filteredEmpty = settled && workspaceTasks.length === 0 && hasActiveFilter;
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden">
-      {/* Level 1 — entering the board (D6/D7): full-screen veil for the first
-          task read of this workspace only. Sits after the error and
-          no-workspace returns, so it can only ever cover a settled-layout read. */}
-      {firstEntryReadInFlight && <LoadingVeil label={t.common.loading} />}
       {/* Invalid drop toast */}
       {invalidDropToast.show && (
         <div className="fixed top-4 right-4 z-50 max-w-md animate-slide-in">
@@ -642,10 +611,10 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
 
         <div className="flex-1 min-h-0 overflow-hidden overflow-x-auto px-4 lg:px-6 pb-4 lg:pb-6 pt-4">
           {taskRefetchInFlight ? (
-            // Level 3 (D8): the internal board loader replaces the columns —
-            // leaving the previous filter's cards up would present stale data
-            // as the answer to the filter now in the bar. The filter bar above
-            // is never covered and never disabled.
+            // The internal board loader replaces the columns for every task
+            // read (D10) — leaving the previous filter's cards up would present
+            // stale data as the answer to the filter now in the bar. The
+            // filter bar above is never covered and never disabled.
             <div
               role="progressbar"
               aria-label={t.common.loading}
