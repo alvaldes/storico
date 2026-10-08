@@ -5,6 +5,7 @@ import { KanbanBoard } from '@/components/react/KanbanBoard';
 import { useTaskStore } from '@/stores/taskStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useTranslations } from '@/i18n/utils';
+import { shortUUID } from '@/lib/utils';
 import type { Task } from '@/types/task';
 import type { Workspace } from '@/types/workspace';
 
@@ -1205,5 +1206,170 @@ describe('KanbanCard — version chip', () => {
     // The current marker's rendered text, as StoryVersionBadge and the cascade's
     // version select produce it: `v1 · current`. Its absence is the pin.
     expect(screen.queryByText('v1 · current')).not.toBeInTheDocument();
+  });
+});
+
+/* ── KanbanCard project and story chips (WU14) ──
+ *
+ * The board renders through the real cards, which is where the chips live. A
+ * card names where it came from: the project by name (D13 — as text, never a
+ * link: the card's one click target stays the title) and the story by its
+ * short id, exactly as the story cards show it (D12 — `shortUUID`, reused, so
+ * the two surfaces cannot drift). Both chips are context (D15): the same
+ * `outline` variant and sizing classes as the label and version chips, muted
+ * like the version chip, ordered project → story → labels → version. Each
+ * chip renders only when its data is present — no `undefined` badge, no empty
+ * chip — and a long project name must ellipsize inside a bounded chip instead
+ * of pushing the labels or the version chip out of the card.
+ */
+describe('KanbanCard — project and story chips', () => {
+  const STORY_ID = '01a10dee-6d92-7d13-812f-bc39dfd8e767';
+
+  function chipTask(fields: Partial<Task> & Pick<Task, 'id'>): Task {
+    return {
+      storyId: STORY_ID,
+      title: `Task ${fields.id}`,
+      description: '',
+      status: 'todo',
+      priority: 'medium',
+      labels: [],
+      dependencies: [],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      extractionId: 'extraction-1',
+      versionNumber: null,
+      projectId: null,
+      projectName: null,
+      ...fields,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspace: {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        ownerId: 'user-1',
+        role: 'admin',
+        memberCount: 1,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      } as Workspace,
+      loading: false,
+      saving: false,
+    });
+    useTaskStore.setState({
+      tasks: {},
+      workspaceTasks: [],
+      extractions: {},
+      loading: false,
+      error: null,
+      updatingTaskId: null,
+      allowedTransitions: {},
+      fetchTasksForWorkspace: vi.fn().mockResolvedValue(undefined),
+      updateTaskStatus: vi.fn().mockResolvedValue(undefined),
+    });
+  });
+
+  it('renders the project and story chips with their values, ordered project → story → labels → version (D15)', async () => {
+    useTaskStore.setState({
+      workspaceTasks: [
+        chipTask({
+          id: 'task-full',
+          projectId: 'project-1',
+          projectName: 'Alpha',
+          labels: ['db', 'backend'],
+          versionNumber: 2,
+        }),
+      ],
+    });
+
+    render(<KanbanBoard locale="en" />);
+
+    expect(await screen.findByText('Alpha')).toBeInTheDocument();
+    // The metadata row, read left to right through the real card: the two
+    // context chips first, then the task's own labels, then its version.
+    const row = screen.getByText('db').closest('div') as HTMLElement;
+    expect(Array.from(row.children).map((el) => el.textContent)).toEqual([
+      'Alpha',
+      shortUUID(STORY_ID),
+      'db',
+      'backend',
+      'v2',
+    ]);
+
+    // D13: the project chip is text, not a second link inside a draggable card.
+    expect(screen.getByText('Alpha').closest('a')).toBeNull();
+  });
+
+  it('names the story exactly as the story cards do — shortUUID(task.storyId) (D12)', async () => {
+    useTaskStore.setState({ workspaceTasks: [chipTask({ id: 'task-story' })] });
+
+    render(<KanbanBoard locale="en" />);
+
+    // The chip's text is the function's output itself, not an inline slice —
+    // reusing the function is what keeps this surface from drifting (D12).
+    expect(await screen.findByText(shortUUID(STORY_ID))).toBeInTheDocument();
+  });
+
+  it('renders the story chip and no project chip when the task has no project fields', async () => {
+    useTaskStore.setState({
+      workspaceTasks: [chipTask({ id: 'task-noproj', labels: ['db'] })],
+    });
+
+    render(<KanbanBoard locale="en" />);
+
+    expect(await screen.findByText(shortUUID(STORY_ID))).toBeInTheDocument();
+    // The row holds the story chip and the label, nothing else: no project
+    // chip, and no degraded placeholder where one would go.
+    const row = screen.getByText('db').closest('div') as HTMLElement;
+    expect(Array.from(row.children).map((el) => el.textContent)).toEqual([
+      shortUUID(STORY_ID),
+      'db',
+    ]);
+  });
+
+  it('renders neither chip and still shows its labels when the task names neither its project nor its story', async () => {
+    // Beyond the type's own guarantee (`storyId` is required) this pins the
+    // per-field render guards: falsy data produces no chip, not an empty one.
+    useTaskStore.setState({
+      workspaceTasks: [chipTask({ id: 'task-bare', storyId: '', labels: ['db'] })],
+    });
+
+    render(<KanbanBoard locale="en" />);
+
+    // The metadata row survives on the labels alone.
+    const row = await screen.findByText('db').then((el) => el.closest('div') as HTMLElement);
+    expect(Array.from(row.children).map((el) => el.textContent)).toEqual(['db']);
+  });
+
+  it('bounds a long project name and keeps the full name in the title', async () => {
+    const longName = 'A Very Long Project Name That Would Push The Row '.repeat(4).trim();
+    useTaskStore.setState({
+      workspaceTasks: [
+        chipTask({
+          id: 'task-long',
+          projectId: 'project-1',
+          projectName: longName,
+          labels: ['db'],
+          versionNumber: 1,
+        }),
+      ],
+    });
+
+    render(<KanbanBoard locale="en" />);
+
+    // The full truth lives in the `title`, so a hover still names the project.
+    const chip = await screen.findByTitle(longName);
+    // The chip is width-bounded and its text ellipsizes inside that bound
+    // instead of pushing the labels or the version chip out of the card.
+    expect(chip).toHaveClass('max-w-[10rem]');
+    expect(chip.querySelector('.truncate')).not.toBeNull();
+    // And the rest of the row is intact beside it.
+    expect(screen.getByText('db')).toBeInTheDocument();
+    expect(screen.getByText('v1')).toBeInTheDocument();
   });
 });

@@ -4,6 +4,7 @@ import { Draggable } from '@hello-pangea/dnd';
 import { GripVertical, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useTranslations, type Locale } from '@/i18n/utils';
+import { shortUUID } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import type { Task } from '@/types/task';
 
@@ -57,8 +58,40 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
                   {task.description}
                 </p>
               )}
-              {(task.labels.length > 0 || task.versionNumber !== null) && (
+              {(task.projectName ||
+                task.storyId ||
+                task.labels.length > 0 ||
+                task.versionNumber !== null) && (
                 <div className="mt-2 flex flex-wrap gap-1">
+                  {/*
+                    Ordered project → story → labels → version (D15 of feature
+                    ``kanban-card-project-story``): the labels keep the foreground
+                    colour because they are the task's own attributes; the three
+                    context chips around them are the "where" and sit muted like
+                    the version chip. The project is a name as text, not a link
+                    (D13) — the card's one click target stays the title — and the
+                    story is the same ``shortUUID`` the story cards show (D12),
+                    reused so the two surfaces cannot drift. The long project
+                    name ellipsizes inside its bounded chip (title keeps the
+                    full name) instead of pushing the row out of the card.
+                  */}
+                  {task.projectName && (
+                    <Badge
+                      variant="outline"
+                      className="max-w-[10rem] text-[10px] leading-none px-1.5 py-0.5 text-muted-foreground"
+                      title={task.projectName}
+                    >
+                      <span className="min-w-0 truncate">{task.projectName}</span>
+                    </Badge>
+                  )}
+                  {task.storyId && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] leading-none px-1.5 py-0.5 text-muted-foreground"
+                    >
+                      {shortUUID(task.storyId)}
+                    </Badge>
+                  )}
                   {task.labels.map((label) => (
                     <Badge
                       key={label}

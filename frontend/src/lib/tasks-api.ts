@@ -18,6 +18,8 @@ function mapTaskItem(raw: RawTaskItem): Task {
     updatedAt: raw.updated_at,
     extractionId: raw.extraction_id ?? null,
     versionNumber: raw.version_number ?? null,
+    projectId: raw.project_id ?? null,
+    projectName: raw.project_name ?? null,
   };
 }
 

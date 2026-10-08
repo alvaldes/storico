@@ -47,6 +47,16 @@ export interface Task {
    */
   extractionId?: string | null;
   versionNumber?: number | null;
+  /**
+   * The context chips' data (WU14 of feature ``versioning-visibility``),
+   * mirroring ``TaskResponse``'s ``project_id``/``project_name``. Optional,
+   * not required-nullable, for the same reason as ``extractionId``: the
+   * legacy, uncalled mapper in ``lib/api.ts`` (deliberately untouched) still
+   * produces ``Task`` objects without them — ``mapTaskItem`` always sets both.
+   * Cards must render no project chip when either is null or absent.
+   */
+  projectId?: string | null;
+  projectName?: string | null;
 }
 
 /** Raw task from API (snake_case). */
@@ -63,6 +73,8 @@ export interface RawTaskItem {
   updated_at: string;
   extraction_id: string | null;
   version_number: number | null;
+  project_id: string | null;
+  project_name: string | null;
 }
 
 /* ── Invalidation marks (0.9.0 slice b) ── */
