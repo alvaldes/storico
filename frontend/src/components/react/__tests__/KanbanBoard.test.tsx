@@ -1536,6 +1536,29 @@ describe('KanbanBoard — context treatment on chips and selects (WU17)', () => 
     expect(await screen.findByText(LONG_PROJECT)).toBeInTheDocument();
   });
 
+  it('opens the tooltip immediately, not after Base UI\'s 600 ms default', async () => {
+    // The bug this pins: the tooltips were mounted without a TooltipProvider, so
+    // Base UI's default 600 ms delay applied and a hover-and-move-on showed
+    // nothing. Every assertion in this file still passed, because `findBy*`
+    // waits a second — content was verified while responsiveness was not.
+    //
+    // The bound below is deliberately tighter than that default: with the delay
+    // restored, the popup cannot be there in 150 ms and this fails.
+    const user = userEvent.setup();
+    useTaskStore.setState({ workspaceTasks: [chipTask({ id: 'task-fast', labels: ['db'] })] });
+
+    render(<KanbanBoard locale="en" />);
+
+    const chip = (await screen.findByText(cardProjectLabel)).closest(
+      '[data-base-ui-tooltip-trigger]',
+    ) as HTMLElement;
+    await user.hover(chip);
+
+    await waitFor(() => expect(screen.getByText(LONG_PROJECT)).toBeInTheDocument(), {
+      timeout: 150,
+    });
+  });
+
   it('shows the story sentence in the story chip tooltip (D17)', async () => {
     const user = userEvent.setup();
     useTaskStore.setState({ workspaceTasks: [chipTask({ id: 'task-s' })] });

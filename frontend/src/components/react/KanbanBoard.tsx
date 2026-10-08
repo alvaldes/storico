@@ -12,7 +12,7 @@ import type { StoryVersion, UserStory } from '@/types/story';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { AlertCircle, LoaderCircle, X, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   projectTreatment,
   SELECT_PROJECT_CAP,
@@ -527,213 +527,223 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   const filteredEmpty = settled && workspaceTasks.length === 0 && hasActiveFilter;
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden">
-      {/* Invalid drop toast */}
-      {invalidDropToast.show && (
-        <div className="fixed top-4 right-4 z-50 max-w-md animate-slide-in">
-          <div className="flex items-start gap-3 rounded-lg border border-destructive bg-destructive/10 p-4 text-destructive shadow-lg">
-            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium">{t.kanban.invalid_drop_title}</p>
-              <p className="mt-1 text-sm text-destructive/90">{invalidDropToast.message}</p>
+    // ``delay={0}`` is load-bearing, not a preference: Base UI's default is a
+    // 600 ms wait before a tooltip opens, so a user who hovers a chip and moves
+    // on sees nothing at all — the chips looked like they had no tooltip. The
+    // provider is mounted here because this is the island that owns the
+    // tooltips: Astro hydrates every island as its own React tree, so a
+    // provider in the layout is not an ancestor of this component. It renders
+    // no DOM element, only the shared delay context, so it cannot disturb the
+    // layout below it.
+    <TooltipProvider delay={0}>
+      <div className="absolute inset-0 flex flex-col overflow-hidden">
+        {/* Invalid drop toast */}
+        {invalidDropToast.show && (
+          <div className="fixed top-4 right-4 z-50 max-w-md animate-slide-in">
+            <div className="flex items-start gap-3 rounded-lg border border-destructive bg-destructive/10 p-4 text-destructive shadow-lg">
+              <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">{t.kanban.invalid_drop_title}</p>
+                <p className="mt-1 text-sm text-destructive/90">{invalidDropToast.message}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setInvalidDropToast({ show: false, message: '', allowed: [] })}
+              >
+                ✕
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setInvalidDropToast({ show: false, message: '', allowed: [] })}
+          </div>
+        )}
+
+        <div className="absolute inset-0 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between shrink-0 px-4 lg:px-6 pt-4 lg:pt-6">
+            <h1 className="text-2xl font-semibold text-foreground">{t.kanban.title}</h1>
+            <span className="text-sm text-muted-foreground">
+              {t.kanban.total_tasks.replace('{count}', String(workspaceTasks.length))}
+            </span>
+          </div>
+
+          {/* Filter bar: cascade Project → Story → Version, resolved server-side by
+              most specific wins (D5). Each "All …" option means "not filtered at
+              this level"; a select below an unchosen parent stays disabled and says
+              what to pick first. */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0 px-4 lg:px-6 pt-3">
+            <Select
+              items={projectItems}
+              value={projectFilter ?? null}
+              onValueChange={handleProjectChange}
             >
-              ✕
-            </Button>
+              <Tooltip disabled={!projectTriggerTooltip}>
+                <TooltipTrigger
+                  render={
+                    <SelectTrigger
+                      className="w-44"
+                      aria-label={t.kanban.filter_project}
+                      // The pending state belongs to the control, not to the spinner: an
+                      // `aria-label` on a bare svg is ignored by several screen readers,
+                      // while `aria-busy` is what assistive tech reads as "this control is
+                      // still loading".
+                      aria-busy={projectsLoading}
+                    />
+                  }
+                >
+                  <SelectValue />
+                  {/* Level 2 (D9): this select's own read, from projectStore.loading. */}
+                  {projectsLoading && (
+                    <LoaderCircle
+                      className="size-4 animate-spin text-muted-foreground"
+                      aria-label={t.common.loading}
+                    />
+                  )}
+                </TooltipTrigger>
+                {projectTriggerTooltip && (
+                  <TooltipContent>{projectTriggerTooltip}</TooltipContent>
+                )}
+              </Tooltip>
+              <SelectContent>
+                <SelectGroup>
+                  {projectItems.map((item) => (
+                    <SelectItem
+                      key={item.value ?? '_all_projects'}
+                      value={item.value}
+                      title={item.title ?? undefined}
+                    >
+                      {item.Icon && <item.Icon aria-hidden="true" />}
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Select
+              items={storyItems}
+              value={storyFilter ?? null}
+              onValueChange={handleStoryChange}
+              disabled={!projectFilter}
+            >
+              <Tooltip disabled={!storyTriggerTooltip}>
+                <TooltipTrigger
+                  render={
+                    <SelectTrigger
+                      className="w-52"
+                      aria-label={t.kanban.filter_story}
+                      aria-busy={storiesLoading}
+                    />
+                  }
+                >
+                  {/* While the parent is unchosen the select is disabled; the value
+                      is null and the placeholder — not the "All stories" label —
+                      names what to pick first. */}
+                  <SelectValue>{projectFilter ? undefined : t.stories.selectProjectFirst}</SelectValue>
+                  {/* Level 2 (D9): this select's own read (listStories). */}
+                  {storiesLoading && (
+                    <LoaderCircle
+                      className="size-4 animate-spin text-muted-foreground"
+                      aria-label={t.common.loading}
+                    />
+                  )}
+                </TooltipTrigger>
+                {storyTriggerTooltip && <TooltipContent>{storyTriggerTooltip}</TooltipContent>}
+              </Tooltip>
+              <SelectContent>
+                <SelectGroup>
+                  {storyItems.map((item) => (
+                    <SelectItem
+                      key={item.value ?? '_all_stories'}
+                      value={item.value}
+                      title={item.title ?? undefined}
+                    >
+                      {item.Icon && <item.Icon aria-hidden="true" />}
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Select
+              items={versionItems}
+              value={versionFilter ?? null}
+              onValueChange={handleVersionChange}
+              disabled={!storyFilter}
+            >
+              <SelectTrigger className="w-44" aria-label={t.kanban.filter_version} aria-busy={versionsLoading}>
+                <SelectValue>{storyFilter ? undefined : t.kanban.filter_select_story}</SelectValue>
+                {/* Level 2 (D9): this select's own read (listVersions). */}
+                {versionsLoading && (
+                  <LoaderCircle
+                    className="size-4 animate-spin text-muted-foreground"
+                    aria-label={t.common.loading}
+                  />
+                )}
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {versionItems.map((item) => (
+                    <SelectItem key={item.value ?? '_all_versions'} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            {hasActiveFilter && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                <X className="h-4 w-4" />
+                {t.kanban.filter_clear}
+              </Button>
+            )}
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-hidden overflow-x-auto px-4 lg:px-6 pb-4 lg:pb-6 pt-4">
+            {taskRefetchInFlight ? (
+              // The internal board loader replaces the columns for every task
+              // read (D10) — leaving the previous filter's cards up would present
+              // stale data as the answer to the filter now in the bar. The
+              // filter bar above is never covered and never disabled.
+              <div
+                role="progressbar"
+                aria-label={t.common.loading}
+                className="flex h-full items-center justify-center"
+              >
+                <div className="flex flex-col items-center gap-3">
+                  <LoaderCircle className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
+                  <p className="text-sm text-muted-foreground">{t.common.loading}</p>
+                </div>
+              </div>
+            ) : filteredEmpty ? (
+              // The filter emptied the board — the workspace may well have tasks.
+              // Its own copy, with the hint that leads back out via the bar above.
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
+                <p className="text-sm font-medium text-foreground">{t.kanban.empty_filtered}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{t.kanban.empty_filtered_hint}</p>
+              </div>
+            ) : unfilteredEmpty ? (
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
+                <p className="text-sm font-medium text-foreground">{t.kanban.empty_board}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{t.kanban.empty_board_hint}</p>
+              </div>
+            ) : (
+              <DndErrorBoundary>
+                <DragDropContext onDragEnd={handleDragEnd}>
+                  <div className="flex gap-4 h-full items-stretch" style={{ minWidth: 'fit-content' }}>
+                    {COLUMNS.map((colId) => (
+                      <KanbanColumn
+                        key={colId}
+                        columnId={colId}
+                        title={t.kanban.columns[colId]}
+                        tasks={localTasks[colId]}
+                        locale={locale}
+                      />
+                    ))}
+                  </div>
+                </DragDropContext>
+              </DndErrorBoundary>
+            )}
           </div>
         </div>
-      )}
-
-      <div className="absolute inset-0 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between shrink-0 px-4 lg:px-6 pt-4 lg:pt-6">
-          <h1 className="text-2xl font-semibold text-foreground">{t.kanban.title}</h1>
-          <span className="text-sm text-muted-foreground">
-            {t.kanban.total_tasks.replace('{count}', String(workspaceTasks.length))}
-          </span>
-        </div>
-
-        {/* Filter bar: cascade Project → Story → Version, resolved server-side by
-            most specific wins (D5). Each "All …" option means "not filtered at
-            this level"; a select below an unchosen parent stays disabled and says
-            what to pick first. */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0 px-4 lg:px-6 pt-3">
-          <Select
-            items={projectItems}
-            value={projectFilter ?? null}
-            onValueChange={handleProjectChange}
-          >
-            <Tooltip disabled={!projectTriggerTooltip}>
-              <TooltipTrigger
-                render={
-                  <SelectTrigger
-                    className="w-44"
-                    aria-label={t.kanban.filter_project}
-                    // The pending state belongs to the control, not to the spinner: an
-                    // `aria-label` on a bare svg is ignored by several screen readers,
-                    // while `aria-busy` is what assistive tech reads as "this control is
-                    // still loading".
-                    aria-busy={projectsLoading}
-                  />
-                }
-              >
-                <SelectValue />
-                {/* Level 2 (D9): this select's own read, from projectStore.loading. */}
-                {projectsLoading && (
-                  <LoaderCircle
-                    className="size-4 animate-spin text-muted-foreground"
-                    aria-label={t.common.loading}
-                  />
-                )}
-              </TooltipTrigger>
-              {projectTriggerTooltip && (
-                <TooltipContent>{projectTriggerTooltip}</TooltipContent>
-              )}
-            </Tooltip>
-            <SelectContent>
-              <SelectGroup>
-                {projectItems.map((item) => (
-                  <SelectItem
-                    key={item.value ?? '_all_projects'}
-                    value={item.value}
-                    title={item.title ?? undefined}
-                  >
-                    {item.Icon && <item.Icon aria-hidden="true" />}
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <Select
-            items={storyItems}
-            value={storyFilter ?? null}
-            onValueChange={handleStoryChange}
-            disabled={!projectFilter}
-          >
-            <Tooltip disabled={!storyTriggerTooltip}>
-              <TooltipTrigger
-                render={
-                  <SelectTrigger
-                    className="w-52"
-                    aria-label={t.kanban.filter_story}
-                    aria-busy={storiesLoading}
-                  />
-                }
-              >
-                {/* While the parent is unchosen the select is disabled; the value
-                    is null and the placeholder — not the "All stories" label —
-                    names what to pick first. */}
-                <SelectValue>{projectFilter ? undefined : t.stories.selectProjectFirst}</SelectValue>
-                {/* Level 2 (D9): this select's own read (listStories). */}
-                {storiesLoading && (
-                  <LoaderCircle
-                    className="size-4 animate-spin text-muted-foreground"
-                    aria-label={t.common.loading}
-                  />
-                )}
-              </TooltipTrigger>
-              {storyTriggerTooltip && <TooltipContent>{storyTriggerTooltip}</TooltipContent>}
-            </Tooltip>
-            <SelectContent>
-              <SelectGroup>
-                {storyItems.map((item) => (
-                  <SelectItem
-                    key={item.value ?? '_all_stories'}
-                    value={item.value}
-                    title={item.title ?? undefined}
-                  >
-                    {item.Icon && <item.Icon aria-hidden="true" />}
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <Select
-            items={versionItems}
-            value={versionFilter ?? null}
-            onValueChange={handleVersionChange}
-            disabled={!storyFilter}
-          >
-            <SelectTrigger className="w-44" aria-label={t.kanban.filter_version} aria-busy={versionsLoading}>
-              <SelectValue>{storyFilter ? undefined : t.kanban.filter_select_story}</SelectValue>
-              {/* Level 2 (D9): this select's own read (listVersions). */}
-              {versionsLoading && (
-                <LoaderCircle
-                  className="size-4 animate-spin text-muted-foreground"
-                  aria-label={t.common.loading}
-                />
-              )}
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {versionItems.map((item) => (
-                  <SelectItem key={item.value ?? '_all_versions'} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          {hasActiveFilter && (
-            <Button variant="ghost" size="sm" onClick={clearFilters}>
-              <X className="h-4 w-4" />
-              {t.kanban.filter_clear}
-            </Button>
-          )}
-        </div>
-
-        <div className="flex-1 min-h-0 overflow-hidden overflow-x-auto px-4 lg:px-6 pb-4 lg:pb-6 pt-4">
-          {taskRefetchInFlight ? (
-            // The internal board loader replaces the columns for every task
-            // read (D10) — leaving the previous filter's cards up would present
-            // stale data as the answer to the filter now in the bar. The
-            // filter bar above is never covered and never disabled.
-            <div
-              role="progressbar"
-              aria-label={t.common.loading}
-              className="flex h-full items-center justify-center"
-            >
-              <div className="flex flex-col items-center gap-3">
-                <LoaderCircle className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
-                <p className="text-sm text-muted-foreground">{t.common.loading}</p>
-              </div>
-            </div>
-          ) : filteredEmpty ? (
-            // The filter emptied the board — the workspace may well have tasks.
-            // Its own copy, with the hint that leads back out via the bar above.
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
-              <p className="text-sm font-medium text-foreground">{t.kanban.empty_filtered}</p>
-              <p className="mt-2 text-sm text-muted-foreground">{t.kanban.empty_filtered_hint}</p>
-            </div>
-          ) : unfilteredEmpty ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
-              <p className="text-sm font-medium text-foreground">{t.kanban.empty_board}</p>
-              <p className="mt-2 text-sm text-muted-foreground">{t.kanban.empty_board_hint}</p>
-            </div>
-          ) : (
-            <DndErrorBoundary>
-              <DragDropContext onDragEnd={handleDragEnd}>
-                <div className="flex gap-4 h-full items-stretch" style={{ minWidth: 'fit-content' }}>
-                  {COLUMNS.map((colId) => (
-                    <KanbanColumn
-                      key={colId}
-                      columnId={colId}
-                      title={t.kanban.columns[colId]}
-                      tasks={localTasks[colId]}
-                      locale={locale}
-                    />
-                  ))}
-                </div>
-              </DragDropContext>
-            </DndErrorBoundary>
-          )}
-        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
