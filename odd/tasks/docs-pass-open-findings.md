@@ -1,9 +1,10 @@
 # Open findings for review: docs-starlight-expansion
 
-> **Status**: **open** for items B, C and D; **item A is closed** — authorized by the owner on
-> 2026-10-07 and implemented on branch `fix/llm-test-workspace-scoped` (`d50dda0`, `b9ce87d`).
-> Nothing else here is in flight and nothing else is authorized work. This is a
-> review agenda, not an implementation.
+> **Status**: **exhausted 2026-10-07.** Item A closed by `fix/llm-test-workspace-scoped` (`d50dda0`,
+> `b9ce87d`). Items B, C and D closed the same day by `fix/open-findings-closure`, whose work units
+> are recorded in `odd/tasks/open-findings-closure.md`. Items **E and F** were opened by that work —
+> E by the production measurement, F by its independent verification — and are what is still open
+> here. Both are measured records, not authorized work.
 > **Created**: 2026-10-07
 > **Workflow**: Organic Driven Development (ODD)
 > **Receipt-driven development**: off in this clone.
@@ -94,7 +95,10 @@ primitive would remain.
 
 ## B. The admin's `GET /settings/llm` returns the stored API key decrypted
 
-**Status**: ALREADY DECIDED — listed only so a future review knows it is not an oversight.
+**Status**: **CLOSED 2026-10-07 — re-confirmed, not changed.** The owner read this item again on
+2026-10-07, in the same session that authorized the wider item D correction, and decided to keep the
+behaviour. The measurement below is kept as written, because it is what the decision was made
+against.
 
 The read is admin-only, the key is encrypted at rest with Fernet, and the response returns it in
 plaintext so the settings form can round-trip it. That is deliberate and already written down, with
@@ -114,11 +118,22 @@ pre-filled, and "test the saved configuration" has to work without the value.
 **Nothing was changed.** The docs pass documented this as the real behaviour rather than as a
 finding, and the description in `docs/security.md` needed no correction.
 
+**The outcome, appended rather than rewritten.** The operator kept it. No file in this repository
+moved for this item: `docs/security.md:88` already named the trade-off, the response shape already
+matches what the UI needs (`api_key_set: bool` with a blind replace on write would require the settings
+form to stop pre-filling the field and to test the saved configuration without the value), and
+`test_the_admin_reads_back_the_key_it_saved` already pins the intent. The item closes as re-confirmed,
+so a future review reads a decision that was re-examined rather than one that was never revisited.
+What remains true and worth remembering: the member-readable `GET /settings/llm/status` is the narrow
+read, and the admin-only plaintext response is the deliberate one.
+
 ---
 
 ## C. CSV story import: follow-ups 6, 10 and 11 are still open
 
-**Status**: ALREADY RECORDED — the detail lives in `odd/tasks/csv-story-import.md`.
+**Status**: **CLOSED 2026-10-07** — all three follow-ups closed by `fix/open-findings-closure`. The
+detail lives in `odd/tasks/csv-story-import.md`, which is where the outcomes were recorded. The
+measurement below is kept as written, because it is what the work was decided against.
 
 The docs pass added the missing `story-import` page in both locales. What it did **not** do is close
 the three open follow-ups, and one of them bounds what that page is allowed to claim:
@@ -142,6 +157,17 @@ unverified seam in the product that a user could hit by uploading a large file.
 
 **What would close it.** A measured end-to-end multipart upload against the deployed composition,
 recorded with its evidence in `odd/tasks/csv-story-import.md`.
+
+**The outcome, appended rather than rewritten.** All three closed, and 11 closed by measuring it
+rather than by deciding it was acceptable. Follow-ups 6 and 10 are code: the dialog now refuses an
+oversized file locally with a mirror test that reads the backend's `MAX_FILE_BYTES`, and the four
+accessible-name collisions are gone under a guard that goes red if any of them returns. Follow-up 11
+is the one that mattered: a real 1,988,029-byte multipart upload through the deployed Vercel function
+answered `422` with `created: 0` and the error on **line 1000**, the last row — so the whole body
+crossed the hop and the backend parsed it to the end. No platform `413` appeared, which settles the
+page's contract: the backend's 2 MB cap, not Vercel's 4.5 MB ceiling, is the binding one for every
+upload the UI can produce. The full record, including what the measurement does not settle, is in
+the CSV feature document.
 
 ---
 
@@ -172,6 +198,61 @@ Two things the docs pass added to the picture without touching the files:
 and which one the environment actually uses, or leave them as recorded drift. If corrected, the
 honest shape is: the Compose path exists in the repository and is one way to run dev; the environment
 this team measures was on Supabase; say which is canonical.
+
+---
+
+## E. `AGENTS.md`'s description of production is stale, and this was found by accident
+
+**Status**: **OPEN** — recorded 2026-10-07, measured, not fixed.
+
+Closing follow-up 11 required opening the deployed application, and what was there did not match the
+document. `AGENTS.md` states, as a live operational consequence rather than as a dated record, that
+**production is empty and has no LLM configuration**, so "no se puede extraer nada hasta re-crear la
+configuración". Measured on 2026-10-07 through the deployed frontend with an authenticated session:
+
+| Claim in `AGENTS.md` | Measured 2026-10-07 |
+| --- | --- |
+| Producción quedó vacía | **Not empty**: one workspace (`Angel's Workspace`, the session user as `Admin`) and one project (`Federal Spending Transparency`, 1 story, created 2026-10-05) |
+| No se puede extraer hasta re-crear el config | **Not measured.** Whether the workspace LLM configuration was re-created after the 2026-09-30 purge was not checked, so neither "it extracts" nor "it cannot" is asserted here |
+
+**Why this is an item and not a fix.** The two claims are the same class as item D — a document
+stating a measured state that has since moved — and the same rule applies: it is the owner's
+decision, and the correction has to say what is true now rather than absorb it silently into an
+unrelated work unit. It is also the kind of claim that matters most, because it is the thing a
+reader acts on: "production is empty and cannot extract" decides whether someone bothers to check.
+
+**What the honest correction looks like.** `AGENTS.md`'s paragraph already carries its measurement
+date; the part that needs to move is the framing, from a standing consequence to a dated
+observation, plus whatever the owner knows about the LLM configuration — re-created, or still
+absent. The second row above is a question before it is a correction.
+
+**What would close it.** The owner's answer about the LLM configuration, and the paragraph restated
+as what was true on which date.
+
+---
+
+## F. `TaskEditor`'s label and dependency remove buttons have no accessible name
+
+**Status**: **OPEN** — recorded 2026-10-07, measured, not fixed.
+
+Found by the independent verification of `fix/open-findings-closure` while it was attacking the guard
+that item C's follow-up 10 produced. It is the same neighbourhood as follow-up 10 and the opposite
+defect: not two buttons sharing one name, but two buttons with no name at all.
+
+`frontend/src/components/react/TaskEditor.tsx` renders a remove button for every label (`:426-430`)
+and every dependency (`:458-464`). Each is an icon-only `<button>` wrapping an `<X>` with no
+`aria-label`, no `aria-labelledby` and no text. One such button is merely unlabeled; **two or more
+make a screen reader announce identical controls**, and the user cannot tell which label they are
+removing. The guard added by WU1 filters empty names on purpose, so it neither catches this nor should
+it: an absent name is a different rule from a colliding one.
+
+**Why it is not fixed here.** It is pre-existing, it is outside the four sites follow-up 10
+enumerated, and every remedy is a copy decision — `aria-label={t.taskEditor.remove_label}` with the
+label's own value interpolated, which needs a new key in both locales and a decision about whether the
+button names the label it removes. That is a small feature, not a repair.
+
+**What would close it.** The remedy above with its tests, or a decision that icon-only remove buttons
+are acceptable here and the reason written down.
 
 ---
 

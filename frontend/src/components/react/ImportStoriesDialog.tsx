@@ -13,7 +13,7 @@ import { CircleCheck, FileUp, Loader2, X } from 'lucide-react';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import { ApiRequestError } from '@/lib/api';
-import { readImportFailure } from '@/lib/stories-api';
+import { IMPORT_MAX_FILE_BYTES, readImportFailure } from '@/lib/stories-api';
 import { useStoryStore } from '@/stores/storyStore';
 import type {
   StoryImportDuplicate,
@@ -244,10 +244,31 @@ export function ImportStoriesDialog({
               className="sr-only"
               disabled={running}
               onChange={(e) => {
-                setFile(e.target.files?.[0] ?? null);
+                const selected = e.target.files?.[0] ?? null;
                 setReport(null);
-                setFailure(null);
                 setSubmitError(null);
+                if (selected && selected.size > IMPORT_MAX_FILE_BYTES) {
+                  // UX pre-check mirroring the backend's cap: refuse the file
+                  // before any request leaves the browser, instead of paying
+                  // for a full upload only to read the backend's 413 back.
+                  // Rendered through the same file-level failure state (and
+                  // the same `stories.import_file_too_large` sentence) the
+                  // backend 413 uses; the backend keeps its own check. The
+                  // file is not accepted, so the disabled-submit guard below
+                  // also keeps the refused file out of any request, and the
+                  // input is cleared so re-selecting the same file re-fires
+                  // this handler.
+                  setFile(null);
+                  setFailure({
+                    kind: 'file',
+                    errorCode: 'IMPORT_FILE_TOO_LARGE',
+                    max: IMPORT_MAX_FILE_BYTES,
+                  });
+                  if (inputRef.current) inputRef.current.value = '';
+                } else {
+                  setFailure(null);
+                  setFile(selected);
+                }
               }}
             />
             <div className="flex flex-wrap items-center gap-2">

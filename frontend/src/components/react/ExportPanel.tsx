@@ -178,7 +178,7 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
           friendlyMessage={downloadError.message}
           rawDetail={downloadError.cause}
           status={(downloadError.cause as { status?: number })?.status}
-          retryLabel={t.common.retry}
+          retryLabel={t.exportPage.retry_download}
           onRetry={handleDownload}
           onDismiss={() => setDownloadError(null)}
           locale={locale}

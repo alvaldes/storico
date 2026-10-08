@@ -523,7 +523,7 @@ export function StoryForm({
               rawDetail={submitError.rawError.rawBody}
               status={submitError.status}
               errorCode={submitError.errorCode}
-              retryLabel={initialData ? t.common.save : t.common.create}
+              retryLabel={t.common.retry}
               onRetry={handleSubmit}
               onDismiss={() => setSubmitError(null)}
               locale={locale}

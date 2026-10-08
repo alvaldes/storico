@@ -717,7 +717,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
                   rawDetail={extraction?.error?.rawDetail}
                   status={extraction?.error?.status}
                   errorCode={extraction?.error?.errorCode}
-                  retryLabel={t.stories.extraction_retry}
+                  retryLabel={t.common.retry}
                   onRetry={handleExtract}
                   locale={locale}
                 />

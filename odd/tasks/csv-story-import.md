@@ -15,7 +15,10 @@
 > file, and that ordering stands as a fact about the release even though the seam is closed now. See
 > "The manual test found the dialog had no success state" below — the one defect the pass produced
 > came from preparing the test, not from running it. The composition that actually serves production
-> is a separate, still-open item: follow-up 11.
+> was a separate item until **2026-10-07**, when follow-up 11 was closed by measuring it: a real
+> 1,988,029-byte multipart upload through the deployed Vercel function into the backend answered
+> `422` with `created: 0` and an error on **line 1000** — the last row of the file — so the whole body
+> crossed the hop and the backend parsed it to the end.
 > **Created**: 2026-09-25
 > **Workflow**: Organic Driven Development (ODD)
 > **Receipt-driven development**: off in this clone.
@@ -717,6 +720,52 @@ different tests across runs. `docs/testing.md` records that nothing gates on war
     remains unverified. The two caps are not obviously in conflict, but "not obviously in conflict" is
     not a test: closing this needs one real upload against the deployed frontend, not another local
     run.
+
+    **CLOSED 2026-10-07, measured against the deployed composition.** One real multipart upload was
+    driven through the production frontend with an authenticated browser session:
+
+    | | |
+    | --- | --- |
+    | Request | `POST /api/v1/workspaces/01a10ca5-…/stories/import`, same-origin, so it went through the Vercel serverless function at `frontend/src/pages/api/v1/[...path].ts` |
+    | File | `/tmp/storico-import-probe.csv`, **1,988,029 bytes** (94.8 % of `MAX_FILE_BYTES`), header `actor,feature,benefit,raw_text`, 999 data rows |
+    | Observed status | **`422`** — not a platform `413` |
+    | Observed body | `{"detail":{"detail":"The file has rows that must be fixed.","created":0,"total_rows":999,"errors":[{"line":1000,"reason":"empty_field","field":"feature"}],"duplicates":[]},"error_code":"IMPORT_VALIDATION_FAILED"}` |
+    | Round trip | 9,670 ms |
+    | Rows written | **0**, confirmed twice: `created: 0` in the response and `0 stories` on the project page afterwards |
+
+    The file was built to answer this question and no other, and its own report was computed from
+    the real bytes **before** the upload by running the repository's `parse_story_csv` and
+    `validate_import` locally: `blocked: True`, one error, line 1000, `would_be_created: 998` but
+    blocked. That pre-computation is what makes the production answer a test rather than an
+    observation — the predicted line number is what the server returned.
+
+    What the measurement settles:
+
+    1. **The Vercel hop carries the file.** Vercel documents a 4.5 MB request-body ceiling with
+       `413 FUNCTION_PAYLOAD_TOO_LARGE` ([Functions Limits](https://vercel.com/docs/functions/limitations));
+       the exact figure was unverified in this repository until now. At 1.99 MB the ceiling did not
+       bind, which is the outcome the backend's own 2 MB cap is designed around: **the backend cap is
+       the binding one** for every upload the UI can produce, because no file the dialog accepts can
+       exceed 2 MB.
+    2. **The bytes arrive intact, not truncated.** The error the backend reported is on **line 1000**,
+       the last row of a 999-row file. A body cut short by a proxy ceiling could not produce it. This
+       is the part a `413`-or-not check alone would not have proven.
+    3. **The proxy's multipart branch works in the deployed runtime, not only against a stub.** The
+       body arrived with its own `content-type` and boundary, which is the exception
+       `docs/security.md` documents, and the backend parsed it as CSV.
+
+    What it does **not** settle, stated so the closure is not read as more than it is: the cosmetic
+    band between 2 MB and 4.5 MB is untested and unreachable through the product, since the backend
+    refuses anything over 2 MB first. The probe used `raw_text` padding, not story text, so this says
+    nothing new about extraction quality. And it was one upload: a ceiling that varies by deployment
+    or by payload shape would need more than one to see.
+
+    Provenance: the upload was driven by the agent through the owner's authenticated browser session
+    with `ego-browser`, and the request body and response were captured by instrumenting `window.fetch`
+    in the page, so the status, the byte count and the response body are the browser's own view of the
+    exchange rather than a reconstruction. The file, its 999 rows and its single blocking error were
+    generated for this measurement; the throwaway project it was uploaded into was created for it and
+    deleted afterwards, and the workspace's real project was never touched.
 
 ## First independent verification (read-only) over `901bb89..2e2a8d4`
 

@@ -24,7 +24,7 @@
 
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) + [Docker Compose](https://docs.docker.com/compose/install/)
+- [Docker](https://docs.docker.com/get-docker/) + [Docker Compose](https://docs.docker.com/compose/install/) — only for the Compose path below; the development environment of the team that maintains Storico runs without Docker, against Supabase (see [Deployment](./docs/deployment.md))
 - [Python](https://www.python.org/) 3.12+ (for backend development outside Docker)
 - [Node.js](https://nodejs.org/) 20+ and [pnpm](https://pnpm.io/) 10+ (for frontend development — pnpm is the only package manager this repo uses)
 
@@ -49,6 +49,10 @@ make test-frontend
 ```
 
 The API will be available at **<http://localhost:8000>** and the frontend at **<http://localhost:4321>**.
+
+The steps above drive the repository's Compose file (`docker-compose.yml`, 4 services: API, Ollama,
+Postgres, Qdrant). That path is not verified by the maintainers' development environment, which runs
+against Supabase — see [Deployment](./docs/deployment.md) for the setup this team measures.
 
 ## Architecture
 
@@ -164,7 +168,7 @@ For detailed technical documentation, see the [`docs/`](./docs/) folder:
 - [API Reference](./docs/api.md) — Endpoints REST
 - [Testing](./docs/testing.md) — Estrategia de tests
 - [Frontend State](./docs/frontend-state.md) — Stores Zustand
-- [Deployment](./docs/deployment.md) — Docker Compose + producción
+- [Deployment](./docs/deployment.md) — development (Supabase; the Compose path is provided but not verified there) + production
 - [i18n](./docs/i18n.md) — Internacionalización
 - [Security](./docs/security.md) — Auth y permisos
 
