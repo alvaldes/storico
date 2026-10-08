@@ -199,6 +199,23 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
         result = await self._session.execute(stmt)
         return [StoryContextRow(id=row.id, raw_text=row.raw_text) for row in result]
 
+    async def project_labels_for(self, story_ids: list[UUID]) -> dict[UUID, tuple[UUID, str]]:
+        """Batch story → ``(project_id, project_name)`` — one join, one statement.
+
+        The port's docstring carries the why (decision D14 of feature
+        ``kanban-card-project-story``); the statement itself selects only the
+        three columns the mapping reads, never whole ORM rows.
+        """
+        if not story_ids:
+            return {}
+        stmt = (
+            select(UserStoryModel.id, UserStoryModel.project_id, ProjectModel.name)
+            .join(ProjectModel, UserStoryModel.project_id == ProjectModel.id)
+            .where(UserStoryModel.id.in_(story_ids))
+        )
+        result = await self._session.execute(stmt)
+        return {row.id: (row.project_id, row.name) for row in result}
+
     async def save_many(self, user_stories: Sequence[UserStory]) -> list[UserStory]:
         # Empty input is answered before any statement: no rows means no work,
         # not a round-trip (same rule as ``list_page`` with an empty

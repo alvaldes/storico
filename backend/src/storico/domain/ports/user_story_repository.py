@@ -121,6 +121,32 @@ class UserStoryRepository(ABC):
         ...
 
     @abstractmethod
+    async def project_labels_for(self, story_ids: list[UUID]) -> dict[UUID, tuple[UUID, str]]:
+        """Batch story → ``(project_id, project_name)`` for a page of tasks — one statement.
+
+        The card's project chip data (decision D14 of feature
+        ``kanban-card-project-story``): the task route names the project each
+        card came from, and the only path is ``task → story → project``. This
+        is a repository-level read by design, not a lazy ORM traversal: the
+        route sees domain entities, which carry no relationships to lean on,
+        and building the mapping in the repository from the models' declared
+        ``lazy="selectin"`` relationships would quietly issue a statement per
+        row instead of the one deliberate join this read pays for.
+
+        The join is a single hop on both legs: ``user_stories.project_id`` is
+        an indexed FK (``ix_user_stories_project_id``) and ``projects.id`` is
+        the primary key, so the batch is the IN list itself — the same shape
+        ``ExtractionRepository.version_numbers`` takes.
+
+        An empty ``story_ids`` is answered here rather than sent as ``IN ()``:
+        an empty page of tasks means no rows, not a statement. Ids with no row
+        are absent from the dict, never ``None`` entries — an unresolvable
+        story is the caller's decision to render as absence, not a fabricated
+        label.
+        """
+        ...
+
+    @abstractmethod
     async def save_many(self, user_stories: Sequence[UserStory]) -> list[UserStory]:
         """Insert every story in one transaction and return the saved entities.
 

@@ -108,6 +108,14 @@ class TaskResponse(BaseModel):
     version it belongs to and a ``PUT`` response merged into a moved card
     cannot erase that with a ``null``. Both default to ``None`` so the export
     route (decision D9) keeps its current shape untouched.
+
+    ``project_id`` and ``project_name`` are the project chip's data (decision
+    D14 of feature ``kanban-card-project-story``) and follow the same
+    precedent exactly: every construction site in the tasks route resolves
+    them from one batched story → project read, and the ``None`` defaults
+    keep every other consumer of the schema (the export route) untouched. A
+    story the read cannot resolve answers ``None`` rather than failing — the
+    card simply loses its chip.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -124,3 +132,5 @@ class TaskResponse(BaseModel):
     updated_at: datetime
     extraction_id: UUID | None = None
     version_number: int | None = None
+    project_id: UUID | None = None
+    project_name: str | None = None

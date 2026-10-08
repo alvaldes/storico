@@ -777,3 +777,72 @@ class TestListForContext:
             SQLAlchemyUserStoryRepository.list_for_context,
         ):
             self._assert_no_window(target)
+
+
+# --- Project labels for a page of tasks (kanban-card-project-story WU13) ---
+
+
+@pytest.mark.asyncio
+async def test_project_labels_for_resolves_a_batch_in_one_statement(
+    db_session: AsyncSession, test_engine: AsyncEngine, workspace_id: UUID
+) -> None:
+    """Two stories of two projects in one call: their labels keyed by story id.
+
+    The card's project chip data (decision D14 of feature
+    ``kanban-card-project-story``): a list page resolves its distinct story ids
+    in one join, never one per card — the same batched-read convention
+    ``version_numbers`` follows. Statement capture follows
+    ``test_list_page_with_empty_workspace_ids``.
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    mine = await _seed_project(db_session, workspace_id, "Mine")
+    other = await _seed_project(db_session, workspace_id, "Other")
+    mine_story = await repo.save(_story(mine.id, "mine-story"))
+    other_story = await repo.save(_story(other.id, "other-story"))
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        labels = await repo.project_labels_for([mine_story.id, other_story.id, uuid4()])
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    # Each story names its own project, and the absent id is omitted — an
+    # unresolvable story answers absence, never a fabricated label.
+    assert labels == {
+        mine_story.id: (mine.id, "Mine"),
+        other_story.id: (other.id, "Other"),
+    }
+    label_queries = [s for s in statements if "FROM user_stories" in s]
+    assert len(label_queries) == 1, statements
+
+
+@pytest.mark.asyncio
+async def test_project_labels_for_with_empty_input_answers_empty_without_a_statement(
+    db_session: AsyncSession, test_engine: AsyncEngine
+) -> None:
+    """An empty ``story_ids`` returns ``{}`` without issuing any statement.
+
+    An empty page of tasks means no rows, not ``IN ()`` — the same posture
+    ``list_page`` takes for an empty ``workspace_ids``, and for the same
+    reason (against the dev pooler a statement costs ~2s).
+    """
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        statements.append(statement)
+
+    repo = SQLAlchemyUserStoryRepository(db_session)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        labels = await repo.project_labels_for([])
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    assert labels == {}
+    assert statements == [], statements

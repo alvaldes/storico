@@ -114,6 +114,23 @@ async def _version_number(
     return numbers.get(extraction_id)
 
 
+async def _project_label(
+    story_repo: SQLAlchemyUserStoryRepository, story_id: UUID
+) -> tuple[UUID | None, str | None]:
+    """Resolve one task's project label through the batched read (one id, one call).
+
+    The chip's data (decision D14 of feature ``kanban-card-project-story``):
+    the single-task handlers go through the same batched port method the list
+    page uses, just with one id — so a ``PUT`` response merged into a moved
+    card cannot erase the chip with a ``null``, the same guarantee the version
+    fields take from ``_version_number``. An unresolvable story answers
+    ``(None, None)``, never a failure and never a fabricated label.
+    """
+    labels = await story_repo.project_labels_for([story_id])
+    label = labels.get(story_id)
+    return (label[0], label[1]) if label else (None, None)
+
+
 async def _validate_task_workspace_access(
     task_id: UUID,
     current_user: User,
@@ -340,6 +357,11 @@ async def list_tasks(
     # One batched version-number read for the whole page's distinct extraction
     # ids — the version chip's data (decision D8), never one lookup per card.
     numbers = await extraction_repo.version_numbers(list({t.extraction_id for t in page}))
+    # One batched project-label read for the whole page's distinct story ids —
+    # the project chip's data (decision D14 of feature
+    # ``kanban-card-project-story``), never one lookup per card; a page whose
+    # tasks all belong to one story still costs exactly one statement.
+    labels = await story_repo.project_labels_for(list({t.user_story_id for t in page}))
     items = [
         TaskResponse(
             id=t.id,
@@ -354,6 +376,8 @@ async def list_tasks(
             updated_at=t.updated_at,
             extraction_id=t.extraction_id,
             version_number=numbers.get(t.extraction_id),
+            project_id=labels[t.user_story_id][0] if t.user_story_id in labels else None,
+            project_name=labels[t.user_story_id][1] if t.user_story_id in labels else None,
         )
         for t in page
     ]
@@ -384,6 +408,7 @@ async def get_task(
     task = await _validate_task_workspace_access(
         task_id, current_user, repo, story_repo, project_repo, member_repo
     )
+    project_id, project_name = await _project_label(story_repo, task.user_story_id)
     return TaskResponse(
         id=task.id,
         user_story_id=task.user_story_id,
@@ -397,6 +422,8 @@ async def get_task(
         updated_at=task.updated_at,
         extraction_id=task.extraction_id,
         version_number=await _version_number(extraction_repo, task.extraction_id),
+        project_id=project_id,
+        project_name=project_name,
     )
 
 
@@ -493,6 +520,7 @@ async def update_task(
 
     updated = replace(existing, **kwargs)
     result = await repo.save(updated)
+    project_id, project_name = await _project_label(story_repo, result.user_story_id)
     return TaskResponse(
         id=result.id,
         user_story_id=result.user_story_id,
@@ -506,6 +534,8 @@ async def update_task(
         updated_at=result.updated_at,
         extraction_id=result.extraction_id,
         version_number=await _version_number(extraction_repo, result.extraction_id),
+        project_id=project_id,
+        project_name=project_name,
     )
 
 

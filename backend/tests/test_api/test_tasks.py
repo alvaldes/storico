@@ -791,6 +791,104 @@ class TestTaskVersionFields:
         assert data["version_number"] == 1
 
 
+class TestTaskProjectFields:
+    """The card's project chip data (decision D14 of feature ``kanban-card-project-story``).
+
+    ``TaskResponse`` gains ``project_id`` and ``project_name``; every
+    construction site in the tasks route resolves them from one batched read,
+    so the board's card can name where the task came from and a ``PUT``
+    response merged into a moved card cannot erase that with a ``null`` — the
+    same posture the version chip's fields (D8) already take.
+    """
+
+    async def test_list_items_carry_project_id_and_project_name(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The list path resolves the project label in one batched call."""
+        seeded = await seed_workspace()
+        task = await seed_task(db_session, seeded.story_id, "Labelled task")
+
+        response = await authed_client.get("/api/v1/tasks/")
+
+        assert response.status_code == 200
+        item = next(i for i in response.json()["items"] if i["id"] == str(task.id))
+        assert item["project_id"] == str(seeded.project_id)
+        assert item["project_name"] == "Seeded Project"
+
+    async def test_get_carries_project_id_and_project_name(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The single-task read names the task's project too."""
+        seeded = await seed_workspace()
+        task = await seed_task(db_session, seeded.story_id, "Single task")
+
+        response = await authed_client.get(f"/api/v1/tasks/{task.id}")
+
+        assert response.status_code == 200
+        assert response.json()["project_id"] == str(seeded.project_id)
+        assert response.json()["project_name"] == "Seeded Project"
+
+    async def test_a_status_change_keeps_the_project_on_the_put_response(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The PUT response still names the project.
+
+        The board store merges the ``PUT`` response into the card it just
+        moved — a ``null`` ``project_name`` there would erase the project chip
+        on drop, exactly the failure mode the version fields guard against.
+        """
+        seeded = await seed_workspace()
+        task = await seed_task(db_session, seeded.story_id, "Moved task")
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{task.id}",
+            json={"status": "todo"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "todo"
+        assert data["project_id"] == str(seeded.project_id)
+        assert data["project_name"] == "Seeded Project"
+
+    async def test_an_unresolvable_story_answers_null_fields_not_a_failure(
+        self, app, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A story the batched read cannot resolve yields ``null``s, still 200.
+
+        The stubbed story repository answers ``{}`` — the shape the read
+        returns when a story id has no row. The page itself must not fail and
+        must not fabricate a label: the card simply loses its project chip.
+        The dependency override follows ``_override_invalidation_repo``'s
+        pattern — the replaced dependency is taken from the route module's own
+        ``StoryRepoDep`` alias. The unfiltered branch uses ``story_repo`` for
+        nothing but this resolution, so the stub cannot disturb anything else.
+        """
+        seeded = await seed_workspace()
+        task = await seed_task(db_session, seeded.story_id, "Orphaned-label task")
+        (depends_param,) = task_routes.StoryRepoDep.__metadata__
+
+        class _Unresolving(SQLAlchemyUserStoryRepository):
+            async def project_labels_for(
+                self, story_ids: list[UUID]
+            ) -> dict[UUID, tuple[UUID, str]]:
+                return {}
+
+        async def _factory(session: Annotated[AsyncSession, Depends(get_session)]) -> _Unresolving:
+            return _Unresolving(session)
+
+        app.dependency_overrides[depends_param.dependency] = _factory
+        try:
+            response = await authed_client.get("/api/v1/tasks/")
+        finally:
+            app.dependency_overrides.pop(depends_param.dependency, None)
+
+        assert response.status_code == 200
+        item = next(i for i in response.json()["items"] if i["id"] == str(task.id))
+        assert item["project_id"] is None
+        assert item["project_name"] is None
+
+
 class TestGetTask:
     """GET /api/v1/tasks/{task_id}"""
 
