@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { KanbanBoard } from '@/components/react/KanbanBoard';
 import { useTaskStore } from '@/stores/taskStore';
@@ -173,8 +173,10 @@ describe('KanbanBoard', () => {
     // The board itself is settled and the card-level spinner is up...
     expect(await screen.findByText('DB schema')).toBeInTheDocument();
     expect(screen.getByLabelText('Loading...')).toBeInTheDocument();
-    // ...and the veil never is.
+    // ...and the veil never is, nor the internal board loader (D6: a card move
+    // raises none of the board's loading levels — level 4, pinned).
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
 
     release();
   });
@@ -687,16 +689,19 @@ describe('KanbanBoard — cascade filters', () => {
   });
 });
 
-/* ── Board loading veil (WU7, D2–D4) ──
+/* ── Board loading levels (D6–D9) ──
  *
- * Every board read — the tasks fetch, the cascade's stories read and its
- * versions read — shows the full-screen veil while it is in flight, and the
- * veil never covers the no-workspace prompt (nothing is being read there) or a
- * drag-and-drop status update (covered in the first describe above). The empty
- * states stay quiet while a read is pending, so a slow load cannot paint "no
- * tasks yet" behind the veil or into the accessibility tree.
+ * Four levels, one per surface. Level 1 — the full-viewport veil belongs to
+ * *entering the board*: the first task read for the current workspace, and a
+ * workspace switch (D7, a switch is an arrival). Level 2 — each select carries
+ * its own loader while its own read is pending (D9). Level 3 — the internal
+ * board loader replaces the columns (D8) for any non-first task read, never
+ * covering the filter bar. Level 4 — a card move raises none of the above
+ * (pinned in the first describe above). The empty states stay quiet while a
+ * read is pending, so a slow load cannot paint "no tasks yet" behind a loader
+ * or into the accessibility tree.
  */
-describe('KanbanBoard — board loading veil', () => {
+describe('KanbanBoard — board loading levels', () => {
   /** A promise the test holds shut until it wants the read to settle. */
   function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -787,7 +792,7 @@ describe('KanbanBoard — board loading veil', () => {
     vi.mocked(listVersions).mockResolvedValue([]);
   });
 
-  it('shows the veil during the initial task load and hides it once the read settles', async () => {
+  it('shows the veil on first entry and never again for that workspace', async () => {
     const gate = deferred<Task[]>();
     vi.mocked(listTasksByWorkspace).mockReturnValue(gate.promise);
 
@@ -800,9 +805,21 @@ describe('KanbanBoard — board loading veil', () => {
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
     // The settled empty board is the honest end state of this read.
     expect(await screen.findByText(t.kanban.empty_board)).toBeInTheDocument();
+
+    // Never again for that workspace (D6): a filter-driven refetch raises the
+    // internal loader (level 3), not the veil.
+    const user = userEvent.setup();
+    const refetch = deferred<Task[]>();
+    vi.mocked(listTasksByWorkspace).mockReturnValue(refetch.promise);
+    await chooseOption(user, t.kanban.filter_project, 'Alpha');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+
+    act(() => refetch.resolve([]));
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
   });
 
-  it('shows the veil on a filter change while the task refetch is still pending', async () => {
+  it('shows the internal loader, not the veil, on a filter change while the task refetch is pending', async () => {
     const user = userEvent.setup();
     // Mount read settles at once; the refetch the project pick starts does not.
     const gate = deferred<Task[]>();
@@ -816,12 +833,18 @@ describe('KanbanBoard — board loading veil', () => {
 
     await chooseOption(user, t.kanban.filter_project, 'Alpha');
 
-    // The case that motivated WU7: the old guard (`initialLoad && loading`) showed
-    // nothing here, because a refetch starts with `initialLoad` already false.
-    expect(await screen.findByRole('status')).toHaveTextContent(t.common.loading);
+    // D8: the internal loader replaces the columns while the task read is in
+    // flight...
+    expect(await screen.findByRole('progressbar')).toHaveTextContent(t.common.loading);
+    // ...the veil never rises for a refetch (D6)...
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    // ...and the filter bar stays rendered and usable: changing filters while a
+    // read is in flight is a supported interaction.
+    expect(screen.getByRole('combobox', { name: t.kanban.filter_project })).toBeEnabled();
+    expect(screen.getByRole('combobox', { name: t.kanban.filter_story })).toBeEnabled();
 
     act(() => gate.resolve([]));
-    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
     await waitFor(() =>
       expect(listTasksByWorkspace).toHaveBeenLastCalledWith('workspace-1', {
         projectId: 'project-1',
@@ -829,7 +852,7 @@ describe('KanbanBoard — board loading veil', () => {
     );
   });
 
-  it('shows the veil while the stories read is pending after a project pick', async () => {
+  it('shows the story select’s own loader while the stories read is pending — and no veil', async () => {
     const user = userEvent.setup();
     vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
     const gate = deferred<PaginatedResponse<UserStory>>();
@@ -841,15 +864,30 @@ describe('KanbanBoard — board loading veil', () => {
 
     await chooseOption(user, t.kanban.filter_project, 'Alpha');
 
-    // The empty-select case: without this, an empty select and a loading one
-    // looked identical.
-    expect(await screen.findByRole('status')).toHaveTextContent(t.common.loading);
+    // D9: the pending read is attributable to the control that caused it — a
+    // spinner inside the story select's own trigger, not the veil.
+    const storyTrigger = await screen.findByRole('combobox', { name: t.kanban.filter_story });
+    expect(within(storyTrigger).getByLabelText(t.common.loading)).toBeInTheDocument();
+    // The state also belongs to the control: an `aria-label` on the bare svg is
+    // ignored by several screen readers, so `aria-busy` is what assistive tech
+    // reads as "this select is still loading".
+    expect(storyTrigger).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    // The other selects are quiet: each reflects only its own read.
+    const projectTrigger = screen.getByRole('combobox', { name: t.kanban.filter_project });
+    expect(
+      within(projectTrigger).queryByLabelText(t.common.loading),
+    ).not.toBeInTheDocument();
+    expect(projectTrigger).toHaveAttribute('aria-busy', 'false');
 
     act(() => gate.resolve(storyPage));
-    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(storyTrigger).queryByLabelText(t.common.loading)).not.toBeInTheDocument(),
+    );
+    expect(storyTrigger).toHaveAttribute('aria-busy', 'false');
   });
 
-  it('shows the veil while the versions read is pending after a story pick', async () => {
+  it('shows the version select’s own loader while the versions read is pending — and no veil', async () => {
     const user = userEvent.setup();
     vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
 
@@ -863,10 +901,122 @@ describe('KanbanBoard — board loading veil', () => {
     vi.mocked(listVersions).mockReturnValue(gate.promise);
     await chooseOption(user, t.kanban.filter_story, 'user: to log in');
 
+    const versionTrigger = await screen.findByRole('combobox', { name: t.kanban.filter_version });
+    expect(within(versionTrigger).getByLabelText(t.common.loading)).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    const storyTrigger = screen.getByRole('combobox', { name: t.kanban.filter_story });
+    expect(within(storyTrigger).queryByLabelText(t.common.loading)).not.toBeInTheDocument();
+
+    act(() => gate.resolve([]));
+    await waitFor(() =>
+      expect(within(versionTrigger).queryByLabelText(t.common.loading)).not.toBeInTheDocument(),
+    );
+  });
+
+  it('shows the project select’s own loader while the projects read is pending (D9)', async () => {
+    vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
+    useProjectStore.setState({ loading: true });
+
+    render(<KanbanBoard locale="en" />);
+    // The first task read settles; the projects read stays pending.
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    const projectTrigger = await screen.findByRole('combobox', { name: t.kanban.filter_project });
+    expect(within(projectTrigger).getByLabelText(t.common.loading)).toBeInTheDocument();
+    // Its own read only: the other two selects are quiet, and the projects read
+    // raises no veil either.
+    expect(
+      within(screen.getByRole('combobox', { name: t.kanban.filter_story })).queryByLabelText(
+        t.common.loading,
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('combobox', { name: t.kanban.filter_version })).queryByLabelText(
+        t.common.loading,
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+    act(() => useProjectStore.setState({ loading: false }));
+    await waitFor(() =>
+      expect(within(projectTrigger).queryByLabelText(t.common.loading)).not.toBeInTheDocument(),
+    );
+  });
+
+  it('shows the full veil when the workspace changes — a switch is a first entry (D7)', async () => {
+    const gate = deferred<Task[]>();
+    vi.mocked(listTasksByWorkspace)
+      // workspace-1's first read settles at once...
+      .mockResolvedValueOnce([])
+      // ...so workspace-2's first read is a switch, not a first paint.
+      .mockReturnValueOnce(gate.promise);
+
+    render(<KanbanBoard locale="en" />);
+    // workspace-1's board was seen: the veil came down and the settled empty
+    // board rendered.
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    expect(await screen.findByText(t.kanban.empty_board)).toBeInTheDocument();
+
+    // Switch workspaces the way the switcher does: the current workspace moves.
+    useWorkspaceStore.setState({
+      currentWorkspace: {
+        id: 'workspace-2',
+        name: 'Other Workspace',
+        slug: 'other-workspace',
+        ownerId: 'user-1',
+        role: 'admin',
+        memberCount: 1,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      } as Workspace,
+    });
+
+    // D7: the whole board context changed — every filter cleared, every card
+    // replaced — so the switch gets the full veil like an arrival.
     expect(await screen.findByRole('status')).toHaveTextContent(t.common.loading);
 
     act(() => gate.resolve([]));
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await waitFor(() => expect(listTasksByWorkspace).toHaveBeenLastCalledWith('workspace-2'));
+  });
+
+  it('a failed first read keeps the retry a first entry: the retry from the error card gets the full veil', async () => {
+    const user = userEvent.setup();
+    let release!: () => void;
+    const retryPending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // Mimic the real store action: it never rejects — it records the failure in
+    // `error` — and the retry raises `loading` before it awaits. "The read
+    // settled" is not proof a board was seen, so the retry must get the veil.
+    const fetchTasksForWorkspace = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        useTaskStore.setState({
+          error: {
+            friendlyMessage: 'the board is unavailable',
+            rawDetail: 'the board is unavailable',
+          },
+          loading: false,
+        });
+      })
+      .mockImplementationOnce(() => {
+        useTaskStore.setState({ loading: true, error: null });
+        return retryPending;
+      });
+    useTaskStore.setState({ fetchTasksForWorkspace, error: null, workspaceTasks: [] });
+
+    render(<KanbanBoard locale="en" />);
+    await screen.findByRole('alert');
+
+    await user.click(screen.getByRole('button', { name: t.common.retry }));
+
+    // The user has never seen a board: full veil (level 1), not the internal
+    // loader (level 3).
+    expect(await screen.findByRole('status')).toHaveTextContent(t.common.loading);
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+
+    release();
   });
 
   it('does not show the veil when no workspace is selected — the prompt renders instead (D4)', async () => {
