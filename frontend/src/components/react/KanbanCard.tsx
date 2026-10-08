@@ -1,10 +1,10 @@
 'use client';
 
 import { Draggable } from '@hello-pangea/dnd';
-import { GripVertical, Loader2 } from 'lucide-react';
+import { Fingerprint, FolderKanban, GripVertical, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useTranslations, type Locale } from '@/i18n/utils';
-import { shortUUID } from '@/lib/utils';
+import { shortUUID, shortProjectTitle } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import type { Task } from '@/types/task';
 
@@ -81,7 +81,10 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
                       className="max-w-[10rem] text-[10px] leading-none px-1.5 py-0.5 text-muted-foreground"
                       title={task.projectName}
                     >
-                      <span className="min-w-0 truncate">{task.projectName}</span>
+                      <FolderKanban className="h-3 w-3" />
+                      <span className="min-w-0 truncate">
+                        {shortProjectTitle(task.projectName)}
+                      </span>
                     </Badge>
                   )}
                   {task.storyId && (
@@ -89,18 +92,10 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
                       variant="outline"
                       className="text-[10px] leading-none px-1.5 py-0.5 text-muted-foreground"
                     >
+                      <Fingerprint className="h-3 w-3" />
                       {shortUUID(task.storyId)}
                     </Badge>
                   )}
-                  {task.labels.map((label) => (
-                    <Badge
-                      key={label}
-                      variant="outline"
-                      className="text-[10px] leading-none px-1.5 py-0.5"
-                    >
-                      {label}
-                    </Badge>
-                  ))}
                   {/*
                     Bare `v{n}`: never a currency marker. A card cannot tell a
                     current-version board read from a frozen-version read — only the
@@ -116,6 +111,15 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
                       {`v${task.versionNumber}`}
                     </Badge>
                   )}
+                  {task.labels.map((label) => (
+                    <Badge
+                      key={label}
+                      variant="outline"
+                      className="text-[10px] leading-none px-1.5 py-0.5"
+                    >
+                      {label}
+                    </Badge>
+                  ))}
                 </div>
               )}
             </div>

@@ -1217,7 +1217,9 @@ describe('KanbanCard — version chip', () => {
  * short id, exactly as the story cards show it (D12 — `shortUUID`, reused, so
  * the two surfaces cannot drift). Both chips are context (D15): the same
  * `outline` variant and sizing classes as the label and version chips, muted
- * like the version chip, ordered project → story → labels → version. Each
+ * like the version chip, ordered project → story → version → labels (the owner
+ * moved the labels last on 2026-10-08, so the three context chips lead the row
+ * and the task's own attributes trail it). Each
  * chip renders only when its data is present — no `undefined` badge, no empty
  * chip — and a long project name must ellipsize inside a bounded chip instead
  * of pushing the labels or the version chip out of the card.
@@ -1274,7 +1276,7 @@ describe('KanbanCard — project and story chips', () => {
     });
   });
 
-  it('renders the project and story chips with their values, ordered project → story → labels → version (D15)', async () => {
+  it('renders the project and story chips with their values, ordered project → story → version → labels', async () => {
     useTaskStore.setState({
       workspaceTasks: [
         chipTask({
@@ -1290,15 +1292,16 @@ describe('KanbanCard — project and story chips', () => {
     render(<KanbanBoard locale="en" />);
 
     expect(await screen.findByText('Alpha')).toBeInTheDocument();
-    // The metadata row, read left to right through the real card: the two
-    // context chips first, then the task's own labels, then its version.
+    // The metadata row, read left to right through the real card: the three
+    // context chips first — project, story, version — then the task's own
+    // labels, which the owner moved to the end.
     const row = screen.getByText('db').closest('div') as HTMLElement;
     expect(Array.from(row.children).map((el) => el.textContent)).toEqual([
       'Alpha',
       shortUUID(STORY_ID),
+      'v2',
       'db',
       'backend',
-      'v2',
     ]);
 
     // D13: the project chip is text, not a second link inside a draggable card.
