@@ -40,6 +40,7 @@ from storico.application.services.task_service import (
 from storico.domain.entities import EntityNotFound, Task, User
 from storico.domain.entities.extraction import Extraction
 from storico.domain.entities.task_invalidation import TaskInvalidation
+from storico.domain.ports.user_story_repository import StoryCardContext
 from storico.domain.ports.vector_store_port import VectorStorePort
 from storico.domain.services.task_title_normalizer import normalize_task_title
 from storico.infrastructure.database.repositories import (
@@ -114,21 +115,22 @@ async def _version_number(
     return numbers.get(extraction_id)
 
 
-async def _project_label(
+async def _story_context(
     story_repo: SQLAlchemyUserStoryRepository, story_id: UUID
-) -> tuple[UUID | None, str | None]:
-    """Resolve one task's project label through the batched read (one id, one call).
+) -> StoryCardContext | None:
+    """Resolve one task's story context through the batched read (one id, one call).
 
-    The chip's data (decision D14 of feature ``kanban-card-project-story``):
-    the single-task handlers go through the same batched port method the list
-    page uses, just with one id — so a ``PUT`` response merged into a moved
-    card cannot erase the chip with a ``null``, the same guarantee the version
-    fields take from ``_version_number``. An unresolvable story answers
-    ``(None, None)``, never a failure and never a fabricated label.
+    The card's context-chip data: the project label is decision D14 of feature
+    ``kanban-card-project-story`` and the story's sentence is decision D19 of
+    feature ``kanban-context-tooltips``. The single-task handlers go through
+    the same batched port method the list page uses, just with one id — so a
+    ``PUT`` response merged into a moved card cannot erase a chip with a
+    ``null``, the same guarantee the version fields take from
+    ``_version_number``. An unresolvable story answers ``None``, never a
+    failure and never a fabricated label or an empty tooltip.
     """
-    labels = await story_repo.project_labels_for([story_id])
-    label = labels.get(story_id)
-    return (label[0], label[1]) if label else (None, None)
+    contexts = await story_repo.story_context_for([story_id])
+    return contexts.get(story_id)
 
 
 async def _validate_task_workspace_access(
@@ -357,30 +359,34 @@ async def list_tasks(
     # One batched version-number read for the whole page's distinct extraction
     # ids — the version chip's data (decision D8), never one lookup per card.
     numbers = await extraction_repo.version_numbers(list({t.extraction_id for t in page}))
-    # One batched project-label read for the whole page's distinct story ids —
-    # the project chip's data (decision D14 of feature
-    # ``kanban-card-project-story``), never one lookup per card; a page whose
-    # tasks all belong to one story still costs exactly one statement.
-    labels = await story_repo.project_labels_for(list({t.user_story_id for t in page}))
-    items = [
-        TaskResponse(
-            id=t.id,
-            user_story_id=t.user_story_id,
-            title=t.title,
-            description=t.description,
-            status=t.status,
-            priority=t.priority,
-            labels=t.labels,
-            dependencies=t.dependencies,
-            created_at=t.created_at,
-            updated_at=t.updated_at,
-            extraction_id=t.extraction_id,
-            version_number=numbers.get(t.extraction_id),
-            project_id=labels[t.user_story_id][0] if t.user_story_id in labels else None,
-            project_name=labels[t.user_story_id][1] if t.user_story_id in labels else None,
+    # One batched story-context read for the whole page's distinct story ids —
+    # the context chips' data (D14 of feature ``kanban-card-project-story``,
+    # widened by D19 of feature ``kanban-context-tooltips`` with the story's
+    # own sentence), never one lookup per card; a page whose tasks all belong
+    # to one story still costs exactly one statement.
+    contexts = await story_repo.story_context_for(list({t.user_story_id for t in page}))
+    items = []
+    for t in page:
+        context = contexts.get(t.user_story_id)
+        items.append(
+            TaskResponse(
+                id=t.id,
+                user_story_id=t.user_story_id,
+                title=t.title,
+                description=t.description,
+                status=t.status,
+                priority=t.priority,
+                labels=t.labels,
+                dependencies=t.dependencies,
+                created_at=t.created_at,
+                updated_at=t.updated_at,
+                extraction_id=t.extraction_id,
+                version_number=numbers.get(t.extraction_id),
+                story_raw_text=context.story_raw_text if context else None,
+                project_id=context.project_id if context else None,
+                project_name=context.project_name if context else None,
+            )
         )
-        for t in page
-    ]
     return PaginatedResponse(
         items=items,
         total=total,
@@ -408,7 +414,7 @@ async def get_task(
     task = await _validate_task_workspace_access(
         task_id, current_user, repo, story_repo, project_repo, member_repo
     )
-    project_id, project_name = await _project_label(story_repo, task.user_story_id)
+    context = await _story_context(story_repo, task.user_story_id)
     return TaskResponse(
         id=task.id,
         user_story_id=task.user_story_id,
@@ -422,8 +428,9 @@ async def get_task(
         updated_at=task.updated_at,
         extraction_id=task.extraction_id,
         version_number=await _version_number(extraction_repo, task.extraction_id),
-        project_id=project_id,
-        project_name=project_name,
+        story_raw_text=context.story_raw_text if context else None,
+        project_id=context.project_id if context else None,
+        project_name=context.project_name if context else None,
     )
 
 
@@ -520,7 +527,7 @@ async def update_task(
 
     updated = replace(existing, **kwargs)
     result = await repo.save(updated)
-    project_id, project_name = await _project_label(story_repo, result.user_story_id)
+    context = await _story_context(story_repo, result.user_story_id)
     return TaskResponse(
         id=result.id,
         user_story_id=result.user_story_id,
@@ -534,8 +541,9 @@ async def update_task(
         updated_at=result.updated_at,
         extraction_id=result.extraction_id,
         version_number=await _version_number(extraction_repo, result.extraction_id),
-        project_id=project_id,
-        project_name=project_name,
+        story_raw_text=context.story_raw_text if context else None,
+        project_id=context.project_id if context else None,
+        project_name=context.project_name if context else None,
     )
 
 

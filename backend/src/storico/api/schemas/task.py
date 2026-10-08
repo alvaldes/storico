@@ -116,6 +116,14 @@ class TaskResponse(BaseModel):
     keep every other consumer of the schema (the export route) untouched. A
     story the read cannot resolve answers ``None`` rather than failing — the
     card simply loses its chip.
+
+    ``story_raw_text`` is the story chip's tooltip data (decision D19 of
+    feature ``kanban-context-tooltips``): the story's full sentence, the same
+    column the story response names ``raw_text`` — projected on the tasks
+    route, never the task's storage. It rides the same batched read as the
+    project label, one more column of one statement, and follows the same
+    ``None``-default precedent; an unresolvable story answers ``None`` — the
+    card loses its tooltip, it does not break.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -134,3 +142,4 @@ class TaskResponse(BaseModel):
     version_number: int | None = None
     project_id: UUID | None = None
     project_name: str | None = None
+    story_raw_text: str | None = None

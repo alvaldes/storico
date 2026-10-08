@@ -24,6 +24,7 @@ from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.task import TaskStatus
 from storico.domain.entities.task_invalidation import TaskInvalidation
 from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
+from storico.domain.ports.user_story_repository import StoryCardContext
 from storico.domain.ports.vector_store_port import VectorStorePort
 from storico.infrastructure.database.models import TaskInvalidationModel
 from storico.infrastructure.database.repositories import (
@@ -791,22 +792,25 @@ class TestTaskVersionFields:
         assert data["version_number"] == 1
 
 
-class TestTaskProjectFields:
-    """The card's project chip data (decision D14 of feature ``kanban-card-project-story``).
+class TestTaskStoryContext:
+    """The card's context-chip data (D14 of feature ``kanban-card-project-story``,
+    widened by D19 of feature ``kanban-context-tooltips``).
 
-    ``TaskResponse`` gains ``project_id`` and ``project_name``; every
-    construction site in the tasks route resolves them from one batched read,
-    so the board's card can name where the task came from and a ``PUT``
+    ``TaskResponse`` gains ``project_id``, ``project_name`` and the story's own
+    ``story_raw_text`` (the tooltip's sentence); every construction site in the
+    tasks route resolves them from one batched read, so the board's card can
+    name where the task came from and what the story says, and a ``PUT``
     response merged into a moved card cannot erase that with a ``null`` — the
     same posture the version chip's fields (D8) already take.
     """
 
-    async def test_list_items_carry_project_id_and_project_name(
+    async def test_list_items_carry_the_story_context(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ):
-        """The list path resolves the project label in one batched call."""
+        """The list path resolves the story context in one batched call."""
         seeded = await seed_workspace()
         task = await seed_task(db_session, seeded.story_id, "Labelled task")
+        story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
 
         response = await authed_client.get("/api/v1/tasks/")
 
@@ -814,31 +818,36 @@ class TestTaskProjectFields:
         item = next(i for i in response.json()["items"] if i["id"] == str(task.id))
         assert item["project_id"] == str(seeded.project_id)
         assert item["project_name"] == "Seeded Project"
+        assert item["story_raw_text"] == story.raw_text
 
-    async def test_get_carries_project_id_and_project_name(
+    async def test_get_carries_the_story_context(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ):
-        """The single-task read names the task's project too."""
+        """The single-task read names the story context too."""
         seeded = await seed_workspace()
         task = await seed_task(db_session, seeded.story_id, "Single task")
+        story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
 
         response = await authed_client.get(f"/api/v1/tasks/{task.id}")
 
         assert response.status_code == 200
         assert response.json()["project_id"] == str(seeded.project_id)
         assert response.json()["project_name"] == "Seeded Project"
+        assert response.json()["story_raw_text"] == story.raw_text
 
-    async def test_a_status_change_keeps_the_project_on_the_put_response(
+    async def test_a_status_change_keeps_the_story_context_on_the_put_response(
         self, authed_client, db_session: AsyncSession, seed_workspace
     ):
-        """The PUT response still names the project.
+        """The PUT response still names the story context.
 
         The board store merges the ``PUT`` response into the card it just
-        moved — a ``null`` ``project_name`` there would erase the project chip
-        on drop, exactly the failure mode the version fields guard against.
+        moved — a ``null`` ``project_name`` or ``story_raw_text`` there would
+        erase the chips on drop, exactly the failure mode the version fields
+        guard against.
         """
         seeded = await seed_workspace()
         task = await seed_task(db_session, seeded.story_id, "Moved task")
+        story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
 
         response = await authed_client.put(
             f"/api/v1/tasks/{task.id}",
@@ -850,6 +859,7 @@ class TestTaskProjectFields:
         assert data["status"] == "todo"
         assert data["project_id"] == str(seeded.project_id)
         assert data["project_name"] == "Seeded Project"
+        assert data["story_raw_text"] == story.raw_text
 
     async def test_an_unresolvable_story_answers_null_fields_not_a_failure(
         self, app, authed_client, db_session: AsyncSession, seed_workspace
@@ -858,20 +868,21 @@ class TestTaskProjectFields:
 
         The stubbed story repository answers ``{}`` — the shape the read
         returns when a story id has no row. The page itself must not fail and
-        must not fabricate a label: the card simply loses its project chip.
-        The dependency override follows ``_override_invalidation_repo``'s
-        pattern — the replaced dependency is taken from the route module's own
-        ``StoryRepoDep`` alias. The unfiltered branch uses ``story_repo`` for
-        nothing but this resolution, so the stub cannot disturb anything else.
+        must not fabricate a label or an empty tooltip: the card simply loses
+        its chips. The dependency override follows
+        ``_override_invalidation_repo``'s pattern — the replaced dependency is
+        taken from the route module's own ``StoryRepoDep`` alias. The
+        unfiltered branch uses ``story_repo`` for nothing but this resolution,
+        so the stub cannot disturb anything else.
         """
         seeded = await seed_workspace()
-        task = await seed_task(db_session, seeded.story_id, "Orphaned-label task")
+        task = await seed_task(db_session, seeded.story_id, "Orphaned-context task")
         (depends_param,) = task_routes.StoryRepoDep.__metadata__
 
         class _Unresolving(SQLAlchemyUserStoryRepository):
-            async def project_labels_for(
+            async def story_context_for(
                 self, story_ids: list[UUID]
-            ) -> dict[UUID, tuple[UUID, str]]:
+            ) -> dict[UUID, StoryCardContext]:
                 return {}
 
         async def _factory(session: Annotated[AsyncSession, Depends(get_session)]) -> _Unresolving:
@@ -887,6 +898,7 @@ class TestTaskProjectFields:
         item = next(i for i in response.json()["items"] if i["id"] == str(task.id))
         assert item["project_id"] is None
         assert item["project_name"] is None
+        assert item["story_raw_text"] is None
 
 
 class TestGetTask:

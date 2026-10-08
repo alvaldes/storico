@@ -1,6 +1,7 @@
 """Tests for SQLAlchemyUserStoryRepository."""
 
 import inspect
+from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from storico.domain.entities import EntityNotFound, Project, RepositoryError, UserStory
 from storico.domain.entities.story_deletion import StoryDeletion
-from storico.domain.ports import UserStoryRepository
+from storico.domain.ports.user_story_repository import StoryCardContext, UserStoryRepository
 from storico.infrastructure.database.models import StoryDeletionModel
 from storico.infrastructure.database.repositories import (
     SQLAlchemyProjectRepository,
@@ -779,20 +780,23 @@ class TestListForContext:
             self._assert_no_window(target)
 
 
-# --- Project labels for a page of tasks (kanban-card-project-story WU13) ---
+# --- Story context for a page of tasks (kanban-card-project-story WU13,
+# --- widened by kanban-context-tooltips WU16 with the story's own text) ---
 
 
 @pytest.mark.asyncio
-async def test_project_labels_for_resolves_a_batch_in_one_statement(
+async def test_story_context_for_resolves_a_batch_in_one_statement(
     db_session: AsyncSession, test_engine: AsyncEngine, workspace_id: UUID
 ) -> None:
-    """Two stories of two projects in one call: their labels keyed by story id.
+    """Two stories of two projects in one call: their context keyed by story id.
 
-    The card's project chip data (decision D14 of feature
-    ``kanban-card-project-story``): a list page resolves its distinct story ids
+    The card's context-chip data (decision D14 of feature
+    ``kanban-card-project-story``, widened by D19 of feature
+    ``kanban-context-tooltips``): a list page resolves its distinct story ids
     in one join, never one per card — the same batched-read convention
-    ``version_numbers`` follows. Statement capture follows
-    ``test_list_page_with_empty_workspace_ids``.
+    ``version_numbers`` follows. Each row answers the project label *and* the
+    story's own ``raw_text``, the tooltip's sentence, from the same statement.
+    Statement capture follows ``test_list_page_with_empty_workspace_ids``.
     """
     statements: list[str] = []
 
@@ -807,22 +811,31 @@ async def test_project_labels_for_resolves_a_batch_in_one_statement(
 
     event.listen(test_engine.sync_engine, "before_cursor_execute", record)
     try:
-        labels = await repo.project_labels_for([mine_story.id, other_story.id, uuid4()])
+        contexts = await repo.story_context_for([mine_story.id, other_story.id, uuid4()])
     finally:
         event.remove(test_engine.sync_engine, "before_cursor_execute", record)
 
-    # Each story names its own project, and the absent id is omitted — an
-    # unresolvable story answers absence, never a fabricated label.
-    assert labels == {
-        mine_story.id: (mine.id, "Mine"),
-        other_story.id: (other.id, "Other"),
+    # Each story names its own project and carries its own sentence, and the
+    # absent id is omitted — an unresolvable story answers absence, never a
+    # fabricated label or an empty tooltip.
+    assert contexts == {
+        mine_story.id: StoryCardContext(
+            project_id=mine.id,
+            project_name="Mine",
+            story_raw_text=mine_story.raw_text,
+        ),
+        other_story.id: StoryCardContext(
+            project_id=other.id,
+            project_name="Other",
+            story_raw_text=other_story.raw_text,
+        ),
     }
-    label_queries = [s for s in statements if "FROM user_stories" in s]
-    assert len(label_queries) == 1, statements
+    context_queries = [s for s in statements if "FROM user_stories" in s]
+    assert len(context_queries) == 1, statements
 
 
 @pytest.mark.asyncio
-async def test_project_labels_for_with_empty_input_answers_empty_without_a_statement(
+async def test_story_context_for_with_empty_input_answers_empty_without_a_statement(
     db_session: AsyncSession, test_engine: AsyncEngine
 ) -> None:
     """An empty ``story_ids`` returns ``{}`` without issuing any statement.
@@ -840,9 +853,34 @@ async def test_project_labels_for_with_empty_input_answers_empty_without_a_state
 
     event.listen(test_engine.sync_engine, "before_cursor_execute", record)
     try:
-        labels = await repo.project_labels_for([])
+        contexts = await repo.story_context_for([])
     finally:
         event.remove(test_engine.sync_engine, "before_cursor_execute", record)
 
-    assert labels == {}
+    assert contexts == {}
     assert statements == [], statements
+
+
+@pytest.mark.asyncio
+async def test_story_context_for_keeps_the_project_when_the_story_has_no_sentence(
+    db_session: AsyncSession, workspace_id: UUID
+) -> None:
+    """An empty ``raw_text`` costs the tooltip, never the project label.
+
+    ``raw_text`` carries no ``min_length`` on the story schemas, so an empty
+    sentence is reachable through the API. The three values are independent
+    facts about one story: degrading the text must not erase the project, or
+    the card would lose its project chip — and its project tooltip — because
+    somebody wrote a story without a sentence.
+    """
+    repo = SQLAlchemyUserStoryRepository(db_session)
+    project = await _seed_project(db_session, workspace_id, "Quiet")
+    # ``_story`` always writes a sentence, so the empty one is applied after it:
+    # this test is about the story that reached the database without one.
+    story = await repo.save(replace(_story(project.id, "quiet-story"), raw_text=""))
+
+    contexts = await repo.story_context_for([story.id])
+
+    assert contexts[story.id].project_id == project.id
+    assert contexts[story.id].project_name == "Quiet"
+    assert contexts[story.id].story_raw_text is None

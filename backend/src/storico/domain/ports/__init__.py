@@ -9,7 +9,11 @@ from storico.domain.ports.user_preferences_repository import (
     UserPreferencesRepository,
 )
 from storico.domain.ports.user_repository import UserRepository
-from storico.domain.ports.user_story_repository import StoryContextRow, UserStoryRepository
+from storico.domain.ports.user_story_repository import (
+    StoryCardContext,
+    StoryContextRow,
+    UserStoryRepository,
+)
 from storico.domain.ports.vector_store_port import ExtractionExample, VectorStorePort
 from storico.domain.ports.workspace_llm_config_repository import (
     WorkspaceLLMConfigRepository,
@@ -25,6 +29,7 @@ __all__ = [
     "UserPreferencesRepository",
     "ProjectRepository",
     "UserStoryRepository",
+    "StoryCardContext",
     "StoryContextRow",
     "TaskRepository",
     "TaskContextRow",
