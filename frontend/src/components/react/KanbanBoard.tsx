@@ -10,8 +10,14 @@ import { listVersions } from '@/lib/versioning-api';
 import type { WorkspaceTaskFilters } from '@/lib/tasks-api';
 import type { StoryVersion, UserStory } from '@/types/story';
 import { useTranslations, type Locale } from '@/i18n/utils';
-import { AlertCircle, LoaderCircle, X } from 'lucide-react';
+import { AlertCircle, LoaderCircle, X, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  projectTreatment,
+  SELECT_PROJECT_CAP,
+  storySelectTreatment,
+} from '@/lib/context-treatment';
 import {
   Select,
   SelectContent,
@@ -35,6 +41,19 @@ interface InvalidDropToast {
   show: boolean;
   message: string;
   allowed: TaskStatus[];
+}
+
+/** One row of the cascade's selects. The label is the visible (truncated) one;
+ * `title` is the full value the listbox option exposes as a native `title`
+ * (D18 of feature ``kanban-context-tooltips``: a Tooltip per option fights the
+ * listbox's focus and keyboard navigation, so the listbox keeps the native
+ * mechanism and the trigger gets the real one); `Icon` is the shared context
+ * treatment's icon, `null` for the "All …" rows that name no project or story. */
+interface ContextSelectItem {
+  label: string;
+  value: string | null;
+  title: string | null;
+  Icon: LucideIcon | null;
 }
 
 export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
@@ -298,18 +317,32 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   // Select options: an "All …" entry (value `null`) means "not filtered at this
   // level", the same null-means-unfiltered convention StoriesList's project
   // select uses. "All projects" reuses the stories page's copy — same idea, one key.
-  const projectItems = useMemo(
+  //
+  // The project and story rows go through the one shared context treatment
+  // (WU17): icon, truncated label and full-value tooltip text come from
+  // ``lib/context-treatment.ts``, the same functions the card's chips consume. The options
+  // truncate at the select's wider cap (D21) — a dropdown row must stay
+  // choosable without hovering, which the card's 12-character cap would make
+  // impossible — and carry the full value as a native `title` (D18).
+  const projectItems = useMemo<ContextSelectItem[]>(
     () => [
-      { label: t.stories.allProjects, value: null as string | null },
-      ...projects.map((p) => ({ label: p.name, value: p.id as string | null })),
+      { label: t.stories.allProjects, value: null, title: null, Icon: null },
+      ...projects.map((p) => {
+        const treatment = projectTreatment(p.name, SELECT_PROJECT_CAP);
+        return { label: treatment.label, value: p.id, title: treatment.tooltip, Icon: treatment.Icon };
+      }),
     ],
     [projects, t],
   );
 
-  const storyItems = useMemo(
+  const storyItems = useMemo<ContextSelectItem[]>(
     () => [
-      { label: t.kanban.filter_all_stories, value: null as string | null },
-      ...storyOptions.map((s) => ({ label: `${s.actor}: ${s.feature}`, value: s.id as string | null })),
+      { label: t.kanban.filter_all_stories, value: null, title: null, Icon: null },
+      ...storyOptions.map((s) => {
+        // D16: the human label `${actor}: ${feature}`, not the short id.
+        const treatment = storySelectTreatment(s);
+        return { label: treatment.label, value: s.id, title: treatment.tooltip, Icon: treatment.Icon };
+      }),
     ],
     [storyOptions, t],
   );
@@ -329,6 +362,21 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     ],
     [versionOptions, t],
   );
+
+  // D18: the trigger's real tooltip carries the full current value — the
+  // selected project's full name, the selected story's full sentence — through
+  // the same shared treatment the options use. With nothing selected the
+  // tooltip is disabled, so no empty popup can mount.
+  const selectedProject = projectFilter
+    ? (projects.find((p) => p.id === projectFilter) ?? null)
+    : null;
+  const projectTriggerTooltip = selectedProject
+    ? projectTreatment(selectedProject.name, SELECT_PROJECT_CAP).tooltip
+    : null;
+  const selectedStory = storyFilter
+    ? (storyOptions.find((s) => s.id === storyFilter) ?? null)
+    : null;
+  const storyTriggerTooltip = selectedStory ? storySelectTreatment(selectedStory).tooltip : null;
 
   const handleDragEnd = useCallback(
     async (result: DropResult) => {
@@ -518,28 +566,42 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
             value={projectFilter ?? null}
             onValueChange={handleProjectChange}
           >
-            <SelectTrigger
-              className="w-44"
-              aria-label={t.kanban.filter_project}
-              // The pending state belongs to the control, not to the spinner: an
-              // `aria-label` on a bare svg is ignored by several screen readers,
-              // while `aria-busy` is what assistive tech reads as "this control is
-              // still loading".
-              aria-busy={projectsLoading}
-            >
-              <SelectValue />
-              {/* Level 2 (D9): this select's own read, from projectStore.loading. */}
-              {projectsLoading && (
-                <LoaderCircle
-                  className="size-4 animate-spin text-muted-foreground"
-                  aria-label={t.common.loading}
-                />
+            <Tooltip disabled={!projectTriggerTooltip}>
+              <TooltipTrigger
+                render={
+                  <SelectTrigger
+                    className="w-44"
+                    aria-label={t.kanban.filter_project}
+                    // The pending state belongs to the control, not to the spinner: an
+                    // `aria-label` on a bare svg is ignored by several screen readers,
+                    // while `aria-busy` is what assistive tech reads as "this control is
+                    // still loading".
+                    aria-busy={projectsLoading}
+                  />
+                }
+              >
+                <SelectValue />
+                {/* Level 2 (D9): this select's own read, from projectStore.loading. */}
+                {projectsLoading && (
+                  <LoaderCircle
+                    className="size-4 animate-spin text-muted-foreground"
+                    aria-label={t.common.loading}
+                  />
+                )}
+              </TooltipTrigger>
+              {projectTriggerTooltip && (
+                <TooltipContent>{projectTriggerTooltip}</TooltipContent>
               )}
-            </SelectTrigger>
+            </Tooltip>
             <SelectContent>
               <SelectGroup>
                 {projectItems.map((item) => (
-                  <SelectItem key={item.value ?? '_all_projects'} value={item.value}>
+                  <SelectItem
+                    key={item.value ?? '_all_projects'}
+                    value={item.value}
+                    title={item.title ?? undefined}
+                  >
+                    {item.Icon && <item.Icon aria-hidden="true" />}
                     {item.label}
                   </SelectItem>
                 ))}
@@ -552,23 +614,39 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
             onValueChange={handleStoryChange}
             disabled={!projectFilter}
           >
-            <SelectTrigger className="w-52" aria-label={t.kanban.filter_story} aria-busy={storiesLoading}>
-              {/* While the parent is unchosen the select is disabled; the value
-                  is null and the placeholder — not the "All stories" label —
-                  names what to pick first. */}
-              <SelectValue>{projectFilter ? undefined : t.stories.selectProjectFirst}</SelectValue>
-              {/* Level 2 (D9): this select's own read (listStories). */}
-              {storiesLoading && (
-                <LoaderCircle
-                  className="size-4 animate-spin text-muted-foreground"
-                  aria-label={t.common.loading}
-                />
-              )}
-            </SelectTrigger>
+            <Tooltip disabled={!storyTriggerTooltip}>
+              <TooltipTrigger
+                render={
+                  <SelectTrigger
+                    className="w-52"
+                    aria-label={t.kanban.filter_story}
+                    aria-busy={storiesLoading}
+                  />
+                }
+              >
+                {/* While the parent is unchosen the select is disabled; the value
+                    is null and the placeholder — not the "All stories" label —
+                    names what to pick first. */}
+                <SelectValue>{projectFilter ? undefined : t.stories.selectProjectFirst}</SelectValue>
+                {/* Level 2 (D9): this select's own read (listStories). */}
+                {storiesLoading && (
+                  <LoaderCircle
+                    className="size-4 animate-spin text-muted-foreground"
+                    aria-label={t.common.loading}
+                  />
+                )}
+              </TooltipTrigger>
+              {storyTriggerTooltip && <TooltipContent>{storyTriggerTooltip}</TooltipContent>}
+            </Tooltip>
             <SelectContent>
               <SelectGroup>
                 {storyItems.map((item) => (
-                  <SelectItem key={item.value ?? '_all_stories'} value={item.value}>
+                  <SelectItem
+                    key={item.value ?? '_all_stories'}
+                    value={item.value}
+                    title={item.title ?? undefined}
+                  >
+                    {item.Icon && <item.Icon aria-hidden="true" />}
                     {item.label}
                   </SelectItem>
                 ))}

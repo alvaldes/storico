@@ -20,6 +20,7 @@ function mapTaskItem(raw: RawTaskItem): Task {
     versionNumber: raw.version_number ?? null,
     projectId: raw.project_id ?? null,
     projectName: raw.project_name ?? null,
+    storyRawText: raw.story_raw_text ?? null,
   };
 }
 

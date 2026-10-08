@@ -57,6 +57,16 @@ export interface Task {
    */
   projectId?: string | null;
   projectName?: string | null;
+  /**
+   * The story's full sentence (WU16 of feature ``kanban-context-tooltips``),
+   * mirroring ``TaskResponse``'s ``story_raw_text``: the ``As a …, I want …,
+   * so that …`` text the story chip's tooltip shows (D17). Optional, not
+   * required-nullable, for the same reason as ``projectName``: the legacy,
+   * uncalled mapper in ``lib/api.ts`` (deliberately untouched) still produces
+   * ``Task`` objects without it — ``mapTaskItem`` always sets it. Cards must
+   * fall back to the story's id when it is null or absent.
+   */
+  storyRawText?: string | null;
 }
 
 /** Raw task from API (snake_case). */
@@ -75,6 +85,9 @@ export interface RawTaskItem {
   version_number: number | null;
   project_id: string | null;
   project_name: string | null;
+  /** The story's sentence, joined into the same batched read for the chip
+   * tooltips (WU16/D19) — one more column, no second query. */
+  story_raw_text: string | null;
 }
 
 /* ── Invalidation marks (0.9.0 slice b) ── */

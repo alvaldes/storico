@@ -1,10 +1,11 @@
 'use client';
 
 import { Draggable } from '@hello-pangea/dnd';
-import { Fingerprint, FolderKanban, GripVertical, Loader2 } from 'lucide-react';
+import { GripVertical, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslations, type Locale } from '@/i18n/utils';
-import { shortUUID, shortProjectTitle } from '@/lib/utils';
+import { projectTreatment, storyCardTreatment } from '@/lib/context-treatment';
 import { useTaskStore } from '@/stores/taskStore';
 import type { Task } from '@/types/task';
 
@@ -19,6 +20,13 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
   // While a status PUT is in flight for this task, the card shows a subtle
   // loading indicator and must not be re-draggable.
   const isUpdating = useTaskStore((s) => s.updatingTaskId === task.id);
+  // The context chips' treatment comes from the one shared definition in
+  // ``lib/context-treatment.ts`` — the same functions the cascade's selects
+  // consume, so the two surfaces cannot drift (WU17).
+  const projectChip = task.projectName ? projectTreatment(task.projectName) : null;
+  const storyChip = task.storyId
+    ? storyCardTreatment(task.storyId, task.storyRawText ?? null)
+    : null;
 
   return (
     <Draggable draggableId={task.id} index={index} isDragDisabled={isUpdating}>
@@ -64,37 +72,56 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
                 task.versionNumber !== null) && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {/*
-                    Ordered project → story → labels → version (D15 of feature
-                    ``kanban-card-project-story``): the labels keep the foreground
-                    colour because they are the task's own attributes; the three
-                    context chips around them are the "where" and sit muted like
-                    the version chip. The project is a name as text, not a link
-                    (D13) — the card's one click target stays the title — and the
-                    story is the same ``shortUUID`` the story cards show (D12),
-                    reused so the two surfaces cannot drift. The long project
-                    name ellipsizes inside its bounded chip (title keeps the
-                    full name) instead of pushing the row out of the card.
+                    Ordered project → story → version → labels (D20 of feature
+                    ``kanban-context-tooltips``): the owner moved the labels
+                    last, so the three context chips lead and the task's own
+                    attributes trail. The labels keep the foreground colour
+                    because they are the task's own attributes; the context
+                    chips around them are the "where" and sit muted like the
+                    version chip. The project is a name as text, not a link
+                    (D13) — the card's one click target stays the title — and
+                    the story is the same ``shortUUID`` the story cards show
+                    (D12), reused so the two surfaces cannot drift.
+
+                    Each chip's tooltip (D17: the project's full name, the
+                    story's full sentence) and icon come from the shared
+                    treatment, and the real ``Tooltip`` replaced the native
+                    ``title`` (D18) so a hover cannot raise two tooltips.
+                    ``disabled`` while dragging keeps the popup off the drag
+                    clone: the preview is a copy of this tree, and an open
+                    tooltip would travel with the pointer.
                   */}
-                  {task.projectName && (
-                    <Badge
-                      variant="outline"
-                      className="max-w-[10rem] text-[10px] leading-none px-1.5 py-0.5 text-muted-foreground"
-                      title={task.projectName}
-                    >
-                      <FolderKanban className="h-3 w-3" />
-                      <span className="min-w-0 truncate">
-                        {shortProjectTitle(task.projectName)}
-                      </span>
-                    </Badge>
+                  {projectChip && (
+                    <Tooltip disabled={snapshot.isDragging}>
+                      <TooltipTrigger
+                        render={
+                          <Badge
+                            variant="outline"
+                            className="max-w-[10rem] text-[10px] leading-none px-1.5 py-0.5 text-muted-foreground"
+                          />
+                        }
+                      >
+                        <projectChip.Icon className="h-3 w-3" />
+                        <span className="min-w-0 truncate">{projectChip.label}</span>
+                      </TooltipTrigger>
+                      <TooltipContent>{projectChip.tooltip}</TooltipContent>
+                    </Tooltip>
                   )}
-                  {task.storyId && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] leading-none px-1.5 py-0.5 text-muted-foreground"
-                    >
-                      <Fingerprint className="h-3 w-3" />
-                      {shortUUID(task.storyId)}
-                    </Badge>
+                  {storyChip && (
+                    <Tooltip disabled={snapshot.isDragging}>
+                      <TooltipTrigger
+                        render={
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] leading-none px-1.5 py-0.5 text-muted-foreground"
+                          />
+                        }
+                      >
+                        <storyChip.Icon className="h-3 w-3" />
+                        {storyChip.label}
+                      </TooltipTrigger>
+                      <TooltipContent>{storyChip.tooltip}</TooltipContent>
+                    </Tooltip>
                   )}
                   {/*
                     Bare `v{n}`: never a currency marker. A card cannot tell a

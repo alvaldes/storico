@@ -5,7 +5,7 @@ import { KanbanBoard } from '@/components/react/KanbanBoard';
 import { useTaskStore } from '@/stores/taskStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useTranslations } from '@/i18n/utils';
-import { shortUUID } from '@/lib/utils';
+import { shortProjectTitle, shortUUID } from '@/lib/utils';
 import type { Task } from '@/types/task';
 import type { Workspace } from '@/types/workspace';
 
@@ -1349,7 +1349,8 @@ describe('KanbanCard — project and story chips', () => {
     expect(Array.from(row.children).map((el) => el.textContent)).toEqual(['db']);
   });
 
-  it('bounds a long project name and keeps the full name in the title', async () => {
+  it('bounds a long project name and keeps the full name in the tooltip (D17/D18)', async () => {
+    const user = userEvent.setup();
     const longName = 'A Very Long Project Name That Would Push The Row '.repeat(4).trim();
     useTaskStore.setState({
       workspaceTasks: [
@@ -1365,14 +1366,279 @@ describe('KanbanCard — project and story chips', () => {
 
     render(<KanbanBoard locale="en" />);
 
-    // The full truth lives in the `title`, so a hover still names the project.
-    const chip = await screen.findByTitle(longName);
+    // WU17/D18: the chip carries no native `title` anymore — a real tooltip is
+    // the only one a hover can raise, so two tooltips on one hover cannot
+    // happen. The repo's TooltipTrigger wrapper owns the element's `data-slot`,
+    // so the chip is identified by the tooltip trigger contract itself.
+    const chip = (await screen.findByText(shortProjectTitle(longName))).closest(
+      '[data-base-ui-tooltip-trigger]',
+    ) as HTMLElement;
+    expect(chip).not.toHaveAttribute('title');
     // The chip is width-bounded and its text ellipsizes inside that bound
     // instead of pushing the labels or the version chip out of the card.
     expect(chip).toHaveClass('max-w-[10rem]');
     expect(chip.querySelector('.truncate')).not.toBeNull();
+    // The full truth lives in the tooltip, so a hover still names the project.
+    await user.hover(chip);
+    expect(await screen.findByText(longName)).toBeInTheDocument();
     // And the rest of the row is intact beside it.
     expect(screen.getByText('db')).toBeInTheDocument();
     expect(screen.getByText('v1')).toBeInTheDocument();
+  });
+});
+
+/* ── Context treatment shared by the card chips and the cascade's selects (WU17) ──
+ *
+ * Three surfaces now name the same two things — project, story — and they must
+ * agree by construction, not by accident (D16–D21 of feature
+ * ``kanban-context-tooltips``). Each test below asserts a surface's rendered
+ * output against the same rule function the production code consumes, for the
+ * card **and** for the selects, so a future divergence between the surfaces
+ * fails here. The tooltip's content lives in a portal; these tests assert the
+ * opened popup through `screen` queries, which search the whole body — the
+ * choice this file makes for portalled content.
+ */
+describe('KanbanBoard — context treatment on chips and selects (WU17)', () => {
+  const STORY_ID = '01a10dee-6d92-7d13-812f-bc39dfd8e767';
+  const SENTENCE = 'As a user, I want to log in, so that I can access my account';
+  // Longer than the card's 12-character cap **and** the select's wider one, so
+  // the truncated labels, the full tooltip and the native `title` are all
+  // distinct, observable values.
+  const LONG_PROJECT = 'Infrastructure Modernization Programme';
+
+  /** The card-cap label the project chip must show. */
+  const cardProjectLabel = shortProjectTitle(LONG_PROJECT);
+  /** The wider select-cap label (D21) the project options must show. */
+  const selectProjectLabel = shortProjectTitle(LONG_PROJECT, 32);
+
+  const longProject: Project = {
+    id: 'project-1',
+    name: LONG_PROJECT,
+    description: '',
+    workspaceId: 'workspace-1',
+    createdBy: null,
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    storyCount: 1,
+  };
+
+  const story: UserStory = {
+    id: STORY_ID,
+    projectId: 'project-1',
+    actor: 'user',
+    feature: 'to log in',
+    benefit: 'to access my account',
+    rawText: SENTENCE,
+    status: 'extracted',
+    createdAt: '2026-01-01T00:00:00Z',
+  };
+
+  const storyPage: PaginatedResponse<UserStory> = {
+    items: [story],
+    total: 1,
+    page: 1,
+    size: 100,
+  };
+
+  function chipTask(fields: Partial<Task> & Pick<Task, 'id'>): Task {
+    return {
+      storyId: STORY_ID,
+      title: `Task ${fields.id}`,
+      description: '',
+      status: 'todo',
+      priority: 'medium',
+      labels: [],
+      dependencies: [],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      extractionId: 'extraction-1',
+      versionNumber: null,
+      projectId: 'project-1',
+      projectName: LONG_PROJECT,
+      storyRawText: SENTENCE,
+      ...fields,
+    };
+  }
+
+  /** Open the select whose accessible name is `label` and pick `optionLabel`. */
+  async function chooseOption(
+    user: ReturnType<typeof userEvent.setup>,
+    label: string,
+    optionLabel: string,
+  ) {
+    await user.click(await screen.findByRole('combobox', { name: label }));
+    await user.click(await screen.findByRole('option', { name: optionLabel }));
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspace: {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        ownerId: 'user-1',
+        role: 'admin',
+        memberCount: 1,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      } as Workspace,
+      loading: false,
+      saving: false,
+    });
+    useProjectStore.setState({
+      projects: [longProject],
+      loading: false,
+      error: null,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    useTaskStore.setState({
+      tasks: {},
+      workspaceTasks: [],
+      extractions: {},
+      loading: false,
+      error: null,
+      updatingTaskId: null,
+      allowedTransitions: {},
+      fetchTasksForWorkspace: vi.fn().mockResolvedValue(undefined),
+      updateTaskStatus: vi.fn().mockResolvedValue(undefined),
+    });
+    vi.mocked(listStories).mockResolvedValue(storyPage);
+    vi.mocked(listVersions).mockResolvedValue([]);
+  });
+
+  // ── The card's chips (D17/D18) ──
+
+  it('shows the full project name in a real tooltip on the card chip, and no native title (D17/D18)', async () => {
+    const user = userEvent.setup();
+    useTaskStore.setState({ workspaceTasks: [chipTask({ id: 'task-p', labels: ['db'] })] });
+
+    render(<KanbanBoard locale="en" />);
+
+    // The chip's visible label is the card cap's truncation of the shared rule…
+    expect(await screen.findByText(cardProjectLabel)).toBeInTheDocument();
+    // …and the full name is nowhere on the page until the hover opens the tooltip.
+    expect(screen.queryByText(LONG_PROJECT)).not.toBeInTheDocument();
+
+    // D18: the chip carries no native `title` — the real tooltip is the only
+    // one a hover can raise. (The repo's TooltipTrigger wrapper owns the
+    // element's `data-slot`, so the chip is identified by the tooltip trigger
+    // contract itself.)
+    const chip = screen.getByText(cardProjectLabel).closest(
+      '[data-base-ui-tooltip-trigger]',
+    ) as HTMLElement;
+    expect(chip).not.toHaveAttribute('title');
+    // Same icon rule as everywhere a project is named on the board.
+    expect(chip.querySelector('.lucide-folder-kanban')).not.toBeNull();
+
+    await user.hover(chip);
+    expect(await screen.findByText(LONG_PROJECT)).toBeInTheDocument();
+  });
+
+  it('shows the story sentence in the story chip tooltip (D17)', async () => {
+    const user = userEvent.setup();
+    useTaskStore.setState({ workspaceTasks: [chipTask({ id: 'task-s' })] });
+
+    render(<KanbanBoard locale="en" />);
+
+    const chip = await screen.findByText(shortUUID(STORY_ID));
+    expect(
+      chip.closest('[data-base-ui-tooltip-trigger]')?.querySelector('.lucide-fingerprint'),
+    ).not.toBeNull();
+
+    await user.hover(chip);
+    expect(await screen.findByText(SENTENCE)).toBeInTheDocument();
+  });
+
+  it('falls back to the id when the sentence is missing and never renders an empty tooltip (D17)', async () => {
+    const user = userEvent.setup();
+    useTaskStore.setState({
+      workspaceTasks: [chipTask({ id: 'task-null-sentence', storyRawText: null })],
+    });
+
+    render(<KanbanBoard locale="en" />);
+
+    const chip = await screen.findByText(shortUUID(STORY_ID));
+    await user.hover(chip);
+    // The tooltip shows what the card has — the story's id — not nothing.
+    expect(await screen.findByText(STORY_ID)).toBeInTheDocument();
+    // And no open popup anywhere is empty.
+    const popups = document.querySelectorAll('[data-slot="tooltip-content"]');
+    expect(popups.length).toBeGreaterThan(0);
+    for (const popup of popups) {
+      expect((popup.textContent ?? '').length).toBeGreaterThan(0);
+    }
+  });
+
+  // ── The cascade's selects (D16/D18/D21) ──
+
+  it('gives the project select options the folder icon, the wider truncation cap and the full name as a native title (D18/D21)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
+    // The fetch-path assertions need the real store action (as the cascade
+    // describes do); the card describes stub it instead.
+    useTaskStore.setState({ fetchTasksForWorkspace: realFetchTasksForWorkspace });
+
+    render(<KanbanBoard locale="en" />);
+    await waitFor(() => expect(listTasksByWorkspace).toHaveBeenCalledWith('workspace-1'));
+
+    await user.click(await screen.findByRole('combobox', { name: t.kanban.filter_project }));
+
+    // D21: the option truncates at the select's wider cap, not at the card's
+    // 12 characters — a dropdown row must stay choosable without hovering.
+    const option = await screen.findByRole('option', { name: selectProjectLabel });
+    expect(selectProjectLabel).not.toBe(cardProjectLabel);
+    expect(option).toHaveAttribute('title', LONG_PROJECT);
+    expect(option.querySelector('.lucide-folder-kanban')).not.toBeNull();
+  });
+
+  it('gives the story select options the fingerprint icon and the human label, with the sentence as a native title (D16/D18)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
+
+    render(<KanbanBoard locale="en" />);
+    await chooseOption(user, t.kanban.filter_project, selectProjectLabel);
+
+    await user.click(await screen.findByRole('combobox', { name: t.kanban.filter_story }));
+
+    // D16: the human label, not the short id — the select must stay usable
+    // for choosing.
+    const option = await screen.findByRole('option', { name: 'user: to log in' });
+    expect(option.textContent).not.toContain(shortUUID(STORY_ID));
+    expect(option).toHaveAttribute('title', SENTENCE);
+    expect(option.querySelector('.lucide-fingerprint')).not.toBeNull();
+  });
+
+  it('gives the select triggers a real tooltip with the full current value (D18)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
+    useTaskStore.setState({ fetchTasksForWorkspace: realFetchTasksForWorkspace });
+
+    render(<KanbanBoard locale="en" />);
+    await waitFor(() => expect(listTasksByWorkspace).toHaveBeenCalledWith('workspace-1'));
+
+    // The project trigger's tooltip is the full name — but with nothing
+    // selected there is no tooltip at all: no empty popup mounts.
+    const projectTrigger = await screen.findByRole('combobox', { name: t.kanban.filter_project });
+    await user.hover(projectTrigger);
+    expect(screen.queryByText(LONG_PROJECT)).not.toBeInTheDocument();
+    expect(document.querySelector('[data-slot="tooltip-content"]')).toBeNull();
+
+    // Once a project is chosen, the trigger's tooltip carries its full name.
+    await chooseOption(user, t.kanban.filter_project, selectProjectLabel);
+    await user.hover(screen.getByRole('combobox', { name: t.kanban.filter_project }));
+    expect(await screen.findByText(LONG_PROJECT)).toBeInTheDocument();
+
+    // …and the story trigger's is the full sentence, once a story is chosen.
+    await chooseOption(user, t.kanban.filter_project, selectProjectLabel);
+    await chooseOption(user, t.kanban.filter_story, 'user: to log in');
+    await waitFor(() =>
+      expect(listTasksByWorkspace).toHaveBeenLastCalledWith('workspace-1', {
+        storyId: STORY_ID,
+      }),
+    );
+    await user.hover(screen.getByRole('combobox', { name: t.kanban.filter_story }));
+    expect(await screen.findByText(SENTENCE)).toBeInTheDocument();
   });
 });
