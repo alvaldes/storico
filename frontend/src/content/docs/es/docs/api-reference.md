@@ -70,6 +70,73 @@ The response includes a ``Content-Disposition`` header for file download.
 | `200` | Successful Response | — |
 | `422` | Validation Error | `HTTPValidationError` |
 
+### `POST` `/api/v1/workspaces/{workspace_id}/export/trello`
+
+Export To Trello
+
+Send the workspace's current-version tasks to a new Trello board.
+
+**Asynchronous, like the extraction**: the job row is created pending, the
+work is dispatched with ``asyncio.create_task`` in the API process (D5 — no
+Celery, no Redis), and this answers ``202`` immediately. The client polls
+``GET .../export/trello/{export_id}`` until the job reaches ``completed``
+(with the board URL) or ``failed`` (with its error code, and the board URL
+too when a half-built board exists).
+
+**Any member may trigger** (D7): the credentials are what is admin-only —
+the ``/settings/trello`` pair — and the export reads the same tasks
+``GET .../export/tasks`` already lets any member read. A workspace with no
+credential pair stored answers ``409 TRELLO_CREDENTIALS_MISSING`` before
+anything is created.
+
+The scope is one of three, never two (D1): both optional targets given is a
+``422`` — the rule the Kanban cascade applies. Only each story's current
+version is exported (D8), the same filter the file export rides.
+
+**Parámetros**
+
+| Nombre | Ubicación | Obligatorio | Tipo |
+| --- | --- | --- | --- |
+| `workspace_id` | `path` | sí | `string` |
+
+**Cuerpo de la petición** (`application/json`)
+
+| Campo | Tipo | Obligatorio |
+| --- | --- | --- |
+| `project_id` | `string | null` | no |
+| `user_story_id` | `string | null` | no |
+
+**Respuestas**
+
+| Estado | Descripción | Esquema |
+| --- | --- | --- |
+| `202` | Successful Response | `TrelloExportResponse` |
+| `422` | Validation Error | `HTTPValidationError` |
+
+### `GET` `/api/v1/workspaces/{workspace_id}/export/trello/{export_id}`
+
+Get Trello Export
+
+Report one export job's state, board URL and error code.
+
+Readable by any member — the same audience that may trigger the export. A
+job of another workspace is reported as a miss (404), so a foreign id is
+not distinguishable from an absent one.
+
+**Parámetros**
+
+| Nombre | Ubicación | Obligatorio | Tipo |
+| --- | --- | --- | --- |
+| `export_id` | `path` | sí | `string` |
+| `workspace_id` | `path` | sí | `string` |
+
+**Respuestas**
+
+| Estado | Descripción | Esquema |
+| --- | --- | --- |
+| `200` | Successful Response | `TrelloExportResponse` |
+| `422` | Validation Error | `HTTPValidationError` |
+
 ## extract
 
 ### `POST` `/api/v1/workspaces/{workspace_id}/extract/`

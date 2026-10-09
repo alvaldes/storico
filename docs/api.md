@@ -156,6 +156,42 @@ Razones bloqueantes de una fila: `missing_field`, `empty_field`, `too_long`, `un
 en `/api/v1/extract/` y en cualquiera de sus subrutas — la forma sin barra redirige ahí,
 como toda ruta de colección. La única ruta vigente es la workspace-scoped.
 
+### Exportación a Trello (scoped a workspace)
+
+La exportación a Trello es asíncrona como la extracción (D5): `POST` crea un job
+persistido en `trello_exports`, despacha el trabajo con `asyncio.create_task` en el
+proceso de la API y responde `202` de inmediato. El cliente consulta `GET` hasta que
+el job llega a `completed` (con la URL del tablero) o `failed` (con su `error_code`, y
+con `board_url` también cuando el tablero quedó a medias — un fallo posterior a la
+creación carga el `board_ref`, así que la mitad construida nunca se esconde).
+
+El alcance es uno de tres, nunca dos (D1): sin targets exporta todo el workspace; con
+`project_id` o `user_story_id` exporta ese proyecto o esa historia; con los dos a la
+vez responde `422 REQUEST_VALIDATION_FAILED` — la regla que la cascada del Kanban ya
+aplica. Solo se exporta la versión actual de cada historia (D8), el mismo filtro que
+usa la exportación de archivos.
+
+**Cualquier miembro puede disparar** (D7): lo admin-only son las credenciales
+(`/settings/trello`), no la exportación, que lee las mismas tareas que
+`GET .../export/tasks` ya deja leer a cualquier miembro. Un workspace sin el par
+de credenciales guardado responde `409 TRELLO_CREDENTIALS_MISSING` antes de crear
+nada — conflicto de estado, no request malformado, y nunca un `500`.
+
+En cada exportación se crea un tablero nuevo (D3): repetir no sobrescribe, y los
+duplicados son aceptados. El tablero tiene las cinco columnas Kanban siempre, en
+orden canónico, aunque queden vacías.
+
+| Método | Path | Descripción |
+|--------|------|-------------|
+| POST | `/api/v1/workspaces/{wsId}/export/trello` | Iniciar la exportación a un tablero nuevo (asíncrona: responde `202` con el job) |
+| GET | `/api/v1/workspaces/{wsId}/export/trello/{exportId}` | Estado del job: `status`, `board_url`, `error_code`, `cards_created` |
+
+Códigos de la familia: `TRELLO_CREDENTIALS_MISSING` (409, sin credenciales),
+`TRELLO_EXPORT_NOT_FOUND` (404, job inexistente o de otro workspace), y en el job
+fallido `TRELLO_CREDENTIAL_REJECTED`, `TRELLO_SERVICE_UNAVAILABLE`,
+`TRELLO_RATE_LIMIT_EXHAUSTED`, `TRELLO_BOARD_REFUSED`, `TRELLO_CARD_REFUSED` — un
+código por miembro de la familia tipada `TrelloExportError`.
+
 ### Users
 
 | Método | Path | Descripción |

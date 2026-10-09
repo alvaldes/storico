@@ -22,6 +22,10 @@ from storico.api.schemas.story import (
     UserStoryResponse,
 )
 from storico.api.schemas.task import TaskResponse, UpdateTaskRequest
+from storico.api.schemas.trello_export import (
+    TrelloExportCreateRequest,
+    TrelloExportResponse,
+)
 from storico.api.schemas.user import AuthSyncRequest, UserResponse
 from storico.api.schemas.workspace import (
     CreateWorkspaceRequest,
@@ -63,6 +67,8 @@ __all__ = [
     "UpdateUserStoryRequest",
     "TaskResponse",
     "UpdateTaskRequest",
+    "TrelloExportCreateRequest",
+    "TrelloExportResponse",
     "AuthSyncRequest",
     "UserResponse",
     "CreateWorkspaceRequest",
