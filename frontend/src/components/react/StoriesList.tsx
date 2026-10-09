@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   ArrowUp,
   ArrowDown,
+  KanbanSquare,
 } from 'lucide-react';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { useStoryStore } from '@/stores/storyStore';
@@ -477,6 +478,20 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
               </div>
 
               <div className="flex items-center gap-1 ml-4 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-(--color-surface-secondary)"
+                  aria-label={t.kanban.view_in_kanban}
+                  render={
+                    <a
+                      href={`/${locale}/kanban?project=${story.projectId}&story=${story.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  }
+                >
+                  <KanbanSquare className="h-4 w-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"

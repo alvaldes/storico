@@ -8,6 +8,7 @@ import {
   CalendarDays,
   FileText,
   LoaderCircle,
+  KanbanSquare,
 } from 'lucide-react';
 import { IconDisplay } from '@/components/ui/icon-display';
 import { useProjectStore } from '@/stores/projectStore';
@@ -180,6 +181,15 @@ export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
                     <CardTitle className="text-base">{project.name}</CardTitle>
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label={t.kanban.view_in_kanban}
+                      render={<a href={`/${locale}/kanban?project=${project.id}`} />}
+                    >
+                      <KanbanSquare className="h-4 w-4" />
+                    </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger
                         render={

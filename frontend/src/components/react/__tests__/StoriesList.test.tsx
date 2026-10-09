@@ -233,6 +233,57 @@ describe('StoriesList — story card version badge', () => {
   });
 });
 
+/* ── View in Kanban link (view-in-kanban, WU2) ── */
+
+describe('StoriesList — View in Kanban link', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useProjectStore.setState({
+      projects: [makeProject('project-a', 'Project A', 'ws-a')],
+      loading: false,
+      saving: false,
+      error: null,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace('ws-a')],
+      currentWorkspace: makeWorkspace('ws-a'),
+      loading: false,
+      saving: false,
+    });
+  });
+
+  it('carries the story\'s project AND the story id in the board link', async () => {
+    await renderStoryCard(makeStory({ id: 'story-1', projectId: 'project-a' }));
+
+    // The board's cascade never seeds a child level without its parent, so the
+    // story's project ALWAYS travels with it.
+    const link = screen.getByRole('link', { name: 'View in Kanban' });
+    expect(link).toHaveAttribute('href', '/en/kanban?project=project-a&story=story-1');
+  });
+
+  it('stops the click from racing the row\'s navigation to the story detail', async () => {
+    const user = userEvent.setup();
+    await renderStoryCard(makeStory({ id: 'story-1', projectId: 'project-a' }));
+
+    // jsdom 29 keeps `window.location` unforgeable, so `window.location.assign`
+    // itself cannot be spied. The row's handler runs while the click bubbles
+    // through React's container, so a click that escapes the link is witnessed
+    // by a bubbling listener on `document`: if it fires there, the row's
+    // `window.location.assign('/en/stories/<id>')` ran on the way through.
+    const escapedClick = vi.fn();
+    document.addEventListener('click', escapedClick);
+
+    try {
+      await user.click(screen.getByRole('link', { name: 'View in Kanban' }));
+
+      expect(escapedClick).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('click', escapedClick);
+    }
+  });
+});
+
 /* ── Delete dialog version count (0.9.0 slice b, W6-A) ── */
 
 function makeVersion(overrides: Partial<StoryVersion> = {}): StoryVersion {

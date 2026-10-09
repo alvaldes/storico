@@ -349,7 +349,8 @@
     "filter_select_story": "Select a story first",
     "filter_clear": "Clear filters",
     "empty_filtered": "No tasks match the selected filters",
-    "empty_filtered_hint": "Adjust or clear the filters to see more tasks."
+    "empty_filtered_hint": "Adjust or clear the filters to see more tasks.",
+    "view_in_kanban": "View in Kanban"
   },
   "taskEditor": {
     "title": "Edit Task",

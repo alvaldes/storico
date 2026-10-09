@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Flag,
+  KanbanSquare,
 } from 'lucide-react';
 import { shortUUID } from '@/lib/utils';
 import { useProjectStore } from '@/stores/projectStore';
@@ -502,6 +503,16 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            render={
+              <a href={`/${locale}/kanban?project=${story.projectId}&story=${story.id}`} />
+            }
+          >
+            <KanbanSquare className="mr-2 h-4 w-4" />
+            {t.kanban.view_in_kanban}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
             <Pencil className="mr-2 h-4 w-4" />
             {t.common.edit}
