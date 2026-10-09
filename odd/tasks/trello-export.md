@@ -150,6 +150,9 @@ protect nothing and would contradict the endpoint sitting next to it.
   exception can carry its code as a class attribute, with `api/error_codes.py` keeping the literals
   the frontend guard greps for and a test pinning the two together. Small, and worth doing before
   this branch becomes a pull request.
+- [ ] **WU9 — close the findings both verifications left open.** Listed in
+  `## Findings the verifications left open`, which is the authoritative list. The one that matters
+  is the shield: it is load-bearing and nothing tests it.
 
 ## Non-goals
 
@@ -189,6 +192,44 @@ protect nothing and would contradict the endpoint sitting next to it.
   Docker is absent in this machine, so the 21 testcontainers integration tests, `test_migration_chain.py`
   among them, skip, and neither the column width nor the cascade is proven against a real database
   here.
+
+## Findings the verifications left open
+
+Every item below was found by an independent verification **reading what the code does**, and none
+of them is blocking. They are listed with the reason they are not being fixed on the spot, because
+"non-blocking" is a scheduling decision and not a verdict.
+
+1. **The `asyncio.shield` is load-bearing and no test covers it.** Replacing both shield call sites
+   with a direct `await` leaves all four contract tests **green**. An independent double-cancel
+   experiment settled what that means: with the shield the row lands `failed`/
+   `TRELLO_EXPORT_INTERRUPTED`, without it the row stays `running`. So the shield is the difference
+   between a member getting an answer and waiting forever, and the suite would not notice its
+   removal. **This is the fourth assertion in this feature that accompanies the implementation
+   instead of guarding it**, and the reason is the same every time: the test was written by the same
+   pass that wrote the code. WU9 adds the double-cancel test.
+2. **The two terminal writes are unguarded while `_mark_interrupted`'s is not.** A fault in the
+   typed or generic handler's own `save` escapes the task, which the module docstring's unqualified
+   "every failure must land in it" does not admit. The asymmetry is the finding: the same author
+   guarded one write and not the other two. The sweep is the backstop, which is why it is not
+   blocking. WU9 guards them and rewrites that sentence.
+3. **`except TrelloExportError` dereferences `job` with no `None` guard.** Unreachable today — the
+   early return covers the only way `job` can be `None` — and latent. One line, in WU9.
+4. **The sweep aborts on a per-row fault**, leaving later rows for the next boot. Identical to
+   `recover_stuck_extractions` (`infrastructure/tasks/extraction_task.py:209`), so it is inherited
+   rather than introduced here. Accepted as is; WU9 may align both or leave both.
+5. **The age bound is a real wait.** A row stranded minutes before a restart is only swept at the
+   *next* boot, so the poller sees `running` in the meantime. Stated in the module and here; not a
+   defect, a cost this design chose.
+6. **N1's resolution assertion is tautological, and this corrects the record's own phrasing about
+   it.** `job.workspace_id == seeded.workspace_id` cannot fail, because the route stamps the path
+   workspace onto the row. What the test actually catches is a *refusal* regression — a project that
+   is not the workspace's only one being rejected — and no test covers a story resolved to the wrong
+   workspace. The earlier sentence here over-claimed what N1 bought; this is what it bought.
+7. **A slow but alive export at boot is swept.** The age bound cannot tell a live export from a dead
+   one. In one container it cannot happen — nothing of ours is running before startup finishes — so
+   this presupposes the multi-container case the record already declines to support.
+8. **The Postgres enum binding of `find_by_statuses` is unverified**: Docker is absent, so the
+   testcontainers integration tests skip and the query was exercised against SQLite only.
 
 ## Corrected claims
 
