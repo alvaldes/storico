@@ -37,7 +37,7 @@ Medido en el código:
 | D2 | Alcance del seed | **Cascada completa**: un link a una historia lleva también su proyecto. Las cuatro superficies tienen el `projectId` a mano, así que el tablero nunca recibe un nivel hijo sin su padre — la misma invariante que ya respetan `handleProjectChange`/`handleStoryChange` (`KanbanBoard.tsx:264-280`) y el reset por cambio de workspace. |
 | D3 | `?story` sin `?project` | El tablero **no** lo siembra: la invariante de D2 lo prohíbe, y resolverlo con `getStory` costaría una lectura extra sólo para un caso que ninguna superficie propia produce. Si además viene `?project`, ese nivel sí se aplica; si no, el tablero carga sin filtros. Es degradación honesta y queda documentada, no un estado a medias silencioso. |
 | D4 | El seed sobrevive la primera hidratación del workspace | El reset por cambio de workspace (`KanbanBoard.tsx:130-131`) hoy limpia los filtros cuando `workspaceId` pasa de `undefined` a un id real — que es exactamente el arranque de una sesión sin `currentWorkspace` persistido. Con un deep link, eso borraría la cascada sembrada antes de su primer fetch. Se corrige: el reset sólo dispara cuando el workspace anterior era uno real (`prevWorkspaceId !== undefined`). **Es un defecto que el deep link expone, no una preferencia.** |
-| D5 | El botón | Un link de verdad: `<a href>` renderizado a través del `render` de `Button` (patrón Base UI ya usado por los triggers del tablero), con icono + `t.kanban.view_in_kanban`. Dentro de las filas clicables de las listas frena la propagación, igual que los botones de editar/eliminar existentes, para que la navegación al detalle de la fila no compita con la del botón. |
+| D5 | El botón | Un link de verdad: `<a href>` renderizado a través del `render` de `Button` (patrón Base UI ya usado por los triggers del tablero), con icono + `t.kanban.view_in_kanban`. Dentro de las filas clicables de las listas frena la propagación, igual que los botones de editar/eliminar existentes, para que la navegación al detalle de la fila no compita con la del botón. **Corregido el 2026-10-08 por pedido del owner (WU4):** en la card del proyecto el link quedó afuera del menú donde viven Editar y Eliminar, y ahora es el primer ítem de ese menú (`DropdownMenuItem render={<a href/>}`, el mismo patrón que ya usaban `PublicUserMenu.tsx:66` y `nav-user.tsx:108`). Como el contenido del menú se portalea (`MenuPrimitive.Portal`), ahí la contención del click deja de aplicar: el test que la fijaba pasa a apuntar al trigger `⋯`, que es el control que sigue dentro de la card. |
 | D6 | Copy | `kanban.view_in_kanban` en `en.json`/`es.json`: `View in Kanban` / `Ver en Kanban`. Español neutro internacional por ADR-008; la paridad de claves ya está guardada por `frontend/src/i18n/__tests__/neutral-spanish.test.ts:152`. |
 | D7 | Sincronización de la URL | **No hay.** El seed es de una sola vez, en la entrada; después el usuario puede cambiar o limpiar filtros y la URL no se actualiza. Mantener la barra y la query en espejo es otra feature (y la primera que pediría un `replaceState` por cada cambio). |
 
@@ -87,6 +87,12 @@ Medido en el código:
 - [x] **WU3 — Specs y cierre** → delta en `319cbb4`. `openspec/specs/kanban-board/spec.md` gana el
   requisito "Kanban Deep-Link Entry" con cuatro escenarios, extiende "Kanban Page Route" y corrige
   la frase del cambio de workspace que se leía como si exigiera el defecto de D4.
+- [x] **WU4 — Corrección del owner: el link entra al menú de la card** → `d6140d8`. El control deja
+  de ser un botón suelto al lado del trigger `⋯` y pasa a ser el primer `DropdownMenuItem` del menú,
+  con el tratamiento de ícono + etiqueta de Editar y Eliminar. RED observado con los dos casos viejos
+  fallando sobre el link que ya no existe; GREEN: 2/2 en `ProjectsList.test.tsx`, y Base UI fuerza
+  `role="menuitem"` sobre el ítem aunque se renderice como `<a>`, así que el test consulta ese rol y
+  afirma la semántica de anchor por el `href`.
 
 ## Limits and follow-ups
 
@@ -125,15 +131,22 @@ commits:
 | `3054f51` | WU1 — entrada por deep link al tablero |
 | `dd90427` | WU2 — el botón en las cuatro superficies + `kanban.view_in_kanban` |
 | `319cbb4` | WU3 — delta de spec en `openspec/specs/kanban-board/spec.md` |
+| `e7e4e5f` | cierre del documento |
+| `d6140d8` | WU4 — corrección del owner: el link entra al menú de la card |
 
 Gates, corridos por un verificador independiente sobre el árbol commiteado, no por quien escribió el
 código:
 
-- `cd frontend && pnpm exec vitest run` → **79 archivos, 904 tests, 0 fallos**.
-- `cd frontend && pnpm exec tsc --noEmit` → **exit 0**.
-- `cd frontend && pnpm build` → **exit 0**, `[build] Complete!`. Ningún warning ni error nombra el
-  islote del tablero, `view_in_kanban` ni los props nuevos; los dos `[WARN] Astro.request.headers`
-  que aparecen son de la ruta de docs de Starlight, no de la app.
+- `cd frontend && pnpm exec vitest run` → **79 archivos, 904 tests, 0 fallos**. Corrido dos veces: una
+  sobre `319cbb4` y otra sobre `d6140d8`, porque el commit de corrección es posterior al primer pase.
+- `cd frontend && pnpm exec tsc --noEmit` → **exit 0** (las dos veces).
+- `cd frontend && pnpm build` → **exit 0**, `[build] Complete!` (las dos veces). Ningún warning ni error
+  nombra el islote del tablero, `view_in_kanban` ni los props nuevos; los dos
+  `[WARN] Astro.request.headers` que aparecen son de la ruta de docs de Starlight, no de la app.
+- **La navegación del ítem de menú se verificó contra la librería, no por fe**: en Base UI 1.8.0 el
+  `onClick` de `useMenuItemCommonProps` sólo emite el cierre del menú — el único `preventDefault()` de
+  ese archivo es el del `onKeyDown` de la barra espaciadora—, y `useButton` sólo previene el click
+  cuando el control está `disabled`. El default del `<a>` sigue su curso.
 - **Backend sin gates y sin cambios**: los tres commits de la feature no tocan ningún path de
   `backend/`. Los 17 archivos de backend que `git diff --name-only main...HEAD` lista vienen de
   commits anteriores de la rama, no de acá.
