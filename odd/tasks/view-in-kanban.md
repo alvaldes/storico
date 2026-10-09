@@ -1,6 +1,6 @@
 # ODD Feature: view-in-kanban
 
-> **Status**: in progress. Abre la única puerta de entrada que le faltaba a la cascada de filtros del
+> **Status**: cerrada. Abre la única puerta de entrada que le faltaba a la cascada de filtros del
 > tablero: hoy sólo se llega a un tablero filtrado eligiendo proyecto, historia y versión a mano
 > dentro del propio tablero.
 > **Created**: 2026-10-08 (pedido del owner de esa fecha)
@@ -72,15 +72,21 @@ Medido en el código:
 
 ## Tasks
 
-- [ ] **WU1 — Entrada por deep link al tablero (frontend)**. `kanban.astro` lee `project` y `story`
-  de `Astro.url.searchParams` y se los pasa al islote; `KanbanBoard` acepta
+- [x] **WU1 — Entrada por deep link al tablero (frontend)** → `3054f51`. `kanban.astro` lee `project`
+  y `story` de `Astro.url.searchParams` y se los pasa al islote; `KanbanBoard` acepta
   `initialProjectId`/`initialStoryId`, siembra la cascada con la regla de D2/D3 y corrige el reset de
-  workspace de D4. Tests primero (RED): seed por proyecto, seed por proyecto+historia, `?story`
-  huérfano ignorado, y el seed sobrevive la llegada del workspace.
-- [ ] **WU2 — El botón en las cuatro superficies (frontend)**. `ProjectsList`, `ProjectDetail`,
-  `StoriesList` y `StoryDetail` con el link de D5 y las claves de D6.
-- [ ] **WU3 — Specs y cierre**. Delta en `openspec/specs/kanban-board/spec.md` (requisito nuevo de
-  entrada por deep link + "Kanban Page Route" extendido), este documento cerrado con los commits.
+  workspace de D4. RED observado en tres de los cuatro casos nuevos (los props ignorados, y el reset
+  viejo comiéndose el seed en la transición `undefined → workspace-1`); GREEN: 51/51 en
+  `KanbanBoard.test.tsx` y `tsc --noEmit` en 0. La suite completa de frontend queda para el cierre.
+- [x] **WU2 — El botón en las cuatro superficies (frontend)** → `dd90427`. `ProjectsList` y
+  `StoriesList` con el link icon-only dentro de sus clusters (que ya frenan la propagación),
+  `ProjectDetail` y `StoryDetail` con el botón con etiqueta en su header, y `kanban.view_in_kanban`
+  en los dos catálogos. RED observado: seis casos nuevos fallando sobre el rol `link` inexistente;
+  GREEN: 123/123 en las seis suites tocadas (las cuatro del botón, `accessible-name-collisions` y
+  `src/i18n/__tests__`) y `tsc --noEmit` en 0.
+- [x] **WU3 — Specs y cierre** → delta en `319cbb4`. `openspec/specs/kanban-board/spec.md` gana el
+  requisito "Kanban Deep-Link Entry" con cuatro escenarios, extiende "Kanban Page Route" y corrige
+  la frase del cambio de workspace que se leía como si exigiera el defecto de D4.
 
 ## Limits and follow-ups
 
@@ -92,3 +98,51 @@ Medido en el código:
   inseleccionables — límite previo de `versioning-visibility`, no se toca acá. Un deep link a una de
   esas historias sembraría el nivel de historia sin que el select pueda mostrar su label.
 - El botón no pide confirmación ni muestra progreso: es un link, navega y listo.
+- **Dos desviaciones registradas, las dos en los tests de WU2.** (a) jsdom 29 mantiene `window.location`
+  no forjable (`configurable: false`, `writable: false`), así que `spyOn(window.location, 'assign')`
+  no se puede usar: los dos tests de contención del click testigo con un listener burbujeante en
+  `document`, que es fiel porque el handler de la fila corre mientras el click burbujea por el
+  contenedor de React — si el click escapa del link, el listener de `document` lo ve. (b) El caso de
+  `?story` huérfano pasó ya en RED (el default sin sembrar ya ignoraba el id), así que no aportó señal
+  de fallo; queda como guarda que fija la regla después de la implementación.
+- **Pendiente de limpieza, fuera del alcance de esta feature**: hay un
+  `console.log('DEBUG-HTML', …)` commiteado en el describe WU20 de
+  `frontend/src/components/react/__tests__/KanbanBoard.test.tsx`. Sale por stderr en cada corrida de
+  la suite. No se tocó: es un cambio sin relación con esta feature y merece su propio commit.
+- **La página de docs del tablero no menciona los filtros ni el botón.**
+  `frontend/src/content/docs/{en,es}/docs/kanban.md` (81 líneas cada una) describe el tablero sin
+  nombrar la cascada, que es una deuda anterior de `versioning-visibility`; documentar sólo el botón
+  dejaría la mitad del camino adentro. Se deja como follow-up conjunto, no como parte de WU3.
+
+## Closure
+
+Rama `feat/versioning-visibility` (decisión del owner: la cascada de filtros sólo existe acá). Cuatro
+commits:
+
+| Commit | Unidad |
+|--------|--------|
+| `f42107d` | plan (este documento) |
+| `3054f51` | WU1 — entrada por deep link al tablero |
+| `dd90427` | WU2 — el botón en las cuatro superficies + `kanban.view_in_kanban` |
+| `319cbb4` | WU3 — delta de spec en `openspec/specs/kanban-board/spec.md` |
+
+Gates, corridos por un verificador independiente sobre el árbol commiteado, no por quien escribió el
+código:
+
+- `cd frontend && pnpm exec vitest run` → **79 archivos, 904 tests, 0 fallos**.
+- `cd frontend && pnpm exec tsc --noEmit` → **exit 0**.
+- `cd frontend && pnpm build` → **exit 0**, `[build] Complete!`. Ningún warning ni error nombra el
+  islote del tablero, `view_in_kanban` ni los props nuevos; los dos `[WARN] Astro.request.headers`
+  que aparecen son de la ruta de docs de Starlight, no de la app.
+- **Backend sin gates y sin cambios**: los tres commits de la feature no tocan ningún path de
+  `backend/`. Los 17 archivos de backend que `git diff --name-only main...HEAD` lista vienen de
+  commits anteriores de la rama, no de acá.
+- Los dos catálogos de i18n siguen con **764 claves cada uno y cero diferencias** (verificado
+  aplanando ambos archivos desde el commit, no desde el working tree).
+- Verificado además por lectura del código commiteado: el seed sólo vive en los `useState` (ningún
+  efecto lo reaplica, no se agregó ninguna lectura extra), la guarda del reset distingue primera
+  llegada de switch real, y los cuatro `href` son exactamente las dos plantillas de D5.
+
+Lo que la verificación **no** cubrió, dicho sin adornos: no hubo ejercicio en navegador —el deep link
+y la contención del click se sostienen en la lectura del código commiteado más los tests—, y el RED de
+WU1/WU2 lo observó el worker que implementó, no el verificador.
