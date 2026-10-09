@@ -232,6 +232,12 @@ one surface is not a second, differing answer to where a card came from. The ico
 label rule and the tooltip text MUST come from **one shared definition** both surfaces consume,
 rather than from two implementations that happen to agree today.
 
+The icon each surface draws MUST be the project's **own** icon when it has one, resolved through
+the application's own icon renderer, with that renderer's default standing in when it does not — the
+same default the project form seeds, so an icon-less project agrees with the rest of the application
+instead of getting a second opinion. A story has no icon and MUST NOT be made to share the project's:
+the story keeps its own fixed mark.
+
 The label rules differ per surface, deliberately and only where they must:
 
 - the **project** shows its name, truncated by a character cap that is **smaller on the card chip
@@ -263,6 +269,21 @@ popup would travel with the pointer.
 - **GIVEN** a task whose response carries a project label, a story id, labels and a version number
 - **WHEN** its card renders on the board
 - **THEN** its metadata row shows the project name, the story's short identifier, the version and its labels, in that order
+
+#### Scenario: A project's own icon is what the chips and rows draw
+
+- **GIVEN** a project whose stored icon differs from the renderer's default
+- **WHEN** a card of that project and the project's row in the select render
+- **THEN** both draw that project's icon, not the default
+- **AND** changing the project's stored icon changes both
+
+#### Scenario: A project without an icon, and a story, keep their own marks
+
+- **GIVEN** a project whose stored icon is empty, and any story
+- **WHEN** their chips and rows render
+- **THEN** the project draws the renderer's default rather than nothing
+- **AND** the project's label and tooltip are unaffected
+- **AND** the story draws its own mark, never the project's
 
 #### Scenario: A hover reveals the value without a perceptible pause
 
