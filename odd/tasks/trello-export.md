@@ -97,20 +97,39 @@ protect nothing and would contradict the endpoint sitting next to it.
 
 ## Tasks
 
+> **WU3 split when its size was measured, and the numbering after it moved.** The unit as written
+> came in at roughly **2,150 added lines** — past the ~900 the note below had set — so it landed as
+> two commits along a seam the parent then checked file by file: everything under `domain/`,
+> `infrastructure/` and `application/`, the migration, the error codes with their frontend half, and
+> the plan and job tests are WU3; the routes, the schemas, the tests that drive them and the
+> generated pages are WU4. `api/routes/export.py` deliberately was not split across the two: the
+> Markdown export adopting the shared dependency rule rides with the routes, because that is where
+> the second consumer of the rule arrives.
+
 - [x] **WU1 — the credentials**: `workspace_trello_configs`, migration `0030`, repository and domain
   port, the admin-only `GET`/`PUT .../settings/trello` plus the member-readable `.../status`, the
   cipher wiring, and the secrets that must never reach a log (backend + tests + `docs/api.md`).
 - [x] **WU2 — the port and the adapter**: board, five status lists, cards with labels, dependency
   checklists, rate window, retry and backoff, typed errors, `py-trello` pinned (backend + tests).
-- [ ] **WU3 — the job and the routes**: `trello_exports` + migration `0031`,
-  `POST …/export/trello` → `202`, `GET …/export/trello/{export_id}`, the scope resolver, and
-  current-version-only export (backend + tests).
-- [ ] **WU4 — the UI**: scope selector and export on `/export`, the credentials form in the
-  workspace settings page, polling, the board link, both locales and the new error codes
-  (frontend + tests).
-- [ ] **WU5 — specs and documents**: the OpenSpec capability, `docs/api.md`'s remaining rows, and the
-  two doc-drift lines that already assert the connector exists (`docs/architecture.md:197`, `:203`,
-  `docs/deployment.md:389`) — corrected to describe what actually landed.
+- [x] **WU3 — the export job**: `trello_exports`, migration `0031`, the entity, port and repository,
+  the pure plan builder, the one dependency rule, the scope resolver, the runner that keeps every
+  failure in the job row, and the seven failure codes with their frontend half (`a21c4e4`).
+- [x] **WU4 — the routes**: `POST …/export/trello` → `202` open to any member,
+  `GET …/export/trello/{export_id}`, `409` for a workspace with no credentials, the schemas,
+  `docs/api.md` and the regenerated reference pages (`32e7cf9`).
+- [ ] **WU5 — the UI**: scope selector and export on `/export`, the credentials form in the
+  workspace settings page, polling, the board link, both locales (frontend + tests).
+- [ ] **WU6 — specs and documents**: the OpenSpec capability and the two doc-drift lines that already
+  assert the connector exists (`docs/architecture.md:197`, `:203`, `docs/deployment.md:389`) —
+  corrected to describe what actually landed.
+- [ ] **WU7 — invert the failure-code mapping.**
+  `application/export/export_workspace_to_trello.py:32` imports `api/errors.py`, which imports
+  FastAPI — **the repository's first and only application→api import**, introduced here and
+  documented in that module's docstring as deliberate. The reason it gives is real (one mapping, so
+  the job row and the HTTP envelope cannot disagree), but it does not need the coupling: each
+  exception can carry its code as a class attribute, with `api/error_codes.py` keeping the literals
+  the frontend guard greps for and a test pinning the two together. Small, and worth doing before
+  this branch becomes a pull request.
 
 ## Non-goals
 
@@ -137,6 +156,11 @@ protect nothing and would contradict the endpoint sitting next to it.
   own exports, and nothing coordinates them.
 - `py-trello` is a new backend dependency with its own release cadence. It is pinned, and pinning it
   is part of WU2 rather than a follow-up.
+- **The export trigger has no rate tier of its own.** `POST …/export/trello` lands on the default
+  tier, like every other POST, while the extraction has its own `10/min` bucket
+  (`api/rate_limit.py:126`). A flood of triggers is a flood of background jobs holding threads
+  against an external API, so an export tier is worth adding — recorded here because `rate_limit.py`
+  was not in this unit's surfaces and the omission is not a defect in what landed.
 - **WU1's non-blocking review findings, recorded rather than fixed.**
   `TrelloConfigStatusResponse.missing` is an unconstrained `list[str]`, bounded by the route's logic
   rather than by the schema. `_SettingsWithoutAMasterKey` is imported across test modules — fine with
@@ -154,3 +178,5 @@ protect nothing and would contradict the endpoint sitting next to it.
 | --- | --- | --- |
 | WU1 — the credentials | `81e37ee` | RED observed first: both new test files failed at collection with `ModuleNotFoundError: No module named 'storico.domain.entities.workspace_trello_config'`; GREEN `22 passed`. Re-run with the LLM-config sibling suites alongside: `53 passed`, which is what proves the shared `__init__` exports were not broken. **Full backend suite on the verified tree: `1364 passed, 45 skipped`** — all 45 environmental (21 × Docker daemon unreachable for testcontainers, 22 × live Qdrant/Ollama opt-ins, 2 × live Ollama chat), so no skip hides a feature path. `ruff check` clean; `ruff format --check` 286 files; `alembic heads` → `0030 (head)`, single. Migration inspected: one `create_table`, `down_revision = "0029"`, `downgrade()` drops exactly what `upgrade()` creates, and every shared column matches `workspace_llm_configs` (`Uuid` PK, unique `Uuid` FK `ondelete="CASCADE"`, `String(1000)`, `DateTime(timezone=True)`). **The load-bearing question was answered by construction, not by assertion**: with `_encrypt` replaced by a pass-through, six tests go red — `tests/test_unit/test_workspace_trello_config_repository.py:87,90` (`startswith("v1:")`), `:147,150` (a re-encrypt must differ from the first ciphertext), `tests/test_api/test_workspace_trello_settings.py:93,95`, `:116`, `:132,133`, `:211-212` (a keyless write must answer `500`, which a pass-through cannot trigger). **A docstring was corrected after verification**: `repositories/workspace_trello_config_repository.py:_to_domain` claimed a row written before encryption existed could be read here, and no such row can exist in a table `0030` creates — comment-only change, with the focused suite and both ruff gates re-run green before the commit. Boundary: 21 paths, all inside the declared surfaces (the delegation under-described the six `__init__.py` files as "the two", and those six are registration only). |
 | WU2 — the port and the adapter | `b883425` | RED observed first: the adapter suite failed at collection with `ImportError: cannot import name 'TrelloBoardPlan' from 'storico.domain.entities'`; GREEN `24 passed`. **Full backend suite: `1388 passed, 45 skipped`** (base 1364 + 24 new; the 45 skips are the same environmental set WU1 measured). `ruff check` clean; `ruff format --check` 291 files. **The decisive check was not the suite but the library**: the tests drive an injected fake, and a fake is only as strict as its author made it, so a call real `py-trello` would reject still passes. Audited against the installed 0.20.1 with `inspect`: `List.add_card(labels=...)` **does** send `idLabels`, and it builds that string from `label.id` (`trellolist.py:103-106`), so it needs **objects** — passing strings raises `AttributeError` at runtime, before any request. The adapter passes the `Label` objects `Board.add_label` returns (`trello_adapter.py:170-178`, `:190-195`) and the test asserts identity, so csv2trello's gap is closed rather than inherited. Every other call was matched against the installed signature (`TrelloClient(api_key, api_secret)`, `Board.add_label(name, color)`, `Board.add_list(name, pos)`, `Card.add_checklist(title, items)`, `TrelloClient.add_board(...)`) with no mismatch. Blocking audit: every request call goes through `_call` → `asyncio.to_thread`, every wait through `asyncio.sleep`. Retry: `_MAX_ATTEMPTS=3`, `2**(attempt-1)` = 1 s then 2 s, only for the retryable class, a quota refusal never retried, each attempt counted against the window. Partial failure: all four post-board error kinds carry `board_ref`. **Two claims were corrected after verification, one the parent's and one the writer's.** The adapter docstring and `TrelloExportError`'s rationale asserted that py-trello embeds `key`/`token` in the error URL; the installed 0.20.1 passes them in a separate `params` dict (`trelloclient.py:243-253`), so the messages are already credential-free. The `raise from None` policy stayed, now justified by what it actually buys — a chained cause reaches every traceback a logger prints without passing through anything this module controls. And the credential-hygiene test could not have caught a chaining regression at all, because its blob reads `str`, `repr` and log records and never the cause; two assertions were added and **proven load-bearing by removing ` from None` and watching it go red at `tests/test_unit/test_trello_adapter.py:690`**, then restoring the file byte-identical. |
+| WU3 — the export job | `a21c4e4` | RED observed first: all three new test files failed at collection with `ModuleNotFoundError: No module named 'storico.domain.entities.trello_export'`; the frontend guard went red the moment the backend registry grew (mirror missing seven keys, count pin 45 ≠ 52). GREEN: `60 passed` focused, of which **12 are the pre-existing Markdown export tests** — that is the proof the extracted dependency rule changed nothing. `ruff check` clean; `ruff format --check` 304 files; `alembic heads` → `0031 (head)`, single. Design decisions worth keeping: `project_id`/`user_story_id` are **deliberately FK-less**, because a project deleted while its export is being polled must not cascade the row away — the job row survives pointing at something gone, which is the honest state. The migration creates and drops its own enum, following the extraction's pattern. Two test bugs were found and fixed while going green, both of the kind where the test agrees with itself: cards asserted in column 0 while seeded elsewhere, and two tasks sharing a title masking the current-version assertion. **One finding the parent added after reading the code, not the report:** `application/export/export_workspace_to_trello.py:32` imports `api/errors.py`, and `grep` across `application/` and `domain/` shows it is the repository's **only** application→api import — the writer documented it as deliberate and its reason is real, but it drags FastAPI into the application layer, so it became WU7 rather than a footnote. |
+| WU4 — the routes | `32e7cf9` | `POST` answers `202` and `GET` answers the job, open to any member (D7), and a workspace with no credentials answers **`409`** rather than starting a job that cannot finish — the conflict-of-state posture the repo already takes for `ACCOUNT_DELETE_BLOCKED`, chosen over `400` and stated rather than assumed. The three red gates before this commit were the generated reference pages (regenerated: 1744 lines each) and `frontend/src/i18n/__tests__/export-copy.test.ts`. **That guard was changed deliberately, and the change is principled rather than convenient:** it asserts that no catalog string names a retired export *format*, which was the same sentence as "names Trello" while Trello was only a retired format — and stopped being the same sentence when the connector became real. The scan now skips the `errorCodes.` namespace, whose strings describe failures of something that exists, and the header says why. Everything else in the catalog is still scanned in full. Parent's own re-run: `vitest` on the guard and the registry mirror → 12 passed; `tests/test_api_reference.py` → 5 passed. |
