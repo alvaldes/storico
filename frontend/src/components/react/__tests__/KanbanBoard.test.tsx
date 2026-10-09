@@ -52,6 +52,12 @@ import type { StoryVersion, UserStory } from '@/types/story';
 // board's actual fetch path (store → `listTasksByWorkspace`) instead of stubbing it.
 const realFetchTasksForWorkspace = useTaskStore.getState().fetchTasksForWorkspace;
 
+// The story select's row for the `story-1` fixture every describe shares: the
+// story's id, then the human label shortened by the one cap both surfaces use.
+// Composed here once so a change to either rule fails in one place instead of
+// four — and note the id is never truncated, only the label after it.
+const STORY_OPTION_LABEL = 'story-1 · user: to log...';
+
 const mockTasks: Task[] = [
   {
     id: 'task-1',
@@ -529,7 +535,7 @@ describe('KanbanBoard — cascade filters', () => {
       }),
     );
 
-    await chooseOption(user, t.kanban.filter_story, 'user: to log in');
+    await chooseOption(user, t.kanban.filter_story, STORY_OPTION_LABEL);
 
     // Most specific wins: the project scope is dropped, not sent alongside —
     // two scopes are the backend's 422.
@@ -546,7 +552,7 @@ describe('KanbanBoard — cascade filters', () => {
 
     render(<KanbanBoard locale="en" />);
     await chooseOption(user, t.kanban.filter_project, 'Alpha');
-    await chooseOption(user, t.kanban.filter_story, 'user: to log in');
+    await chooseOption(user, t.kanban.filter_story, STORY_OPTION_LABEL);
     await waitFor(() =>
       expect(listTasksByWorkspace).toHaveBeenLastCalledWith('workspace-1', {
         storyId: 'story-1',
@@ -915,7 +921,7 @@ describe('KanbanBoard — board loading levels', () => {
 
     const gate = deferred<StoryVersion[]>();
     vi.mocked(listVersions).mockReturnValue(gate.promise);
-    await chooseOption(user, t.kanban.filter_story, 'user: to log in');
+    await chooseOption(user, t.kanban.filter_story, STORY_OPTION_LABEL);
 
     const versionTrigger = await screen.findByRole('combobox', { name: t.kanban.filter_version });
     expect(within(versionTrigger).getByLabelText(t.common.loading)).toBeInTheDocument();
@@ -1408,8 +1414,13 @@ describe('KanbanBoard — context treatment on chips and selects (WU17)', () => 
 
   /** The card-cap label the project chip must show. */
   const cardProjectLabel = shortProjectTitle(LONG_PROJECT);
+  // One cap for both surfaces now — the owner asked for the badge's short text
+  // inside the select too, which reverses D21's wider dropdown cap.
+  const selectProjectLabel = shortProjectTitle(LONG_PROJECT);
+  // This describe's story carries the full STORY_ID, so its row starts with
+  // that story's short id, then the shortened label.
+  const selectStoryLabel = `${shortUUID(STORY_ID)} · ${shortProjectTitle('user: to log in')}`;
   /** The wider select-cap label (D21) the project options must show. */
-  const selectProjectLabel = shortProjectTitle(LONG_PROJECT, 32);
 
   const longProject: Project = {
     id: 'project-1',
@@ -1596,7 +1607,7 @@ describe('KanbanBoard — context treatment on chips and selects (WU17)', () => 
 
   // ── The cascade's selects (D16/D18/D21) ──
 
-  it('gives the project select options the folder icon, the wider truncation cap and the full name as a native title (D18/D21)', async () => {
+  it('gives the project select options the folder icon, the badge\'s short text and the full name as a native title (D18)', async () => {
     const user = userEvent.setup();
     vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
     // The fetch-path assertions need the real store action (as the cascade
@@ -1608,15 +1619,16 @@ describe('KanbanBoard — context treatment on chips and selects (WU17)', () => 
 
     await user.click(await screen.findByRole('combobox', { name: t.kanban.filter_project }));
 
-    // D21: the option truncates at the select's wider cap, not at the card's
-    // 12 characters — a dropdown row must stay choosable without hovering.
+    // The option carries the same short text the card chip does: seeing
+    // ``Infrastructure...`` on the card and the full name in the dropdown for
+    // the same project read as two different projects.
     const option = await screen.findByRole('option', { name: selectProjectLabel });
-    expect(selectProjectLabel).not.toBe(cardProjectLabel);
+    expect(selectProjectLabel).toBe(cardProjectLabel);
     expect(option).toHaveAttribute('title', LONG_PROJECT);
     expect(option.querySelector('.lucide-folder-kanban')).not.toBeNull();
   });
 
-  it('gives the story select options the fingerprint icon and the human label, with the sentence as a native title (D16/D18)', async () => {
+  it('gives the story select options the fingerprint icon, its short id and the sentence as a native title (D18)', async () => {
     const user = userEvent.setup();
     vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
 
@@ -1625,10 +1637,16 @@ describe('KanbanBoard — context treatment on chips and selects (WU17)', () => 
 
     await user.click(await screen.findByRole('combobox', { name: t.kanban.filter_story }));
 
-    // D16: the human label, not the short id — the select must stay usable
-    // for choosing.
-    const option = await screen.findByRole('option', { name: 'user: to log in' });
-    expect(option.textContent).not.toContain(shortUUID(STORY_ID));
+    // The owner's call of 2026-10-08: the short id *and* the shortened human
+    // label, so a story reads the same way here and on the board's card. The id
+    // itself is never truncated — cutting it would cost the two characters that
+    // separate two stories of one actor.
+    const option = await screen.findByRole('option', { name: selectStoryLabel });
+    // The id the fixture carries (`story-1`, which `shortUUID` passes through
+    // unchanged because it is not a uuid) plus the shortened label — the two
+    // halves the owner asked for, in that order.
+    expect(option.textContent).toContain(shortUUID(STORY_ID));
+    expect(option.textContent).toContain('user: to log...');
     expect(option).toHaveAttribute('title', SENTENCE);
     expect(option.querySelector('.lucide-fingerprint')).not.toBeNull();
   });
@@ -1655,7 +1673,7 @@ describe('KanbanBoard — context treatment on chips and selects (WU17)', () => 
 
     // …and the story trigger's is the full sentence, once a story is chosen.
     await chooseOption(user, t.kanban.filter_project, selectProjectLabel);
-    await chooseOption(user, t.kanban.filter_story, 'user: to log in');
+    await chooseOption(user, t.kanban.filter_story, selectStoryLabel);
     await waitFor(() =>
       expect(listTasksByWorkspace).toHaveBeenLastCalledWith('workspace-1', {
         storyId: STORY_ID,

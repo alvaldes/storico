@@ -25,13 +25,17 @@ import { shortProjectTitle, shortUUID } from '@/lib/utils';
  * surfaces consume these functions.
  */
 
-/** The project name's character cap on the card chip (the owner's, `0fa72d3`). */
-export const CARD_PROJECT_CAP = 12;
-/** The wider cap the cascade's select options pass through `maxCharacters`
- * (D21): a dropdown row is far wider than a card chip, and truncating it to
- * the card's 12 characters would make choosing impossible without hovering
- * every option. */
-export const SELECT_PROJECT_CAP = 32;
+/** How much of a project or story label stays visible before the ellipsis.
+ *
+ * One cap for both surfaces, which is the owner's call of 2026-10-08: the card
+ * chip and the select's rows must show the same short text, because seeing
+ * ``Version Test...`` on a card and ``Version Test LongTitle`` in the dropdown
+ * for the same project reads as two different projects. It reverses D21, which
+ * gave the select a wider cap of its own on the argument that a truncated
+ * dropdown row is choosable only by hovering every option; the owner weighed
+ * that and chose the shorter, consistent row — the tooltip carries the rest,
+ * and it opens without a perceptible pause since `e8fe5a1`. */
+export const CONTEXT_LABEL_CAP = 12;
 
 /** What one surface shows for a project or a story: the icon — a **name plus
  * a fallback component** for `IconDisplay` (D23 of feature
@@ -56,12 +60,12 @@ export interface ContextTreatment {
  * `FolderKanban`, which is what the rest of the app already draws for a
  * project without an icon (`ProjectForm` seeds `'folder-kanban'`), so the
  * fallback is not a second opinion (D22). The full name in the tooltip, the
- * name truncated at `maxCharacters` as the label. The card calls it with the
- * default (its 12-character cap); the select's options and trigger pass
- * `SELECT_PROJECT_CAP`. */
+ * name truncated at `maxCharacters` as the label. Both surfaces take the
+ * default cap now: the select used to pass a wider one of its own (D21), and
+ * the owner asked for the badge's short text on both. */
 export function projectTreatment(
   name: string,
-  maxCharacters: number = CARD_PROJECT_CAP,
+  maxCharacters: number = CONTEXT_LABEL_CAP,
   iconName: string | null = null,
 ): ContextTreatment {
   return {
@@ -83,15 +87,23 @@ export function storyCardTreatment(storyId: string, sentence: string | null): Co
   return { iconName: null, fallback: Fingerprint, label: shortUUID(storyId), tooltip: sentence ?? storyId };
 }
 
-/** The story treatment in the cascade's select: the human label
- * ``${actor}: ${feature}`` — not the short id, which a list of uuid prefixes
- * is not choosable by (D16) — and the full sentence in the tooltip, falling
- * back to the label when the sentence is missing. */
+/** The story treatment in the cascade's select: the story's short id, then the
+ * human ``${actor}: ${feature}`` label shortened by the shared cap, and the
+ * full sentence in the tooltip, falling back to the label when the sentence is
+ * missing.
+ *
+ * The id is the owner's addition of 2026-10-08 (``01a10dee · UI designer:...``)
+ * so a story reads the same way on the board's card and in the dropdown; it
+ * amends D16, which had kept the select on the human label alone. The id is not
+ * truncated — it is already short, and cutting it would make two stories of one
+ * actor share six characters *and* lose the two that separate them. */
 export function storySelectTreatment(story: {
+  id: string;
   actor: string;
   feature: string;
   rawText: string | null;
 }): ContextTreatment {
   const label = `${story.actor}: ${story.feature}`;
-  return { iconName: null, fallback: Fingerprint, label, tooltip: story.rawText ?? label };
+  const shortLabel = `${shortUUID(story.id)} · ${shortProjectTitle(label, CONTEXT_LABEL_CAP)}`;
+  return { iconName: null, fallback: Fingerprint, label: shortLabel, tooltip: story.rawText ?? label };
 }

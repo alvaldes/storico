@@ -6,7 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { IconDisplay } from '@/components/ui/icon-display';
 import { useTranslations, type Locale } from '@/i18n/utils';
-import { CARD_PROJECT_CAP, projectTreatment, storyCardTreatment } from '@/lib/context-treatment';
+import {
+  CONTEXT_LABEL_CAP,
+  projectTreatment,
+  storyCardTreatment,
+} from '@/lib/context-treatment';
 import { useTaskStore } from '@/stores/taskStore';
 import type { Task } from '@/types/task';
 
@@ -29,7 +33,7 @@ export function KanbanCard({ task, index, locale }: KanbanCardProps) {
   // capped project list. A null icon draws the folder fallback (D22) and
   // touches neither the label nor the tooltip.
   const projectChip = task.projectName
-    ? projectTreatment(task.projectName, CARD_PROJECT_CAP, task.projectIcon ?? null)
+    ? projectTreatment(task.projectName, CONTEXT_LABEL_CAP, task.projectIcon ?? null)
     : null;
   const storyChip = task.storyId
     ? storyCardTreatment(task.storyId, task.storyRawText ?? null)

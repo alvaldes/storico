@@ -238,15 +238,18 @@ same default the project form seeds, so an icon-less project agrees with the res
 instead of getting a second opinion. A story has no icon and MUST NOT be made to share the project's:
 the story keeps its own fixed mark.
 
-The label rules differ per surface, deliberately and only where they must:
+The label rules are:
 
-- the **project** shows its name, truncated by a character cap that is **smaller on the card chip
-  than in the select's options**, because a dropdown row must stay choosable without hovering every
-  option;
-- the **story** shows its short identifier on the card — the same short identifier the story list and
-  the story detail surface show, reused from that one implementation — and its human label
-  `${actor}: ${feature}` in the select, because a list of identifier prefixes is not something a
-  person can choose from.
+- the **project** shows its name, truncated by **one character cap shared by both surfaces**. A
+  surface MUST NOT apply a wider cap of its own: the same project reading `Version Test...` on a card
+  and `Version Test LongTitle` in the dropdown reads as two different projects. What the cap hides
+  stays reachable on hover, which is what makes the shorter text safe.
+- the **story** shows its short identifier — the same one the story list and the story detail surface
+  show, reused from that one implementation — followed in the select by its human label
+  `${actor}: ${feature}`, itself shortened by the shared cap. A list of identifier prefixes alone is
+  not something a person can choose from, and a label alone loses the one field that ties the row to
+  the card. The identifier MUST NOT be truncated: it is already short, and shortening it would cost
+  the characters that separate two stories of the same actor.
 
 Every one of those chips and rows MUST reveal its full value on hover: the project's **full name**,
 the story's **full sentence**. The tooltip MUST open as the pointer settles on the chip, with no
@@ -317,9 +320,17 @@ popup would travel with the pointer.
 
 - **GIVEN** a project whose stories have actor and feature text
 - **WHEN** the user opens the story select
-- **THEN** each option shows the story's `${actor}: ${feature}` label with its icon, not its short identifier
+- **THEN** each option shows the story's short identifier followed by its `${actor}: ${feature}` label, with its icon
+- **AND** the label is shortened by the same cap the card chip uses
+- **AND** the identifier itself is shown whole
 - **AND** each option reveals the story's full sentence on hover
-- **AND** the option's visible label is truncated at the select's wider cap, not the card chip's
+
+#### Scenario: One project reads the same on both surfaces
+
+- **GIVEN** a project whose name is longer than the shared cap
+- **WHEN** its card chip and its row in the select render
+- **THEN** both show the same shortened text, not one at full length
+- **AND** both reveal the full name on hover
 
 #### Scenario: The card and the select consume one definition
 

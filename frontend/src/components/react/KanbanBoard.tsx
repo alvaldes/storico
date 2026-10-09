@@ -15,8 +15,8 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { IconDisplay } from '@/components/ui/icon-display';
 import {
+  CONTEXT_LABEL_CAP,
   projectTreatment,
-  SELECT_PROJECT_CAP,
   storySelectTreatment,
   type ContextTreatment,
 } from '@/lib/context-treatment';
@@ -335,7 +335,7 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     () => [
       { label: t.stories.allProjects, value: null, title: null, treatment: null },
       ...projects.map((p) => {
-        const treatment = projectTreatment(p.name, SELECT_PROJECT_CAP, p.icon ?? null);
+        const treatment = projectTreatment(p.name, CONTEXT_LABEL_CAP, p.icon ?? null);
         return { label: treatment.label, value: p.id, title: treatment.tooltip, treatment };
       }),
     ],
@@ -378,7 +378,7 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     ? (projects.find((p) => p.id === projectFilter) ?? null)
     : null;
   const projectTriggerTooltip = selectedProject
-    ? projectTreatment(selectedProject.name, SELECT_PROJECT_CAP).tooltip
+    ? projectTreatment(selectedProject.name, CONTEXT_LABEL_CAP).tooltip
     : null;
   const selectedStory = storyFilter
     ? (storyOptions.find((s) => s.id === storyFilter) ?? null)
