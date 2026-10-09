@@ -37,6 +37,14 @@ import { shortProjectTitle, shortUUID } from '@/lib/utils';
  * and it opens without a perceptible pause since `e8fe5a1`. */
 export const CONTEXT_LABEL_CAP = 12;
 
+/** The mark each kind draws when it has no icon of its own — a project without
+ * one, and a story, which never has one. Exported because the select's trigger
+ * needs the kind's mark even with nothing selected yet, and a second
+ * ``Fingerprint`` import in the board would be a second definition of the same
+ * decision. */
+export const PROJECT_KIND_ICON: LucideIcon = FolderKanban;
+export const STORY_KIND_ICON: LucideIcon = Fingerprint;
+
 /** What one surface shows for a project or a story: the icon — a **name plus
  * a fallback component** for `IconDisplay` (D23 of feature
  * ``kanban-project-icons``: the project's icon is a kebab-case name from the
@@ -70,7 +78,7 @@ export function projectTreatment(
 ): ContextTreatment {
   return {
     iconName,
-    fallback: FolderKanban,
+    fallback: PROJECT_KIND_ICON,
     label: shortProjectTitle(name, maxCharacters),
     tooltip: name,
   };
@@ -84,7 +92,7 @@ export function storyCardTreatment(storyId: string, sentence: string | null): Co
   // The story has no icon name: `'fingerprint'` is absent from `IconDisplay`'s
   // map, so the fingerprint must stay a fallback, never a name (D23) — a name
   // here would silently draw a folder.
-  return { iconName: null, fallback: Fingerprint, label: shortUUID(storyId), tooltip: sentence ?? storyId };
+  return { iconName: null, fallback: STORY_KIND_ICON, label: shortUUID(storyId), tooltip: sentence ?? storyId };
 }
 
 /** The story treatment in the cascade's select: the story's short id, then the
@@ -105,5 +113,10 @@ export function storySelectTreatment(story: {
 }): ContextTreatment {
   const label = `${story.actor}: ${story.feature}`;
   const shortLabel = `${shortUUID(story.id)} · ${shortProjectTitle(label, CONTEXT_LABEL_CAP)}`;
-  return { iconName: null, fallback: Fingerprint, label: shortLabel, tooltip: story.rawText ?? label };
+  return {
+    iconName: null,
+    fallback: STORY_KIND_ICON,
+    label: shortLabel,
+    tooltip: story.rawText ?? label,
+  };
 }

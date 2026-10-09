@@ -1607,7 +1607,7 @@ describe('KanbanBoard — context treatment on chips and selects (WU17)', () => 
 
   // ── The cascade's selects (D16/D18/D21) ──
 
-  it('gives the project select options the folder icon, the badge\'s short text and the full name as a native title (D18)', async () => {
+  it("gives the project select options the folder icon, the badge's short text and the full name in our own tooltip", async () => {
     const user = userEvent.setup();
     vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
     // The fetch-path assertions need the real store action (as the cascade
@@ -1624,11 +1624,20 @@ describe('KanbanBoard — context treatment on chips and selects (WU17)', () => 
     // the same project read as two different projects.
     const option = await screen.findByRole('option', { name: selectProjectLabel });
     expect(selectProjectLabel).toBe(cardProjectLabel);
-    expect(option).toHaveAttribute('title', LONG_PROJECT);
     expect(option.querySelector('.lucide-folder-kanban')).not.toBeNull();
+    // A native `title` is what this used to rely on, and it is why the owner
+    // reported seeing no hover at all: the browser shows it late, in its own
+    // style, and a row cut to a dozen characters cannot be read without it. The
+    // row now raises our tooltip, the same one the chips use.
+    expect(option).not.toHaveAttribute('title');
+    // The option *is* the tooltip's trigger — a wrapper span inside it swallowed
+    // the click and the row stopped selecting, so the hover lives on the row.
+    expect(option).toHaveAttribute('data-base-ui-tooltip-trigger');
+    await user.hover(option);
+    expect(await screen.findByText(LONG_PROJECT)).toBeInTheDocument();
   });
 
-  it('gives the story select options the fingerprint icon, its short id and the sentence as a native title (D18)', async () => {
+  it('gives the story select options the fingerprint icon, its short id and the sentence in our own tooltip', async () => {
     const user = userEvent.setup();
     vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
 
@@ -1647,7 +1656,10 @@ describe('KanbanBoard — context treatment on chips and selects (WU17)', () => 
     // halves the owner asked for, in that order.
     expect(option.textContent).toContain(shortUUID(STORY_ID));
     expect(option.textContent).toContain('user: to log...');
-    expect(option).toHaveAttribute('title', SENTENCE);
+    expect(option).not.toHaveAttribute('title');
+    expect(option).toHaveAttribute('data-base-ui-tooltip-trigger');
+    await user.hover(option);
+    expect(await screen.findByText(SENTENCE)).toBeInTheDocument();
     expect(option.querySelector('.lucide-fingerprint')).not.toBeNull();
   });
 

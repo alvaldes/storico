@@ -16,7 +16,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { IconDisplay } from '@/components/ui/icon-display';
 import {
   CONTEXT_LABEL_CAP,
+  PROJECT_KIND_ICON,
   projectTreatment,
+  STORY_KIND_ICON,
   storySelectTreatment,
   type ContextTreatment,
 } from '@/lib/context-treatment';
@@ -56,7 +58,8 @@ interface InvalidDropToast {
 interface ContextSelectItem {
   label: string;
   value: string | null;
-  title: string | null;
+  /** The shared treatment, which carries the icon and the tooltip's full value;
+   * `null` for the "All …" rows that name no project or story. */
   treatment: ContextTreatment | null;
 }
 
@@ -333,10 +336,10 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   // project, through the same treatment.
   const projectItems = useMemo<ContextSelectItem[]>(
     () => [
-      { label: t.stories.allProjects, value: null, title: null, treatment: null },
+      { label: t.stories.allProjects, value: null, treatment: null },
       ...projects.map((p) => {
         const treatment = projectTreatment(p.name, CONTEXT_LABEL_CAP, p.icon ?? null);
-        return { label: treatment.label, value: p.id, title: treatment.tooltip, treatment };
+        return { label: treatment.label, value: p.id, treatment };
       }),
     ],
     [projects, t],
@@ -344,11 +347,11 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
 
   const storyItems = useMemo<ContextSelectItem[]>(
     () => [
-      { label: t.kanban.filter_all_stories, value: null, title: null, treatment: null },
+      { label: t.kanban.filter_all_stories, value: null, treatment: null },
       ...storyOptions.map((s) => {
         // D16: the human label `${actor}: ${feature}`, not the short id.
         const treatment = storySelectTreatment(s);
-        return { label: treatment.label, value: s.id, title: treatment.tooltip, treatment };
+        return { label: treatment.label, value: s.id, treatment };
       }),
     ],
     [storyOptions, t],
@@ -596,6 +599,14 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
                     />
                   }
                 >
+                  {/* The trigger reads like a chip: the same mark the rows and
+                      the card use, always present, so the closed control says
+                      what kind of thing it filters even with nothing chosen. */}
+                  <IconDisplay
+                    name={selectedProject?.icon ?? null}
+                    fallback={PROJECT_KIND_ICON}
+                    className="size-4 shrink-0 text-muted-foreground"
+                  />
                   <SelectValue />
                   {/* Level 2 (D9): this select's own read, from projectStore.loading. */}
                   {projectsLoading && (
@@ -612,21 +623,31 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
               <SelectContent>
                 <SelectGroup>
                   {projectItems.map((item) => (
-                    <SelectItem
-                      key={item.value ?? '_all_projects'}
-                      value={item.value}
-                      title={item.title ?? undefined}
-                    >
+                    // The row's hover is our tooltip, never a native `title`: the
+                    // title arrives late in the browser's own style, and it is the
+                    // only way to read a value the shared cap shortened — a row cut
+                    // to a dozen characters behind a tooltip nobody sees loses the
+                    // name entirely.
+                    //
+                    // The trigger *is* the option, not a span inside it: a wrapper
+                    // there swallowed the click and the row stopped selecting,
+                    // which is a worse failure than the hover it was meant to fix.
+                    <Tooltip key={item.value ?? '_all_projects'} disabled={!item.treatment}>
+                      <TooltipTrigger render={<SelectItem value={item.value} />}>
+                        {item.treatment && (
+                          <span aria-hidden="true">
+                            <IconDisplay
+                              name={item.treatment.iconName}
+                              fallback={item.treatment.fallback}
+                            />
+                          </span>
+                        )}
+                        {item.label}
+                      </TooltipTrigger>
                       {item.treatment && (
-                        <span aria-hidden="true">
-                          <IconDisplay
-                            name={item.treatment.iconName}
-                            fallback={item.treatment.fallback}
-                          />
-                        </span>
+                        <TooltipContent>{item.treatment.tooltip}</TooltipContent>
                       )}
-                      {item.label}
-                    </SelectItem>
+                    </Tooltip>
                   ))}
                 </SelectGroup>
               </SelectContent>
@@ -647,9 +668,14 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
                     />
                   }
                 >
-                  {/* While the parent is unchosen the select is disabled; the value
-                      is null and the placeholder — not the "All stories" label —
-                      names what to pick first. */}
+                  {/* The story's own mark, and the placeholder while the parent
+                      is unchosen: the value is null and the placeholder — not the
+                      "All stories" label — names what to pick first. */}
+                  <IconDisplay
+                    name={null}
+                    fallback={STORY_KIND_ICON}
+                    className="size-4 shrink-0 text-muted-foreground"
+                  />
                   <SelectValue>{projectFilter ? undefined : t.stories.selectProjectFirst}</SelectValue>
                   {/* Level 2 (D9): this select's own read (listStories). */}
                   {storiesLoading && (
@@ -664,21 +690,31 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
               <SelectContent>
                 <SelectGroup>
                   {storyItems.map((item) => (
-                    <SelectItem
-                      key={item.value ?? '_all_stories'}
-                      value={item.value}
-                      title={item.title ?? undefined}
-                    >
+                    // The row's hover is our tooltip, never a native `title`: the
+                    // title arrives late in the browser's own style, and it is the
+                    // only way to read a value the shared cap shortened — a row cut
+                    // to a dozen characters behind a tooltip nobody sees loses the
+                    // name entirely.
+                    //
+                    // The trigger *is* the option, not a span inside it: a wrapper
+                    // there swallowed the click and the row stopped selecting,
+                    // which is a worse failure than the hover it was meant to fix.
+                    <Tooltip key={item.value ?? '_all_stories'} disabled={!item.treatment}>
+                      <TooltipTrigger render={<SelectItem value={item.value} />}>
+                        {item.treatment && (
+                          <span aria-hidden="true">
+                            <IconDisplay
+                              name={item.treatment.iconName}
+                              fallback={item.treatment.fallback}
+                            />
+                          </span>
+                        )}
+                        {item.label}
+                      </TooltipTrigger>
                       {item.treatment && (
-                        <span aria-hidden="true">
-                          <IconDisplay
-                            name={item.treatment.iconName}
-                            fallback={item.treatment.fallback}
-                          />
-                        </span>
+                        <TooltipContent>{item.treatment.tooltip}</TooltipContent>
                       )}
-                      {item.label}
-                    </SelectItem>
+                    </Tooltip>
                   ))}
                 </SelectGroup>
               </SelectContent>
