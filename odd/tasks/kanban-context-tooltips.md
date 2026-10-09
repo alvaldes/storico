@@ -19,12 +19,12 @@ The chips truncate and the selects do not follow the card's treatment.
 
 | #  | Decision | Choice |
 |----|----------|--------|
-| D16 | What a story looks like in the select | **Owner's choice (2026-10-08): the human label** — `${actor}: ${feature}` with the icon — not the short id. The owner took that option knowing its stated cost: the select and the card then name one story differently. The select must stay usable for *choosing*, which a list of uuid prefixes is not. |
+| D16 | What a story looks like in the select | **Amended the same day by `069e157`:** the row now carries the story's short id *and* the shortened label. As decided: **the human label** — `${actor}: ${feature}` with the icon — not the short id. The owner took that option knowing its stated cost: the select and the card then name one story differently. The select must stay usable for *choosing*, which a list of uuid prefixes is not. |
 | D17 | What the tooltips say | Project: the **full name**. Story: the story's **full sentence** (`raw_text`, the `As a …, I want …, so that …` the story list already shows). Both on both surfaces. |
 | D18 | Which tooltip mechanism | The repo's `Tooltip` (Base UI) — this is its first real use, and it replaces the card chips' native `title` so hovering does not raise two tooltips. Inside the select's **listbox** the options keep a native `title` instead: a `Tooltip` per option fights the listbox's focus and keyboard navigation, and the listbox is not a place to add a second interactive layer. The **trigger** gets the real tooltip. |
 | D19 | Where the card's tooltip text comes from | **The backend.** The story's sentence is not on a task and the frontend cannot resolve it for an unfiltered board — the same reason the project name needed a projection. The batched read added for the project label gains the story's `raw_text`: one more column in the same statement, no second query, no extra request. |
 | D20 | The row order, after the owner's polish | **project → story → version → labels.** The owner moved the labels last, so the three context chips lead and the task's own attributes trail. The spec and the previous increment's documents still say labels-before-version and must follow. |
-| D21 | Truncation in the select | The card caps the project name at 12 characters (`shortProjectTitle`'s default, the owner's). A select option row is far wider than a card chip, so the options pass a larger cap through the same parameter — that is what the parameter is for. Truncating a dropdown row to 12 characters would make choosing impossible without hovering every option, which is the failure this increment exists to remove. |
+| D21 | Truncation in the select | **Reversed the same day by `069e157`:** one cap for both surfaces, the badge's. As decided: the card caps the project name at 12 characters (`shortProjectTitle`'s default, the owner's). A select option row is far wider than a card chip, so the options pass a larger cap through the same parameter — that is what the parameter is for. Truncating a dropdown row to 12 characters would make choosing impossible without hovering every option, which is the failure this increment exists to remove. |
 
 ## Non-goals
 
@@ -144,3 +144,21 @@ enough to exercise the card's 12-character cap.
   now identified in tests by `[data-base-ui-tooltip-trigger]` rather than by the Badge's slot. It is
   Base UI's render merge doing it, not this code, and it is worth knowing before someone "fixes" the
   assertion.
+
+### Amended and reversed after the owner used it
+
+`069e157`, the same day this increment closed, changed both label decisions above:
+
+- **D16 amended:** the story select's row now shows the short id *before* the human label, because a
+  row without it loses the one field tying the story to the card. The owner took this knowing the
+  cost that had been written on the option they chose: the id is not truncated — it is already short,
+  and cutting it would cost the two characters that separate two stories of one actor.
+- **D21 reversed:** there is now one cap, the badge's 12, on both surfaces. The argument for the wider
+  dropdown cap was that a row truncated to a card chip's length is choosable only by hovering every
+  option; the owner weighed it and chose identical text on both surfaces, because one project reading
+  `Version Test...` on a card and `Version Test LongTitle` in the dropdown reads as two projects.
+
+The reversal is only survivable because of what this increment fixed first: the tooltip opens
+without a perceptible pause (`e8fe5a1`) and carries the full name or sentence, so the shorter row
+loses nothing — it moves the rest one hover away. A shorter cap with a 600 ms tooltip would have been
+a worse product than the long label was.
