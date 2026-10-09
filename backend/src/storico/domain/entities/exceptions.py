@@ -207,6 +207,15 @@ class CredentialUndecryptable(CipherError):
         super().__init__(message)
 
 
+# The code a cancelled or swept export job carries — not a typed failure of any
+# family member, but the terminal state the runner's cancellation handler and
+# the startup sweep write when the work never finished. The registry
+# (``api/error_codes.py``) declares the literal; this mirror and the pin test
+# (``tests/test_unit/test_trello_error_codes.py``) keep the two equal, so the
+# application runner can write it without importing anything from ``api``.
+TRELLO_EXPORT_INTERRUPTED = "TRELLO_EXPORT_INTERRUPTED"
+
+
 class TrelloExportError(Exception):
     """Base exception for all Trello export errors.
 
@@ -224,7 +233,19 @@ class TrelloExportError(Exception):
     traceback a logger prints without passing through anything this module
     controls, and the message shape is a library detail with no promise attached
     to it.
+
+    Each member of the family carries its failure code as a class attribute
+    (``code``), with the same literal string ``api/error_codes.py`` declares —
+    the registry the frontend translates and the job row stores. The mapping
+    from failure to code therefore lives here, next to the failures, and the
+    pin test (``tests/test_unit/test_trello_error_codes.py``) keeps the
+    literals equal to the registry's. The base carries ``INTERNAL_ERROR``: an
+    untyped member of the family degrades to the generic code on both the job
+    row and the HTTP envelope, exactly as the registry-keyed mapping it
+    replaced did.
     """
+
+    code = "INTERNAL_ERROR"
 
     def __init__(self, message: str, board_ref: TrelloBoardRef | None = None) -> None:
         self.message = message
@@ -242,6 +263,8 @@ class TrelloCredentialRejectedError(TrelloExportError):
     it — the workspace's credentials have to be re-entered by an admin.
     """
 
+    code = "TRELLO_CREDENTIAL_REJECTED"
+
     def __init__(
         self,
         message: str = "Trello rejected the workspace credentials: the API key or token was not accepted",
@@ -258,6 +281,8 @@ class TrelloServiceUnavailableError(TrelloExportError):
     kind of failure earns the bounded backoff, matching csv2trello's measured
     policy. A caller that wants to may retry an export that failed this way.
     """
+
+    code = "TRELLO_SERVICE_UNAVAILABLE"
 
     def __init__(
         self,
@@ -277,6 +302,8 @@ class TrelloRateLimitExhaustedError(TrelloExportError):
     board (a new job), which is the accepted recovery path.
     """
 
+    code = "TRELLO_RATE_LIMIT_EXHAUSTED"
+
     def __init__(
         self,
         message: str = "Trello kept rate-limiting the export after the retries ran out",
@@ -295,6 +322,8 @@ class TrelloBoardRefusedError(TrelloExportError):
     is always ``None``.
     """
 
+    code = "TRELLO_BOARD_REFUSED"
+
     def __init__(
         self,
         message: str = "Trello refused to create the board: the account appears to have reached a board or quota limit",
@@ -311,6 +340,8 @@ class TrelloCardRefusedError(TrelloExportError):
     limit, and retrying cannot lift it. Always carries ``board_ref`` so the
     half-built board is never hidden from the member.
     """
+
+    code = "TRELLO_CARD_REFUSED"
 
     def __init__(
         self,

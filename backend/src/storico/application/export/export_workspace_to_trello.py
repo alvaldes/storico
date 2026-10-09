@@ -19,11 +19,13 @@ sweep, which makes it terminal at the next boot. A cancellation is the other
 boundary: it is written to the row and then re-raised, because swallowing it
 would break the asyncio contract that is trying to stop the task.
 
-The failure→code mapping lives in ``api/errors.py`` next to the envelope
-handler that shares it. That is an application→api import, deliberately taken:
-``api/error_codes.py`` is this repository's single registry for code strings,
-and a second mapping in the domain would let the job row and the HTTP envelope
-disagree about what a failure is called.
+The failure→code mapping lives in the domain, next to the failures: each
+``TrelloExportError`` member carries its code as a class attribute, with the
+same literal ``api/error_codes.py`` — the single registry the frontend
+guard greps — declares, and the pin test
+(``tests/test_unit/test_trello_error_codes.py``) keeps the two from drifting.
+One mapping, read by both the job row and the HTTP envelope, in the direction
+the architecture allows: nothing here imports from ``api``.
 """
 
 from __future__ import annotations
@@ -34,9 +36,10 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID
 
-from storico.api.error_codes import TRELLO_EXPORT_INTERRUPTED
-from storico.api.errors import trello_export_error_code
-from storico.domain.entities.exceptions import TrelloExportError
+from storico.domain.entities.exceptions import (
+    TRELLO_EXPORT_INTERRUPTED,
+    TrelloExportError,
+)
 from storico.domain.entities.trello_board import TrelloBoardRef
 from storico.domain.entities.trello_export import (
     TrelloExport,
@@ -176,7 +179,7 @@ async def execute_trello_export(
             logger.error(
                 "Trello export %s failed with code=%s before its job row could be read",
                 export_id,
-                trello_export_error_code(exc),
+                exc.code,
             )
             return
         # The typed family: code + board identity. A failure raised after the
@@ -187,13 +190,13 @@ async def execute_trello_export(
         logger.error(
             "Trello export %s failed: code=%s had_board=%s",
             export_id,
-            trello_export_error_code(exc),
+            exc.code,
             kept_ref is not None,
         )
         await _record_failure(
             export_repo,
             job,
-            error_code=trello_export_error_code(exc),
+            error_code=exc.code,
             board_ref=kept_ref,
         )
     except Exception:

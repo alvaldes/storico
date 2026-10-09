@@ -25,11 +25,6 @@ from storico.api.error_codes import (
     PARSE_ERROR,
     REPOSITORY_ERROR,
     REQUEST_VALIDATION_FAILED,
-    TRELLO_BOARD_REFUSED,
-    TRELLO_CARD_REFUSED,
-    TRELLO_CREDENTIAL_REJECTED,
-    TRELLO_RATE_LIMIT_EXHAUSTED,
-    TRELLO_SERVICE_UNAVAILABLE,
     VECTOR_STORE_UNAVAILABLE,
     VERSION_ALLOCATION_CONFLICT,
 )
@@ -50,12 +45,7 @@ from storico.domain.entities.exceptions import (
     CipherError,
     CredentialUndecryptable,
     EncryptionKeyMissing,
-    TrelloBoardRefusedError,
-    TrelloCardRefusedError,
-    TrelloCredentialRejectedError,
     TrelloExportError,
-    TrelloRateLimitExhaustedError,
-    TrelloServiceUnavailableError,
     VectorStoreError,
     VersionAllocationConflictError,
 )
@@ -392,25 +382,26 @@ async def vector_store_error_handler(
 
 # ── Trello export exception handler ───────────────────────────────
 
-# One code per member of the typed ``TrelloExportError`` family, keyed by exact
-# type — the same shape ``_CIPHER_ERROR_CODES`` uses. The map is the single
-# place the family becomes codes: the envelope handler below reads it, and the
-# background runner (application/export) reads the same map through
-# ``trello_export_error_code`` so a job row and an HTTP envelope can never
-# disagree about what a failure is called. The registry constants live in
-# ``api/error_codes.py``; this module owns the mapping.
-_TRELLO_ERROR_CODES: dict[type[TrelloExportError], str] = {
-    TrelloCredentialRejectedError: TRELLO_CREDENTIAL_REJECTED,
-    TrelloServiceUnavailableError: TRELLO_SERVICE_UNAVAILABLE,
-    TrelloRateLimitExhaustedError: TRELLO_RATE_LIMIT_EXHAUSTED,
-    TrelloBoardRefusedError: TRELLO_BOARD_REFUSED,
-    TrelloCardRefusedError: TRELLO_CARD_REFUSED,
-}
+# The family's codes live on the exceptions themselves: every member of the
+# typed ``TrelloExportError`` family declares its code as a class attribute
+# (``domain/entities/exceptions.py``) with the same literal the registry
+# declares, and the pin test (``tests/test_unit/test_trello_error_codes.py``)
+# keeps the two from drifting. ``trello_export_error_code`` below is the one
+# read site this module keeps: the envelope handler uses it, and the background
+# runner (application/export) reads the same attribute, so a job row and an
+# HTTP envelope can never disagree about what a failure is called — one
+# mapping, in the direction the architecture allows.
 
 
 def trello_export_error_code(exc: TrelloExportError) -> str:
-    """The code for a member of the ``TrelloExportError`` family."""
-    return _TRELLO_ERROR_CODES.get(type(exc), INTERNAL_ERROR)
+    """The code for a member of the ``TrelloExportError`` family.
+
+    Read off the exception itself: every member declares its code as a class
+    attribute with the same literal the registry declares. An untyped member
+    inherits the base's ``INTERNAL_ERROR`` — the same fallback an untyped
+    member has always received.
+    """
+    return exc.code
 
 
 async def trello_export_error_handler(

@@ -36,7 +36,11 @@ import logging
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
-from storico.api.error_codes import TRELLO_EXPORT_INTERRUPTED
+# From the domain, not the registry: `api/error_codes.py` belongs to the API layer, and an
+# infrastructure module reaching into it is the same backwards edge WU8 removed from the
+# application — smaller, because it is a constant, but the same direction. The pin suite
+# (`test_trello_error_codes.py`) holds this literal to the registry's, so they cannot drift.
+from storico.domain.entities.exceptions import TRELLO_EXPORT_INTERRUPTED
 from storico.domain.entities.trello_export import TrelloExportStatus
 from storico.infrastructure.database.base import create_session_factory, get_engine
 from storico.infrastructure.database.repositories import SQLAlchemyTrelloExportRepository
