@@ -39,6 +39,12 @@ type ColumnId = TaskStatus;
 
 interface KanbanBoardProps {
   locale?: Locale;
+  /** Deep link entry (feature ``view-in-kanban``): the `project` query param of
+   * a "View in Kanban" link, seeding the cascade's project level. */
+  initialProjectId?: string | null;
+  /** The link's `story` query param; seeds the story level only when
+   * `initialProjectId` is also present (see the seeding below). */
+  initialStoryId?: string | null;
 }
 
 interface InvalidDropToast {
@@ -63,7 +69,7 @@ interface ContextSelectItem {
   treatment: ContextTreatment | null;
 }
 
-export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
+export function KanbanBoard({ locale = 'en', initialProjectId, initialStoryId }: KanbanBoardProps) {
   const t = useTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
   const { projects, loading: projectsLoading, fetchProjects } = useProjectStore();
@@ -83,8 +89,19 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   // filtered here"; choosing a project enables the story select, a story the
   // version select. Moving up the cascade clears everything below it, so the
   // resolved query never carries a scope orphaned from its parent.
-  const [projectFilter, setProjectFilter] = useState<string | null>(null);
-  const [storyFilter, setStoryFilter] = useState<string | null>(null);
+  // Deep link entry (feature ``view-in-kanban``): a "View in Kanban" link lands
+  // here as `?project=<id>&story=<id>`, and the two ids seed the cascade's first
+  // two levels. The story seeds **only when a project id also travelled**: the
+  // cascade's invariant is that a child filter never exists without its parent,
+  // so an orphan story id is ignored — if a project id is present, that level
+  // still applies; if not, the board loads unfiltered. No version is seeded:
+  // the link names a story, not a run, and the user can still pick a version
+  // afterwards. These are initial values, not props to track — after entry the
+  // cascade belongs to the user.
+  const [projectFilter, setProjectFilter] = useState<string | null>(initialProjectId ?? null);
+  const [storyFilter, setStoryFilter] = useState<string | null>(
+    initialProjectId ? (initialStoryId ?? null) : null,
+  );
   const [versionFilter, setVersionFilter] = useState<string | null>(null);
   // The story and version options are the selected project's/story's data, read
   // straight from their APIs into local state: `useStoryStore` belongs to the
@@ -124,14 +141,24 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   // an effect, so the fetch effect committed for the new workspace already sees
   // cleared filters and the board refetches the new workspace unfiltered — an
   // effect here would run one commit late, after a mis-scoped fetch had left.
+  //
+  // The reset fires only on a real switch, i.e. only when `prevWorkspaceId` is
+  // defined: a workspace's *first* arrival after mount (`undefined` → real id)
+  // is not a switch. That transition is how every fresh session starts — the
+  // store is `zustand/persist`, `currentWorkspace` is `null` until
+  // `fetchWorkspaces` auto-selects one — and with a deep link seeded from the
+  // query params, clearing there would wipe the cascade before its first fetch
+  // and silently hand back the whole-workspace board.
   const [prevWorkspaceId, setPrevWorkspaceId] = useState(workspaceId);
   if (prevWorkspaceId !== workspaceId) {
     setPrevWorkspaceId(workspaceId);
-    setProjectFilter(null);
-    setStoryFilter(null);
-    setVersionFilter(null);
-    setStoryOptions([]);
-    setVersionOptions([]);
+    if (prevWorkspaceId !== undefined) {
+      setProjectFilter(null);
+      setStoryFilter(null);
+      setVersionFilter(null);
+      setStoryOptions([]);
+      setVersionOptions([]);
+    }
   }
 
   // Fetch projects if they haven't been loaded yet (needed for the filter dropdown),

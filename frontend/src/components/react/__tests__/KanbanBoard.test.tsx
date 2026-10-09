@@ -1885,3 +1885,179 @@ describe('KanbanBoard — the project’s own icon on chips and rows (WU20)', ()
     expect(option.querySelector('.lucide-database')).toBeNull();
   });
 });
+
+/* ── Deep link entry (feature ``view-in-kanban``, WU1) ──
+ *
+ * A "View in Kanban" link lands on ``/[locale]/kanban?project=<id>&story=<id>``
+ * and the page passes the two ids to the island as `initialProjectId` /
+ * `initialStoryId`. The cascade must come up already seeded: the project seeds
+ * level one, the story level two **only when a project id also travelled** —
+ * the cascade's invariant is that a child filter never exists without its
+ * parent, so an orphan story id is ignored and the board loads unfiltered. No
+ * version is seeded: the link names a story, not a run. As everywhere in this
+ * file, the assertions look at the arguments that reach the mocked
+ * `listTasksByWorkspace`, not at what the selects render.
+ */
+describe('KanbanBoard — deep link entry', () => {
+  const mockProjects: Project[] = [
+    {
+      id: 'project-1',
+      name: 'Alpha',
+      description: '',
+      workspaceId: 'workspace-1',
+      createdBy: null,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      storyCount: 1,
+    },
+  ];
+
+  const mockStories: UserStory[] = [
+    {
+      id: 'story-1',
+      projectId: 'project-1',
+      actor: 'user',
+      feature: 'to log in',
+      benefit: 'to access my account',
+      rawText: 'As a user, I want to log in, so that I can access my account',
+      status: 'extracted',
+      createdAt: '2026-01-01T00:00:00Z',
+    },
+  ];
+
+  const storyPage: PaginatedResponse<UserStory> = {
+    items: mockStories,
+    total: mockStories.length,
+    page: 1,
+    size: 100,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspace: {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        ownerId: 'user-1',
+        role: 'admin',
+        memberCount: 1,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      } as Workspace,
+      loading: false,
+      saving: false,
+    });
+    useProjectStore.setState({
+      projects: mockProjects,
+      loading: false,
+      error: null,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    useTaskStore.setState({
+      tasks: {},
+      workspaceTasks: [],
+      extractions: {},
+      loading: false,
+      error: null,
+      updatingTaskId: null,
+      allowedTransitions: {},
+      fetchTasksForWorkspace: realFetchTasksForWorkspace,
+      updateTaskStatus: vi.fn().mockResolvedValue(undefined),
+    });
+    vi.mocked(listStories).mockResolvedValue(storyPage);
+    vi.mocked(listVersions).mockResolvedValue([]);
+  });
+
+  it('seeds the project level from initialProjectId: the first read is project-scoped and the select names it', async () => {
+    vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
+
+    render(<KanbanBoard locale="en" initialProjectId="project-1" />);
+
+    // The very first read is already filtered: the cascade starts seeded, the
+    // user never had to pick anything.
+    await waitFor(() =>
+      expect(listTasksByWorkspace).toHaveBeenCalledWith('workspace-1', {
+        projectId: 'project-1',
+      }),
+    );
+    // And the project select shows the project it is filtering by.
+    const trigger = await screen.findByRole('combobox', { name: t.kanban.filter_project });
+    expect(within(trigger).getByText('Alpha')).toBeInTheDocument();
+  });
+
+  it('seeds both levels from initialProjectId + initialStoryId: the read is story-scoped, one scope only', async () => {
+    vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
+
+    render(<KanbanBoard locale="en" initialProjectId="project-1" initialStoryId="story-1" />);
+
+    // Most specific wins from the first call: `user_story_id`, and **no**
+    // `project_id` beside it — two scopes are the backend's 422.
+    await waitFor(() =>
+      expect(listTasksByWorkspace).toHaveBeenCalledWith('workspace-1', {
+        storyId: 'story-1',
+      }),
+    );
+    const calls = vi.mocked(listTasksByWorkspace).mock.calls;
+    expect(calls.every(([, filters]) => filters?.projectId === undefined)).toBe(true);
+
+    // The story select shows the story once its options have loaded.
+    const storyTrigger = await screen.findByRole('combobox', { name: t.kanban.filter_story });
+    expect(within(storyTrigger).getByText(STORY_OPTION_LABEL)).toBeInTheDocument();
+  });
+
+  it('ignores an orphan initialStoryId with no project: the read stays the unfiltered workspace read', async () => {
+    vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
+
+    render(<KanbanBoard locale="en" initialStoryId="story-1" />);
+
+    // The unfiltered read: the workspace alone, no filters object.
+    await waitFor(() => expect(listTasksByWorkspace).toHaveBeenCalledWith('workspace-1'));
+    const calls = vi.mocked(listTasksByWorkspace).mock.calls;
+    expect(calls.every(([, filters]) => filters?.storyId === undefined)).toBe(true);
+
+    // No story filter exists: the cascade's child never appears without its
+    // parent, so the story select stays locked on its pick-a-project prompt.
+    const storyTrigger = screen.getByRole('combobox', { name: t.kanban.filter_story });
+    expect(storyTrigger).toBeDisabled();
+    expect(within(storyTrigger).queryByText(STORY_OPTION_LABEL)).not.toBeInTheDocument();
+  });
+
+  it('keeps the seeded project filter when the workspace arrives only after mount', async () => {
+    vi.mocked(listTasksByWorkspace).mockResolvedValue([]);
+    // A fresh session: the persisted store has not selected a workspace yet, so
+    // the board mounts with `currentWorkspace: null` and the real id arrives
+    // when `fetchWorkspaces` auto-selects one.
+    useWorkspaceStore.setState({ currentWorkspace: null });
+
+    render(<KanbanBoard locale="en" initialProjectId="project-1" />);
+
+    expect(await screen.findByText(t.kanban.no_workspace)).toBeInTheDocument();
+    expect(listTasksByWorkspace).not.toHaveBeenCalled();
+
+    // The workspace's first arrival — undefined → real id, not a switch.
+    act(() => {
+      useWorkspaceStore.setState({
+        currentWorkspace: {
+          id: 'workspace-1',
+          name: 'Test Workspace',
+          slug: 'test-workspace',
+          ownerId: 'user-1',
+          role: 'admin',
+          memberCount: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+        } as Workspace,
+      });
+    });
+
+    // The seeded cascade survives it: the read is project-scoped, not the
+    // whole-workspace read the old reset produced.
+    await waitFor(() =>
+      expect(listTasksByWorkspace).toHaveBeenCalledWith('workspace-1', {
+        projectId: 'project-1',
+      }),
+    );
+  });
+});
