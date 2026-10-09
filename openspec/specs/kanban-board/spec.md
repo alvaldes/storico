@@ -259,10 +259,18 @@ the truncated text and the tooltip cannot disagree. A hover MUST NOT raise an em
 or row whose data the response does not carry MUST NOT render at all — no empty badge, no
 placeholder.
 
-On the board's card the tooltip MUST be the application's own tooltip, and the chips MUST NOT also
-carry a native `title`: one hover must not raise two tooltips. Inside a select's listbox the options
-MUST keep a native `title` instead, because a tooltip per option competes with the listbox's focus
-and keyboard navigation; the select's trigger carries the real tooltip with its full selected value.
+Every surface that reveals its full value on hover MUST use the application's own tooltip, and MUST
+NOT also carry a native `title`: one hover must not raise two tooltips. That includes the options
+inside a select's listbox. A native `title` was tried there, on the argument that a tooltip per option
+competes with the listbox's focus and keyboard navigation, and it failed for a plainer reason: it
+arrives late, in the browser's own style, and it is invisible to anyone who does not wait — which made
+a row shortened by the shared cap unreadable. A tooltip on a listbox option MUST be attached to the
+option itself and MUST NOT wrap the option's content in an extra element: a wrapper inside the row
+swallows the click and the row stops selecting, which is worse than the hover it was meant to fix.
+
+The `SelectTrigger` of the project and story selects MUST show the mark of the kind it filters — the
+project's own icon, or the story's mark — before its value, so the closed control says what it filters
+even before anything is chosen.
 
 A card being dragged MUST NOT show a tooltip: the drag preview is a copy of the card, so an open
 popup would travel with the pointer.
@@ -287,6 +295,21 @@ popup would travel with the pointer.
 - **THEN** the project draws the renderer's default rather than nothing
 - **AND** the project's label and tooltip are unaffected
 - **AND** the story draws its own mark, never the project's
+
+#### Scenario: A select's row reveals its full value on hover
+
+- **GIVEN** a select whose options were shortened by the shared cap
+- **WHEN** the user hovers an option
+- **THEN** the application's own tooltip opens with the full value, without a perceptible pause
+- **AND** the option carries no native `title`
+- **AND** clicking that option still selects it
+
+#### Scenario: The closed select says what it filters
+
+- **GIVEN** the project select and the story select with nothing chosen yet
+- **WHEN** the board's filter bar renders
+- **THEN** each trigger shows the mark of its kind before its value
+- **AND** the project trigger shows the chosen project's own icon once one is chosen
 
 #### Scenario: A hover reveals the value without a perceptible pause
 

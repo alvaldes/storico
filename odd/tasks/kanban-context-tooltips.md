@@ -21,7 +21,7 @@ The chips truncate and the selects do not follow the card's treatment.
 |----|----------|--------|
 | D16 | What a story looks like in the select | **Amended the same day by `069e157`:** the row now carries the story's short id *and* the shortened label. As decided: **the human label** — `${actor}: ${feature}` with the icon — not the short id. The owner took that option knowing its stated cost: the select and the card then name one story differently. The select must stay usable for *choosing*, which a list of uuid prefixes is not. |
 | D17 | What the tooltips say | Project: the **full name**. Story: the story's **full sentence** (`raw_text`, the `As a …, I want …, so that …` the story list already shows). Both on both surfaces. |
-| D18 | Which tooltip mechanism | The repo's `Tooltip` (Base UI) — this is its first real use, and it replaces the card chips' native `title` so hovering does not raise two tooltips. Inside the select's **listbox** the options keep a native `title` instead: a `Tooltip` per option fights the listbox's focus and keyboard navigation, and the listbox is not a place to add a second interactive layer. The **trigger** gets the real tooltip. |
+| D18 | Which tooltip mechanism | **Amended by `d17d883`:** the listbox options now raise our tooltip too, attached to the option itself. As decided: the repo's `Tooltip` (Base UI) — this is its first real use, and it replaces the card chips' native `title` so hovering does not raise two tooltips. Inside the select's **listbox** the options keep a native `title` instead: a `Tooltip` per option fights the listbox's focus and keyboard navigation, and the listbox is not a place to add a second interactive layer. The **trigger** gets the real tooltip. |
 | D19 | Where the card's tooltip text comes from | **The backend.** The story's sentence is not on a task and the frontend cannot resolve it for an unfiltered board — the same reason the project name needed a projection. The batched read added for the project label gains the story's `raw_text`: one more column in the same statement, no second query, no extra request. |
 | D20 | The row order, after the owner's polish | **project → story → version → labels.** The owner moved the labels last, so the three context chips lead and the task's own attributes trail. The spec and the previous increment's documents still say labels-before-version and must follow. |
 | D21 | Truncation in the select | **Reversed the same day by `069e157`:** one cap for both surfaces, the badge's. As decided: the card caps the project name at 12 characters (`shortProjectTitle`'s default, the owner's). A select option row is far wider than a card chip, so the options pass a larger cap through the same parameter — that is what the parameter is for. Truncating a dropdown row to 12 characters would make choosing impossible without hovering every option, which is the failure this increment exists to remove. |
@@ -162,3 +162,36 @@ The reversal is only survivable because of what this increment fixed first: the 
 without a perceptible pause (`e8fe5a1`) and carries the full name or sentence, so the shorter row
 loses nothing — it moves the rest one hover away. A shorter cap with a 600 ms tooltip would have been
 a worse product than the long label was.
+
+### The listbox exception was wrong, and it cost the owner two reports
+
+`d17d883` removed the one place this increment had used a native `title`: inside the select's
+listbox. The argument for it was that a tooltip per option competes with the listbox's focus and
+keyboard navigation. The owner then reported two things, and both were caused by decisions recorded
+here rather than by code drifting:
+
+- **No hover in the selects.** A native `title` arrives late and in the browser's own style, and it is
+  invisible to anyone who does not wait. This increment also shortened the rows to 12 characters, so
+  the two decisions together made the full value unreachable: a short row whose only reveal is a hover
+  nobody sees is a row with no value at all. The options now use the same tooltip the chips do, which
+  opens in 0 ms.
+- **No icon on the trigger.** The icon work went to the option rows and the card chips, and the trigger
+  — the state the owner actually reads, since the select is closed most of the time — kept nothing.
+  It now leads with the mark of its kind: the project's own icon, or the story's fingerprint.
+
+Two lessons worth more than the fix:
+
+- **A rule about keyboard navigation is not a reason to ship a mechanism nobody can see.** If a tooltip
+  per option had genuinely fought the listbox, the answer was to measure that, not to fall back to the
+  browser's tooltip and call the option covered.
+- **The fix's first shape broke selection**, which the tests caught and the browser confirmed: wrapping
+  the option's content in a tooltip trigger swallowed the click and the row stopped selecting. The
+  trigger has to be the option itself. A hover affordance that disables the control it decorates is
+  worse than the missing hover.
+
+Also recorded, because it cost time: the listboxes Base UI leaves mounted are hidden and measure 0x0
+at the origin, so a check that grabs the first `[role=option]` in the document measures the wrong
+element — it has to filter by a non-zero rect. And the select's popup overlaps its own trigger in this
+app, which predates this increment (verified by stashing these changes and measuring the committed
+tree): clicking the trigger while the listbox is open hits the popup's first row instead. Left alone
+as a pre-existing wart, stated here so nobody re-diagnoses it as new.
