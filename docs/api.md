@@ -190,7 +190,14 @@ Códigos de la familia: `TRELLO_CREDENTIALS_MISSING` (409, sin credenciales),
 `TRELLO_EXPORT_NOT_FOUND` (404, job inexistente o de otro workspace), y en el job
 fallido `TRELLO_CREDENTIAL_REJECTED`, `TRELLO_SERVICE_UNAVAILABLE`,
 `TRELLO_RATE_LIMIT_EXHAUSTED`, `TRELLO_BOARD_REFUSED`, `TRELLO_CARD_REFUSED` — un
-código por miembro de la familia tipada `TrelloExportError`.
+código por miembro de la familia tipada `TrelloExportError` — más
+`TRELLO_EXPORT_INTERRUPTED`, que no es de la familia tipada: lo escriben el runner
+ante una cancelación y el **sweep de arranque**
+(`infrastructure/tasks/trello_export_task.py`), que marca en el inicio todo job
+`pending` o `running` más viejo que su cota de edad como `failed` con ese código,
+para que un job abandonado por un crash responda en vez de dejar al miembro
+esperando para siempre. Hereda la limitación del sweep de extracciones: un job
+más joven que la cota en el momento del arranque espera al siguiente.
 
 ### Users
 

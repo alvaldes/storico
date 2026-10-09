@@ -372,7 +372,7 @@ Storico automatiza el paso de "requisito expresado en lenguaje natural" → "tar
 - **Contexto**: Durante la investigación se desarrollaron dos herramientas funcionales: **LocalLLM-DataForge** (framework de pipelines de extracción con LLMs) y **csv2trello** (CLI/TUI para importar CSV a Trello vía API). Ambas contienen lógica ya probada, testeada y revisada: parsing de respuestas LLM, validación LLM-as-a-Judge, pipeline de extracción, integración con Trello API, manejo de errores con reintentos, caché, etc. Reescribir desde cero en Storico introduce riesgo de errores ya resueltos y duplica esfuerzo.
 - **Consecuencias**:
   - El **motor de extracción** de Storico debe basarse en los prompts y el pipeline validados en LocalLLM-DataForge
-  - El **conector Trello** debe reutilizar la lógica de `csv2trello/core/` (autenticación, creación de boards/listas/cards)
+  - El **conector Trello** hereda de csv2trello los hechos medidos (ventana de rate de 300 req/10 s, backoff `2**n` sólo sobre el error reintentable, auth por query param, cierre del gap de labels) pero **no reutiliza su código**: vive en `domain/ports/trello_export_port.py` y `infrastructure/export/trello_adapter.py` (migraciones `0030`/`0031`, rutas en `api/routes/export.py` y `api/routes/workspace_trello.py`)
   - El parsing de respuestas LLM (texto plano con `summary:` / `description:`) debe heredar el `ExplodeTasks` de DataForge
   - La validación LLM-as-a-Judge debe basarse en `OllamaJudgeStep` + `single_judge.j2`
   - Cualquier funcionalidad nueva se evalúa primero contra estas dos bases de código antes de implementar
@@ -551,12 +551,12 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 
 | #   | Feature                  | Prioridad |
 | --- | ------------------------ | --------- |
-| 25  | Conector Trello          | 🔲        |
+| 25  | Conector Trello          | ✅ MVP    |
 | 26  | Conector Jira            | V2        |
 | 27  | Conector GitHub Projects | V2        |
 | 28  | Conector Azure DevOps    | V3        |
 
-> **Nota**: el conector Trello **no existe**. No hay adaptador de exportación ni paquete de conector: `backend/src/storico/infrastructure/` contiene solo `cache, crypto, database, llm, tasks, vector`, y `trello` sobrevive únicamente como cadena de formato. La opción "Trello" de la página de Configuración se retira en el lote de código que acompaña a esta corrección; ver el detalle en `prod.todo.md`.
+> **Nota**: el conector Trello **existe** (rama `feat/trello-export`, registro en `odd/tasks/trello-export.md`). El puerto es `domain/ports/trello_export_port.py`, el adaptador `infrastructure/export/trello_adapter.py` (sobre `py-trello>=0.20.1`), las migraciones `0030` (`workspace_trello_configs`) y `0031` (`trello_exports`), y las rutas `GET`/`PUT /settings/trello` + `GET .../settings/trello/status` (`api/routes/workspace_trello.py`) y `POST /api/v1/workspaces/{id}/export/trello` → `202` + `GET .../export/trello/{export_id}` (`api/routes/export.py`). El navegador lo consume con `frontend/src/lib/trello-api.ts`, `TrelloCredentialsForm.tsx` y `ExportPanel.tsx`. Lo que NO existe y ninguna copy debe prometer: sincronización bidireccional, un tablero designado que se actualiza en vez de recrearse (cada exportación crea un tablero nuevo, D3), fechas límite, asignaciones o flujo OAuth de Trello (la credencial es un par clave+token que el admin pega, cifrado con Fernet). El valor de formato `trello` de la exportación de archivos sigue retirado: esa exportación sigue siendo `json`/`markdown`; el conector va por sus propios endpoints.
 
 ### 🖥️ Frontend — Astro + React Islands (MVP)
 
