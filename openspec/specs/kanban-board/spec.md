@@ -7,7 +7,17 @@
 The frontend MUST expose a route at `/[locale]/kanban` rendered by
 `frontend/src/pages/[locale]/kanban.astro`. The page MUST be wired into the
 existing sidebar navigation, MUST use the existing `MainLayout.astro`, and MUST
-pass `locale` to the React island.
+pass `locale` to the React island. The page MUST also read the `project` and
+`story` query params of the request and MUST pass them to the island as initial
+values, so that `/[locale]/kanban?project=<project_id>&story=<story_id>` opens the
+board with its cascade already seeded (see "Kanban Deep-Link Entry").
+
+#### Scenario: The deep link's params reach the island
+
+- **GIVEN** the request `/[locale]/kanban?project=<project_id>&story=<story_id>`
+- **WHEN** the page renders
+- **THEN** the island is rendered with those two ids as its initial cascade values
+- **AND** the page's own output carries no other change
 
 ### Requirement: Kanban Board Component
 
@@ -83,7 +93,10 @@ MUST read that version's tasks, including a frozen one's. Moving up the cascade 
 everything below it, so no request ever carries a scope orphaned from its parent. A retried load
 after a failure MUST carry the active filters — never silently reload the whole workspace while
 the bar still names a filter — and switching workspaces MUST clear the filters, so a project
-chosen in one workspace is never applied to another.
+chosen in one workspace is never applied to another. A workspace's *first* arrival after the board
+mounts — no workspace selected, then one is selected — is not a switch and MUST NOT clear the
+filters; a seeded deep link whose cascade was dropped there would have silently handed the user the
+whole-workspace board.
 
 #### Scenario: A version pick reads that version through user_story_id and extraction_id
 
@@ -127,6 +140,64 @@ chosen in one workspace is never applied to another.
 - **WHEN** the user switches the selected workspace to workspace B
 - **THEN** the filters are cleared and the board fetches workspace B unfiltered
 - **AND** no project of workspace A is ever applied to a request scoped to workspace B
+
+#### Scenario: A workspace's first arrival is not a switch
+
+- **GIVEN** a board opened from a project deep link while no workspace is selected yet
+- **WHEN** a workspace is selected for the first time after the board mounted
+- **THEN** the seeded filters survive
+- **AND** the board's first read is scoped to them, not to the whole workspace
+
+### Requirement: Kanban Deep-Link Entry
+
+The board MUST accept its cascade's initial levels from the entry URL, so that a
+project or a story can be opened directly on the board instead of being picked by
+hand. `/[locale]/kanban?project=<project_id>` MUST open the board filtered to that
+project, and `/[locale]/kanban?project=<project_id>&story=<story_id>` MUST open it
+filtered to that story. The seeded levels MUST be the cascade's selected levels
+before the first task read leaves the client, so that read already carries the
+seeded scope — `project_id` for a project link, `user_story_id` for a story link,
+by the most-specific-wins rule — and MUST NOT be a second, filtered read stacked on
+an unfiltered one. No version level MUST be seeded: the link names a story, not a
+run, and the version select MUST still let the user narrow afterwards.
+
+A `story` param that arrives without a `project` param MUST NOT be seeded, because
+the cascade never carries a child filter orphaned from its parent: the board MUST
+fall back to the `project` param when one is present and to the unfiltered workspace
+read when it is not. After entry the cascade MUST belong to the user: the seeded
+levels are initial values, later filter changes MUST NOT be written back to the URL,
+and the entry MUST NOT be re-applied on a later render. The surfaces that offer the
+link MUST treat it as a plain, read-only navigation: no confirmation step and no
+state change of their own. A story link MUST name both the story and that story's
+project.
+
+#### Scenario: A project link opens the board filtered to that project
+
+- **GIVEN** a "View in Kanban" link whose URL is `/[locale]/kanban?project=<project_id>`
+- **WHEN** the link is followed
+- **THEN** the board renders with the project level selected
+- **AND** the first task read carries `project_id=<project_id>` and no other scope
+
+#### Scenario: A story link opens the board filtered to that story
+
+- **GIVEN** a link whose URL is `/[locale]/kanban?project=<project_id>&story=<story_id>`
+- **WHEN** the link is followed
+- **THEN** the project and story levels are both selected and the version level is "All versions"
+- **AND** the first task read carries `user_story_id=<story_id>` and no other scope
+
+#### Scenario: An orphan story param is ignored
+
+- **GIVEN** a URL with `?story=<story_id>` and no `project` param
+- **WHEN** the board opens
+- **THEN** no story filter is seeded
+- **AND** the read names `workspace_id` alone
+
+#### Scenario: The seed belongs to the user after entry
+
+- **GIVEN** a board opened from a project deep link
+- **WHEN** the user picks a different project in the bar
+- **THEN** the board reads the newly picked project
+- **AND** the URL still names the project the link carried
 
 ### Requirement: Kanban Board Read Feedback
 
