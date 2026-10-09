@@ -13,6 +13,12 @@ export function shortUUID(id: string): string {
   return UUID_RE.test(id) ? id.slice(0, 8) : id;
 }
 
+/** Short Project Title Text with ... */
+export function shortProjectTitle(title: string, maxCharacters: number = 12): string {
+  if (title.length > maxCharacters) return title.slice(0, maxCharacters) + '...';
+  else return title;
+}
+
 /** Recursively convert object keys from snake_case to camelCase. */
 export function toCamelCase<T>(obj: unknown): T {
   if (Array.isArray(obj)) {

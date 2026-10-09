@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Pencil, Trash2, LoaderCircle } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, LoaderCircle, KanbanSquare } from 'lucide-react';
 import { useProjectStore } from '@/stores/projectStore';
 import { StoriesList } from '@/components/react/StoriesList';
 import { ProjectForm } from '@/components/react/ProjectForm';
@@ -110,6 +110,14 @@ export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetai
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            render={<a href={`/${locale}/kanban?project=${projectId}`} />}
+          >
+            <KanbanSquare className="mr-2 h-4 w-4" />
+            {t.kanban.view_in_kanban}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
             <Pencil className="mr-2 h-4 w-4" />
             {t.common.edit}

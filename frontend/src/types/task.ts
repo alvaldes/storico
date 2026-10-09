@@ -37,6 +37,46 @@ export interface Task {
   priority: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The version chip's data (D8 of feature ``versioning-visibility``), mirroring
+   * ``TaskResponse``'s ``extraction_id``/``version_number``. Optional, not
+   * required-nullable, because the legacy, uncalled mapper in ``lib/api.ts``
+   * (deliberately untouched) still produces ``Task`` objects without them —
+   * ``mapTaskItem`` always sets both. Cards must render no chip when
+   * ``versionNumber`` is null or absent.
+   */
+  extractionId?: string | null;
+  versionNumber?: number | null;
+  /**
+   * The context chips' data (WU14 of feature ``versioning-visibility``),
+   * mirroring ``TaskResponse``'s ``project_id``/``project_name``. Optional,
+   * not required-nullable, for the same reason as ``extractionId``: the
+   * legacy, uncalled mapper in ``lib/api.ts`` (deliberately untouched) still
+   * produces ``Task`` objects without them — ``mapTaskItem`` always sets both.
+   * Cards must render no project chip when either is null or absent.
+   */
+  projectId?: string | null;
+  projectName?: string | null;
+  /**
+   * The story's full sentence (WU16 of feature ``kanban-context-tooltips``),
+   * mirroring ``TaskResponse``'s ``story_raw_text``: the ``As a …, I want …,
+   * so that …`` text the story chip's tooltip shows (D17). Optional, not
+   * required-nullable, for the same reason as ``projectName``: the legacy,
+   * uncalled mapper in ``lib/api.ts`` (deliberately untouched) still produces
+   * ``Task`` objects without it — ``mapTaskItem`` always sets it. Cards must
+   * fall back to the story's id when it is null or absent.
+   */
+  storyRawText?: string | null;
+  /**
+   * The project's own icon name (WU20 of feature ``kanban-project-icons``),
+   * mirroring ``TaskResponse``'s ``project_icon``. Optional, not
+   * required-nullable, for the same reason as ``projectName``: the legacy,
+   * uncalled mapper in ``lib/api.ts`` (deliberately untouched) still produces
+   * ``Task`` objects without it — ``mapTaskItem`` always sets it. Cards must
+   * draw the folder fallback when it is null or absent (D22: an icon-less
+   * project gets the app's own default, and the label/tooltip are unaffected).
+   */
+  projectIcon?: string | null;
 }
 
 /** Raw task from API (snake_case). */
@@ -51,6 +91,17 @@ export interface RawTaskItem {
   dependencies: string[];
   created_at: string;
   updated_at: string;
+  extraction_id: string | null;
+  version_number: number | null;
+  project_id: string | null;
+  project_name: string | null;
+  /** The story's sentence, joined into the same batched read for the chip
+   * tooltips (WU16/D19) — one more column, no second query. */
+  story_raw_text: string | null;
+  /** The project's own icon name, joined into the same batched read for the
+   * chip's icon (WU20/D24 of feature ``kanban-project-icons``) — one more
+   * column, no second query. */
+  project_icon: string | null;
 }
 
 /* ── Invalidation marks (0.9.0 slice b) ── */

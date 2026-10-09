@@ -49,18 +49,19 @@ class TaskRepository(ABC):
         user_story_id: UUID | None = None,
         workspace_ids: list[UUID] | None = None,
         extraction_id: UUID | None = None,
+        project_id: UUID | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[Task], int]:
         """Return one page of tasks matching exactly one scope, plus the total.
 
-        Exactly one of ``workspace_id``, ``user_story_id`` or ``workspace_ids``
-        must be given; calling with none raises ``ValueError``. An empty
-        ``workspace_ids`` returns an empty page without issuing any statement:
-        no memberships means no rows, not ``IN ()`` — and against the dev
-        pooler, where one statement costs ~2s (a bare ``SELECT 1`` already
-        measures 800ms in ``/api/v1/health``), an unasked statement is pure
-        latency.
+        Exactly one of ``workspace_id``, ``user_story_id``, ``workspace_ids``
+        or ``project_id`` must be given; calling with none raises
+        ``ValueError``. An empty ``workspace_ids`` returns an empty page
+        without issuing any statement: no memberships means no rows, not
+        ``IN ()`` — and against the dev pooler, where one statement costs ~2s
+        (a bare ``SELECT 1`` already measures 800ms in ``/api/v1/health``), an
+        unasked statement is pure latency.
 
         The total rides on the rows' own statement as ``count(*) OVER ()``,
         so no separate ``SELECT COUNT(*)`` is issued on the normal path, and
@@ -69,11 +70,11 @@ class TaskRepository(ABC):
         Current-version predicate (derived, never stored): the story scope
         filters to the highest-numbered ``completed`` version of the story, so
         both the page and the ``total`` count current tasks only. The
-        workspace and ``workspace_ids`` scopes keep a task only while no
-        higher-numbered ``completed`` version of its story exists. Passing
-        ``extraction_id`` alongside ``user_story_id`` bypasses the predicate
-        and reads exactly that version — the version selector's per-version
-        read; ``extraction_id`` without ``user_story_id`` raises
+        workspace, ``workspace_ids`` and ``project_id`` scopes keep a task
+        only while no higher-numbered ``completed`` version of its story
+        exists. Passing ``extraction_id`` alongside ``user_story_id`` bypasses
+        the predicate and reads exactly that version — the version selector's
+        per-version read; ``extraction_id`` without ``user_story_id`` raises
         ``ValueError``.
         """
         ...

@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   ArrowUp,
   ArrowDown,
+  KanbanSquare,
 } from 'lucide-react';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { useStoryStore } from '@/stores/storyStore';
@@ -22,6 +23,7 @@ import type { UserStory } from '@/types/story';
 import { shortUUID } from '@/lib/utils';
 import { StoryForm } from '@/components/react/StoryForm';
 import { ImportStoriesDialog } from '@/components/react/ImportStoriesDialog';
+import { StoryVersionBadge, versionCountLabel } from '@/components/react/StoryVersionBadge';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -434,6 +436,10 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
+                  {/* Version badge and count from the shared component (D1
+                      rationale lives on StoryVersionBadge). The story-status
+                      badge between them names the newest run's outcome. */}
+                  <StoryVersionBadge summary={story.versionSummary} locale={locale} />
                   <Badge variant={STATUS_VARIANTS[story.status] ?? 'outline'}>
                     {
                       t.stories[
@@ -441,6 +447,11 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
                       ]
                     }
                   </Badge>
+                  {story.versionSummary && story.versionSummary.count >= 1 && (
+                    <span className="text-xs text-muted-foreground">
+                      {versionCountLabel(story.versionSummary.count, locale)}
+                    </span>
+                  )}
                   <span className="text-xs text-muted-foreground">
                     {new Date(story.createdAt).toLocaleDateString(
                       locale === 'es' ? 'es-MX' : 'en-US',
@@ -467,6 +478,20 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
               </div>
 
               <div className="flex items-center gap-1 ml-4 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-(--color-surface-secondary)"
+                  aria-label={t.kanban.view_in_kanban}
+                  render={
+                    <a
+                      href={`/${locale}/kanban?project=${story.projectId}&story=${story.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  }
+                >
+                  <KanbanSquare className="h-4 w-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"

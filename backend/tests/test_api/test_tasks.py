@@ -7,6 +7,7 @@ workspace — ``POST /`` included, which resolves the walk from its ``user_story
 body field before it persists anything.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -18,16 +19,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.api.dependencies import get_vector_store
 from storico.api.routes import tasks as task_routes
-from storico.domain.entities import User, UserStory
+from storico.domain.entities import Project, User, UserStory
 from storico.domain.entities.exceptions import VectorStoreError
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.task import TaskStatus
 from storico.domain.entities.task_invalidation import TaskInvalidation
 from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
+from storico.domain.ports.user_story_repository import StoryCardContext
 from storico.domain.ports.vector_store_port import VectorStorePort
 from storico.infrastructure.database.models import TaskInvalidationModel
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
+    SQLAlchemyProjectRepository,
     SQLAlchemyTaskInvalidationRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserRepository,
@@ -628,6 +631,312 @@ class TestListTasksVersionReads:
         data = historical.json()
         assert data["total"] == 2
         assert {item["title"] for item in data["items"]} == {"v1 task one", "v1 task two"}
+
+
+class TestProjectFilter:
+    """GET /api/v1/tasks/?project_id= — the project scope (versioning-visibility WU2).
+
+    Decision D6: the scope mirrors the workspace branch of ``list_page``, so a
+    project-scoped board shows each story's current version, like the
+    workspace board does. Decision D7: several scope filters at once are
+    refused with 422 in the route, before any repository call — the old
+    ``if``/``elif`` silently preferred ``workspace_id`` over ``user_story_id``.
+    """
+
+    async def test_project_filter_returns_only_that_projects_tasks(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """Two projects in one workspace: only the asked project's tasks come back.
+
+        The sibling project's task is in the same workspace, so the answer's
+        narrowness is the scope's doing, not the membership walk's.
+        """
+        seeded = await seed_workspace(stories=2)
+        mine_story, other_story = seeded.story_ids
+        other_project = await SQLAlchemyProjectRepository(db_session).save(
+            Project(name="Other project", workspace_id=seeded.workspace_id)
+        )
+        other_project_story = await SQLAlchemyUserStoryRepository(db_session).save(
+            UserStory(
+                project_id=other_project.id,
+                actor="user",
+                feature="other project feature",
+                benefit="value",
+                raw_text="As a user, I want the other project feature so that value",
+            )
+        )
+        await seed_task(db_session, mine_story, "Mine task")
+        await seed_task(db_session, other_story, "Same project task")
+        await seed_task(db_session, other_project_story.id, "Other project task")
+
+        response = await authed_client.get(f"/api/v1/tasks/?project_id={seeded.project_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        assert {item["title"] for item in data["items"]} == {"Mine task", "Same project task"}
+
+    async def test_project_filter_refuses_a_non_member_with_the_workspace_code(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A caller outside the project's workspace gets 403 NOT_A_WORKSPACE_MEMBER.
+
+        The wording is the same refusal every other scope of this route answers
+        with — the walk is ``project → workspace → membership``.
+        """
+        seeded = await seed_workspace(member=False)
+
+        response = await authed_client.get(f"/api/v1/tasks/?project_id={seeded.project_id}")
+
+        assert response.status_code == 403
+        assert response.json()["error_code"] == "NOT_A_WORKSPACE_MEMBER"
+
+    async def test_project_filter_answers_404_for_an_unknown_project(self, authed_client):
+        """A project id that does not exist is a 404, like ``list_stories`` answers."""
+        response = await authed_client.get(f"/api/v1/tasks/?project_id={uuid4()}")
+
+        assert response.status_code == 404
+        assert response.json()["error_code"] == "ENTITY_NOT_FOUND"
+
+    async def test_two_scope_filters_refuse_with_422_before_any_repository_call(
+        self, authed_client, seed_workspace
+    ):
+        """Two scopes at once are refused with 422 REQUEST_VALIDATION_FAILED.
+
+        Decision D7: a deliberate tightening — today the route silently prefers
+        ``workspace_id`` over ``user_story_id``. No known client sends two
+        scopes (``frontend/src/lib/tasks-api.ts``), so nothing breaks, and the
+        refusal says so. The pinned detail text is the contract.
+        """
+        seeded = await seed_workspace()
+
+        response = await authed_client.get(
+            f"/api/v1/tasks/?project_id={seeded.project_id}&workspace_id={seeded.workspace_id}"
+        )
+
+        assert response.status_code == 422
+        body = response.json()
+        assert body["error_code"] == "REQUEST_VALIDATION_FAILED"
+        assert "mutually exclusive" in body["detail"]
+        assert "No known client" in body["detail"]
+
+        # The pair the old if/elif silently resolved (workspace over story)
+        # refuses now too.
+        response = await authed_client.get(
+            f"/api/v1/tasks/?workspace_id={seeded.workspace_id}&user_story_id={seeded.story_id}"
+        )
+        assert response.status_code == 422
+        assert response.json()["error_code"] == "REQUEST_VALIDATION_FAILED"
+
+
+class TestTaskVersionFields:
+    """The version chip's data (decision D8): every task read names its version.
+
+    ``TaskResponse`` gains ``extraction_id`` and ``version_number``; all three
+    construction sites populate them, so the board store's merge of a ``PUT``
+    response cannot erase the chip with a ``null``.
+    """
+
+    async def test_list_items_carry_extraction_id_and_version_number(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The list path resolves the version number in one batched call."""
+        story_id = (await seed_workspace()).story_id
+        task = await seed_task(db_session, story_id, "Chipped task")
+
+        response = await authed_client.get("/api/v1/tasks/")
+
+        assert response.status_code == 200
+        item = next(i for i in response.json()["items"] if i["id"] == str(task.id))
+        assert item["extraction_id"] == str(task.extraction_id)
+        assert item["version_number"] == 1
+
+    async def test_get_carries_extraction_id_and_version_number(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The single-task read names the version, even a superseded one."""
+        story_id = (await seed_workspace()).story_id
+        v1 = await seed_extraction(db_session, story_id, status=ExtractionStatus.COMPLETED)
+        task = await seed_task(db_session, story_id, "Superseded task", extraction=v1)
+        # A second completed version supersedes the task's one; the read is by
+        # id, so the chip still names v1.
+        await seed_extraction(db_session, story_id, status=ExtractionStatus.COMPLETED)
+
+        response = await authed_client.get(f"/api/v1/tasks/{task.id}")
+
+        assert response.status_code == 200
+        assert response.json()["extraction_id"] == str(v1.id)
+        assert response.json()["version_number"] == 1
+
+    async def test_a_status_change_keeps_the_version_on_the_put_response(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The important case: the PUT response still names the version.
+
+        The board store merges the ``PUT`` response into the card it just
+        moved — a ``null`` ``version_number`` there would erase the version
+        chip on drop.
+        """
+        story_id = (await seed_workspace()).story_id
+        task = await seed_task(db_session, story_id, "Moved task")
+        assert task.status is TaskStatus.BACKLOG
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{task.id}",
+            json={"status": "todo"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "todo"
+        assert data["extraction_id"] == str(task.extraction_id)
+        assert data["version_number"] == 1
+
+
+class TestTaskStoryContext:
+    """The card's context-chip data (D14 of feature ``kanban-card-project-story``,
+    widened by D19 of feature ``kanban-context-tooltips`` and by D24 of feature
+    ``kanban-project-icons``).
+
+    ``TaskResponse`` gains ``project_id``, ``project_name``, the story's own
+    ``story_raw_text`` (the tooltip's sentence) and the project's own icon
+    name; every construction site in the tasks route resolves them from one
+    batched read, so the board's card can name where the task came from, what
+    the story says and which icon the project picked, and a ``PUT`` response
+    merged into a moved card cannot erase that with a ``null`` — the same
+    posture the version chip's fields (D8) already take.
+    """
+
+    async def _give_the_project_its_icon(self, db_session: AsyncSession, project_id: UUID) -> None:
+        """Re-save the seeded project with an icon so the read has one to name."""
+        project_repo = SQLAlchemyProjectRepository(db_session)
+        project = await project_repo.find_by_id(project_id)
+        assert project is not None
+        await project_repo.save(replace(project, icon="rocket-launch"))
+
+    async def test_list_items_carry_the_story_context(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The list path resolves the story context in one batched call."""
+        seeded = await seed_workspace()
+        await self._give_the_project_its_icon(db_session, seeded.project_id)
+        task = await seed_task(db_session, seeded.story_id, "Labelled task")
+        story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
+
+        response = await authed_client.get("/api/v1/tasks/")
+
+        assert response.status_code == 200
+        item = next(i for i in response.json()["items"] if i["id"] == str(task.id))
+        assert item["project_id"] == str(seeded.project_id)
+        assert item["project_name"] == "Seeded Project"
+        assert item["project_icon"] == "rocket-launch"
+        assert item["story_raw_text"] == story.raw_text
+
+    async def test_get_carries_the_story_context(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The single-task read names the story context too."""
+        seeded = await seed_workspace()
+        await self._give_the_project_its_icon(db_session, seeded.project_id)
+        task = await seed_task(db_session, seeded.story_id, "Single task")
+        story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
+
+        response = await authed_client.get(f"/api/v1/tasks/{task.id}")
+
+        assert response.status_code == 200
+        assert response.json()["project_id"] == str(seeded.project_id)
+        assert response.json()["project_name"] == "Seeded Project"
+        assert response.json()["project_icon"] == "rocket-launch"
+        assert response.json()["story_raw_text"] == story.raw_text
+
+    async def test_a_status_change_keeps_the_story_context_on_the_put_response(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The PUT response still names the story context.
+
+        The board store merges the ``PUT`` response into the card it just
+        moved — a ``null`` ``project_name`` or ``story_raw_text`` there would
+        erase the chips on drop, exactly the failure mode the version fields
+        guard against.
+        """
+        seeded = await seed_workspace()
+        await self._give_the_project_its_icon(db_session, seeded.project_id)
+        task = await seed_task(db_session, seeded.story_id, "Moved task")
+        story = await SQLAlchemyUserStoryRepository(db_session).find_by_id(seeded.story_id)
+
+        response = await authed_client.put(
+            f"/api/v1/tasks/{task.id}",
+            json={"status": "todo"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "todo"
+        assert data["project_id"] == str(seeded.project_id)
+        assert data["project_name"] == "Seeded Project"
+        assert data["project_icon"] == "rocket-launch"
+        assert data["story_raw_text"] == story.raw_text
+
+    async def test_an_unresolvable_story_answers_null_fields_not_a_failure(
+        self, app, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A story the batched read cannot resolve yields ``null``s, still 200.
+
+        The stubbed story repository answers ``{}`` — the shape the read
+        returns when a story id has no row. The page itself must not fail and
+        must not fabricate a label or an empty tooltip: the card simply loses
+        its chips. The dependency override follows
+        ``_override_invalidation_repo``'s pattern — the replaced dependency is
+        taken from the route module's own ``StoryRepoDep`` alias. The
+        unfiltered branch uses ``story_repo`` for nothing but this resolution,
+        so the stub cannot disturb anything else.
+        """
+        seeded = await seed_workspace()
+        task = await seed_task(db_session, seeded.story_id, "Orphaned-context task")
+        (depends_param,) = task_routes.StoryRepoDep.__metadata__
+
+        class _Unresolving(SQLAlchemyUserStoryRepository):
+            async def story_context_for(
+                self, story_ids: list[UUID]
+            ) -> dict[UUID, StoryCardContext]:
+                return {}
+
+        async def _factory(session: Annotated[AsyncSession, Depends(get_session)]) -> _Unresolving:
+            return _Unresolving(session)
+
+        app.dependency_overrides[depends_param.dependency] = _factory
+        try:
+            response = await authed_client.get("/api/v1/tasks/")
+        finally:
+            app.dependency_overrides.pop(depends_param.dependency, None)
+
+        assert response.status_code == 200
+        item = next(i for i in response.json()["items"] if i["id"] == str(task.id))
+        assert item["project_id"] is None
+        assert item["project_name"] is None
+        assert item["project_icon"] is None
+        assert item["story_raw_text"] is None
+
+    async def test_a_project_without_an_icon_answers_a_null_icon_not_a_null_project(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """An icon-less project is an ordinary project, not an absent one.
+
+        ``icon`` is nullable on the model while ``name`` is not (decision D22
+        of feature ``kanban-project-icons``): the seeded project carries no
+        icon, so the field answers ``None`` while the project label stays —
+        the card keeps its project chip and renders the app's fallback icon.
+        """
+        seeded = await seed_workspace()
+        task = await seed_task(db_session, seeded.story_id, "Bare project task")
+
+        response = await authed_client.get("/api/v1/tasks/")
+
+        assert response.status_code == 200
+        item = next(i for i in response.json()["items"] if i["id"] == str(task.id))
+        assert item["project_id"] == str(seeded.project_id)
+        assert item["project_name"] == "Seeded Project"
+        assert item["project_icon"] is None
 
 
 class TestGetTask:

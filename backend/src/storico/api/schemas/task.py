@@ -100,7 +100,41 @@ class RepetitionResponse(BaseModel):
 
 
 class TaskResponse(BaseModel):
-    """Response body representing a task."""
+    """Response body representing a task.
+
+    ``extraction_id`` and ``version_number`` are the version chip's data
+    (decision D8 of feature ``versioning-visibility``): every construction
+    site in the tasks route resolves them, so a board card can say which
+    version it belongs to and a ``PUT`` response merged into a moved card
+    cannot erase that with a ``null``. Both default to ``None`` so the export
+    route (decision D9) keeps its current shape untouched.
+
+    ``project_id`` and ``project_name`` are the project chip's data (decision
+    D14 of feature ``kanban-card-project-story``) and follow the same
+    precedent exactly: every construction site in the tasks route resolves
+    them from one batched story → project read, and the ``None`` defaults
+    keep every other consumer of the schema (the export route) untouched. A
+    story the read cannot resolve answers ``None`` rather than failing — the
+    card simply loses its chip.
+
+    ``project_icon`` is the project's own icon name (decision D24 of feature
+    ``kanban-project-icons``), the same kebab-case name the project pages
+    render through ``IconDisplay``, riding the same batched read as the
+    label — one more column of the one statement. It is nullable because the
+    column is: a project without an icon answers ``None`` for the icon and
+    keeps its ``project_name`` (decision D22) — the three values are
+    independent facts about one story's project, and only the icon may be
+    absent; the frontend falls back to the app's own default, never to the
+    label.
+
+    ``story_raw_text`` is the story chip's tooltip data (decision D19 of
+    feature ``kanban-context-tooltips``): the story's full sentence, the same
+    column the story response names ``raw_text`` — projected on the tasks
+    route, never the task's storage. It rides the same batched read as the
+    project label, one more column of one statement, and follows the same
+    ``None``-default precedent; an unresolvable story answers ``None`` — the
+    card loses its tooltip, it does not break.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -114,3 +148,9 @@ class TaskResponse(BaseModel):
     dependencies: list[str]
     created_at: datetime
     updated_at: datetime
+    extraction_id: UUID | None = None
+    version_number: int | None = None
+    project_id: UUID | None = None
+    project_name: str | None = None
+    project_icon: str | None = None
+    story_raw_text: str | None = None

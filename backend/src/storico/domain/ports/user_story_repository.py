@@ -22,6 +22,37 @@ class StoryContextRow:
     raw_text: str
 
 
+@dataclass(frozen=True, slots=True)
+class StoryCardContext:
+    """One row of the card-context read — a read model, not an entity.
+
+    What a board card needs to name its story and where it came from: the
+    project label (decision D14 of feature ``kanban-card-project-story``)
+    plus the story's own sentence (decision D19 of feature
+    ``kanban-context-tooltips``), whose purpose is the story chip's tooltip,
+    plus the project's own icon name (decision D24 of feature
+    ``kanban-project-icons``) — the same kebab-case name the project pages
+    render through ``IconDisplay``. Like ``StoryContextRow`` above, the
+    projection selects the columns the caller reads instead of hydrating
+    whole ``UserStory`` rows.
+    """
+
+    project_id: UUID
+    project_name: str
+    # ``icon`` is nullable on the model while ``name`` is not, so an icon-less
+    # project is an ordinary project (decision D22): the three values are
+    # independent facts about one story's project, and only the icon may be
+    # absent — a ``None`` icon never takes the label's place.
+    project_icon: str | None
+    # ``str | None`` because the repository answers ``None`` for a story whose
+    # sentence is empty: the column is NOT NULL but carries no ``min_length``,
+    # so an empty string is reachable and must read as "no sentence" rather
+    # than as an empty tooltip. The annotation said ``str`` while the mapping
+    # already produced ``None`` — a type that lied about its own values until a
+    # reviewer compared the two.
+    story_raw_text: str | None
+
+
 class UserStoryRepository(ABC):
     """Repository port for UserStory entities."""
 
@@ -117,6 +148,43 @@ class UserStoryRepository(ABC):
         caller's duplicate rule is an exact match, so folding case here would
         hide differences the rule treats as distinct (``User`` vs ``user``).
         An empty project returns an empty list.
+        """
+        ...
+
+    @abstractmethod
+    async def story_context_for(self, story_ids: list[UUID]) -> dict[UUID, StoryCardContext]:
+        """Batch story → its card context — project label, icon and story text, one statement.
+
+        The card's context-chip data: the project label is decision D14 of
+        feature ``kanban-card-project-story``; the story's ``raw_text`` joined
+        into the same statement is decision D19 of feature
+        ``kanban-context-tooltips`` — the story chip's tooltip needs the full
+        sentence the story list already shows; and the project's ``icon`` in
+        the same statement is decision D24 of feature
+        ``kanban-project-icons`` — the card draws the project's own icon, not
+        a hardcoded one. The read that was already walking
+        ``task → story → project`` simply answers one more column. Never a
+        second query and never a per-task lookup.
+
+        This is a repository-level read by design, not a lazy ORM traversal:
+        the route sees domain entities, which carry no relationships to lean
+        on, and building the mapping in the repository from the models'
+        declared ``lazy="selectin"`` relationships would quietly issue a
+        statement per row instead of the one deliberate join this read pays
+        for.
+
+        The join is a single hop on both legs: ``user_stories.project_id`` is
+        an indexed FK (``ix_user_stories_project_id``) and ``projects.id`` is
+        the primary key, so the batch is the IN list itself — the same shape
+        ``ExtractionRepository.version_numbers`` takes.
+
+        An empty ``story_ids`` is answered here rather than sent as ``IN ()``:
+        an empty page of tasks means no rows, not a statement. Ids with no row
+        are absent from the dict, never ``None`` entries, and a row whose
+        ``raw_text`` is absent is unresolved too — an empty tooltip would be a
+        fabricated answer, and the column is ``NOT NULL``, so such a row can
+        only mean data the read refuses to name. An unresolvable story is the
+        caller's decision to render as absence, not a fabricated context.
         """
         ...
 

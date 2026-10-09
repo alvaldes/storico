@@ -5,6 +5,14 @@ import { useTranslations, type Locale } from '@/i18n/utils';
 
 const locale = (Astro.params.locale as Locale) || 'en';
 const t = useTranslations(locale);
+
+// Deep link entry (feature ``view-in-kanban``): a link to the board lands
+// here with `?project=<id>&story=<id>`. The page output is SSR
+// (`astro.config.mjs`: `output: 'server'` + Vercel adapter), so the request's
+// query params are read here and handed to the island as initial values; the
+// board seeds its cascade from them.
+const projectId = Astro.url.searchParams.get('project');
+const storyId = Astro.url.searchParams.get('story');
 ---
 
 <MainLayout locale={locale}>
@@ -12,5 +20,5 @@ const t = useTranslations(locale);
     <title>{t.app.name} — {t.nav.kanban}</title>
   </div>
 
-  <KanbanBoard client:load locale={locale} />
+  <KanbanBoard client:load locale={locale} initialProjectId={projectId} initialStoryId={storyId} />
 </MainLayout>

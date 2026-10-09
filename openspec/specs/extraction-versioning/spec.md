@@ -217,14 +217,22 @@ cleanly when both tables are empty.
 
 ### Requirement: Task Reads Return the Current Version Only
 
-Every task read — `GET /api/v1/tasks/?user_story_id={story_id}` and
-`GET /api/v1/tasks/?workspace_id={workspace_id}` — MUST return only the tasks of each story's
+Every task read takes exactly one scope — `user_story_id` (with an optional `extraction_id`),
+`workspace_id`, or `project_id` — and the read that names no scope at all takes the caller's
+workspace memberships as its single scope. Naming two or more scopes MUST be refused with HTTP
+422 `REQUEST_VALIDATION_FAILED` before any repository call, never silently resolved to one of
+them. The story-, workspace- and project-scoped reads MUST return only the tasks of each story's
 current version (the highest `completed` one), filtered in the SQL statement so the page and its
 `total` come from the same filtered query. A story with two completed runs MUST NOT show two task
 sets at once. The story-scoped read MUST accept an optional `extraction_id` query parameter that
-reads one specific version of that story, and MUST refuse an `extraction_id` that does not belong
-to the requested story. A story with no `completed` version MUST answer an empty list, not an
-error.
+reads one specific version of that story — a frozen version's tasks stay addressable — and MUST
+refuse an `extraction_id` that does not belong to the requested story. A story with no
+`completed` version MUST answer an empty list, not an error. Every task a task read returns MUST
+carry `extraction_id`, the run that produced it, and `version_number`, the number of the version
+it belongs to, resolved for the whole page in one batched lookup. It MUST also carry its
+`project_id` and `project_name`, resolved for the whole page from the page's distinct story ids in
+one batched read, and MUST answer `null` for both when the story cannot be resolved rather than
+failing the read.
 
 #### Scenario: A second completed run does not double the story's task list
 
@@ -260,6 +268,58 @@ error.
 - **GIVEN** a story whose only run is `failed`
 - **WHEN** the client calls `GET /api/v1/tasks/?user_story_id={story_id}`
 - **THEN** the backend answers HTTP 200 with an empty task list
+
+#### Scenario: A project-scoped read answers each story's current version only
+
+- **GIVEN** a project with one story whose v1 is `completed` with 3 tasks and whose v2 is
+  `completed` with 4 tasks
+- **WHEN** the client calls `GET /api/v1/tasks/?project_id={project_id}`
+- **THEN** the response contains only the 4 tasks of v2
+- **AND** the page's `total` is 4, not 7
+
+#### Scenario: Two scopes named at once are refused, never silently resolved
+
+- **GIVEN** a workspace whose stories' current versions hold tasks, and a project the caller can
+  address
+- **WHEN** the client calls `GET /api/v1/tasks/?workspace_id={workspace_id}&user_story_id={story_id}`
+- **THEN** the backend answers HTTP 422 with `error_code` `REQUEST_VALIDATION_FAILED`
+- **AND** no task is returned in any case
+
+### Requirement: Story Reads Project a Batched Version Summary
+
+Every `UserStoryResponse` returned by `GET /api/v1/stories/`, `GET /api/v1/stories/{story_id}`
+and `PUT /api/v1/stories/{story_id}` MUST carry `version_summary` with `count` (the story's
+versions of any status), `current_number` (the highest `completed` version's number, `null` when
+the story has no completed run) and `latest_number` with `latest_status` (the newest run of any
+status). A story with no versions at all MUST answer `version_summary: null`, never a zeroed
+object — which is also what a story just created answers, because it has no history. The whole
+page's summaries MUST be resolved in one statement over the page's story ids, never one read per
+story. The projection is pinned by
+`tests/test_repositories/test_extraction_repo.py::test_version_summaries_issues_exactly_one_statement_for_the_batch`
+and its neighbours `test_version_summaries_reports_count_current_and_latest_for_the_batch` and
+`test_version_summaries_for_a_failed_only_story_names_no_current`, with the wire shape pinned by
+`tests/test_api/test_stories.py::TestStoryVersionSummaryProjection`.
+
+#### Scenario: Two completed runs report the higher one as current
+
+- **GIVEN** a story whose v1 and v2 are both `completed`
+- **WHEN** the story is read
+- **THEN** `version_summary.current_number` is 2, the higher completed run
+- **AND** `count` is 2 and `latest_number` is 2
+
+#### Scenario: A story whose only run failed has no current but still a latest
+
+- **GIVEN** a story whose only run is `failed`
+- **WHEN** the story is read
+- **THEN** `version_summary` is present, with `current_number` `null`
+- **AND** `latest_number` is 1 and `latest_status` is `"failed"`
+
+#### Scenario: A story with no runs answers null, not a zeroed object
+
+- **GIVEN** a story that has never been extracted
+- **WHEN** the story is read
+- **THEN** `version_summary` is `null`
+- **AND** no object with `count: 0` is answered in its place
 
 ### Requirement: The Story's Versions Are Readable Through One Selector Endpoint
 

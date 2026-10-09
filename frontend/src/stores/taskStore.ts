@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { getAllowedTaskTransitions, type Task, type TaskStatus } from '@/types/task';
 import type { UserStory, UserStoryStatus } from '@/types/story';
 import * as api from '@/lib/tasks-api';
-import type { TaskUpdateFields } from '@/lib/tasks-api';
+import type { TaskUpdateFields, WorkspaceTaskFilters } from '@/lib/tasks-api';
 import { extractErrorInfo, type ErrorInfo } from '@/lib/error-info';
 import { LLM_CONFIG_INCOMPLETE_CODE } from '@/lib/llm-config-readiness';
 import { isScopedWorkspace, setScopedWorkspaceId } from '@/lib/workspace-scope';
@@ -76,7 +76,16 @@ export interface TaskState {
   extractTasks: (storyId: string, workspaceId: string) => Promise<void>;
   /** Poll extraction status until completion or failure. */
   pollExtraction: (storyId: string, workspaceId: string, extractionId: string) => Promise<void>;
-  fetchTasksForWorkspace: (workspaceId: string) => Promise<void>;
+  /**
+   * Fetch the workspace's task board.
+   *
+   * `filters` is the cascade the board resolves in the API layer (D5, see
+   * `WorkspaceTaskFilters`): passed through untouched, because the
+   * most-specific-wins resolution is the API's contract and the store must
+   * not hold a second copy of it. Called without filters — as `ExportPanel`
+   * does — it is exactly the pre-filtering read.
+   */
+  fetchTasksForWorkspace: (workspaceId: string, filters?: WorkspaceTaskFilters) => Promise<void>;
   /**
    * Point the workspace-scoped slices at `workspaceId` and drop them.
    * The single place a switch resets `workspaceTasks` and `extractions`: a switch must never
@@ -394,12 +403,18 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set({ workspaceTasks: [], extractions: {} });
   },
 
-  fetchTasksForWorkspace: async (workspaceId: string) => {
+  fetchTasksForWorkspace: async (workspaceId: string, filters?: WorkspaceTaskFilters) => {
     // Claimed before the request starts: this call owns `loading` until it settles.
     const requestId = ++workspaceTasksRequestSeq;
     set({ loading: true, error: null });
     try {
-      const items = await api.listTasksByWorkspace(workspaceId);
+      // A filterless call keeps the pre-filtering call shape — the API named with
+      // the workspace alone — so ExportPanel and any test pinning the unfiltered
+      // read observe exactly what they observed before the cascade existed.
+      const items =
+        filters === undefined
+          ? await api.listTasksByWorkspace(workspaceId)
+          : await api.listTasksByWorkspace(workspaceId, filters);
       if (requestId !== workspaceTasksRequestSeq) return;
       if (!isScopedWorkspace(workspaceId)) {
         // No newer request exists, so nobody else owns `loading`: release it, but never

@@ -7,6 +7,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useTranslations, type Locale } from '@/i18n/utils';
+import { StoryVersionBadge, versionCountLabel } from '@/components/react/StoryVersionBadge';
 
 export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
   const t = useTranslations(locale);
@@ -125,6 +126,16 @@ export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
                           {story.rawText || `As a(n) ${story.actor}, I want ${story.feature}`}
                         </p>
                         <div className="flex items-center gap-2 mt-1">
+                          {/* Version badge and count from the shared component
+                              (D1 rationale lives on StoryVersionBadge). A story
+                              with no runs (versionSummary null) renders neither,
+                              leaving the row exactly as before. */}
+                          <StoryVersionBadge summary={story.versionSummary} locale={locale} />
+                          {story.versionSummary && story.versionSummary.count >= 1 && (
+                            <span className="text-xs text-muted-foreground">
+                              {versionCountLabel(story.versionSummary.count, locale)}
+                            </span>
+                          )}
                           {project && (
                             <span className="text-xs text-muted-foreground/60">{project.name}</span>
                           )}

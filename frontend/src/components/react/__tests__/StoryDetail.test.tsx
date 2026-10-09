@@ -703,3 +703,22 @@ describe('StoryDetail — version selector and version-aware actions', () => {
     expect(within(dialog).getByRole('button', { name: t.common.delete })).toBeEnabled();
   });
 });
+
+/* ── View in Kanban link (view-in-kanban, WU2) ── */
+
+describe('StoryDetail — View in Kanban link', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStores();
+  });
+
+  it('links the header to the board with this story and its project preselected', async () => {
+    // The board's cascade never seeds a child level without its parent, so the
+    // story's project ALWAYS travels with it.
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    const link = await screen.findByRole('link', { name: 'Kanban' });
+
+    expect(link).toHaveAttribute('href', `/${LOCALE}/kanban?project=project-1&story=${STORY_ID}`);
+  });
+});

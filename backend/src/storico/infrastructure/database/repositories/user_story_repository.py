@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import EntityNotFound, RepositoryError, UserStory, UserStoryStatus
 from storico.domain.entities.story_deletion import StoryDeletion
-from storico.domain.ports import StoryContextRow, UserStoryRepository
+from storico.domain.ports.user_story_repository import (
+    StoryCardContext,
+    StoryContextRow,
+    UserStoryRepository,
+)
 from storico.infrastructure.database.models import ProjectModel, StoryDeletionModel, UserStoryModel
 from storico.infrastructure.database.pagination import fetch_page, with_total
 
@@ -198,6 +202,46 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
         )
         result = await self._session.execute(stmt)
         return [StoryContextRow(id=row.id, raw_text=row.raw_text) for row in result]
+
+    async def story_context_for(self, story_ids: list[UUID]) -> dict[UUID, StoryCardContext]:
+        """Batch story → card context (project label, icon and story text) — one statement.
+
+        The port's docstring carries the why (D14 of feature
+        ``kanban-card-project-story``, widened by D19 of feature
+        ``kanban-context-tooltips`` and by D24 of feature
+        ``kanban-project-icons``); the statement itself selects only the
+        five columns the mapping reads, never whole ORM rows.
+        """
+        if not story_ids:
+            return {}
+        stmt = (
+            select(
+                UserStoryModel.id,
+                UserStoryModel.project_id,
+                UserStoryModel.raw_text,
+                ProjectModel.name,
+                ProjectModel.icon,
+            )
+            .join(ProjectModel, UserStoryModel.project_id == ProjectModel.id)
+            .where(UserStoryModel.id.in_(story_ids))
+        )
+        result = await self._session.execute(stmt)
+        return {
+            row.id: StoryCardContext(
+                project_id=row.project_id,
+                project_name=row.name,
+                # An absent icon is an ordinary project without one (D22), never
+                # a substitute for the label: the three values are independent
+                # facts about the same story's project, and only the icon may
+                # degrade — exactly how ``story_raw_text`` behaves below.
+                project_icon=row.icon,
+                # An empty sentence is a missing sentence, never an empty tooltip —
+                # but it must not cost the caller the project label, which is an
+                # independent fact about the same story. Only the text degrades.
+                story_raw_text=row.raw_text or None,
+            )
+            for row in result
+        }
 
     async def save_many(self, user_stories: Sequence[UserStory]) -> list[UserStory]:
         # Empty input is answered before any statement: no rows means no work,

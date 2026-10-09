@@ -226,6 +226,8 @@
     "delete_confirm_description": "This will permanently delete this user story and its generated tasks. This action cannot be undone.",
     "delete_confirm_versions": "{count} extraction versions will be destroyed with it.",
     "delete_confirm_versions_unknown": "The extraction versions it holds will be destroyed with it as well.",
+    "version_count_one": "1 version",
+    "version_count_other": "{count} versions",
     "extract_confirm_title": "Extract tasks — create a new version",
     "extract_confirm_body": "Extracting creates version {newVersion} and freezes version {currentVersion}. The frozen version keeps its tasks readable, but its dependencies can no longer change.",
     "extract_confirm_body_first": "Extracting creates version {newVersion}. There is no earlier version to freeze.",
@@ -338,7 +340,17 @@
     "invalid_drop": "Cannot move task from {from} to {to}. Allowed: {allowed}",
     "backend_invalid_transition": "Server rejected move from {from} to {to}. Allowed: {allowed}",
     "empty_board": "No tasks in this workspace yet",
-    "empty_board_hint": "Extract tasks from a user story to see them here."
+    "empty_board_hint": "Extract tasks from a user story to see them here.",
+    "filter_project": "Project",
+    "filter_story": "Story",
+    "filter_version": "Version",
+    "filter_all_stories": "All stories",
+    "filter_all_versions": "All versions",
+    "filter_select_story": "Select a story first",
+    "filter_clear": "Clear filters",
+    "empty_filtered": "No tasks match the selected filters",
+    "empty_filtered_hint": "Adjust or clear the filters to see more tasks.",
+    "view_in_kanban": "Kanban"
   },
   "taskEditor": {
     "title": "Edit Task",

@@ -43,6 +43,50 @@ export interface UserStory {
   rawText: string;
   status: UserStoryStatus;
   createdAt: string;
+  /**
+   * One-line version summary for the story card, projected by the story read
+   * paths (`list_stories`, `get_story`, `update_story`) in one batched
+   * statement — never one request per card.
+   *
+   * Nested shape (camelCase mirror of the backend `StoryVersionSummaryResponse`):
+   * - `count` — how many extraction runs the story has, any status.
+   * - `currentNumber` — the highest `completed` run's version number, or
+   *   `null` when there is no completed run (the card must then show the
+   *   newest run without ever calling it "current").
+   * - `latestNumber` / `latestStatus` — the newest run of any status and its
+   *   `ExtractionStatus` (`pending` | `completed` | `failed`).
+   *
+   * `null` (or absent) reliably means **the story has no runs at all** —
+   * exactly what `create_story` answers for a story just created. The card
+   * renders no version badge and no count in that case; nothing is invented.
+   */
+  versionSummary?: StoryVersionSummary | null;
+}
+
+/* ── Story version summary (versioning-visibility, WU3) ── */
+
+/** Raw `version_summary` from `UserStoryResponse` (snake_case, pre-`toCamelCase`). */
+export interface RawStoryVersionSummary {
+  /** How many extraction runs the story has, any status. */
+  count: number;
+  /** Highest `completed` run's version number; `null` when no run completed. */
+  current_number: number | null;
+  /** The newest run's version number, any status. */
+  latest_number: number;
+  /** The newest run's status — the backend `ExtractionStatus` enum. */
+  latest_status: 'pending' | 'completed' | 'failed';
+}
+
+/** camelCase mirror of `RawStoryVersionSummary`, as `UserStory.versionSummary` carries it. */
+export interface StoryVersionSummary {
+  /** How many extraction runs the story has, any status. */
+  count: number;
+  /** Highest `completed` run's version number; `null` when no run completed. */
+  currentNumber: number | null;
+  /** The newest run's version number, any status. */
+  latestNumber: number;
+  /** The newest run's status — the backend `ExtractionStatus` enum. */
+  latestStatus: 'pending' | 'completed' | 'failed';
 }
 
 /* ── Extraction versions (0.9.0 slice b) ── */

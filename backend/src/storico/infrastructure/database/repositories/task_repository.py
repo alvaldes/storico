@@ -83,6 +83,7 @@ class SQLAlchemyTaskRepository(TaskRepository):
         user_story_id: UUID | None = None,
         workspace_ids: list[UUID] | None = None,
         extraction_id: UUID | None = None,
+        project_id: UUID | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[Task], int]:
@@ -104,28 +105,30 @@ class SQLAlchemyTaskRepository(TaskRepository):
         pages. ``id DESC`` is the tiebreaker, so two rows written in the same
         instant cannot swap.
 
-        More than one scope is refused rather than resolved: the three arguments
+        More than one scope is refused rather than resolved: the four arguments
         are mutually exclusive, and a plain ``if``/``elif`` chain would let a
         caller pass two and silently get one of them -- a wrong answer that looks
         like a right one, which is the exact failure mode this change removes.
 
         Reads answer the story's current version only (D-a-5 item 2): the
         story scope pins ``extraction_id`` to the highest-numbered
-        ``completed`` run, the workspace and ``workspace_ids`` scopes drop any
-        task whose story has a higher-numbered ``completed`` run. Both
-        predicates are joined to the ``scope`` clause below, so the page and
-        its ``total`` — the window count and the past-the-end fallback count
-        alike — are filtered together. An explicit ``extraction_id`` (story
-        scope only; anything else raises ``ValueError``) bypasses the
-        predicate and reads exactly that version.
+        ``completed`` run, the workspace, ``workspace_ids`` and ``project_id``
+        scopes drop any task whose story has a higher-numbered ``completed``
+        run. Both predicates are joined to the ``scope`` clause below, so the
+        page and its ``total`` — the window count and the past-the-end
+        fallback count alike — are filtered together. An explicit
+        ``extraction_id`` (story scope only; anything else raises
+        ``ValueError``) bypasses the predicate and reads exactly that version.
         """
         scopes = [
-            value for value in (workspace_ids, user_story_id, workspace_id) if value is not None
+            value
+            for value in (workspace_ids, user_story_id, workspace_id, project_id)
+            if value is not None
         ]
         if len(scopes) != 1:
             raise ValueError(
-                "list_page requires exactly one of workspace_id, user_story_id or workspace_ids; "
-                f"got {len(scopes)}"
+                "list_page requires exactly one of workspace_id, user_story_id, "
+                f"workspace_ids or project_id; got {len(scopes)}"
             )
         if extraction_id is not None and user_story_id is None:
             raise ValueError(
@@ -173,6 +176,21 @@ class SQLAlchemyTaskRepository(TaskRepository):
         elif workspace_id is not None:
             # Tasks have no workspace column: walk ``task → story → project``.
             scope = self._current_version_only(ProjectModel.workspace_id == workspace_id)
+            stmt = select(TaskModel).join(UserStoryModel).join(ProjectModel).where(scope)
+            count_stmt = (
+                select(func.count())
+                .select_from(TaskModel)
+                .join(UserStoryModel)
+                .join(ProjectModel)
+                .where(scope)
+            )
+        elif project_id is not None:
+            # Tasks have no project column either: the same ``task → story →
+            # project`` walk, filtered on the project itself. The currency
+            # predicate rides along (D6 of feature ``versioning-visibility``),
+            # so a project-scoped board obeys the same contract as the
+            # workspace board: each story's current version only.
+            scope = self._current_version_only(ProjectModel.id == project_id)
             stmt = select(TaskModel).join(UserStoryModel).join(ProjectModel).where(scope)
             count_stmt = (
                 select(func.count())

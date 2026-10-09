@@ -1,12 +1,35 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import { KanbanColumn } from '@/components/react/KanbanColumn';
 import { DndErrorBoundary } from '@/components/react/DndErrorBoundary';
 import { useTaskStore } from '@/stores/taskStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { listStories } from '@/lib/stories-api';
+import { listVersions } from '@/lib/versioning-api';
+import type { WorkspaceTaskFilters } from '@/lib/tasks-api';
+import type { StoryVersion, UserStory } from '@/types/story';
 import { useTranslations, type Locale } from '@/i18n/utils';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { AlertCircle, LoaderCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { IconDisplay } from '@/components/ui/icon-display';
+import {
+  CONTEXT_LABEL_CAP,
+  PROJECT_KIND_ICON,
+  projectTreatment,
+  STORY_KIND_ICON,
+  storySelectTreatment,
+  type ContextTreatment,
+} from '@/lib/context-treatment';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { Task, TaskStatus } from '@/types/task';
 import { getAllowedTaskTransitions, TASK_STATUSES } from '@/types/task';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
@@ -16,6 +39,12 @@ type ColumnId = TaskStatus;
 
 interface KanbanBoardProps {
   locale?: Locale;
+  /** Deep link entry (feature ``view-in-kanban``): the `project` query param of
+   * a link to the board, seeding the cascade's project level. */
+  initialProjectId?: string | null;
+  /** The link's `story` query param; seeds the story level only when
+   * `initialProjectId` is also present (see the seeding below). */
+  initialStoryId?: string | null;
 }
 
 interface InvalidDropToast {
@@ -24,9 +53,26 @@ interface InvalidDropToast {
   allowed: TaskStatus[];
 }
 
-export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
+/** One row of the cascade's selects. The label is the visible (truncated) one;
+ * `title` is the full value the listbox option exposes as a native `title`
+ * (D18 of feature ``kanban-context-tooltips``: a Tooltip per option fights the
+ * listbox's focus and keyboard navigation, so the listbox keeps the native
+ * mechanism and the trigger gets the real one); `treatment` is the shared
+ * context treatment — its icon is a name plus fallback rendered through
+ * ``IconDisplay`` (D23 of feature ``kanban-project-icons``) —, `null` for the
+ * "All …" rows that name no project or story. */
+interface ContextSelectItem {
+  label: string;
+  value: string | null;
+  /** The shared treatment, which carries the icon and the tooltip's full value;
+   * `null` for the "All …" rows that name no project or story. */
+  treatment: ContextTreatment | null;
+}
+
+export function KanbanBoard({ locale = 'en', initialProjectId, initialStoryId }: KanbanBoardProps) {
   const t = useTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
+  const { projects, loading: projectsLoading, fetchProjects } = useProjectStore();
   const {
     workspaceTasks,
     loading,
@@ -39,7 +85,42 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     updateTaskStatus,
   } = useTaskStore();
 
-  const [initialLoad, setInitialLoad] = useState(true);
+  // The cascade (D5): project → story → version. `null` at a level means "not
+  // filtered here"; choosing a project enables the story select, a story the
+  // version select. Moving up the cascade clears everything below it, so the
+  // resolved query never carries a scope orphaned from its parent.
+  // Deep link entry (feature ``view-in-kanban``): a link to the board lands
+  // here as `?project=<id>&story=<id>`, and the two ids seed the cascade's first
+  // two levels. The story seeds **only when a project id also travelled**: the
+  // cascade's invariant is that a child filter never exists without its parent,
+  // so an orphan story id is ignored — if a project id is present, that level
+  // still applies; if not, the board loads unfiltered. No version is seeded:
+  // the link names a story, not a run, and the user can still pick a version
+  // afterwards. These are initial values, not props to track — after entry the
+  // cascade belongs to the user.
+  const [projectFilter, setProjectFilter] = useState<string | null>(initialProjectId ?? null);
+  const [storyFilter, setStoryFilter] = useState<string | null>(
+    initialProjectId ? (initialStoryId ?? null) : null,
+  );
+  const [versionFilter, setVersionFilter] = useState<string | null>(null);
+  // The story and version options are the selected project's/story's data, read
+  // straight from their APIs into local state: `useStoryStore` belongs to the
+  // stories page, and the board must not write into it (the page's list, cache
+  // and selectors would all see the board's reads). Each read also carries its
+  // own pending flag: the select's own loader has to reflect its read while it
+  // is in flight (D9), and an empty select must not be indistinguishable from
+  // a loading one.
+  const [storiesLoading, setStoriesLoading] = useState(false);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  // Which board scope the last settled read answered for, as a string key. The
+  // empty states below are only honest once a read has settled *for the filters
+  // currently in the bar*: without this, the first paint (and the first paint
+  // after a workspace switch) renders an empty `workspaceTasks` as "no tasks
+  // yet" for one frame, before the effect has even started the request. A false
+  // "no tasks" is the same class of lie as a false "current" badge.
+  const [loadedFiltersKey, setLoadedFiltersKey] = useState<string | null>(null);
+  const [storyOptions, setStoryOptions] = useState<UserStory[]>([]);
+  const [versionOptions, setVersionOptions] = useState<StoryVersion[]>([]);
   const [localTasks, setLocalTasks] = useState<Record<ColumnId, Task[]>>({
     backlog: [],
     todo: [],
@@ -53,18 +134,148 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     allowed: [],
   });
 
-  // Fetch tasks on mount.
+  // Filters do not survive a workspace switch: a project chosen in workspace A is
+  // meaningless in B, where `project_id` belongs to another workspace and would
+  // answer 403 or an empty board with the bar still naming it. The reset happens
+  // during render (the "adjust state when a prop changes" pattern) rather than in
+  // an effect, so the fetch effect committed for the new workspace already sees
+  // cleared filters and the board refetches the new workspace unfiltered — an
+  // effect here would run one commit late, after a mis-scoped fetch had left.
+  //
+  // The reset fires only on a real switch, i.e. only when `prevWorkspaceId` is
+  // defined: a workspace's *first* arrival after mount (`undefined` → real id)
+  // is not a switch. That transition is how every fresh session starts — the
+  // store is `zustand/persist`, `currentWorkspace` is `null` until
+  // `fetchWorkspaces` auto-selects one — and with a deep link seeded from the
+  // query params, clearing there would wipe the cascade before its first fetch
+  // and silently hand back the whole-workspace board.
+  const [prevWorkspaceId, setPrevWorkspaceId] = useState(workspaceId);
+  if (prevWorkspaceId !== workspaceId) {
+    setPrevWorkspaceId(workspaceId);
+    if (prevWorkspaceId !== undefined) {
+      setProjectFilter(null);
+      setStoryFilter(null);
+      setVersionFilter(null);
+      setStoryOptions([]);
+      setVersionOptions([]);
+    }
+  }
+
+  // Fetch projects if they haven't been loaded yet (needed for the filter dropdown),
+  // exactly as StoriesList feeds its project select.
+  useEffect(() => {
+    if (projects.length === 0) {
+      fetchProjects();
+    }
+  }, [fetchProjects, projects.length]);
+
+  // Stories of the selected project, capped at 100 like every story list read.
+  // A failed read leaves the select empty (and so unusable); it never blocks
+  // the unfiltered board. While the read is pending `storiesLoading` holds the
+  // story select's own loader up (D9) — an empty select must not look like a
+  // loaded one.
+  useEffect(() => {
+    if (!projectFilter) {
+      setStoryOptions([]);
+      setStoriesLoading(false);
+      return;
+    }
+    let active = true;
+    setStoryOptions([]);
+    setStoriesLoading(true);
+    listStories(projectFilter, 1, 100, workspaceId)
+      .then((page) => {
+        if (active) {
+          setStoryOptions(page.items);
+          setStoriesLoading(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setStoryOptions([]);
+          setStoriesLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectFilter, workspaceId]);
+
+  // Versions of the selected story, ordered `version_number DESC` by the read.
+  // Same pending-flag contract as the stories read above.
+  useEffect(() => {
+    if (!storyFilter) {
+      setVersionOptions([]);
+      setVersionsLoading(false);
+      return;
+    }
+    let active = true;
+    setVersionOptions([]);
+    setVersionsLoading(true);
+    listVersions(storyFilter)
+      .then((history) => {
+        if (active) {
+          setVersionOptions(history);
+          setVersionsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setVersionOptions([]);
+          setVersionsLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [storyFilter]);
+
+  // The cascade as it stands, resolved to the API's most-specific-wins shape (D5):
+  // only the most specific scope the user picked is ever handed downstream, so the
+  // request that leaves the client can never name two scopes — the backend refuses
+  // those with 422 `REQUEST_VALIDATION_FAILED`. (`listTasksByWorkspace` re-resolves
+  // with the same rule for any caller that passes a wider set; this board resolves
+  // first because it owns the cascade.) `undefined` when nothing is filtered, so the
+  // unfiltered call is byte-identical to the pre-filtering one `ExportPanel` makes.
+  const activeFilters: WorkspaceTaskFilters | undefined = useMemo(() => {
+    if (storyFilter) {
+      return versionFilter
+        ? { storyId: storyFilter, versionId: versionFilter }
+        : { storyId: storyFilter };
+    }
+    if (projectFilter) return { projectId: projectFilter };
+    return undefined;
+  }, [projectFilter, storyFilter, versionFilter]);
+
+  /** The board load, with whatever filters are selected right now.
+   *
+   * Every path — mount effect, cascade change, and the error retry below —
+   * goes through this one closure, so a retried load carries the same filters
+   * the bar shows instead of silently swapping back to the whole workspace.
+   */
+  const loadTasks = useCallback(
+    (wsId: string) => fetchTasksForWorkspace(wsId, activeFilters),
+    [fetchTasksForWorkspace, activeFilters],
+  );
+
+  /** The identity of the read the board currently wants: workspace plus cascade. */
+  const filtersKey = useMemo(
+    () => `${workspaceId ?? ''}|${JSON.stringify(activeFilters ?? null)}`,
+    [workspaceId, activeFilters],
+  );
+
+  // Fetch tasks on mount, and refetch whenever the cascade changes.
   //
   // `fetchTasksForWorkspace` never rejects: the store swallows the failure and records it
   // in `error`, which is the channel rendered above. The `.catch()` that used to live here
   // could not run, which is why the board had an error branch nothing could reach.
   useEffect(() => {
     if (workspaceId) {
-      fetchTasksForWorkspace(workspaceId).then(() => setInitialLoad(false));
-    } else {
-      setInitialLoad(false);
+      void loadTasks(workspaceId).then(() => {
+        setLoadedFiltersKey(filtersKey);
+      });
     }
-  }, [fetchTasksForWorkspace, workspaceId]);
+  }, [loadTasks, workspaceId, filtersKey]);
 
   // Group tasks by status whenever workspaceTasks changes
   useEffect(() => {
@@ -109,6 +320,100 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
       head.removeChild = originalRemoveChild;
     };
   }, []);
+
+  // ── Filter handlers ──
+  // Moving up the cascade clears everything below it, so no fetch ever carries a
+  // scope orphaned from its parent and the API's one-scope contract is never raced.
+  const handleProjectChange = useCallback((value: string | null) => {
+    setProjectFilter(value ?? null);
+    setStoryFilter(null);
+    setVersionFilter(null);
+  }, []);
+
+  const handleStoryChange = useCallback((value: string | null) => {
+    setStoryFilter(value ?? null);
+    setVersionFilter(null);
+  }, []);
+
+  const handleVersionChange = useCallback((value: string | null) => {
+    setVersionFilter(value ?? null);
+  }, []);
+
+  const hasActiveFilter =
+    projectFilter !== null || storyFilter !== null || versionFilter !== null;
+
+  const clearFilters = useCallback(() => {
+    setProjectFilter(null);
+    setStoryFilter(null);
+    setVersionFilter(null);
+  }, []);
+
+  // Select options: an "All …" entry (value `null`) means "not filtered at this
+  // level", the same null-means-unfiltered convention StoriesList's project
+  // select uses. "All projects" reuses the stories page's copy — same idea, one key.
+  //
+  // The project and story rows go through the one shared context treatment
+  // (WU17): icon, truncated label and full-value tooltip text come from
+  // ``lib/context-treatment.ts``, the same functions the card's chips consume. The options
+  // truncate at the select's wider cap (D21) — a dropdown row must stay
+  // choosable without hovering, which the card's 12-character cap would make
+  // impossible — and carry the full value as a native `title` (D18). The project
+  // rows pass the icon name the project row already carries (D24 of feature
+  // ``kanban-project-icons``): the same icon the card shows for the same
+  // project, through the same treatment.
+  const projectItems = useMemo<ContextSelectItem[]>(
+    () => [
+      { label: t.stories.allProjects, value: null, treatment: null },
+      ...projects.map((p) => {
+        const treatment = projectTreatment(p.name, CONTEXT_LABEL_CAP, p.icon ?? null);
+        return { label: treatment.label, value: p.id, treatment };
+      }),
+    ],
+    [projects, t],
+  );
+
+  const storyItems = useMemo<ContextSelectItem[]>(
+    () => [
+      { label: t.kanban.filter_all_stories, value: null, treatment: null },
+      ...storyOptions.map((s) => {
+        // D16: the human label `${actor}: ${feature}`, not the short id.
+        const treatment = storySelectTreatment(s);
+        return { label: treatment.label, value: s.id, treatment };
+      }),
+    ],
+    [storyOptions, t],
+  );
+
+  // D10: the label is `v{n}` plus the currency marker, reusing
+  // `versionSelector.current` — not the full model-and-date label the story
+  // page's selector needs, which is not a filter key.
+  const versionItems = useMemo(
+    () => [
+      { label: t.kanban.filter_all_versions, value: null as string | null },
+      ...versionOptions.map((v) => ({
+        label: v.isCurrent
+          ? `v${v.versionNumber ?? '?'} · ${t.versionSelector.current}`
+          : `v${v.versionNumber ?? '?'}`,
+        value: v.id as string | null,
+      })),
+    ],
+    [versionOptions, t],
+  );
+
+  // D18: the trigger's real tooltip carries the full current value — the
+  // selected project's full name, the selected story's full sentence — through
+  // the same shared treatment the options use. With nothing selected the
+  // tooltip is disabled, so no empty popup can mount.
+  const selectedProject = projectFilter
+    ? (projects.find((p) => p.id === projectFilter) ?? null)
+    : null;
+  const projectTriggerTooltip = selectedProject
+    ? projectTreatment(selectedProject.name, CONTEXT_LABEL_CAP).tooltip
+    : null;
+  const selectedStory = storyFilter
+    ? (storyOptions.find((s) => s.id === storyFilter) ?? null)
+    : null;
+  const storyTriggerTooltip = selectedStory ? storySelectTreatment(selectedStory).tooltip : null;
 
   const handleDragEnd = useCallback(
     async (result: DropResult) => {
@@ -187,13 +492,18 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     [localTasks, updateTaskStatus],
   );
 
-  if (initialLoad && loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  // ── Loading levels (D8–D10) ──
+  //
+  // The board never raises the full-viewport veil (D10): every task read it
+  // makes — first entry, workspace switch, filter change, retry — renders the
+  // internal loader in place of the columns, exactly alike. The full veil
+  // belongs to mutations, which is the only thing it ever meant. The cascade's
+  // option reads (stories, versions) never touch this flag: each select
+  // carries its own loader (D9). A card move raises none of this: the store's
+  // `updateTaskStatus` never touches `loading`, so this flag cannot see one,
+  // and the board reverts a failed move with a local `setLocalTasks` instead
+  // of a refetch.
+  const taskRefetchInFlight = loading;
 
   if (!workspaceId) {
     return (
@@ -204,16 +514,19 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
   }
 
   /**
-   * Retry the board load.
+   * Retry the board load, with the filters the bar currently shows.
    *
-   * `initialLoad` goes back to true first so a retry shows the spinner instead of the
-   * empty-board copy while it is in flight: the guard is `initialLoad && loading`, and a
-   * retry starts with `initialLoad` already false. A retry that fails again still lands on
-   * the error branch, because that guard needs `loading` too.
+   * `fetchTasksForWorkspace` raises the store's `loading` before it awaits, so
+   * the retry holds the internal loader up for as long as it is in flight —
+   * the same read shape as any other (D10). A retry that fails again still
+   * lands on the error branch, which wins over the loader.
+   *
+   * `loadTasks` reads the cascade from its closure, so the retry refetches the
+   * filtered query — a failed filtered load must not quietly become a whole-
+   * workspace load with the bar still naming the filter.
    */
   const reload = () => {
-    setInitialLoad(true);
-    if (workspaceId) void fetchTasksForWorkspace(workspaceId);
+    if (workspaceId) void loadTasks(workspaceId);
   };
 
   if (loadError) {
@@ -233,65 +546,288 @@ export function KanbanBoard({ locale = 'en' }: KanbanBoardProps) {
     );
   }
 
-  // Workspace selected but with no tasks: distinct empty state from the
-  // "no workspace" prompt, with a hint to extract tasks from a story.
-  if (workspaceTasks.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
-        <p className="text-sm font-medium text-foreground">{t.kanban.empty_board}</p>
-        <p className="mt-2 text-sm text-muted-foreground">{t.kanban.empty_board_hint}</p>
-      </div>
-    );
-  }
+  // Workspace selected but with no tasks and no filter: today's empty copy, with
+  // its hint to extract tasks from a story. A board emptied by a filter gets the
+  // filtered copy below — the workspace may well have tasks, and the claim must
+  // not outlive the filter that emptied it. The filter bar renders in both cases,
+  // so an empty workspace can still gain its first filter and a filtered one can
+  // always be cleared.
+  //
+  // Neither copy may render while the task read is in flight, and neither may
+  // render before one has settled *for the filters the bar currently shows*:
+  // an empty `workspaceTasks` is not evidence of an empty board, it is only
+  // evidence that no answer has arrived yet. `loadedFiltersKey` supplies that
+  // proof, so a slow first load cannot paint "no tasks yet" behind the loader
+  // or into the accessibility tree.
+  const settled = !loading && loadedFiltersKey === filtersKey;
+  const unfilteredEmpty = settled && workspaceTasks.length === 0 && !hasActiveFilter;
+  const filteredEmpty = settled && workspaceTasks.length === 0 && hasActiveFilter;
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden">
-      {/* Invalid drop toast */}
-      {invalidDropToast.show && (
-        <div className="fixed top-4 right-4 z-50 max-w-md animate-slide-in">
-          <div className="flex items-start gap-3 rounded-lg border border-destructive bg-destructive/10 p-4 text-destructive shadow-lg">
-            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium">{t.kanban.invalid_drop_title}</p>
-              <p className="mt-1 text-sm text-destructive/90">{invalidDropToast.message}</p>
+    // ``delay={0}`` is load-bearing, not a preference: Base UI's default is a
+    // 600 ms wait before a tooltip opens, so a user who hovers a chip and moves
+    // on sees nothing at all — the chips looked like they had no tooltip. The
+    // provider is mounted here because this is the island that owns the
+    // tooltips: Astro hydrates every island as its own React tree, so a
+    // provider in the layout is not an ancestor of this component. It renders
+    // no DOM element, only the shared delay context, so it cannot disturb the
+    // layout below it.
+    <TooltipProvider delay={0}>
+      <div className="absolute inset-0 flex flex-col overflow-hidden">
+        {/* Invalid drop toast */}
+        {invalidDropToast.show && (
+          <div className="fixed top-4 right-4 z-50 max-w-md animate-slide-in">
+            <div className="flex items-start gap-3 rounded-lg border border-destructive bg-destructive/10 p-4 text-destructive shadow-lg">
+              <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">{t.kanban.invalid_drop_title}</p>
+                <p className="mt-1 text-sm text-destructive/90">{invalidDropToast.message}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setInvalidDropToast({ show: false, message: '', allowed: [] })}
+              >
+                ✕
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setInvalidDropToast({ show: false, message: '', allowed: [] })}
+          </div>
+        )}
+
+        <div className="absolute inset-0 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between shrink-0 px-4 lg:px-6 pt-4 lg:pt-6">
+            <h1 className="text-2xl font-semibold text-foreground">{t.kanban.title}</h1>
+            <span className="text-sm text-muted-foreground">
+              {t.kanban.total_tasks.replace('{count}', String(workspaceTasks.length))}
+            </span>
+          </div>
+
+          {/* Filter bar: cascade Project → Story → Version, resolved server-side by
+              most specific wins (D5). Each "All …" option means "not filtered at
+              this level"; a select below an unchosen parent stays disabled and says
+              what to pick first. */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0 px-4 lg:px-6 pt-3">
+            <Select
+              items={projectItems}
+              value={projectFilter ?? null}
+              onValueChange={handleProjectChange}
             >
-              ✕
-            </Button>
+              <Tooltip disabled={!projectTriggerTooltip}>
+                <TooltipTrigger
+                  render={
+                    <SelectTrigger
+                      className="w-44"
+                      aria-label={t.kanban.filter_project}
+                      // The pending state belongs to the control, not to the spinner: an
+                      // `aria-label` on a bare svg is ignored by several screen readers,
+                      // while `aria-busy` is what assistive tech reads as "this control is
+                      // still loading".
+                      aria-busy={projectsLoading}
+                    />
+                  }
+                >
+                  {/* The trigger reads like a chip: the same mark the rows and
+                      the card use, always present, so the closed control says
+                      what kind of thing it filters even with nothing chosen. */}
+                  <IconDisplay
+                    name={selectedProject?.icon ?? null}
+                    fallback={PROJECT_KIND_ICON}
+                    className="size-4 shrink-0 text-muted-foreground"
+                  />
+                  <SelectValue />
+                  {/* Level 2 (D9): this select's own read, from projectStore.loading. */}
+                  {projectsLoading && (
+                    <LoaderCircle
+                      className="size-4 animate-spin text-muted-foreground"
+                      aria-label={t.common.loading}
+                    />
+                  )}
+                </TooltipTrigger>
+                {projectTriggerTooltip && (
+                  <TooltipContent>{projectTriggerTooltip}</TooltipContent>
+                )}
+              </Tooltip>
+              <SelectContent>
+                <SelectGroup>
+                  {projectItems.map((item) => (
+                    // The row's hover is our tooltip, never a native `title`: the
+                    // title arrives late in the browser's own style, and it is the
+                    // only way to read a value the shared cap shortened — a row cut
+                    // to a dozen characters behind a tooltip nobody sees loses the
+                    // name entirely.
+                    //
+                    // The trigger *is* the option, not a span inside it: a wrapper
+                    // there swallowed the click and the row stopped selecting,
+                    // which is a worse failure than the hover it was meant to fix.
+                    <Tooltip key={item.value ?? '_all_projects'} disabled={!item.treatment}>
+                      <TooltipTrigger render={<SelectItem value={item.value} />}>
+                        {item.treatment && (
+                          <span aria-hidden="true">
+                            <IconDisplay
+                              name={item.treatment.iconName}
+                              fallback={item.treatment.fallback}
+                            />
+                          </span>
+                        )}
+                        {item.label}
+                      </TooltipTrigger>
+                      {item.treatment && (
+                        <TooltipContent>{item.treatment.tooltip}</TooltipContent>
+                      )}
+                    </Tooltip>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Select
+              items={storyItems}
+              value={storyFilter ?? null}
+              onValueChange={handleStoryChange}
+              disabled={!projectFilter}
+            >
+              <Tooltip disabled={!storyTriggerTooltip}>
+                <TooltipTrigger
+                  render={
+                    <SelectTrigger
+                      className="w-52"
+                      aria-label={t.kanban.filter_story}
+                      aria-busy={storiesLoading}
+                    />
+                  }
+                >
+                  {/* The story's own mark, and the placeholder while the parent
+                      is unchosen: the value is null and the placeholder — not the
+                      "All stories" label — names what to pick first. */}
+                  <IconDisplay
+                    name={null}
+                    fallback={STORY_KIND_ICON}
+                    className="size-4 shrink-0 text-muted-foreground"
+                  />
+                  <SelectValue>{projectFilter ? undefined : t.stories.selectProjectFirst}</SelectValue>
+                  {/* Level 2 (D9): this select's own read (listStories). */}
+                  {storiesLoading && (
+                    <LoaderCircle
+                      className="size-4 animate-spin text-muted-foreground"
+                      aria-label={t.common.loading}
+                    />
+                  )}
+                </TooltipTrigger>
+                {storyTriggerTooltip && <TooltipContent>{storyTriggerTooltip}</TooltipContent>}
+              </Tooltip>
+              <SelectContent>
+                <SelectGroup>
+                  {storyItems.map((item) => (
+                    // The row's hover is our tooltip, never a native `title`: the
+                    // title arrives late in the browser's own style, and it is the
+                    // only way to read a value the shared cap shortened — a row cut
+                    // to a dozen characters behind a tooltip nobody sees loses the
+                    // name entirely.
+                    //
+                    // The trigger *is* the option, not a span inside it: a wrapper
+                    // there swallowed the click and the row stopped selecting,
+                    // which is a worse failure than the hover it was meant to fix.
+                    <Tooltip key={item.value ?? '_all_stories'} disabled={!item.treatment}>
+                      <TooltipTrigger render={<SelectItem value={item.value} />}>
+                        {item.treatment && (
+                          <span aria-hidden="true">
+                            <IconDisplay
+                              name={item.treatment.iconName}
+                              fallback={item.treatment.fallback}
+                            />
+                          </span>
+                        )}
+                        {item.label}
+                      </TooltipTrigger>
+                      {item.treatment && (
+                        <TooltipContent>{item.treatment.tooltip}</TooltipContent>
+                      )}
+                    </Tooltip>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Select
+              items={versionItems}
+              value={versionFilter ?? null}
+              onValueChange={handleVersionChange}
+              disabled={!storyFilter}
+            >
+              <SelectTrigger className="w-44" aria-label={t.kanban.filter_version} aria-busy={versionsLoading}>
+                <SelectValue>{storyFilter ? undefined : t.kanban.filter_select_story}</SelectValue>
+                {/* Level 2 (D9): this select's own read (listVersions). */}
+                {versionsLoading && (
+                  <LoaderCircle
+                    className="size-4 animate-spin text-muted-foreground"
+                    aria-label={t.common.loading}
+                  />
+                )}
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {versionItems.map((item) => (
+                    <SelectItem key={item.value ?? '_all_versions'} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            {hasActiveFilter && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                <X className="h-4 w-4" />
+                {t.kanban.filter_clear}
+              </Button>
+            )}
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-hidden overflow-x-auto px-4 lg:px-6 pb-4 lg:pb-6 pt-4">
+            {taskRefetchInFlight ? (
+              // The internal board loader replaces the columns for every task
+              // read (D10) — leaving the previous filter's cards up would present
+              // stale data as the answer to the filter now in the bar. The
+              // filter bar above is never covered and never disabled.
+              <div
+                role="progressbar"
+                aria-label={t.common.loading}
+                className="flex h-full items-center justify-center"
+              >
+                <div className="flex flex-col items-center gap-3">
+                  <LoaderCircle className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
+                  <p className="text-sm text-muted-foreground">{t.common.loading}</p>
+                </div>
+              </div>
+            ) : filteredEmpty ? (
+              // The filter emptied the board — the workspace may well have tasks.
+              // Its own copy, with the hint that leads back out via the bar above.
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
+                <p className="text-sm font-medium text-foreground">{t.kanban.empty_filtered}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{t.kanban.empty_filtered_hint}</p>
+              </div>
+            ) : unfilteredEmpty ? (
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
+                <p className="text-sm font-medium text-foreground">{t.kanban.empty_board}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{t.kanban.empty_board_hint}</p>
+              </div>
+            ) : (
+              <DndErrorBoundary>
+                <DragDropContext onDragEnd={handleDragEnd}>
+                  <div className="flex gap-4 h-full items-stretch" style={{ minWidth: 'fit-content' }}>
+                    {COLUMNS.map((colId) => (
+                      <KanbanColumn
+                        key={colId}
+                        columnId={colId}
+                        title={t.kanban.columns[colId]}
+                        tasks={localTasks[colId]}
+                        locale={locale}
+                      />
+                    ))}
+                  </div>
+                </DragDropContext>
+              </DndErrorBoundary>
+            )}
           </div>
         </div>
-      )}
-
-      <div className="absolute inset-0 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between shrink-0 px-4 lg:px-6 pt-4 lg:pt-6">
-          <h1 className="text-2xl font-semibold text-foreground">{t.kanban.title}</h1>
-          <span className="text-sm text-muted-foreground">
-            {t.kanban.total_tasks.replace('{count}', String(workspaceTasks.length))}
-          </span>
-        </div>
-
-        <div className="flex-1 min-h-0 overflow-hidden overflow-x-auto px-4 lg:px-6 pb-4 lg:pb-6 pt-4">
-          <DndErrorBoundary>
-            <DragDropContext onDragEnd={handleDragEnd}>
-              <div className="flex gap-4 h-full items-stretch" style={{ minWidth: 'fit-content' }}>
-                {COLUMNS.map((colId) => (
-                  <KanbanColumn
-                    key={colId}
-                    columnId={colId}
-                    title={t.kanban.columns[colId]}
-                    tasks={localTasks[colId]}
-                    locale={locale}
-                  />
-                ))}
-              </div>
-            </DragDropContext>
-          </DndErrorBoundary>
-        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }

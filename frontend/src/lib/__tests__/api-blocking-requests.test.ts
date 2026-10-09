@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '@/lib/api';
+import { updateTask, updateTaskStatus } from '@/lib/tasks-api';
 import { resetBlockingLoader, useLoadingStore } from '@/stores/loadingStore';
 
 /**
@@ -128,6 +129,31 @@ describe('ApiClient blocking-request wiring', () => {
 
     resolve(jsonResponse(200, { created: 1 }));
     await inFlight;
+    expect(useLoadingStore.getState().pending).toBe(0);
+  });
+
+  it('the task-status PUT is excluded for BOTH callers — card move and editor save never touch the counter (D11)', async () => {
+    // Not deferred, for the same reason as the onboarding case: the increment,
+    // if it happened, is synchronous before the first await. Both client
+    // functions share the same `PUT /api/v1/tasks/{id}` (tasks-api.ts), so the
+    // exclusion is pinned through their real call path, not a synthetic one.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(200, { ok: true }))),
+    );
+
+    // The card move (`updateTaskStatus`): optimistic, the card carries its own
+    // in-flight indicator.
+    const moved = updateTaskStatus('task-1', 'done');
+    expect(useLoadingStore.getState().pending).toBe(0);
+    await moved;
+    expect(useLoadingStore.getState().pending).toBe(0);
+
+    // The editor's save (`updateTask`): it has its own `saving` spinner and
+    // success toast, so the same exclusion holds for it for the same reason.
+    const saved = updateTask('task-1', { status: 'todo' });
+    expect(useLoadingStore.getState().pending).toBe(0);
+    await saved;
     expect(useLoadingStore.getState().pending).toBe(0);
   });
 });
