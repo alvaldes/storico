@@ -5,6 +5,7 @@ from storico.domain.ports.extraction_repository import ExtractionRepository
 from storico.domain.ports.llm_port import ExtractionResult, LLMConfig, LLMPort, ParsedTask
 from storico.domain.ports.project_repository import ProjectRepository
 from storico.domain.ports.task_repository import TaskContextRow, TaskRepository
+from storico.domain.ports.trello_export_port import TrelloExportPort
 from storico.domain.ports.user_preferences_repository import (
     UserPreferencesRepository,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "StoryContextRow",
     "TaskRepository",
     "TaskContextRow",
+    "TrelloExportPort",
     "ExtractionRepository",
     "LLMPort",
     "LLMConfig",

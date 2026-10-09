@@ -62,6 +62,14 @@ dependencies = [
     # major bump would be free to reshape, and the 429 contract rides on it.
     "slowapi>=0.1.10,<0.2.0",
 
+    # Trello export — the synchronous board-creation client behind
+    # TrelloExportPort (infrastructure/export/trello_adapter.py). >=0.20.1 is
+    # the floor csv2trello measured against, and 0.20.1 is the version this
+    # adapter was verified with; the adapter offloads every client call with
+    # asyncio.to_thread because py-trello blocks and the export runs on the
+    # API's event loop (odd/tasks/trello-export.md, D5).
+    "py-trello>=0.20.1",
+
     # Environment
     "python-dotenv>=1.0.0",
 ]
