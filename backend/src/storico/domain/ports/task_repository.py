@@ -96,6 +96,26 @@ class TaskRepository(ABC):
         ...
 
     @abstractmethod
+    async def list_current_by_project(self, project_id: UUID) -> list[Task]:
+        """Return the project's current-version tasks, unpaginated.
+
+        The Trello export's project-scope read: the same current-version
+        predicate joined to the project scope, without the page window.
+        """
+        ...
+
+    @abstractmethod
+    async def list_current_by_story(self, user_story_id: UUID) -> list[Task]:
+        """Return the story's current-version tasks, unpaginated.
+
+        The Trello export's story-scope read: only the tasks of the
+        highest-numbered ``completed`` version of the story — a superseded
+        version's tasks stay out of the board exactly as they stay out of the
+        file export.
+        """
+        ...
+
+    @abstractmethod
     async def list(self) -> list[Task]:
         """Return all tasks."""
         ...

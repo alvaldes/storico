@@ -27,6 +27,7 @@ from storico.api.errors import (
     parse_error_handler,
     repository_error_handler,
     request_validation_error_handler,
+    trello_export_error_handler,
     vector_store_error_handler,
     version_allocation_conflict_handler,
 )
@@ -69,6 +70,7 @@ from storico.domain.entities import (
 )
 from storico.domain.entities.exceptions import (
     CipherError,
+    TrelloExportError,
     VectorStoreError,
     VersionAllocationConflictError,
 )
@@ -194,6 +196,10 @@ def create_app() -> FastAPI:
     # Credential cipher errors. Registered on the base class so both subclasses are covered;
     # the handler itself distinguishes them for the machine-readable ``error_code``.
     app.add_exception_handler(CipherError, cipher_error_handler)
+    # The Trello export's typed failure family: the envelope for the day a port
+    # call happens inside a request, sharing its type→code map with the
+    # background runner that records the same codes on the job row.
+    app.add_exception_handler(TrelloExportError, trello_export_error_handler)
 
     # FastAPI's own body-validation 422: keep the default ``detail`` list and add the
     # app code. Deliberately NOT registered for StarletteHTTPException or 404/405:

@@ -278,6 +278,28 @@ class SQLAlchemyTaskRepository(TaskRepository):
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
 
+    async def list_current_by_project(self, project_id: UUID) -> list[Task]:
+        """The Trello export's project-scope read: the same predicate, one project."""
+        stmt = (
+            select(TaskModel)
+            .join(UserStoryModel)
+            .where(self._current_version_only(UserStoryModel.project_id == project_id))
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_domain(row) for row in result.scalars()]
+
+    async def list_current_by_story(self, user_story_id: UUID) -> list[Task]:
+        """The Trello export's story-scope read: the story's current version only.
+
+        No join: tasks carry their own ``user_story_id`` foreign key, and the
+        currency predicate correlates on ``TaskModel.extraction_id`` itself.
+        """
+        stmt = select(TaskModel).where(
+            self._current_version_only(TaskModel.user_story_id == user_story_id)
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_domain(row) for row in result.scalars()]
+
     async def list(self) -> list[Task]:
         result = await self._session.execute(select(TaskModel))
         return [self._to_domain(row) for row in result.scalars()]

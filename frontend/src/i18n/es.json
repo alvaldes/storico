@@ -103,7 +103,14 @@
     "PROVIDER_NAME_BUILTIN": "Ese proveedor ya viene integrado. Selecciónalo directamente en lugar de registrarlo como personalizado.",
     "PROVIDER_NAME_RESERVED": "Ese nombre está reservado para el selector de proveedores. Elige otro nombre para tu proveedor.",
     "PROVIDER_MODELS_UNREACHABLE": "No se pudo conectar con el proveedor para listar sus modelos. Revisa la API key y la Base URL.",
-    "RATE_LIMIT_EXCEEDED": "Demasiadas solicitudes en poco tiempo. Espera un momento e inténtalo de nuevo."
+    "RATE_LIMIT_EXCEEDED": "Demasiadas solicitudes en poco tiempo. Espera un momento e inténtalo de nuevo.",
+    "TRELLO_CREDENTIALS_MISSING": "Este espacio de trabajo aún no tiene credenciales de Trello. Pide a un administrador que las agregue en la configuración e inténtalo de nuevo.",
+    "TRELLO_EXPORT_NOT_FOUND": "Esa exportación ya no existe. Actualiza la página para trabajar con la lista actual.",
+    "TRELLO_CREDENTIAL_REJECTED": "Trello rechazó las credenciales de este espacio de trabajo. Pide a un administrador que las actualice en la configuración e inténtalo de nuevo.",
+    "TRELLO_SERVICE_UNAVAILABLE": "Trello no respondió durante la exportación. Espera un momento e inténtalo de nuevo.",
+    "TRELLO_RATE_LIMIT_EXHAUSTED": "Trello siguió limitando la exportación por demasiado tráfico. Espera un momento e inténtalo de nuevo.",
+    "TRELLO_BOARD_REFUSED": "Trello rechazó crear el tablero: la cuenta parece haber alcanzado su límite de tableros o de cuota.",
+    "TRELLO_CARD_REFUSED": "Trello rechazó parte del contenido del tablero. El tablero se creó: ábrelo para ver hasta dónde llegó la exportación."
   },
   "landing": {
     "hero_title": "Storico",

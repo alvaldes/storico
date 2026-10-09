@@ -25,6 +25,11 @@ from storico.api.error_codes import (
     PARSE_ERROR,
     REPOSITORY_ERROR,
     REQUEST_VALIDATION_FAILED,
+    TRELLO_BOARD_REFUSED,
+    TRELLO_CARD_REFUSED,
+    TRELLO_CREDENTIAL_REJECTED,
+    TRELLO_RATE_LIMIT_EXHAUSTED,
+    TRELLO_SERVICE_UNAVAILABLE,
     VECTOR_STORE_UNAVAILABLE,
     VERSION_ALLOCATION_CONFLICT,
 )
@@ -45,6 +50,12 @@ from storico.domain.entities.exceptions import (
     CipherError,
     CredentialUndecryptable,
     EncryptionKeyMissing,
+    TrelloBoardRefusedError,
+    TrelloCardRefusedError,
+    TrelloCredentialRejectedError,
+    TrelloExportError,
+    TrelloRateLimitExhaustedError,
+    TrelloServiceUnavailableError,
     VectorStoreError,
     VersionAllocationConflictError,
 )
@@ -68,6 +79,8 @@ __all__ = [
     "parse_error_handler",
     "repository_error_handler",
     "request_validation_error_handler",
+    "trello_export_error_code",
+    "trello_export_error_handler",
     "vector_store_error_handler",
     "version_allocation_conflict_handler",
 ]
@@ -373,5 +386,49 @@ async def vector_store_error_handler(
             "detail": "Vector store unavailable",
             "error_code": VECTOR_STORE_UNAVAILABLE,
             "message": str(exc),
+        },
+    )
+
+
+# ── Trello export exception handler ───────────────────────────────
+
+# One code per member of the typed ``TrelloExportError`` family, keyed by exact
+# type — the same shape ``_CIPHER_ERROR_CODES`` uses. The map is the single
+# place the family becomes codes: the envelope handler below reads it, and the
+# background runner (application/export) reads the same map through
+# ``trello_export_error_code`` so a job row and an HTTP envelope can never
+# disagree about what a failure is called. The registry constants live in
+# ``api/error_codes.py``; this module owns the mapping.
+_TRELLO_ERROR_CODES: dict[type[TrelloExportError], str] = {
+    TrelloCredentialRejectedError: TRELLO_CREDENTIAL_REJECTED,
+    TrelloServiceUnavailableError: TRELLO_SERVICE_UNAVAILABLE,
+    TrelloRateLimitExhaustedError: TRELLO_RATE_LIMIT_EXHAUSTED,
+    TrelloBoardRefusedError: TRELLO_BOARD_REFUSED,
+    TrelloCardRefusedError: TRELLO_CARD_REFUSED,
+}
+
+
+def trello_export_error_code(exc: TrelloExportError) -> str:
+    """The code for a member of the ``TrelloExportError`` family."""
+    return _TRELLO_ERROR_CODES.get(type(exc), INTERNAL_ERROR)
+
+
+async def trello_export_error_handler(
+    request: Request,
+    exc: TrelloExportError,
+) -> JSONResponse:
+    """Maps ``TrelloExportError`` to a 502 JSON response.
+
+    The export's failures happen in the background and are recorded on the job
+    row — this handler is the envelope for the day a port call happens inside a
+    request, so the typed family can never degrade into a bare 500. The codes
+    are per family member; the message is the exception's own, which the
+    adapter constructs without credentials.
+    """
+    return JSONResponse(
+        status_code=502,
+        content={
+            "detail": str(exc),
+            "error_code": trello_export_error_code(exc),
         },
     )

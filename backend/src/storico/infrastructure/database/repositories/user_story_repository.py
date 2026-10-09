@@ -116,6 +116,11 @@ class SQLAlchemyUserStoryRepository(UserStoryRepository):
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
 
+    async def list_by_project(self, project_id: UUID) -> list[UserStory]:
+        stmt = select(UserStoryModel).where(UserStoryModel.project_id == project_id)
+        result = await self._session.execute(stmt)
+        return [self._to_domain(row) for row in result.scalars()]
+
     async def list(self) -> list[UserStory]:
         result = await self._session.execute(select(UserStoryModel))
         return [self._to_domain(row) for row in result.scalars()]

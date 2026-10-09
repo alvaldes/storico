@@ -33,6 +33,11 @@ from storico.domain.entities.trello_board import (
     TrelloCard,
     TrelloColumn,
 )
+from storico.domain.entities.trello_export import (
+    TrelloExport,
+    TrelloExportScope,
+    TrelloExportStatus,
+)
 from storico.domain.entities.user import User
 from storico.domain.entities.user_account import UserAccount
 from storico.domain.entities.user_preferences import UserPreferences
@@ -68,6 +73,9 @@ __all__ = [
     "TrelloCardRefusedError",
     "TrelloColumn",
     "TrelloCredentialRejectedError",
+    "TrelloExport",
+    "TrelloExportScope",
+    "TrelloExportStatus",
     "TrelloExportError",
     "TrelloRateLimitExhaustedError",
     "TrelloServiceUnavailableError",
