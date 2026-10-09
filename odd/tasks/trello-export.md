@@ -1,9 +1,10 @@
 # trello-export
 
 > **Status**: authorized by the owner on 2026-10-08 — the product decisions were taken the same day
-> through a structured questionnaire. Started the same day on branch `feat/trello-export`. Nothing
-> pushed. The design note that precedes this record lives outside the repository, in the second-brain
-> vault (`00 - Inbox/Storico — conector Trello — diseño de implementación.md`).
+> through a structured questionnaire. Started the same day on branch `feat/trello-export`; **WU1 landed
+> the same day (`81e37ee`)** and WU2 is next. Nothing pushed. The design note that precedes this
+> record lives outside the repository, in the second-brain vault
+> (`00 - Inbox/Storico — conector Trello — diseño de implementación.md`).
 > **Created**: 2026-10-08
 
 ## Goal
@@ -87,10 +88,16 @@ protect nothing and would contradict the endpoint sitting next to it.
   member is polling for.
 - **Scope is one of three, never two.** Two targets in one request is `422`, the rule the Kanban
   cascade already applies, so the selector cannot be used to export a project and a story at once.
+- **The adapter must not block the event loop.** `py-trello` is synchronous and D5 runs the export
+  inside the API process (`asyncio.create_task`), so every client call is offloaded with
+  `asyncio.to_thread` and the rate window waits with `asyncio.sleep`. A `time.sleep` there would
+  stall every request the API is serving, not only the export. csv2trello could afford a blocking
+  window because it is a CLI with one job; this is not, and the difference is the whole reason the
+  decision is written down here rather than discovered in production.
 
 ## Tasks
 
-- [ ] **WU1 — the credentials**: `workspace_trello_configs`, migration `0030`, repository and domain
+- [x] **WU1 — the credentials**: `workspace_trello_configs`, migration `0030`, repository and domain
   port, the admin-only `GET`/`PUT .../settings/trello` plus the member-readable `.../status`, the
   cipher wiring, and the secrets that must never reach a log (backend + tests + `docs/api.md`).
 - [ ] **WU2 — the port and the adapter**: board, five status lists, cards with labels, dependency
@@ -130,6 +137,14 @@ protect nothing and would contradict the endpoint sitting next to it.
   own exports, and nothing coordinates them.
 - `py-trello` is a new backend dependency with its own release cadence. It is pinned, and pinning it
   is part of WU2 rather than a follow-up.
+- **WU1's non-blocking review findings, recorded rather than fixed.**
+  `TrelloConfigStatusResponse.missing` is an unconstrained `list[str]`, bounded by the route's logic
+  rather than by the schema. `_SettingsWithoutAMasterKey` is imported across test modules — fine with
+  one consumer, and it belongs in `tests/_helpers.py` when a third appears. And the Postgres-level
+  enforcement of `String(1000)` and the `ondelete="CASCADE"` FK is **inspected in source only**:
+  Docker is absent in this machine, so the 21 testcontainers integration tests, `test_migration_chain.py`
+  among them, skip, and neither the column width nor the cascade is proven against a real database
+  here.
 
 ## Evidence log
 
@@ -137,4 +152,4 @@ protect nothing and would contradict the endpoint sitting next to it.
 
 | Work unit | Commit | Evidence |
 | --- | --- | --- |
-| | | |
+| WU1 — the credentials | `81e37ee` | RED observed first: both new test files failed at collection with `ModuleNotFoundError: No module named 'storico.domain.entities.workspace_trello_config'`; GREEN `22 passed`. Re-run with the LLM-config sibling suites alongside: `53 passed`, which is what proves the shared `__init__` exports were not broken. **Full backend suite on the verified tree: `1364 passed, 45 skipped`** — all 45 environmental (21 × Docker daemon unreachable for testcontainers, 22 × live Qdrant/Ollama opt-ins, 2 × live Ollama chat), so no skip hides a feature path. `ruff check` clean; `ruff format --check` 286 files; `alembic heads` → `0030 (head)`, single. Migration inspected: one `create_table`, `down_revision = "0029"`, `downgrade()` drops exactly what `upgrade()` creates, and every shared column matches `workspace_llm_configs` (`Uuid` PK, unique `Uuid` FK `ondelete="CASCADE"`, `String(1000)`, `DateTime(timezone=True)`). **The load-bearing question was answered by construction, not by assertion**: with `_encrypt` replaced by a pass-through, six tests go red — `tests/test_unit/test_workspace_trello_config_repository.py:87,90` (`startswith("v1:")`), `:147,150` (a re-encrypt must differ from the first ciphertext), `tests/test_api/test_workspace_trello_settings.py:93,95`, `:116`, `:132,133`, `:211-212` (a keyless write must answer `500`, which a pass-through cannot trigger). **A docstring was corrected after verification**: `repositories/workspace_trello_config_repository.py:_to_domain` claimed a row written before encryption existed could be read here, and no such row can exist in a table `0030` creates — comment-only change, with the focused suite and both ruff gates re-run green before the commit. Boundary: 21 paths, all inside the declared surfaces (the delegation under-described the six `__init__.py` files as "the two", and those six are registration only). |
