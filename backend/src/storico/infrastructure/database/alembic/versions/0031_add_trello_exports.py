@@ -45,7 +45,12 @@ depends_on: str | Sequence[str] | None = None
 # the revision was written, after the enum has moved on.
 _STATUS_LABELS: tuple[str, ...] = ("pending", "running", "completed", "failed")
 
-_STATUS_ENUM = ENUM(*_STATUS_LABELS, name="trello_export_status_new", create_type=True)
+# ``create_type=False`` because ``upgrade`` creates the type explicitly, before the table:
+# leaving it ``True`` makes ``create_table`` issue a second ``CREATE TYPE`` inside that same
+# transaction, and PostgreSQL refuses it with a duplicate-object error. Measured on a real
+# database on 2026-10-09 — this revision failed to apply there while every test that would
+# have caught it skipped for lack of Docker. The rollback left the schema clean.
+_STATUS_ENUM = ENUM(*_STATUS_LABELS, name="trello_export_status_new", create_type=False)
 
 
 def upgrade() -> None:
