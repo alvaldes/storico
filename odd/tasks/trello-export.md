@@ -112,17 +112,30 @@ protect nothing and would contradict the endpoint sitting next to it.
 - [x] **WU2 — the port and the adapter**: board, five status lists, cards with labels, dependency
   checklists, rate window, retry and backoff, typed errors, `py-trello` pinned (backend + tests).
 - [x] **WU3 — the export job**: `trello_exports`, migration `0031`, the entity, port and repository,
-  the pure plan builder, the one dependency rule, the scope resolver, the runner that keeps every
-  failure in the job row, and the seven failure codes with their frontend half (`a21c4e4`).
+  the pure plan builder, the one dependency rule, the scope resolver, the runner, and the seven
+  failure codes with their frontend half (`a21c4e4`). — **the runner clause was refuted by the
+  verification of the range; see `## Corrected claims` and the repair unit WU5.**
 - [x] **WU4 — the routes**: `POST …/export/trello` → `202` open to any member,
   `GET …/export/trello/{export_id}`, `409` for a workspace with no credentials, the schemas,
   `docs/api.md` and the regenerated reference pages (`32e7cf9`).
-- [ ] **WU5 — the UI**: scope selector and export on `/export`, the credentials form in the
+- [ ] **WU5 — repair the runner's failure contract.** Found by verifying the range rather than by
+  reading it, and it runs before the UI because it is a defect in what already shipped. Three
+  blockers: (a) `except Exception` does not catch `asyncio.CancelledError`, which is a
+  `BaseException` in this Python, so a cancelled task leaves the row at `running` for good; (b) the
+  generic handler stores `INTERNAL_ERROR` with **no** board reference, so a non-typed failure after
+  `create_board` loses a board that exists — the exact thing the design section says must not happen;
+  (c) `find_by_id` and the `running` write sit outside the `try`, so a database fault there raises
+  with the row still `pending`. Fix: keep the board reference in a local the moment it exists and
+  use it in every handler; catch `BaseException`, write the terminal state under `asyncio.shield`
+  and re-raise a cancellation; and add the startup sweep this job never got, the one
+  `recover_stuck_extractions` has had all along (`infrastructure/tasks/extraction_task.py:185`) and
+  which the runner's docstring wrongly claimed already covered it.
+- [ ] **WU6 — the UI**: scope selector and export on `/export`, the credentials form in the
   workspace settings page, polling, the board link, both locales (frontend + tests).
-- [ ] **WU6 — specs and documents**: the OpenSpec capability and the two doc-drift lines that already
+- [ ] **WU7 — specs and documents**: the OpenSpec capability and the two doc-drift lines that already
   assert the connector exists (`docs/architecture.md:197`, `:203`, `docs/deployment.md:389`) —
   corrected to describe what actually landed.
-- [ ] **WU7 — invert the failure-code mapping.**
+- [ ] **WU8 — invert the failure-code mapping.**
   `application/export/export_workspace_to_trello.py:32` imports `api/errors.py`, which imports
   FastAPI — **the repository's first and only application→api import**, introduced here and
   documented in that module's docstring as deliberate. The reason it gives is real (one mapping, so
@@ -169,6 +182,30 @@ protect nothing and would contradict the endpoint sitting next to it.
   Docker is absent in this machine, so the 21 testcontainers integration tests, `test_migration_chain.py`
   among them, skip, and neither the column width nor the cascade is proven against a real database
   here.
+
+## Corrected claims
+
+**The runner's failure contract — refuted 2026-10-08 by the verification of `6c2fdc8..HEAD`.** The
+WU3 commit message and this record's task line both said the runner never raises, that every failure
+lands in the job row, and that a failure after the board exists keeps its URL. All three are false,
+and the verification found them by reading what the code catches rather than what it claims:
+
+| Claim | What the code does |
+| --- | --- |
+| "Every failure lands in the job row" | `except Exception` does not see `asyncio.CancelledError`, a `BaseException` in this Python, so a cancelled task leaves the row at `running` |
+| "A failure after the board exists keeps its URL" | only the typed family does, because only it carries `board_ref`; the generic handler stores `INTERNAL_ERROR` and drops the board |
+| "Never raises" | `find_by_id` and the `running` write sit outside the `try`, so a database fault there raises with the row still `pending` |
+
+And the part that is worse than a wrong claim, because it is the claim that hid the hole: the
+runner's docstring says a row left at `running` "is what the extraction flow handles with its own
+startup recovery". `recover_stuck_extractions` exists in `infrastructure/tasks/extraction_task.py:185`
+and is wired at `api/app.py:134`; **nothing equivalent exists for `trello_exports`**, and a `grep`
+for it returns nothing. The docstring pointed at a mechanism that covered a different table.
+
+Three times now this feature has produced a text that asserts something the code does not do — the
+cipher that belonged to the route, the py-trello message that carried the token, and now a recovery
+that was never written. They are recorded instead of quietly fixed because the pattern is the finding:
+claims written from memory of the design rather than from reading the code.
 
 ## Evidence log
 
