@@ -40,7 +40,7 @@ type ColumnId = TaskStatus;
 interface KanbanBoardProps {
   locale?: Locale;
   /** Deep link entry (feature ``view-in-kanban``): the `project` query param of
-   * a "View in Kanban" link, seeding the cascade's project level. */
+   * a link to the board, seeding the cascade's project level. */
   initialProjectId?: string | null;
   /** The link's `story` query param; seeds the story level only when
    * `initialProjectId` is also present (see the seeding below). */
@@ -89,7 +89,7 @@ export function KanbanBoard({ locale = 'en', initialProjectId, initialStoryId }:
   // filtered here"; choosing a project enables the story select, a story the
   // version select. Moving up the cascade clears everything below it, so the
   // resolved query never carries a scope orphaned from its parent.
-  // Deep link entry (feature ``view-in-kanban``): a "View in Kanban" link lands
+  // Deep link entry (feature ``view-in-kanban``): a link to the board lands
   // here as `?project=<id>&story=<id>`, and the two ids seed the cascade's first
   // two levels. The story seeds **only when a project id also travelled**: the
   // cascade's invariant is that a child filter never exists without its parent,

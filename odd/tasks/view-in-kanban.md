@@ -38,7 +38,7 @@ Medido en el código:
 | D3 | `?story` sin `?project` | El tablero **no** lo siembra: la invariante de D2 lo prohíbe, y resolverlo con `getStory` costaría una lectura extra sólo para un caso que ninguna superficie propia produce. Si además viene `?project`, ese nivel sí se aplica; si no, el tablero carga sin filtros. Es degradación honesta y queda documentada, no un estado a medias silencioso. |
 | D4 | El seed sobrevive la primera hidratación del workspace | El reset por cambio de workspace (`KanbanBoard.tsx:130-131`) hoy limpia los filtros cuando `workspaceId` pasa de `undefined` a un id real — que es exactamente el arranque de una sesión sin `currentWorkspace` persistido. Con un deep link, eso borraría la cascada sembrada antes de su primer fetch. Se corrige: el reset sólo dispara cuando el workspace anterior era uno real (`prevWorkspaceId !== undefined`). **Es un defecto que el deep link expone, no una preferencia.** |
 | D5 | El botón | Un link de verdad: `<a href>` renderizado a través del `render` de `Button` (patrón Base UI ya usado por los triggers del tablero), con icono + `t.kanban.view_in_kanban`. Dentro de las filas clicables de las listas frena la propagación, igual que los botones de editar/eliminar existentes, para que la navegación al detalle de la fila no compita con la del botón. **Corregido el 2026-10-08 por pedido del owner (WU4):** en la card del proyecto el link quedó afuera del menú donde viven Editar y Eliminar, y ahora es el primer ítem de ese menú (`DropdownMenuItem render={<a href/>}`, el mismo patrón que ya usaban `PublicUserMenu.tsx:66` y `nav-user.tsx:108`). Como el contenido del menú se portalea (`MenuPrimitive.Portal`), ahí la contención del click deja de aplicar: el test que la fijaba pasa a apuntar al trigger `⋯`, que es el control que sigue dentro de la card. |
-| D6 | Copy | `kanban.view_in_kanban` en `en.json`/`es.json`: `View in Kanban` / `Ver en Kanban`. Español neutro internacional por ADR-008; la paridad de claves ya está guardada por `frontend/src/i18n/__tests__/neutral-spanish.test.ts:152`. |
+| D6 | Copy | `kanban.view_in_kanban` en `en.json`/`es.json`. Español neutro internacional por ADR-008; la paridad de claves ya está guardada por `frontend/src/i18n/__tests__/neutral-spanish.test.ts:152`. **El label es `Kanban` en los dos idiomas (corregido el 2026-10-08, WU5):** el copy original `View in Kanban` / `Ver en Kanban` envolvía en dos líneas dentro del menú de la card, que es `min-w-32`. La clave conserva el nombre de la acción aunque el texto visible nombre el destino; renombrarla es churn sin cambio de comportamiento. |
 | D7 | Sincronización de la URL | **No hay.** El seed es de una sola vez, en la entrada; después el usuario puede cambiar o limpiar filtros y la URL no se actualiza. Mantener la barra y la query en espejo es otra feature (y la primera que pediría un `replaceState` por cada cambio). |
 
 ## Non-goals
@@ -47,7 +47,7 @@ Medido en el código:
 - Refrescar la URL cuando cambian los filtros dentro del tablero (D7).
 - Resolver `?story` huérfano con una lectura extra de la historia (D3).
 - Cualquier cambio de backend: no hace falta ni un endpoint ni un campo nuevos.
-- Un botón "Ver en Kanban" en el Dashboard o en las cards del propio tablero.
+- Un botón hacia el tablero en el Dashboard o en las cards del propio tablero.
 
 ## Verified facts (with evidence)
 

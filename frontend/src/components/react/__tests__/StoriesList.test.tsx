@@ -258,7 +258,7 @@ describe('StoriesList — View in Kanban link', () => {
 
     // The board's cascade never seeds a child level without its parent, so the
     // story's project ALWAYS travels with it.
-    const link = screen.getByRole('link', { name: 'View in Kanban' });
+    const link = screen.getByRole('link', { name: 'Kanban' });
     expect(link).toHaveAttribute('href', '/en/kanban?project=project-a&story=story-1');
   });
 
@@ -275,7 +275,7 @@ describe('StoriesList — View in Kanban link', () => {
     document.addEventListener('click', escapedClick);
 
     try {
-      await user.click(screen.getByRole('link', { name: 'View in Kanban' }));
+      await user.click(screen.getByRole('link', { name: 'Kanban' }));
 
       expect(escapedClick).not.toHaveBeenCalled();
     } finally {

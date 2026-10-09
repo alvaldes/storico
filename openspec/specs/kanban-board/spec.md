@@ -173,7 +173,7 @@ project.
 
 #### Scenario: A project link opens the board filtered to that project
 
-- **GIVEN** a "View in Kanban" link whose URL is `/[locale]/kanban?project=<project_id>`
+- **GIVEN** a link to the board whose URL is `/[locale]/kanban?project=<project_id>`
 - **WHEN** the link is followed
 - **THEN** the board renders with the project level selected
 - **AND** the first task read carries `project_id=<project_id>` and no other scope

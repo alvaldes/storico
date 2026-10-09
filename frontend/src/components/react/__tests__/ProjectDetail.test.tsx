@@ -37,7 +37,7 @@ describe('ProjectDetail — View in Kanban link (view-in-kanban, WU2)', () => {
   it('links the header to the board with this project preselected', async () => {
     render(<ProjectDetail locale="en" projectId="project-1" userId="user-1" />);
 
-    const link = await screen.findByRole('link', { name: 'View in Kanban' });
+    const link = await screen.findByRole('link', { name: 'Kanban' });
 
     expect(link).toHaveAttribute('href', '/en/kanban?project=project-1');
   });

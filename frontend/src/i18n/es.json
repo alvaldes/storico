@@ -350,7 +350,7 @@
     "filter_clear": "Borrar filtros",
     "empty_filtered": "No hay tareas que coincidan con los filtros seleccionados",
     "empty_filtered_hint": "Ajusta o borra los filtros para ver más tareas.",
-    "view_in_kanban": "Ver en Kanban"
+    "view_in_kanban": "Kanban"
   },
   "taskEditor": {
     "title": "Editar Tarea",

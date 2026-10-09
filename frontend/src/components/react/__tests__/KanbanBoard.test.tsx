@@ -1888,7 +1888,7 @@ describe('KanbanBoard — the project’s own icon on chips and rows (WU20)', ()
 
 /* ── Deep link entry (feature ``view-in-kanban``, WU1) ──
  *
- * A "View in Kanban" link lands on ``/[locale]/kanban?project=<id>&story=<id>``
+ * A link to the board lands on ``/[locale]/kanban?project=<id>&story=<id>``
  * and the page passes the two ids to the island as `initialProjectId` /
  * `initialStoryId`. The cascade must come up already seeded: the project seeds
  * level one, the story level two **only when a project id also travelled** —

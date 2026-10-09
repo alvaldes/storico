@@ -350,7 +350,7 @@
     "filter_clear": "Clear filters",
     "empty_filtered": "No tasks match the selected filters",
     "empty_filtered_hint": "Adjust or clear the filters to see more tasks.",
-    "view_in_kanban": "View in Kanban"
+    "view_in_kanban": "Kanban"
   },
   "taskEditor": {
     "title": "Edit Task",

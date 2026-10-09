@@ -717,7 +717,7 @@ describe('StoryDetail — View in Kanban link', () => {
     // story's project ALWAYS travels with it.
     render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
 
-    const link = await screen.findByRole('link', { name: 'View in Kanban' });
+    const link = await screen.findByRole('link', { name: 'Kanban' });
 
     expect(link).toHaveAttribute('href', `/${LOCALE}/kanban?project=project-1&story=${STORY_ID}`);
   });

@@ -30,7 +30,7 @@ describe('ProjectsList — View in Kanban link (view-in-kanban, WU2)', () => {
     });
   });
 
-  it('reveals one "View in Kanban" link per card menu, each carrying that card\'s project id', async () => {
+  it('reveals one "Kanban" link per card menu, each carrying that card\'s project id', async () => {
     const user = userEvent.setup();
     render(<ProjectsList locale="en" />);
 
@@ -53,7 +53,7 @@ describe('ProjectsList — View in Kanban link (view-in-kanban, WU2)', () => {
       // Base UI forces role="menuitem" onto every item — even one rendered
       // as an <a> via the render prop — so query by menuitem; the anchor
       // semantics are asserted by the href below.
-      const link = await screen.findByRole('menuitem', { name: 'View in Kanban' });
+      const link = await screen.findByRole('menuitem', { name: 'Kanban' });
       expect(link).toHaveAttribute('href', `/en/kanban?project=${projectId}`);
 
       // Close this menu before opening the next: while a Base UI menu is
