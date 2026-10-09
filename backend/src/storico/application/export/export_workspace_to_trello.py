@@ -10,10 +10,11 @@ shaped like a right one.
 ``asyncio.create_task`` — the extraction's dispatch site, mirrored: no Celery,
 no Redis, the work runs in the API process (D5). It builds its own session from
 the process engine, because the route's request session is gone by the time the
-task runs. It never raises: the job row is the only answer a polling client
-has, so every failure — typed or not — must land in it, and a coroutine that
-died with an unhandled exception would leave the member polling a job that
-never moves.
+task runs. It never lets a plain failure escape: the job row is the only answer
+a polling client has, so every failure — typed or not — must land in it. The
+one exception is cancellation: a cancellation is written to the row and then
+re-raised, because swallowing it would break the asyncio contract that is
+trying to stop the task.
 
 The failure→code mapping lives in ``api/errors.py`` next to the envelope
 handler that shares it. That is an application→api import, deliberately taken:
@@ -24,14 +25,18 @@ disagree about what a failure is called.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID
 
+from storico.api.error_codes import TRELLO_EXPORT_INTERRUPTED
 from storico.api.errors import trello_export_error_code
 from storico.domain.entities.exceptions import TrelloExportError
+from storico.domain.entities.trello_board import TrelloBoardRef
 from storico.domain.entities.trello_export import (
+    TrelloExport,
     TrelloExportScope,
     TrelloExportStatus,
 )
@@ -93,24 +98,42 @@ async def execute_trello_export(
     """Run one export job against the given repositories and port.
 
     The lifecycle is pending → running → completed/failed. ``pending`` is never
-    written here — the route created the row in that state — so a crash of the
-    whole process leaves the row at ``running``: the honest record is "work
-    started and nobody finished it", which the extraction flow handles with its
-    own startup recovery, and which this job reports as-is rather than faking a
-    terminal state it did not observe.
+    written here — the route created the row in that state. The failure
+    contract, defect by defect:
+
+    - A failure after ``create_board`` returned keeps the board identity. The
+      reference is captured in a local the moment it exists and every failure
+      handler — typed and generic alike — writes it, so a board that exists on
+      Trello stays reachable from the row the member is polling.
+    - A cancellation (``asyncio.CancelledError`` is a ``BaseException``;
+      ``except Exception`` never sees it) writes ``failed`` with
+      ``TRELLO_EXPORT_INTERRUPTED`` under ``asyncio.shield`` — so the write
+      itself is not cancelled — and then re-raises: swallowing a cancellation
+      would break the asyncio contract that is trying to stop the task.
+    - A fault before the job row was read leaves the row ``pending`` — there is
+      nothing to write to — and does not raise out of the task.
+    - Any other fault lands in the row as ``failed``/``INTERNAL_ERROR``.
+
+    A row a dead process strands at ``pending``/``running`` is covered by the
+    startup sweep this table owns — ``recover_stuck_trello_exports``
+    (``infrastructure/tasks/trello_export_task.py``, wired in the same lifespan
+    block as the extraction's ``recover_stuck_extractions``) — which marks it
+    ``failed``/``TRELLO_EXPORT_INTERRUPTED`` at the next boot.
 
     The credentials travel only between the caller and the port. They are never
     written to the job row and never appear in a log message: the row stores the
     outcome, the logs store the code.
     """
-    job = await export_repo.find_by_id(export_id)
-    if job is None:
-        logger.error("Trello export job %s vanished before its run started", export_id)
-        return
-
-    await export_repo.save(replace(job, status=TrelloExportStatus.RUNNING))
-
+    board_ref: TrelloBoardRef | None = None
+    job: TrelloExport | None = None
     try:
+        job = await export_repo.find_by_id(export_id)
+        if job is None:
+            logger.error("Trello export job %s vanished before its run started", export_id)
+            return
+
+        await export_repo.save(replace(job, status=TrelloExportStatus.RUNNING))
+
         tasks = await _read_tasks(task_repo, scope, workspace_id, project_id, user_story_id)
         story_text_by_id = await _read_story_text(
             story_repo, scope, workspace_id, project_id, user_story_id
@@ -132,38 +155,89 @@ async def execute_trello_export(
                 completed_at=datetime.now(UTC),
             )
         )
+    except asyncio.CancelledError:
+        logger.warning("Trello export %s was cancelled; recording the interruption", export_id)
+        if job is not None:
+            await asyncio.shield(_mark_interrupted(export_repo, job, board_ref))
+        raise
     except TrelloExportError as exc:
         # The typed family: code + board identity. A failure raised after the
         # board was created carries its ``board_ref`` so the half-built board
-        # stays reachable from the job row the member is polling.
+        # stays reachable from the job row the member is polling; when it does
+        # not, the local captured at creation time stands in.
+        kept_ref = exc.board_ref if exc.board_ref is not None else board_ref
         logger.error(
             "Trello export %s failed: code=%s had_board=%s",
             export_id,
             trello_export_error_code(exc),
-            exc.board_ref is not None,
+            kept_ref is not None,
         )
         await export_repo.save(
             replace(
                 job,
                 status=TrelloExportStatus.FAILED,
                 error_code=trello_export_error_code(exc),
-                board_id=exc.board_ref.id if exc.board_ref else None,
-                board_url=exc.board_ref.url if exc.board_ref else None,
+                board_id=kept_ref.id if kept_ref else None,
+                board_url=kept_ref.url if kept_ref else None,
                 completed_at=datetime.now(UTC),
             )
         )
     except Exception:
+        if job is None:
+            # The fault happened before the job row was even read — there is
+            # nothing to write to, and raising would only kill the task with
+            # the row stranded. It stays pending; the startup sweep makes it
+            # terminal at the next boot.
+            logger.exception("Trello export %s failed before its job row could be read", export_id)
+            return
         # Anything else must still land in the row — a polling client with a
-        # job stuck at ``running`` forever is worse than a coded failure.
+        # job stuck at ``running`` forever is worse than a coded failure — and
+        # it must keep the board identity when the board already exists.
         logger.exception("Trello export %s failed unexpectedly", export_id)
         await export_repo.save(
             replace(
                 job,
                 status=TrelloExportStatus.FAILED,
                 error_code="INTERNAL_ERROR",
+                board_id=board_ref.id if board_ref else None,
+                board_url=board_ref.url if board_ref else None,
                 completed_at=datetime.now(UTC),
             )
         )
+    except BaseException:
+        # Neither a cancellation nor an ``Exception`` — ``KeyboardInterrupt``
+        # and friends inside the task. The row still must not be stranded;
+        # write the interruption and let the exception propagate.
+        if job is not None:
+            await asyncio.shield(_mark_interrupted(export_repo, job, board_ref))
+        raise
+
+
+async def _mark_interrupted(
+    export_repo: TrelloExportRepository,
+    job: TrelloExport,
+    board_ref: TrelloBoardRef | None,
+) -> None:
+    """Write the terminal state a cancelled or dying task leaves behind.
+
+    Awaited under ``asyncio.shield`` by its callers so the write itself is not
+    cancelled. A write that faults is logged, not raised: the cancellation the
+    caller is holding must still propagate, and the startup sweep recovers a
+    row this write could not reach.
+    """
+    try:
+        await export_repo.save(
+            replace(
+                job,
+                status=TrelloExportStatus.FAILED,
+                error_code=TRELLO_EXPORT_INTERRUPTED,
+                board_id=board_ref.id if board_ref else None,
+                board_url=board_ref.url if board_ref else None,
+                completed_at=datetime.now(UTC),
+            )
+        )
+    except Exception:
+        logger.exception("Could not record the interruption of Trello export %s", job.id)
 
 
 async def run_trello_export(

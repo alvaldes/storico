@@ -52,6 +52,7 @@ __all__ = [
     "TRELLO_CARD_REFUSED",
     "TRELLO_CREDENTIAL_REJECTED",
     "TRELLO_CREDENTIALS_MISSING",
+    "TRELLO_EXPORT_INTERRUPTED",
     "TRELLO_EXPORT_NOT_FOUND",
     "TRELLO_RATE_LIMIT_EXHAUSTED",
     "TRELLO_SERVICE_UNAVAILABLE",
@@ -175,6 +176,14 @@ UNSUPPORTED_EXPORT_FORMAT = "UNSUPPORTED_EXPORT_FORMAT"
 # ACCOUNT_DELETE_BLOCKED takes, so the caller may fix the state (an admin
 # saves the pair) and retry. 409, never 500.
 TRELLO_CREDENTIALS_MISSING = "TRELLO_CREDENTIALS_MISSING"
+
+# A ``trello_exports`` job row that never reached a terminal state on its own:
+# the background task was cancelled, or the process died with the row at
+# ``pending``/``running``. Stored on the row by the runner's cancellation
+# handler and by the startup sweep (``infrastructure/tasks/trello_export_task.py``);
+# the member reads it by polling and re-triggers (D3 makes retrying safe).
+# No HTTP response carries it.
+TRELLO_EXPORT_INTERRUPTED = "TRELLO_EXPORT_INTERRUPTED"
 
 # ``export.py`` GET: no export job row for the addressed id, or one that
 # belongs to another workspace (reported as a miss, so a foreign id is not

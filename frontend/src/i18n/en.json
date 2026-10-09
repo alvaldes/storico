@@ -106,6 +106,7 @@
     "RATE_LIMIT_EXCEEDED": "Too many requests in a short time. Wait a moment and try again.",
     "TRELLO_CREDENTIALS_MISSING": "This workspace has no Trello credentials yet. Ask an admin to add them in the settings, then try again.",
     "TRELLO_EXPORT_NOT_FOUND": "That export no longer exists. Refresh the page to work with the current list.",
+    "TRELLO_EXPORT_INTERRUPTED": "The export was interrupted before it finished. Trigger it again to retry — it creates a new board.",
     "TRELLO_CREDENTIAL_REJECTED": "Trello rejected this workspace's credentials. Ask an admin to update them in the settings, then try again.",
     "TRELLO_SERVICE_UNAVAILABLE": "Trello was unreachable during the export. Wait a moment and try again.",
     "TRELLO_RATE_LIMIT_EXHAUSTED": "Trello kept rate-limiting the export. Wait a moment and try again.",

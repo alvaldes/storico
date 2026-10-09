@@ -137,6 +137,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.exception("recover_stuck_extractions failed")
 
+    # Same recovery posture for Trello export jobs: a row stranded at pending/
+    # running by a crash or a cancelled task is swept to failed so the member
+    # polling it gets an answer instead of waiting forever. Non-blocking by
+    # design — a sweep failure must not stop the API from starting.
+    try:
+        from storico.infrastructure.tasks.trello_export_task import recover_stuck_trello_exports
+
+        await recover_stuck_trello_exports()
+    except Exception:
+        logger.exception("recover_stuck_trello_exports failed")
+
     yield
     dispose_engine()
 

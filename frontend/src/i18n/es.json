@@ -106,6 +106,7 @@
     "RATE_LIMIT_EXCEEDED": "Demasiadas solicitudes en poco tiempo. Espera un momento e inténtalo de nuevo.",
     "TRELLO_CREDENTIALS_MISSING": "Este espacio de trabajo aún no tiene credenciales de Trello. Pide a un administrador que las agregue en la configuración e inténtalo de nuevo.",
     "TRELLO_EXPORT_NOT_FOUND": "Esa exportación ya no existe. Actualiza la página para trabajar con la lista actual.",
+    "TRELLO_EXPORT_INTERRUPTED": "La exportación se interrumpió antes de terminar. Actívala de nuevo para reintentarlo: se crea un tablero nuevo.",
     "TRELLO_CREDENTIAL_REJECTED": "Trello rechazó las credenciales de este espacio de trabajo. Pide a un administrador que las actualice en la configuración e inténtalo de nuevo.",
     "TRELLO_SERVICE_UNAVAILABLE": "Trello no respondió durante la exportación. Espera un momento e inténtalo de nuevo.",
     "TRELLO_RATE_LIMIT_EXHAUSTED": "Trello siguió limitando la exportación por demasiado tráfico. Espera un momento e inténtalo de nuevo.",

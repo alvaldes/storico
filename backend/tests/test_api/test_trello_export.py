@@ -269,12 +269,17 @@ class TestPostTrelloExport:
     async def test_a_story_of_another_project_in_this_workspace_resolves_to_its_workspace(
         self, authed_client, db_session: AsyncSession, seed_workspace, monkeypatch, export_repo
     ) -> None:
-        """A story id is only honored when its own project sits in the path workspace."""
+        """A story id is only honored when its own project sits in the path workspace:
+        the story here belongs to a *second* project of the same workspace, and the
+        job must still resolve to that workspace."""
         seeded = await seed_workspace()
         await _seed_credentials(db_session, seeded.workspace_id)
+        other_project = await SQLAlchemyProjectRepository(db_session).save(
+            Project(name="Second Project", workspace_id=seeded.workspace_id)
+        )
         story = await SQLAlchemyUserStoryRepository(db_session).save(
             UserStory(
-                project_id=seeded.project_id,
+                project_id=other_project.id,
                 actor="user",
                 feature="log in",
                 benefit="access account",
@@ -292,6 +297,11 @@ class TestPostTrelloExport:
         )
 
         assert response.status_code == 202
+        job = await export_repo.find_by_id(UUID(response.json()["id"]))
+        assert job is not None
+        assert job.scope.value == "story"
+        assert job.user_story_id == story.id
+        assert job.workspace_id == seeded.workspace_id
 
     @pytest.mark.asyncio
     async def test_a_non_member_is_refused(

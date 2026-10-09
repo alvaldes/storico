@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from storico.domain.entities.trello_export import TrelloExport
+from storico.domain.entities.trello_export import TrelloExport, TrelloExportStatus
 
 
 class TrelloExportRepository(ABC):
@@ -25,4 +25,13 @@ class TrelloExportRepository(ABC):
     @abstractmethod
     async def find_by_id(self, export_id: UUID) -> TrelloExport | None:
         """Find a job by its unique identifier."""
+        ...
+
+    @abstractmethod
+    async def find_by_statuses(self, statuses: set[TrelloExportStatus]) -> list[TrelloExport]:
+        """Find every job currently in one of *statuses*.
+
+        The startup sweep uses this to bound the candidate set in the query;
+        the age filter stays with the caller, next to the clock it owns.
+        """
         ...

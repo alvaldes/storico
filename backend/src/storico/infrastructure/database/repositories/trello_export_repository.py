@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import RepositoryError
-from storico.domain.entities.trello_export import TrelloExport, TrelloExportScope
+from storico.domain.entities.trello_export import (
+    TrelloExport,
+    TrelloExportScope,
+    TrelloExportStatus,
+)
 from storico.domain.ports import TrelloExportRepository
 from storico.infrastructure.database.models import TrelloExportModel
 
@@ -36,6 +41,14 @@ class SQLAlchemyTrelloExportRepository(TrelloExportRepository):
     async def find_by_id(self, export_id: UUID) -> TrelloExport | None:
         result = await self._session.get(TrelloExportModel, export_id)
         return self._to_domain(result) if result else None
+
+    async def find_by_statuses(self, statuses: set[TrelloExportStatus]) -> list[TrelloExport]:
+        result = await self._session.execute(
+            select(TrelloExportModel).where(
+                TrelloExportModel.status.in_([status.value for status in statuses])
+            )
+        )
+        return [self._to_domain(model) for model in result.scalars().all()]
 
     @staticmethod
     def _to_domain(model: TrelloExportModel) -> TrelloExport:
