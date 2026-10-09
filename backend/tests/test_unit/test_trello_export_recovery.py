@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import StaticPool
 
 from storico.api.error_codes import TRELLO_EXPORT_INTERRUPTED
+from storico.domain.entities import RepositoryError
 from storico.domain.entities.trello_export import TrelloExport, TrelloExportStatus
 from storico.infrastructure.database.models import Base
 from storico.infrastructure.database.repositories.trello_export_repository import (
@@ -163,3 +164,38 @@ async def test_the_sweep_keeps_the_board_identity_it_finds(
     assert swept.status is TrelloExportStatus.FAILED
     assert swept.board_id == "board-1"
     assert swept.board_url == "https://trello.com/b/board-1"
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_continues_past_a_row_it_cannot_write(
+    engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One failing row must not abandon the rest until the next boot — the next
+    row may be perfectly writable. The extraction sweep has the identical
+    unguarded write and aborts; that difference is this module's fourth
+    documented deviation."""
+    poisoned_id = await _store_job(engine, TrelloExportStatus.PENDING, created_at=_OLD)
+    healthy_id = await _store_job(engine, TrelloExportStatus.PENDING, created_at=_OLD)
+
+    class _FaultsOnOneRow(SQLAlchemyTrelloExportRepository):
+        async def save(self, export):
+            if export.id == poisoned_id:
+                raise RepositoryError("this row's write faults")
+            return await super().save(export)
+
+    monkeypatch.setattr(trello_export_task, "get_engine", lambda: engine)
+    monkeypatch.setattr(
+        trello_export_task,
+        "SQLAlchemyTrelloExportRepository",
+        _FaultsOnOneRow,
+    )
+
+    await trello_export_task.recover_stuck_trello_exports(max_age_minutes=5)
+
+    poisoned = await _reload(engine, poisoned_id)
+    # its write faulted; left for the next boot
+    assert poisoned.status is TrelloExportStatus.PENDING
+
+    healthy = await _reload(engine, healthy_id)
+    assert healthy.status is TrelloExportStatus.FAILED
+    assert healthy.error_code == TRELLO_EXPORT_INTERRUPTED

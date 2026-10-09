@@ -19,6 +19,11 @@ Where it deviates from the extraction sweep, and why:
   extraction module documents for SQLite timestamps.
 - The extraction sweep writes a free-text ``error_info``; this table's polling
   contract is a code, so the sweep writes ``TRELLO_EXPORT_INTERRUPTED``.
+- The extraction sweep lets a fault in one row's write abandon the rest of the
+  recovery — its per-row ``save`` is unguarded — so one bad row leaves every
+  healthy row behind it waiting for the next boot. This one guards the per-row
+  write, logs the fault, and keeps going, because the next row may be perfectly
+  writable.
 
 It inherits the extraction sweep's age limitation: a row younger than the bound
 at boot is left alone, so a job abandoned minutes before a restart is only
@@ -75,14 +80,21 @@ async def recover_stuck_trello_exports(max_age_minutes: int = 5) -> None:
         for job in candidates:
             if job.created_at is None or _as_utc(job.created_at) >= deadline:
                 continue
-            await repo.save(
-                replace(
-                    job,
-                    status=TrelloExportStatus.FAILED,
-                    error_code=TRELLO_EXPORT_INTERRUPTED,
-                    completed_at=datetime.now(UTC),
+            try:
+                await repo.save(
+                    replace(
+                        job,
+                        status=TrelloExportStatus.FAILED,
+                        error_code=TRELLO_EXPORT_INTERRUPTED,
+                        completed_at=datetime.now(UTC),
+                    )
                 )
-            )
+            except Exception:
+                # One unwritable row must not abandon the rest — the next row
+                # may be fine, and the next boot is a long way off. The faulted
+                # row is left as it stands and tried again at the next boot.
+                logger.exception("Could not recover stuck Trello export job %s", job.id)
+                continue
             recovered += 1
 
         if recovered:

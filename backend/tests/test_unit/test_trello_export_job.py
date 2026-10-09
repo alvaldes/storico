@@ -100,6 +100,50 @@ class _FaultyCompletionRepo(SQLAlchemyTrelloExportRepository):
         return await super().save(export)
 
 
+class _GatedInterruptedRepo(SQLAlchemyTrelloExportRepository):
+    """Holds the *interrupted* write — the terminal write a cancelled task makes
+    under ``asyncio.shield`` — at a gate, so a test can deliver a second
+    cancellation while that write is in flight, and signals when the write has
+    actually landed."""
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        reached: asyncio.Event,
+        gate: asyncio.Event,
+        done: asyncio.Event,
+    ) -> None:
+        super().__init__(session)
+        self._reached = reached
+        self._gate = gate
+        self._done = done
+
+    async def save(self, export):
+        interrupted = (
+            export.status is TrelloExportStatus.FAILED
+            and export.error_code == TRELLO_EXPORT_INTERRUPTED
+        )
+        if interrupted:
+            self._reached.set()
+            await self._gate.wait()
+        saved = await super().save(export)
+        if interrupted:
+            self._done.set()
+        return saved
+
+
+class _FaultyFailureWriteRepo(SQLAlchemyTrelloExportRepository):
+    """A repository whose write of any ``failed`` state faults — the database
+    died at exactly the moment the runner tried to record a failure. There is
+    no second write left: the runner must log and leave the row where it
+    stands, and the startup sweep is the backstop."""
+
+    async def save(self, export):
+        if export.status is TrelloExportStatus.FAILED:
+            raise RepositoryError("the failure write faulted")
+        return await super().save(export)
+
+
 class _GatedCompletionRepo(SQLAlchemyTrelloExportRepository):
     """Holds the completion write at a gate so the test can cancel the task
     while the board already exists — the moment a cancellation would otherwise
@@ -748,6 +792,132 @@ class TestTheFailureContract:
         assert row.board_id == _BOARD_REF.id
         assert row.board_url == _BOARD_REF.url
         assert row.completed_at is not None
+
+    @pytest.mark.asyncio
+    async def test_a_second_cancel_during_the_interrupted_write_still_lands_the_row(
+        self, db_session: AsyncSession
+    ) -> None:
+        """The shield made load-bearing: a *second* cancellation delivered while
+        the shielded interrupted write is in flight must not stop that write —
+        the row must land ``failed``/``TRELLO_EXPORT_INTERRUPTED`` all the same.
+        Removing the two ``asyncio.shield`` wrappers turns this test red (the
+        write dies with the task and the row is left ``running``) while the
+        four older contract tests stay green — that is the gap this test
+        closes."""
+        workspace, _project, _story = await seed_chain(db_session)
+        repo = SQLAlchemyTrelloExportRepository(db_session)
+        job = await repo.save(make_job(workspace.id))
+
+        port_started = asyncio.Event()
+        write_reached = asyncio.Event()
+        write_gate = asyncio.Event()
+        write_done = asyncio.Event()
+
+        async def hold_until_cancelled() -> None:
+            port_started.set()
+            await asyncio.Event().wait()  # never set — the cancel is what unwinds us
+
+        task = asyncio.create_task(
+            execute_trello_export(
+                export_id=job.id,
+                workspace_id=workspace.id,
+                board_name=workspace.name,
+                scope=TrelloExportScope.WORKSPACE,
+                project_id=None,
+                user_story_id=None,
+                credentials=_CREDENTIALS,
+                task_repo=SQLAlchemyTaskRepository(db_session),
+                story_repo=SQLAlchemyUserStoryRepository(db_session),
+                export_repo=_GatedInterruptedRepo(
+                    db_session, write_reached, write_gate, write_done
+                ),
+                port=FakeTrelloPort(ref=_BOARD_REF, on_call=hold_until_cancelled),
+            )
+        )
+        await port_started.wait()
+        task.cancel()  # first cancel — unwinds the port call
+        await write_reached.wait()  # the interrupted write is in flight, held at the gate
+        task.cancel()  # second cancel — delivered mid-write
+        write_gate.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        try:
+            # The shielded write outlives the cancelled task; give the loop the
+            # time to land it. A timeout here is the no-shield failure mode:
+            # the write died with the task and the row was never terminal.
+            await asyncio.wait_for(write_done.wait(), timeout=5)
+        except TimeoutError:
+            pass
+
+        row = await repo.find_by_id(job.id)
+        assert row is not None
+        assert row.status.value == "failed"
+        assert row.error_code == TRELLO_EXPORT_INTERRUPTED
+        assert row.completed_at is not None
+
+    @pytest.mark.asyncio
+    async def test_a_fault_in_the_typed_failure_write_is_logged_not_raised(
+        self, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The typed handler's own ``save`` faults: the fault must not escape
+        the task as an unhandled exception — it is logged, the row stays where
+        it is, and the startup sweep makes it terminal at the next boot."""
+        workspace, _project, _story = await seed_chain(db_session)
+        repo = SQLAlchemyTrelloExportRepository(db_session)
+        job = await repo.save(make_job(workspace.id))
+
+        with caplog.at_level("ERROR"):
+            await execute_trello_export(
+                export_id=job.id,
+                workspace_id=workspace.id,
+                board_name=workspace.name,
+                scope=TrelloExportScope.WORKSPACE,
+                project_id=None,
+                user_story_id=None,
+                credentials=_CREDENTIALS,
+                task_repo=SQLAlchemyTaskRepository(db_session),
+                story_repo=SQLAlchemyUserStoryRepository(db_session),
+                export_repo=_FaultyFailureWriteRepo(db_session),
+                port=FakeTrelloPort(error=TrelloCardRefusedError()),
+            )
+
+        row = await repo.find_by_id(job.id)
+        assert row is not None
+        # Nothing was left to write the terminal state with.
+        assert row.status.value == "running"
+        assert "Could not record the failure" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_a_fault_in_the_generic_failure_write_is_logged_not_raised(
+        self, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Same guard for the generic handler: a fault in its own ``save`` is
+        logged, never raised — the sweep, not an escaping exception, is the
+        backstop."""
+        workspace, _project, _story = await seed_chain(db_session)
+        repo = SQLAlchemyTrelloExportRepository(db_session)
+        job = await repo.save(make_job(workspace.id))
+
+        with caplog.at_level("ERROR"):
+            await execute_trello_export(
+                export_id=job.id,
+                workspace_id=workspace.id,
+                board_name=workspace.name,
+                scope=TrelloExportScope.WORKSPACE,
+                project_id=None,
+                user_story_id=None,
+                credentials=_CREDENTIALS,
+                task_repo=SQLAlchemyTaskRepository(db_session),
+                story_repo=SQLAlchemyUserStoryRepository(db_session),
+                export_repo=_FaultyFailureWriteRepo(db_session),
+                port=FakeTrelloPort(error=RuntimeError("exploded")),
+            )
+
+        row = await repo.find_by_id(job.id)
+        assert row is not None
+        assert row.status.value == "running"
+        assert "Could not record the failure" in caplog.text
 
     @pytest.mark.asyncio
     async def test_a_database_fault_before_the_run_does_not_strand_the_row(

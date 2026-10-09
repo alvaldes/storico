@@ -108,7 +108,6 @@ class TestPostTrelloExport:
         job = await export_repo.find_by_id(UUID(body["id"]))
         assert job is not None
         assert job.status.value == "pending"
-        assert job.workspace_id == seeded.workspace_id
 
         await asyncio.sleep(0)
         scheduled.assert_called_once()
@@ -301,7 +300,10 @@ class TestPostTrelloExport:
         assert job is not None
         assert job.scope.value == "story"
         assert job.user_story_id == story.id
-        assert job.workspace_id == seeded.workspace_id
+        # A story scope must carry the story and *not* a second target — the
+        # workspace_id line this replaced was a tautology: the route stamps the
+        # path workspace onto the row, so no resolution bug could turn it red.
+        assert job.project_id is None
 
     @pytest.mark.asyncio
     async def test_a_non_member_is_refused(
