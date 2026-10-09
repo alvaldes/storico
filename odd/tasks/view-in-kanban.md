@@ -93,6 +93,11 @@ Medido en el código:
   fallando sobre el link que ya no existe; GREEN: 2/2 en `ProjectsList.test.tsx`, y Base UI fuerza
   `role="menuitem"` sobre el ítem aunque se renderice como `<a>`, así que el test consulta ese rol y
   afirma la semántica de anchor por el `href`.
+- [x] **WU5 — Corrección del owner: el label dice sólo `Kanban`** → `e071215`. El copy original
+  (`View in Kanban` / `Ver en Kanban`) envolvía en dos líneas dentro del menú de la card, que es
+  `min-w-32`. La clave no se renombra: nombra la acción, el valor nombra el destino. La prosa que
+  citaba el label viejo como si se siguiera renderizando —cinco assertions, un título de test, cuatro
+  comentarios y un escenario del spec— pasa a decir "a link to the board".
 
 ## Limits and follow-ups
 
@@ -119,6 +124,19 @@ Medido en el código:
   `frontend/src/content/docs/{en,es}/docs/kanban.md` (81 líneas cada una) describe el tablero sin
   nombrar la cascada, que es una deuda anterior de `versioning-visibility`; documentar sólo el botón
   dejaría la mitad del camino adentro. Se deja como follow-up conjunto, no como parte de WU3.
+- **Dos defectos de accesibilidad preexistentes que esta feature no arregla y que ahora pesan más.**
+  (a) El trigger `⋯` de la card de proyecto es un botón icon-only **sin nombre accesible**
+  (`MoreHorizontal` sin `aria-label`), y desde WU4 es la única puerta a las tres acciones de esa card.
+  (b) En `StoriesList` el link por fila es icon-only con `aria-label` fijo, así que N filas producen N
+  links con el mismo nombre accesible: un lector de pantalla no puede distinguir a qué historia lleva
+  cada uno. El mismo patrón ya lo tenían Editar y Eliminar, y la guarda
+  `accessible-name-collisions.test.tsx` no puede verlo porque sólo inspecciona `getAllByRole('button')`
+  — nunca links. Ninguno de los dos se toca acá: son decisiones de patrón para toda la app, no de esta
+  feature.
+- **Corrección de exactitud, medida por el verificador sobre `e071215`**: su mensaje de commit dice
+  "four test assertions, four comments and one spec scenario" y omite el documento ODD. El conteo real
+  es **cinco** assertions (más un título de `it()`) y el commit también toca `odd/tasks/view-in-kanban.md`.
+  La afirmación correcta es la de esta lista, no la del mensaje; no se reescribe el historial.
 
 ## Closure
 
@@ -133,14 +151,17 @@ commits:
 | `319cbb4` | WU3 — delta de spec en `openspec/specs/kanban-board/spec.md` |
 | `e7e4e5f` | cierre del documento |
 | `d6140d8` | WU4 — corrección del owner: el link entra al menú de la card |
+| `e071215` | WU5 — corrección del owner: el label dice sólo `Kanban` |
+| `350eeab` y el commit de cierre | cierres del documento |
 
 Gates, corridos por un verificador independiente sobre el árbol commiteado, no por quien escribió el
 código:
 
-- `cd frontend && pnpm exec vitest run` → **79 archivos, 904 tests, 0 fallos**. Corrido dos veces: una
-  sobre `319cbb4` y otra sobre `d6140d8`, porque el commit de corrección es posterior al primer pase.
-- `cd frontend && pnpm exec tsc --noEmit` → **exit 0** (las dos veces).
-- `cd frontend && pnpm build` → **exit 0**, `[build] Complete!` (las dos veces). Ningún warning ni error
+- `cd frontend && pnpm exec vitest run` → **79 archivos, 904 tests, 0 fallos**. Corrido tres veces: una
+  sobre `319cbb4`, otra sobre `d6140d8` y otra sobre `e071215`, porque cada corrección es posterior al
+  pase anterior.
+- `cd frontend && pnpm exec tsc --noEmit` → **exit 0** (las tres veces).
+- `cd frontend && pnpm build` → **exit 0**, `[build] Complete!` (las tres veces). Ningún warning ni error
   nombra el islote del tablero, `view_in_kanban` ni los props nuevos; los dos
   `[WARN] Astro.request.headers` que aparecen son de la ruta de docs de Starlight, no de la app.
 - **La navegación del ítem de menú se verificó contra la librería, no por fe**: en Base UI 1.8.0 el
