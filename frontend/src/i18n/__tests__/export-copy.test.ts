@@ -21,6 +21,13 @@ import es from '@/i18n/es.json';
  * Both sides are derived from the backend by regex against the source (not by importing Python),
  * so retiring a format in `RETIRED_EXPORT_FORMATS` is the only step needed for this guard to
  * start flagging copy that still promises it.
+ *
+ * The scan covers the catalog's *feature* copy and deliberately skips the `errorCodes.` namespace.
+ * `trello` is retired as an export *format*, but it is also a connector the product now has: an
+ * error string naming Trello describes a failure of something that exists, which is not the
+ * promise this guard is about. While Trello was only a retired format the two were the same
+ * sentence, and they stopped being the same sentence in `feat(trello)`; the namespace is the seam
+ * between them. Everything outside it — landing, panels, settings — is still scanned in full.
  */
 const settingsSource = readFileSync(
   new URL('../../../../backend/src/storico/api/schemas/settings.py', import.meta.url),
@@ -102,9 +109,12 @@ describe('export copy', () => {
 
   describe.each(Object.entries(CATALOGS))('the %s catalog', (locale, catalog) => {
     it('names no retired export format in any string', () => {
-      const offenders = stringEntries(catalog).flatMap(({ path, value }) =>
-        mentionedFormats(value, RETIRED_FORMATS).map((format) => `${path}: promises "${format}"`),
-      );
+      const offenders = stringEntries(catalog)
+        // `errorCodes.*` names connector failures, not export formats; see the header.
+        .filter(({ path }) => !path.startsWith('errorCodes.'))
+        .flatMap(({ path, value }) =>
+          mentionedFormats(value, RETIRED_FORMATS).map((format) => `${path}: promises "${format}"`),
+        );
 
       expect(
         offenders,
