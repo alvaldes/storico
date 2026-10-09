@@ -23,6 +23,9 @@ from storico.domain.ports.workspace_member_repository import (
 )
 from storico.domain.ports.workspace_prompt_repository import WorkspacePromptRepository
 from storico.domain.ports.workspace_repository import WorkspaceRepository
+from storico.domain.ports.workspace_trello_config_repository import (
+    WorkspaceTrelloConfigRepository,
+)
 
 __all__ = [
     "UserRepository",
@@ -45,6 +48,7 @@ __all__ = [
     "WorkspaceMemberRepository",
     "WorkspaceLLMConfigRepository",
     "WorkspacePromptRepository",
+    "WorkspaceTrelloConfigRepository",
     "CustomProviderRepository",
     "CipherPort",
 ]

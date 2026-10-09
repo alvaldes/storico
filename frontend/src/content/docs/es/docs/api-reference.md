@@ -1363,6 +1363,84 @@ cannot drift apart.
 | `200` | Successful Response | `CustomProviderResponse` |
 | `422` | Validation Error | `HTTPValidationError` |
 
+### `GET` `/api/v1/workspaces/{workspace_id}/settings/trello`
+
+Get Trello Config
+
+Get the workspace Trello credentials, decrypted. Admin only.
+
+Returns ``null`` fields for a workspace that has not configured the pair yet.
+
+**Parámetros**
+
+| Nombre | Ubicación | Obligatorio | Tipo |
+| --- | --- | --- | --- |
+| `workspace_id` | `path` | sí | `string` |
+
+**Respuestas**
+
+| Estado | Descripción | Esquema |
+| --- | --- | --- |
+| `200` | Successful Response | `TrelloConfigResponse` |
+| `422` | Validation Error | `HTTPValidationError` |
+
+### `PUT` `/api/v1/workspaces/{workspace_id}/settings/trello`
+
+Upsert Trello Config
+
+Upsert workspace Trello credentials. Admin only.
+
+Only the fields provided in the request body are updated. A blank credential is
+stored as ``None`` — the repository's encrypt path would otherwise spend a token
+storing a value that has to be decrypted back to nothing — and a value carried
+over from the existing row is normalized too, so any save also cleans a legacy
+blank. The repository encrypts on the way in; the response returns the decrypted
+pair, the same convention as the LLM config module.
+
+**Parámetros**
+
+| Nombre | Ubicación | Obligatorio | Tipo |
+| --- | --- | --- | --- |
+| `workspace_id` | `path` | sí | `string` |
+
+**Cuerpo de la petición** (`application/json`)
+
+| Campo | Tipo | Obligatorio |
+| --- | --- | --- |
+| `api_key` | `string | null` | no |
+| `token` | `string | null` | no |
+
+**Respuestas**
+
+| Estado | Descripción | Esquema |
+| --- | --- | --- |
+| `200` | Successful Response | `TrelloConfigResponse` |
+| `422` | Validation Error | `HTTPValidationError` |
+
+### `GET` `/api/v1/workspaces/{workspace_id}/settings/trello/status`
+
+Get Trello Config Status
+
+Report whether this workspace has Trello credentials, and which it is missing.
+
+Readable by any member, unlike every other route in this module. The member who
+cannot read the credentials is exactly the one who meets the failed export, so
+this is the one piece of it they are entitled to: the missing field names, never
+the values those fields hold.
+
+**Parámetros**
+
+| Nombre | Ubicación | Obligatorio | Tipo |
+| --- | --- | --- | --- |
+| `workspace_id` | `path` | sí | `string` |
+
+**Respuestas**
+
+| Estado | Descripción | Esquema |
+| --- | --- | --- |
+| `200` | Successful Response | `TrelloConfigStatusResponse` |
+| `422` | Validation Error | `HTTPValidationError` |
+
 ## workspaces
 
 ### `GET` `/api/v1/workspaces/`

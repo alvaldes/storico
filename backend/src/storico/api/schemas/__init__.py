@@ -37,6 +37,11 @@ from storico.api.schemas.workspace_member import (
     TransferOwnershipRequest,
 )
 from storico.api.schemas.workspace_prompt import PromptRequest, PromptResponse
+from storico.api.schemas.workspace_trello import (
+    TrelloConfigRequest,
+    TrelloConfigResponse,
+    TrelloConfigStatusResponse,
+)
 
 __all__ = [
     "ErrorResponse",
@@ -72,4 +77,7 @@ __all__ = [
     "MemberListResponse",
     "PromptRequest",
     "PromptResponse",
+    "TrelloConfigRequest",
+    "TrelloConfigResponse",
+    "TrelloConfigStatusResponse",
 ]

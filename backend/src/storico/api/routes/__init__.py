@@ -10,6 +10,7 @@ from storico.api.routes import (
     tasks,
     users,
     workspace_settings,
+    workspace_trello,
     workspaces,
 )
 
@@ -23,5 +24,6 @@ __all__ = [
     "tasks",
     "users",
     "workspace_settings",
+    "workspace_trello",
     "workspaces",
 ]

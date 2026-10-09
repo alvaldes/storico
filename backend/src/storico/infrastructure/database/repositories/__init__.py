@@ -36,6 +36,9 @@ from storico.infrastructure.database.repositories.workspace_prompt_repository im
 from storico.infrastructure.database.repositories.workspace_repository import (
     SQLAlchemyWorkspaceRepository,
 )
+from storico.infrastructure.database.repositories.workspace_trello_config_repository import (
+    SQLAlchemyWorkspaceTrelloConfigRepository,
+)
 
 __all__ = [
     "SQLAlchemyUserRepository",
@@ -49,5 +52,6 @@ __all__ = [
     "SQLAlchemyWorkspaceMemberRepository",
     "SQLAlchemyWorkspaceLLMConfigRepository",
     "SQLAlchemyWorkspacePromptRepository",
+    "SQLAlchemyWorkspaceTrelloConfigRepository",
     "SQLAlchemyCustomProviderRepository",
 ]

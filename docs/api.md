@@ -222,6 +222,31 @@ de construir ningún adaptador. Si falla, la respuesta nombra al proveedor y una
 clasificada (un código HTTP, o que no se pudo alcanzar al proveedor); el texto de la
 excepción original va al log, nunca al cuerpo de la respuesta.
 
+### Credenciales de Trello (scoped a workspace)
+
+`GET` y `PUT /settings/trello` requieren admin. El `PUT` guarda el par que el admin
+pega (clave y token de Trello), **cifrado en reposo**: el repositorio cifra al
+escribir y descifra al leer, de modo que ningún llamador maneja ciphertext y la
+columna nunca guarda el plaintext. El `GET` devuelve el par descifrado — la misma
+convención de `/settings/llm` — y responde campos en `null` para un workspace sin
+fila. Un valor en blanco se guarda como `None`, y un campo omitido conserva el valor
+almacenado.
+
+`GET /settings/trello/status` es la excepción legible por cualquier miembro:
+responde `{configured, missing}` con los **nombres de los campos** que faltan
+(`api_key`, `token`) y nunca con la credencial, porque el miembro que no puede leer
+las credenciales es justamente quien lanza la exportación que depende de ellas.
+
+Si el servidor no tiene clave maestra configurada, escribir responde `500` con
+`error_code: "ENCRYPTION_KEY_MISSING"` y leer una fila ya cifrada responde `500` con
+`"CREDENTIAL_UNDECRYPTABLE"` — el sobre canónico de §Errores, no un crash.
+
+| Método | Path | Descripción |
+|--------|------|-------------|
+| GET | `/api/v1/workspaces/{wsId}/settings/trello` | Obtener las credenciales de Trello (descifradas) |
+| PUT | `/api/v1/workspaces/{wsId}/settings/trello` | Guardar las credenciales de Trello (cifradas en reposo) |
+| GET | `/api/v1/workspaces/{wsId}/settings/trello/status` | ¿Tiene el workspace credenciales de Trello? |
+
 ### Proveedores personalizados (scoped a workspace)
 
 | Método | Path | Descripción |

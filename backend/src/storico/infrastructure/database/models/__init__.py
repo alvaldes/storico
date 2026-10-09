@@ -23,6 +23,9 @@ from storico.infrastructure.database.models.workspace_member import (
 from storico.infrastructure.database.models.workspace_prompt import (
     WorkspacePromptModel,
 )
+from storico.infrastructure.database.models.workspace_trello_config import (
+    WorkspaceTrelloConfigModel,
+)
 
 __all__ = [
     "Base",
@@ -39,5 +42,6 @@ __all__ = [
     "WorkspaceMemberModel",
     "WorkspaceLLMConfigModel",
     "WorkspacePromptModel",
+    "WorkspaceTrelloConfigModel",
     "CustomProviderModel",
 ]

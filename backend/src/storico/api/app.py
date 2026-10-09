@@ -46,6 +46,7 @@ from storico.api.routes import (
     tasks,
     users,
     workspace_settings,
+    workspace_trello,
     workspaces,
 )
 from storico.api.routes import (
@@ -223,6 +224,7 @@ def create_app() -> FastAPI:
     # Workspace routes
     app.include_router(workspaces.router)
     app.include_router(workspace_settings.router)
+    app.include_router(workspace_trello.router)
     app.include_router(projects.projects_router)  # workspace-scoped
     app.include_router(extraction.extraction_router)  # workspace-scoped
     app.include_router(export.router)  # workspace-scoped

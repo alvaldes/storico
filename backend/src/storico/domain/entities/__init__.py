@@ -29,6 +29,7 @@ from storico.domain.entities.workspace import Workspace, WorkspaceWithRoleAndCou
 from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
 from storico.domain.entities.workspace_member import WorkspaceMember, WorkspaceRole
 from storico.domain.entities.workspace_prompt import WorkspacePrompt
+from storico.domain.entities.workspace_trello_config import WorkspaceTrelloConfig
 
 __all__ = [
     "CannotRemoveOwnerError",
@@ -63,5 +64,6 @@ __all__ = [
     "WorkspaceRole",
     "WorkspaceLLMConfig",
     "WorkspacePrompt",
+    "WorkspaceTrelloConfig",
     "CustomProvider",
 ]
