@@ -15,12 +15,19 @@ class TrelloExportCreateRequest(BaseModel):
     export to that project or story; both present is refused with 422
     ``REQUEST_VALIDATION_FAILED`` — the Kanban cascade's never-two rule, applied
     by ``resolve_export_scope`` (``domain/services/export_scope.py``).
+
+    ``extraction_id`` names the version to export, identified by the extraction
+    that produced it (never by a version number, which is a position the next
+    run moves). It is accepted only together with ``user_story_id`` — a version
+    belongs to a story, so asking for one at project or workspace level is a
+    422, the same refusal the file export answers.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     project_id: UUID | None = None
     user_story_id: UUID | None = None
+    extraction_id: UUID | None = None
 
 
 class TrelloBoardCardResponse(BaseModel):
@@ -95,6 +102,9 @@ class TrelloExportResponse(BaseModel):
     scope: str
     project_id: UUID | None = None
     user_story_id: UUID | None = None
+    # The version the job exported, named by its extraction id; null when the
+    # trigger asked for current versions.
+    extraction_id: UUID | None = None
     status: str
     error_code: str | None = None
     board_id: str | None = None

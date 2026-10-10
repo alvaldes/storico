@@ -300,6 +300,28 @@ class TestTrelloExportRepository:
         assert found.cards_created == 3
 
     @pytest.mark.asyncio
+    async def test_save_then_find_roundtrips_the_extraction_id(
+        self, db_session: AsyncSession
+    ) -> None:
+        """The named version rides the row both ways — write and read."""
+        workspace, _project, story = await seed_chain(db_session, tasks=0)
+        repo = SQLAlchemyTrelloExportRepository(db_session)
+
+        version_id = uuid4()
+        saved = await repo.save(
+            make_job(
+                workspace.id,
+                TrelloExportScope.STORY,
+                user_story_id=story.id,
+                extraction_id=version_id,
+            )
+        )
+
+        found = await repo.find_by_id(saved.id)
+        assert found is not None
+        assert found.extraction_id == version_id
+
+    @pytest.mark.asyncio
     async def test_find_by_id_unknown_returns_none(self, db_session: AsyncSession) -> None:
         assert await SQLAlchemyTrelloExportRepository(db_session).find_by_id(uuid4()) is None
 
@@ -633,6 +655,97 @@ class TestExportReads:
         titles = [card.title for column in port.plans[0].columns for card in column.cards]
         assert titles == [current[0].title]
         assert superseded[0].title not in titles
+
+    @pytest.mark.asyncio
+    async def test_story_scope_exports_the_chosen_version_when_one_is_named(
+        self, db_session: AsyncSession
+    ) -> None:
+        """The trigger names a version: that version's tasks reach the board even
+        though a newer run superseded it — no currency predicate on this read."""
+        workspace, _project, story = await seed_chain(db_session)
+        superseded = await seed_current_tasks(db_session, story.id, 1, prefix="Superseded")
+        current = await seed_current_tasks(db_session, story.id, 1)
+        repo = SQLAlchemyTrelloExportRepository(db_session)
+        job = await repo.save(
+            make_job(
+                workspace.id,
+                TrelloExportScope.STORY,
+                user_story_id=story.id,
+                extraction_id=superseded[0].extraction_id,
+            )
+        )
+
+        port = FakeTrelloPort(ref=_BOARD_REF)
+        await execute_trello_export(
+            export_id=job.id,
+            workspace_id=workspace.id,
+            board_name=workspace.name,
+            scope=TrelloExportScope.STORY,
+            project_id=None,
+            user_story_id=story.id,
+            extraction_id=superseded[0].extraction_id,
+            credentials=_CREDENTIALS,
+            task_repo=SQLAlchemyTaskRepository(db_session),
+            story_repo=SQLAlchemyUserStoryRepository(db_session),
+            export_repo=repo,
+            port=port,
+        )
+
+        titles = [card.title for column in port.plans[0].columns for card in column.cards]
+        assert titles == [superseded[0].title]
+        assert current[0].title not in titles
+        # The completed row still carries the version it exported — the polling
+        # answer survives the lifecycle's ``replace`` writes.
+        finished = await repo.find_by_id(job.id)
+        assert finished is not None
+        assert finished.extraction_id == superseded[0].extraction_id
+
+    @pytest.mark.asyncio
+    async def test_an_extraction_from_another_story_matches_nothing(
+        self, db_session: AsyncSession
+    ) -> None:
+        """The version predicate's ``WHERE`` carries both filters: an extraction
+        id belonging to another story matches no row instead of leaking that
+        story's tasks into a story-scoped export."""
+        workspace, project, story = await seed_chain(db_session)
+        other_story = await SQLAlchemyUserStoryRepository(db_session).save(
+            UserStory(
+                project_id=project.id,
+                actor="user",
+                feature="sign up",
+                benefit="have an account",
+                raw_text="As a user, I want to sign up",
+            )
+        )
+        foreign = await seed_current_tasks(db_session, other_story.id, 1)
+        repo = SQLAlchemyTrelloExportRepository(db_session)
+        job = await repo.save(
+            make_job(
+                workspace.id,
+                TrelloExportScope.STORY,
+                user_story_id=story.id,
+                extraction_id=foreign[0].extraction_id,
+            )
+        )
+
+        port = FakeTrelloPort(ref=_BOARD_REF)
+        await execute_trello_export(
+            export_id=job.id,
+            workspace_id=workspace.id,
+            board_name=workspace.name,
+            scope=TrelloExportScope.STORY,
+            project_id=None,
+            user_story_id=story.id,
+            extraction_id=foreign[0].extraction_id,
+            credentials=_CREDENTIALS,
+            task_repo=SQLAlchemyTaskRepository(db_session),
+            story_repo=SQLAlchemyUserStoryRepository(db_session),
+            export_repo=repo,
+            port=port,
+        )
+
+        titles = [card.title for column in port.plans[0].columns for card in column.cards]
+        assert titles == []
 
     @pytest.mark.asyncio
     async def test_story_scope_attributes_its_own_story(self, db_session: AsyncSession) -> None:

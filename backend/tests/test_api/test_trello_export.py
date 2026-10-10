@@ -25,6 +25,7 @@ from storico.domain.entities.project import Project
 from storico.domain.entities.task import TaskStatus
 from storico.domain.entities.trello_export import (
     TrelloExport,
+    TrelloExportScope,
     TrelloExportStatus,
 )
 from storico.domain.entities.user_story import UserStory
@@ -224,6 +225,66 @@ class TestPostTrelloExport:
         assert job.user_story_id == seeded.story_id
 
     @pytest.mark.asyncio
+    async def test_a_chosen_version_exports_even_when_superseded(
+        self, authed_client, db_session: AsyncSession, seed_workspace, monkeypatch, export_repo
+    ) -> None:
+        """Naming an extraction id exports that version, superseded or not —
+        EP1's rule, now on the Trello trigger: the version travels in the
+        dispatch kwargs and lands on the job row the member polls."""
+        seeded = await seed_workspace()
+        await _seed_credentials(db_session, seeded.workspace_id)
+        superseded = await seed_extraction(
+            db_session,
+            seeded.story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        # A second completed run supersedes the first — the trigger names the old one.
+        await seed_extraction(
+            db_session,
+            seeded.story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        scheduled = AsyncMock()
+        monkeypatch.setattr("storico.api.routes.export.run_trello_export", scheduled)
+
+        response = await authed_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/export/trello",
+            json={"user_story_id": str(seeded.story_id), "extraction_id": str(superseded.id)},
+        )
+
+        assert response.status_code == 202
+        assert response.json()["extraction_id"] == str(superseded.id)
+        job = await export_repo.find_by_id(UUID(response.json()["id"]))
+        assert job is not None
+        assert job.extraction_id == superseded.id
+        kwargs = scheduled.call_args.kwargs
+        assert kwargs["extraction_id"] == superseded.id
+
+    @pytest.mark.asyncio
+    async def test_a_version_without_its_story_is_422(
+        self, authed_client, db_session: AsyncSession, seed_workspace, monkeypatch, export_repo
+    ) -> None:
+        """A version belongs to a story: extraction_id alone is refused before
+        anything is created or dispatched — the same 422 the file export answers."""
+        seeded = await seed_workspace()
+        await _seed_credentials(db_session, seeded.workspace_id)
+        scheduled = AsyncMock()
+        monkeypatch.setattr("storico.api.routes.export.run_trello_export", scheduled)
+
+        response = await authed_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/export/trello",
+            json={"extraction_id": str(uuid4())},
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error_code"] == "REQUEST_VALIDATION_FAILED"
+        scheduled.assert_not_called()
+        rows = (await db_session.execute(select(TrelloExportModel))).scalars().all()
+        assert rows == []
+
+    @pytest.mark.asyncio
     async def test_an_unknown_story_id_is_a_miss(
         self, authed_client, db_session: AsyncSession, seed_workspace, monkeypatch, export_repo
     ) -> None:
@@ -367,6 +428,36 @@ class TestGetTrelloExport:
         assert body["status"] == "failed"
         assert body["error_code"] == "TRELLO_CARD_REFUSED"
         assert body["board_url"] == "https://trello.com/b/board-1"
+
+    @pytest.mark.asyncio
+    async def test_polling_reports_which_version_the_board_came_from(
+        self, authed_client, db_session: AsyncSession, seed_workspace, export_repo
+    ) -> None:
+        """A member polling a job can say which version that board came from —
+        the row records the named extraction, and a job without one reports null."""
+        seeded = await seed_workspace()
+        version_id = uuid4()
+        job = await export_repo.save(
+            TrelloExport(
+                workspace_id=seeded.workspace_id,
+                scope=TrelloExportScope.STORY,
+                user_story_id=seeded.story_id,
+                extraction_id=version_id,
+            )
+        )
+
+        response = await authed_client.get(
+            f"/api/v1/workspaces/{seeded.workspace_id}/export/trello/{job.id}"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["extraction_id"] == str(version_id)
+
+        plain = await export_repo.save(TrelloExport(workspace_id=seeded.workspace_id))
+        plain_response = await authed_client.get(
+            f"/api/v1/workspaces/{seeded.workspace_id}/export/trello/{plain.id}"
+        )
+        assert plain_response.json()["extraction_id"] is None
 
     @pytest.mark.asyncio
     async def test_unknown_export_id_answers_404(
@@ -548,6 +639,88 @@ class TestTrelloPreview:
 
         assert response.status_code == 403
         assert response.json()["error_code"] == "PROJECT_NOT_IN_WORKSPACE"
+
+    @pytest.mark.asyncio
+    async def test_the_preview_shows_the_chosen_version_when_one_is_named(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """extraction_id names the version the plan reads — superseded or not,
+        the same read the trigger would run."""
+        seeded = await seed_workspace()
+        superseded = await seed_extraction(
+            db_session,
+            seeded.story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        await seed_task(db_session, seeded.story_id, "Superseded card", extraction=superseded)
+        current = await seed_extraction(
+            db_session,
+            seeded.story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        await seed_task(db_session, seeded.story_id, "Current card", extraction=current)
+
+        response = await authed_client.get(
+            f"/api/v1/workspaces/{seeded.workspace_id}/export/trello/preview"
+            f"?user_story_id={seeded.story_id}&extraction_id={superseded.id}"
+        )
+
+        assert response.status_code == 200
+        titles = [
+            card["title"] for column in response.json()["columns"] for card in column["cards"]
+        ]
+        assert titles == ["Superseded card"]
+
+    @pytest.mark.asyncio
+    async def test_the_preview_defaults_to_the_current_version(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """Without extraction_id the plan stays the current-version read it has
+        always been — the version parameter is additive, not a behaviour change."""
+        seeded = await seed_workspace()
+        superseded = await seed_extraction(
+            db_session,
+            seeded.story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        await seed_task(db_session, seeded.story_id, "Superseded card", extraction=superseded)
+        current = await seed_extraction(
+            db_session,
+            seeded.story_id,
+            status=ExtractionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+        await seed_task(db_session, seeded.story_id, "Current card", extraction=current)
+
+        response = await authed_client.get(
+            f"/api/v1/workspaces/{seeded.workspace_id}/export/trello/preview"
+            f"?user_story_id={seeded.story_id}"
+        )
+
+        assert response.status_code == 200
+        titles = [
+            card["title"] for column in response.json()["columns"] for card in column["cards"]
+        ]
+        assert titles == ["Current card"]
+
+    @pytest.mark.asyncio
+    async def test_a_version_without_its_story_is_422(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """The pairing rule on the preview's query, exactly as the trigger and
+        the file export apply it."""
+        seeded = await seed_workspace()
+
+        response = await authed_client.get(
+            f"/api/v1/workspaces/{seeded.workspace_id}/export/trello/preview"
+            f"?extraction_id={uuid4()}"
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error_code"] == "REQUEST_VALIDATION_FAILED"
 
     @pytest.mark.asyncio
     async def test_an_unknown_story_is_404(

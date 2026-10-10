@@ -54,6 +54,11 @@ class TrelloExport:
     scope: TrelloExportScope = field(default=TrelloExportScope.WORKSPACE)
     project_id: UUID | None = None
     user_story_id: UUID | None = None
+    # The version the job was told to export, named by its extraction id —
+    # null when the trigger asked for current versions. Recorded at creation
+    # and never rewritten, so a completed row answers which version its board
+    # came from. A value like the other targets, no foreign key, same reason.
+    extraction_id: UUID | None = None
     status: TrelloExportStatus = field(default=TrelloExportStatus.PENDING)
     error_code: str | None = None
     board_id: str | None = None

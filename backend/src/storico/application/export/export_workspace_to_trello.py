@@ -71,6 +71,7 @@ async def execute_trello_export(
     scope: TrelloExportScope,
     project_id: UUID | None,
     user_story_id: UUID | None,
+    extraction_id: UUID | None = None,
     credentials: WorkspaceTrelloConfig,
     task_repo: TaskRepository,
     story_repo: UserStoryRepository,
@@ -127,6 +128,7 @@ async def execute_trello_export(
             scope=scope,
             project_id=project_id,
             user_story_id=user_story_id,
+            extraction_id=extraction_id,
             task_repo=task_repo,
             story_repo=story_repo,
         )
@@ -272,6 +274,7 @@ async def run_trello_export(
     project_id: UUID | None,
     user_story_id: UUID | None,
     credentials: WorkspaceTrelloConfig,
+    extraction_id: UUID | None = None,
 ) -> None:
     """Dispatch shape: ``asyncio.create_task(run_trello_export(...))`` in the route.
 
@@ -287,6 +290,7 @@ async def run_trello_export(
             scope=scope,
             project_id=project_id,
             user_story_id=user_story_id,
+            extraction_id=extraction_id,
             credentials=credentials,
             task_repo=SQLAlchemyTaskRepository(session),
             story_repo=SQLAlchemyUserStoryRepository(session),
@@ -304,16 +308,23 @@ async def build_board_plan_for_scope(
     user_story_id: UUID | None,
     task_repo: TaskRepository,
     story_repo: UserStoryRepository,
+    extraction_id: UUID | None = None,
 ) -> TrelloBoardPlan:
     """The plan the runner would send — reads for the scope, then the pure builder.
 
     The single application-layer entry point for plan assembly: the trigger's
     background run and the ``GET .../export/trello/preview`` route both call
     this, so the preview can only ever show the plan the runner would send.
-    When a version parameter joins (the export page rework's EP3), it arrives
-    here — in the reads this function owns — and both callers move together.
+    When ``extraction_id`` names a version (story scope only — a version
+    belongs to a story, enforced by the routes), its tasks are read through
+    ``list_by_story_version`` — the same predicate the file export rides, so
+    the cross-story-leak protection its ``WHERE`` carries comes along — and a
+    superseded version exports exactly as it was. Without one, every story's
+    current version is read, the behaviour this function has always had.
     """
-    tasks = await _read_tasks(task_repo, scope, workspace_id, project_id, user_story_id)
+    tasks = await _read_tasks(
+        task_repo, scope, workspace_id, project_id, user_story_id, extraction_id
+    )
     story_text_by_id = await _read_story_text(
         story_repo, scope, workspace_id, project_id, user_story_id
     )
@@ -330,8 +341,12 @@ async def _read_tasks(
     workspace_id: UUID,
     project_id: UUID | None,
     user_story_id: UUID | None,
+    extraction_id: UUID | None = None,
 ):
-    """Current-version rows for the scope — the same filter the file export rides."""
+    """Rows for the scope. Current versions by default; a named version reads
+    through the one version predicate that exists — ``list_by_story_version``,
+    whose ``WHERE`` keeps both filters, so an extraction id from another story
+    matches nothing instead of leaking into this export."""
     match scope:
         case TrelloExportScope.WORKSPACE:
             return await task_repo.list_current_by_workspace(workspace_id)
@@ -340,6 +355,10 @@ async def _read_tasks(
             return await task_repo.list_current_by_project(project_id)
         case TrelloExportScope.STORY:
             assert user_story_id is not None
+            if extraction_id is not None:
+                # A version named on purpose: no currency predicate, or the
+                # trigger could never export a superseded version's tasks.
+                return await task_repo.list_by_story_version(user_story_id, extraction_id)
             return await task_repo.list_current_by_story(user_story_id)
 
 

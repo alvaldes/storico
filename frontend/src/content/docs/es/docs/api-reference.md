@@ -120,8 +120,14 @@ credential pair stored answers ``409 TRELLO_CREDENTIALS_MISSING`` before
 anything is created.
 
 The scope is one of three, never two (D1): both optional targets given is a
-``422`` — the rule the Kanban cascade applies. Only each story's current
-version is exported (D8), the same filter the file export rides.
+``422`` — the rule the Kanban cascade applies. Without ``extraction_id``,
+only each story's current version is exported (D8), the same filter the
+file export rides. With ``extraction_id`` **and** ``user_story_id``, the
+named version is exported even when a newer run superseded it — the same
+read the file export makes — and the job row records that extraction id, so
+a member polling the job can say which version the board came from. An
+``extraction_id`` without ``user_story_id`` answers ``422``, the pairing
+rule the file export already enforces.
 
 **Parámetros**
 
@@ -135,6 +141,7 @@ version is exported (D8), the same filter the file export rides.
 | --- | --- | --- |
 | `project_id` | `string | null` | no |
 | `user_story_id` | `string | null` | no |
+| `extraction_id` | `string | null` | no |
 
 **Respuestas**
 
@@ -166,17 +173,18 @@ together answer ``422 REQUEST_VALIDATION_FAILED``, a foreign target ``403``
 and a missing one ``404`` — the same refusals the trigger and the file
 export apply.
 
-The scope parameters stop at story level for now: a version dimension for
-the Trello export is planned (the same EP that teaches the trigger and the
-plan to carry it) and will join here as a parameter that requires
-``user_story_id`` — the pairing the file export already enforces. No field
-is invented for it ahead of that decision.
+**Version**: ``extraction_id`` names the version the plan reads, the same
+read the trigger would run — a superseded version previews exactly as it
+was. It is accepted only with ``user_story_id`` (a version belongs to a
+story, the pairing the file export and the trigger enforce); without it,
+the plan stays the current-version read it has always been.
 
 **Parámetros**
 
 | Nombre | Ubicación | Obligatorio | Tipo |
 | --- | --- | --- | --- |
 | `workspace_id` | `path` | sí | `string` |
+| `extraction_id` | `query` | no | `string | null` |
 | `project_id` | `query` | no | `string | null` |
 | `user_story_id` | `query` | no | `string | null` |
 

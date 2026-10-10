@@ -172,6 +172,27 @@ def _build_csv(
     return buffer.getvalue()
 
 
+def _ensure_version_has_story(extraction_id: UUID | None, user_story_id: UUID | None) -> None:
+    """A version belongs to a story — the pairing rule, one code path for all
+    three export routes (file, Trello trigger, Trello preview).
+
+    ``extraction_id`` without ``user_story_id`` answers 422
+    ``REQUEST_VALIDATION_FAILED``: a version belongs to a story, and a version
+    asked for at project or workspace level is a question with no answer. The
+    version is identified by its extraction id, never by a version number,
+    which is a position in a history the next run moves.
+    """
+    if extraction_id is not None and user_story_id is None:
+        raise ApiError(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            error_code=REQUEST_VALIDATION_FAILED,
+            detail=(
+                "extraction_id requires user_story_id: a version belongs to a "
+                "story, so it can only be asked for at story level"
+            ),
+        )
+
+
 @router.get("/tasks")
 async def export_tasks(
     ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
@@ -246,15 +267,7 @@ async def export_tasks(
             detail=str(exc),
         )
 
-    if extraction_id is not None and user_story_id is None:
-        raise ApiError(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            error_code=REQUEST_VALIDATION_FAILED,
-            detail=(
-                "extraction_id requires user_story_id: a version belongs to a "
-                "story, so it can only be asked for at story level"
-            ),
-        )
+    _ensure_version_has_story(extraction_id, user_story_id)
 
     if project_id is not None:
         await _validate_project_in_workspace(project_id, workspace, project_repo)
@@ -440,8 +453,14 @@ async def export_to_trello(
     anything is created.
 
     The scope is one of three, never two (D1): both optional targets given is a
-    ``422`` — the rule the Kanban cascade applies. Only each story's current
-    version is exported (D8), the same filter the file export rides.
+    ``422`` — the rule the Kanban cascade applies. Without ``extraction_id``,
+    only each story's current version is exported (D8), the same filter the
+    file export rides. With ``extraction_id`` **and** ``user_story_id``, the
+    named version is exported even when a newer run superseded it — the same
+    read the file export makes — and the job row records that extraction id, so
+    a member polling the job can say which version the board came from. An
+    ``extraction_id`` without ``user_story_id`` answers ``422``, the pairing
+    rule the file export already enforces.
     """
     workspace, _ = ctx  # validates workspace membership
 
@@ -453,6 +472,8 @@ async def export_to_trello(
             error_code=REQUEST_VALIDATION_FAILED,
             detail=str(exc),
         )
+
+    _ensure_version_has_story(body.extraction_id, body.user_story_id)
 
     if body.project_id is not None:
         await _validate_project_in_workspace(body.project_id, workspace, project_repo)
@@ -467,6 +488,7 @@ async def export_to_trello(
             scope=scope,
             project_id=body.project_id,
             user_story_id=body.user_story_id,
+            extraction_id=body.extraction_id,
         )
     )
 
@@ -480,6 +502,7 @@ async def export_to_trello(
             scope=scope,
             project_id=body.project_id,
             user_story_id=body.user_story_id,
+            extraction_id=body.extraction_id,
             credentials=credentials,
         )
     )
@@ -495,6 +518,9 @@ async def preview_trello_export(
     project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
     project_id: UUID | None = Query(None, description="Preview one project's board"),
     user_story_id: UUID | None = Query(None, description="Preview one story's board"),
+    extraction_id: UUID | None = Query(
+        None, description="Preview exactly this version (requires user_story_id)"
+    ),
 ) -> TrelloBoardPlanResponse:
     """Return the board plan the Trello trigger would send — as JSON, creating nothing.
 
@@ -515,11 +541,11 @@ async def preview_trello_export(
     and a missing one ``404`` — the same refusals the trigger and the file
     export apply.
 
-    The scope parameters stop at story level for now: a version dimension for
-    the Trello export is planned (the same EP that teaches the trigger and the
-    plan to carry it) and will join here as a parameter that requires
-    ``user_story_id`` — the pairing the file export already enforces. No field
-    is invented for it ahead of that decision.
+    **Version**: ``extraction_id`` names the version the plan reads, the same
+    read the trigger would run — a superseded version previews exactly as it
+    was. It is accepted only with ``user_story_id`` (a version belongs to a
+    story, the pairing the file export and the trigger enforce); without it,
+    the plan stays the current-version read it has always been.
     """
     workspace, _ = ctx  # validates workspace membership
 
@@ -532,6 +558,8 @@ async def preview_trello_export(
             detail=str(exc),
         )
 
+    _ensure_version_has_story(extraction_id, user_story_id)
+
     if project_id is not None:
         await _validate_project_in_workspace(project_id, workspace, project_repo)
     if user_story_id is not None:
@@ -543,6 +571,7 @@ async def preview_trello_export(
         scope=scope,
         project_id=project_id,
         user_story_id=user_story_id,
+        extraction_id=extraction_id,
         task_repo=task_repo,
         story_repo=story_repo,
     )

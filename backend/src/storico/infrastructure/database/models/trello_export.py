@@ -33,6 +33,11 @@ class TrelloExportModel(Base):
     # member is polling for. See ``TrelloExport``.
     project_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True, default=None)
     user_story_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True, default=None)
+    # The version the job was told to export, named by its extraction id; null
+    # when the trigger asked for current versions. Recorded as a value, no
+    # foreign key — the same posture as ``project_id``/``user_story_id``: the
+    # row must outlive its target to keep answering for it.
+    extraction_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True, default=None)
     status: Mapped[TrelloExportStatus] = mapped_column(
         PGEnum(
             TrelloExportStatus,
