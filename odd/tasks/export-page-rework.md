@@ -70,7 +70,7 @@ export three file formats wide, and the fourth is not a file at all.
 
 ## Tasks
 
-- [ ] **EP1 — the export contract grows a scope, a version and a format.** `project_id`,
+- [x] **EP1 — the export contract grows a scope, a version and a format.** `project_id`,
   `user_story_id`, `extraction_id` and `format=csv` on `GET …/export/tasks`; the shared scope rule;
   a version predicate; the CSV serializer; its tests; `docs/api.md`.
 - [ ] **EP2 — the preview.** `preview=true` on the file export (same body, no attachment header) and
@@ -117,4 +117,4 @@ export three file formats wide, and the fourth is not a file at all.
 
 | Work unit | Commit | Evidence |
 | --- | --- | --- |
-| | | |
+| EP1 — the export contract | `548fcac` | RED observed first: the new scope suite failed at collection (`ModuleNotFoundError: No module named 'storico.domain.services.export_scope'`) and the export suite showed 14 new failures — the scope parameters ignored entirely, whole workspace exported whichever target you asked for, and `csv` answering `400` — while the 13 existing json/markdown tests passed untouched. GREEN: 71 across the four focused files; **full suite 1469 passed, 45 skipped**; `ruff` clean; `tests/test_api_reference.py` 5 passed after regenerating both pages (1768 lines each, only the export-tasks entry changed). The refusal order is the contract and reads top to bottom in the route: `400` unknown format → `422` two targets → `422` a version without its story → `403`/`404` a target outside the workspace. **The storage spellings were the risk and got their own proof**: `TestScopeSpellingsAreTheStoredContract` pins `workspace`/`project`/`story`, because the job row writes `scope.value` and reads it back through `TrelloExportScope(model.scope)` — renaming one string would silently change what every historical job row means. `list_by_story_version` keeps **both** filters in the `WHERE`, so an extraction id from another story matches nothing instead of leaking that story's tasks into a story-scoped export. JSON and Markdown keep their own branches and their old tests pass unchanged, which is the acceptance criterion rather than a hope. **Two references were corrected afterwards, both by the parent**: a `(D9)` comment citing a decision that exists in no record, and a docstring still pointing at `(application/export)` for a resolver that had moved. | |
