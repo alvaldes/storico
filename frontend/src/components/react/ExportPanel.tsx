@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Download, ExternalLink } from 'lucide-react';
+import { Loader2, LoaderCircle, Download, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import { ApiRequestError } from '@/lib/api';
@@ -100,7 +100,7 @@ interface ExportPanelProps {
 export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
   const t = getTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
-  const { projects, fetchProjects } = useProjectStore();
+  const { projects, loading: projectsLoading, fetchProjects } = useProjectStore();
 
   const [format, setFormat] = useState<ExportFormat>('json');
 
@@ -114,6 +114,15 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
   const [versionFilter, setVersionFilter] = useState<string | null>(null);
   const [storyOptions, setStoryOptions] = useState<UserStory[]>([]);
   const [versions, setVersions] = useState<StoryVersion[]>([]);
+  // Each cascade select's own pending flag, the board's shape (D9): the select's
+  // loader has to reflect its read while it is in flight, and an empty select
+  // must not be indistinguishable from a loading one. The projects read keeps
+  // its state in the store (`projectsLoading` above) — a second flag here could
+  // disagree with it; the stories and versions reads are this panel's own, so
+  // their flags are set around the reads below, on the failure path too, so a
+  // rejected read cannot leave a spinner turning forever.
+  const [storiesLoading, setStoriesLoading] = useState(false);
+  const [versionsLoading, setVersionsLoading] = useState(false);
 
   /* ── The preview ── */
 
@@ -165,12 +174,19 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
       return;
     }
     let active = true;
+    setStoriesLoading(true);
     listStories(projectFilter, 1, 100, workspaceId)
       .then((page) => {
-        if (active) setStoryOptions(page.items);
+        if (active) {
+          setStoryOptions(page.items);
+          setStoriesLoading(false);
+        }
       })
       .catch(() => {
-        if (active) setStoryOptions([]);
+        if (active) {
+          setStoryOptions([]);
+          setStoriesLoading(false);
+        }
       });
     return () => {
       active = false;
@@ -186,12 +202,19 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
       return;
     }
     let active = true;
+    setVersionsLoading(true);
     listVersions(storyFilter)
       .then((history) => {
-        if (active) setVersions(history);
+        if (active) {
+          setVersions(history);
+          setVersionsLoading(false);
+        }
       })
       .catch(() => {
-        if (active) setVersions([]);
+        if (active) {
+          setVersions([]);
+          setVersionsLoading(false);
+        }
       });
     return () => {
       active = false;
@@ -417,7 +440,15 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
             <Tooltip disabled={!projectTriggerTooltip}>
               <TooltipTrigger
                 render={
-                  <SelectTrigger className="w-56" aria-label={t.exportPage.scope_project_label} />
+                  <SelectTrigger
+                    className="w-56"
+                    aria-label={t.exportPage.scope_project_label}
+                    // The pending state belongs to the control, not to the spinner: an
+                    // `aria-label` on a bare svg is ignored by several screen readers,
+                    // while `aria-busy` is what assistive tech reads as "this control is
+                    // still loading". The board's cascade carries the same pair.
+                    aria-busy={projectsLoading}
+                  />
                 }
               >
                 {/* The trigger reads like a chip: the same mark the rows and
@@ -430,6 +461,13 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
                   className="size-4 shrink-0 text-muted-foreground"
                 />
                 <SelectValue />
+                {/* This select's own read, from projectStore.loading. */}
+                {projectsLoading && (
+                  <LoaderCircle
+                    className="size-4 animate-spin text-muted-foreground"
+                    aria-label={t.common.loading}
+                  />
+                )}
               </TooltipTrigger>
               {projectTriggerTooltip && <TooltipContent>{projectTriggerTooltip}</TooltipContent>}
             </Tooltip>
@@ -450,7 +488,11 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
             <Tooltip disabled={!storyTriggerTooltip}>
               <TooltipTrigger
                 render={
-                  <SelectTrigger className="w-56" aria-label={t.exportPage.scope_story_label} />
+                  <SelectTrigger
+                    className="w-56"
+                    aria-label={t.exportPage.scope_story_label}
+                    aria-busy={storiesLoading}
+                  />
                 }
               >
                 {/* The story's own mark, and the placeholder while the parent
@@ -464,6 +506,13 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
                 <SelectValue>
                   {projectFilter ? undefined : t.exportPage.scope_select_project}
                 </SelectValue>
+                {/* This select's own read (listStories). */}
+                {storiesLoading && (
+                  <LoaderCircle
+                    className="size-4 animate-spin text-muted-foreground"
+                    aria-label={t.common.loading}
+                  />
+                )}
               </TooltipTrigger>
               {storyTriggerTooltip && <TooltipContent>{storyTriggerTooltip}</TooltipContent>}
             </Tooltip>
@@ -484,8 +533,19 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
             {/* Plain, exactly like the board's version select: no icon and no
                 tooltip — a version is not a context. Its only gain is the
                 `` · <current>`` mark on the current version's row. */}
-            <SelectTrigger className="w-56" aria-label={t.exportPage.scope_version_label}>
+            <SelectTrigger
+              className="w-56"
+              aria-label={t.exportPage.scope_version_label}
+              aria-busy={versionsLoading}
+            >
               <SelectValue>{storyFilter ? undefined : t.exportPage.scope_select_story}</SelectValue>
+              {/* This select's own read (listVersions). */}
+              {versionsLoading && (
+                <LoaderCircle
+                  className="size-4 animate-spin text-muted-foreground"
+                  aria-label={t.common.loading}
+                />
+              )}
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
