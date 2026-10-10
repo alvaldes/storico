@@ -134,8 +134,8 @@
       "card_1_desc": "Paste a user story and instantly get structured technical tasks powered by AI.",
       "card_2_title": "Visual Kanban",
       "card_2_desc": "Visualize and organize your tasks on a Kanban board with drag & drop.",
-      "card_3_title": "JSON and Markdown Export",
-      "card_3_desc": "Export your tasks to JSON or Markdown with one click. Compatible with your existing workflow."
+      "card_3_title": "CSV, JSON, Markdown and Trello",
+      "card_3_desc": "Export your tasks as a file, or send them straight to a Trello board."
     },
     "faq": {
       "title": "Frequently asked questions",

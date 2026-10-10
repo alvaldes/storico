@@ -134,8 +134,8 @@
       "card_1_desc": "Pega una historia de usuario y obtén tareas técnicas estructuradas al instante con IA.",
       "card_2_title": "Kanban Visual",
       "card_2_desc": "Visualiza y organiza tus tareas en un tablero Kanban con drag & drop.",
-      "card_3_title": "Exportación a JSON y Markdown",
-      "card_3_desc": "Exporta tus tareas a JSON o Markdown con un clic. Compatible con tu flujo de trabajo existente."
+      "card_3_title": "CSV, JSON, Markdown y Trello",
+      "card_3_desc": "Exporta tus tareas como archivo, o envíalas directamente a un tablero de Trello."
     },
     "faq": {
       "title": "Preguntas frecuentes",
