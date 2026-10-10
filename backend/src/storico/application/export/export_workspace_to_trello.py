@@ -38,7 +38,7 @@ from storico.domain.entities.exceptions import (
     TRELLO_EXPORT_INTERRUPTED,
     TrelloExportError,
 )
-from storico.domain.entities.trello_board import TrelloBoardRef
+from storico.domain.entities.trello_board import TrelloBoardPlan, TrelloBoardRef
 from storico.domain.entities.trello_export import (
     TrelloExport,
     TrelloExportScope,
@@ -121,14 +121,14 @@ async def execute_trello_export(
 
         await export_repo.save(replace(job, status=TrelloExportStatus.RUNNING))
 
-        tasks = await _read_tasks(task_repo, scope, workspace_id, project_id, user_story_id)
-        story_text_by_id = await _read_story_text(
-            story_repo, scope, workspace_id, project_id, user_story_id
-        )
-        plan = build_trello_board_plan(
+        plan = await build_board_plan_for_scope(
+            workspace_id=workspace_id,
             board_name=board_name,
-            tasks=tasks,
-            story_text_by_id=story_text_by_id,
+            scope=scope,
+            project_id=project_id,
+            user_story_id=user_story_id,
+            task_repo=task_repo,
+            story_repo=story_repo,
         )
         board_ref = await port.create_board(plan, credentials)
         cards_created = sum(len(column.cards) for column in plan.columns)
@@ -293,6 +293,35 @@ async def run_trello_export(
             export_repo=SQLAlchemyTrelloExportRepository(session),
             port=PyTrelloExportAdapter(),
         )
+
+
+async def build_board_plan_for_scope(
+    *,
+    workspace_id: UUID,
+    board_name: str,
+    scope: TrelloExportScope,
+    project_id: UUID | None,
+    user_story_id: UUID | None,
+    task_repo: TaskRepository,
+    story_repo: UserStoryRepository,
+) -> TrelloBoardPlan:
+    """The plan the runner would send — reads for the scope, then the pure builder.
+
+    The single application-layer entry point for plan assembly: the trigger's
+    background run and the ``GET .../export/trello/preview`` route both call
+    this, so the preview can only ever show the plan the runner would send.
+    When a version parameter joins (the export page rework's EP3), it arrives
+    here — in the reads this function owns — and both callers move together.
+    """
+    tasks = await _read_tasks(task_repo, scope, workspace_id, project_id, user_story_id)
+    story_text_by_id = await _read_story_text(
+        story_repo, scope, workspace_id, project_id, user_story_id
+    )
+    return build_trello_board_plan(
+        board_name=board_name,
+        tasks=tasks,
+        story_text_by_id=story_text_by_id,
+    )
 
 
 async def _read_tasks(

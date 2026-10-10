@@ -26,8 +26,15 @@ from storico.api.error_codes import (
 )
 from storico.api.errors import ApiError
 from storico.api.schemas.task import TaskResponse
-from storico.api.schemas.trello_export import TrelloExportCreateRequest, TrelloExportResponse
-from storico.application.export.export_workspace_to_trello import run_trello_export
+from storico.api.schemas.trello_export import (
+    TrelloBoardPlanResponse,
+    TrelloExportCreateRequest,
+    TrelloExportResponse,
+)
+from storico.application.export.export_workspace_to_trello import (
+    build_board_plan_for_scope,
+    run_trello_export,
+)
 from storico.domain.entities import EntityNotFound, Workspace, WorkspaceRole
 from storico.domain.entities.trello_export import TrelloExport, TrelloExportScope
 from storico.domain.entities.workspace_trello_config import WorkspaceTrelloConfig
@@ -178,6 +185,10 @@ async def export_tasks(
     extraction_id: UUID | None = Query(
         None, description="Export exactly this version (requires user_story_id)"
     ),
+    preview: bool = Query(
+        False,
+        description="Return the body inline, without the attachment header",
+    ),
 ) -> PlainTextResponse:
     """Export tasks from a workspace in the requested format and scope.
 
@@ -210,7 +221,12 @@ async def export_tasks(
     the run's version number; the ``json`` and ``markdown`` shapes are
     unchanged.
 
-    The response includes a ``Content-Disposition`` header for file download.
+    The response includes a ``Content-Disposition`` header for file download,
+    unless ``preview=true``: then the exact same body — the same endpoint, the
+    same parameters, one code path — is returned **without** that header, so
+    the browser displays it instead of saving it. One serialization, two
+    dispositions: what a preview shows cannot differ from what the download
+    saves, because they are the same bytes.
     """
     workspace, _ = ctx  # validates workspace membership
 
@@ -318,10 +334,11 @@ async def export_tasks(
         media_type = "application/json; charset=utf-8"
         filename = f"tasks-export-{workspace.id}.json"
 
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'} if not preview else None
     return PlainTextResponse(
         content=content,
         media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=headers,
     )
 
 
@@ -468,6 +485,68 @@ async def export_to_trello(
     )
 
     return TrelloExportResponse.model_validate(job)
+
+
+@router.get("/trello/preview")
+async def preview_trello_export(
+    ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
+    task_repo: TaskRepoDep = None,  # type: ignore[assignment]
+    story_repo: StoryRepoDep = None,  # type: ignore[assignment]
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    project_id: UUID | None = Query(None, description="Preview one project's board"),
+    user_story_id: UUID | None = Query(None, description="Preview one story's board"),
+) -> TrelloBoardPlanResponse:
+    """Return the board plan the Trello trigger would send — as JSON, creating nothing.
+
+    The shape (decision E4, record ``export-page-rework``): the board's name,
+    its lists in Kanban order, and each card's title, description, labels and
+    resolved dependency titles — the same ``TrelloBoardPlan`` the runner builds,
+    through the same application entry point (``build_board_plan_for_scope``),
+    so the preview can only ever show what the export would create.
+
+    **It describes, it does not perform.** No ``trello_exports`` row is written
+    and the workspace's Trello credentials are never read: describing what
+    would be exported requires no permission to create it, so a workspace
+    without credentials answers the preview instead of ``409``.
+
+    **Scope — the trigger's rule, inherited**: no target previews the whole
+    workspace's board; ``project_id`` or ``user_story_id`` narrows it; both
+    together answer ``422 REQUEST_VALIDATION_FAILED``, a foreign target ``403``
+    and a missing one ``404`` — the same refusals the trigger and the file
+    export apply.
+
+    The scope parameters stop at story level for now: a version dimension for
+    the Trello export is planned (the same EP that teaches the trigger and the
+    plan to carry it) and will join here as a parameter that requires
+    ``user_story_id`` — the pairing the file export already enforces. No field
+    is invented for it ahead of that decision.
+    """
+    workspace, _ = ctx  # validates workspace membership
+
+    try:
+        scope = resolve_export_scope(project_id, user_story_id)
+    except AmbiguousExportScopeError as exc:
+        raise ApiError(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            error_code=REQUEST_VALIDATION_FAILED,
+            detail=str(exc),
+        )
+
+    if project_id is not None:
+        await _validate_project_in_workspace(project_id, workspace, project_repo)
+    if user_story_id is not None:
+        await _validate_story_in_workspace(user_story_id, workspace, story_repo, project_repo)
+
+    plan = await build_board_plan_for_scope(
+        workspace_id=workspace.id,
+        board_name=workspace.name,
+        scope=scope,
+        project_id=project_id,
+        user_story_id=user_story_id,
+        task_repo=task_repo,
+        story_repo=story_repo,
+    )
+    return TrelloBoardPlanResponse.from_plan(plan)
 
 
 @router.get("/trello/{export_id}")

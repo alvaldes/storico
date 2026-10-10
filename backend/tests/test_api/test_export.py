@@ -638,6 +638,110 @@ class TestExportScope:
         assert response.json() == []
 
 
+class TestExportPreview:
+    """GET .../export/tasks?preview=true — the download's body, without the attachment header.
+
+    One serialization, two dispositions (record ``export-page-rework``, Design):
+    the preview rides the same endpoint and the same body-building code as the
+    download, so what the editor shows cannot differ from what the browser
+    saves. The acceptance evidence is the byte-for-byte comparison below, in
+    every format — a preview built by a second function would be the same file
+    written twice and free to disagree. The scope refusals ride the same
+    parameters, so they are inherited, not re-decided — and pinned here anyway.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("format_", ["json", "markdown", "csv"])
+    async def test_preview_body_equals_the_download_byte_for_byte(
+        self, async_client, db_session: AsyncSession, seed_workspace, format_: str
+    ) -> None:
+        """Same parameters, both dispositions: the bytes are identical."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user, stories=0)
+        story = await _create_story(db_session, seeded.project_id)
+        await _create_tasks(db_session, story.id, count=2)
+        url = f"/api/v1/workspaces/{seeded.workspace_id}/export/tasks?format={format_}"
+
+        download = await async_client.get(url, headers=_auth_headers(str(user.id)))
+        preview = await async_client.get(url + "&preview=true", headers=_auth_headers(str(user.id)))
+
+        assert download.status_code == 200
+        assert preview.status_code == 200
+        assert preview.content == download.content
+
+    @pytest.mark.asyncio
+    async def test_preview_carries_no_attachment_header(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """No ``Content-Disposition``: the browser displays the body instead of saving it."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user, stories=0)
+        story = await _create_story(db_session, seeded.project_id)
+        await _create_tasks(db_session, story.id, count=1)
+
+        preview = await async_client.get(
+            f"/api/v1/workspaces/{seeded.workspace_id}/export/tasks?format=csv&preview=true",
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert preview.status_code == 200
+        assert "content-disposition" not in preview.headers
+
+    @pytest.mark.asyncio
+    async def test_preview_two_targets_are_422(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """The scope rule is inherited, not re-decided: two targets refuse on the preview too."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user, stories=0)
+        story = await _create_story(db_session, seeded.project_id)
+        await _create_tasks(db_session, story.id, count=1)
+
+        response = await async_client.get(
+            f"/api/v1/workspaces/{seeded.workspace_id}/export/tasks"
+            f"?format=json&preview=true&project_id={seeded.project_id}"
+            f"&user_story_id={story.id}",
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error_code"] == "REQUEST_VALIDATION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_preview_of_a_foreign_project_is_refused(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """A preview cannot leak across workspaces either: foreign project, 403."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user, stories=0)
+        foreign = await seed_workspace(user=user, stories=0, member=False)
+
+        response = await async_client.get(
+            f"/api/v1/workspaces/{seeded.workspace_id}/export/tasks"
+            f"?format=json&preview=true&project_id={foreign.project_id}",
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 403
+        assert response.json()["error_code"] == "PROJECT_NOT_IN_WORKSPACE"
+
+    @pytest.mark.asyncio
+    async def test_preview_of_a_missing_story_is_404(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """A story target that does not exist is a miss, preview or not."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user, stories=0)
+
+        response = await async_client.get(
+            f"/api/v1/workspaces/{seeded.workspace_id}/export/tasks"
+            f"?format=json&preview=true&user_story_id={uuid4()}",
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 404
+
+
 class TestExportCsv:
     """GET .../export/tasks?format=csv — one row per task, columns in contract order.
 

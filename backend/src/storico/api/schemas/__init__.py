@@ -23,6 +23,9 @@ from storico.api.schemas.story import (
 )
 from storico.api.schemas.task import TaskResponse, UpdateTaskRequest
 from storico.api.schemas.trello_export import (
+    TrelloBoardCardResponse,
+    TrelloBoardColumnResponse,
+    TrelloBoardPlanResponse,
     TrelloExportCreateRequest,
     TrelloExportResponse,
 )
@@ -69,6 +72,9 @@ __all__ = [
     "UpdateTaskRequest",
     "TrelloExportCreateRequest",
     "TrelloExportResponse",
+    "TrelloBoardPlanResponse",
+    "TrelloBoardColumnResponse",
+    "TrelloBoardCardResponse",
     "AuthSyncRequest",
     "UserResponse",
     "CreateWorkspaceRequest",
