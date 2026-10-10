@@ -25,14 +25,14 @@ import { completeOnboarding } from '@/lib/user-api';
 import { upsertLLMConfig } from '@/lib/llm-config-api';
 import { workspaceSettingsPath } from '@/lib/workspace-nav';
 import { navigate } from 'astro:transitions/client';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 
 interface OnboardingModalProps {
   locale?: Locale;
 }
 
 export function OnboardingModal({ locale = 'en' }: OnboardingModalProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
 
   const { setOnboardingDone } = useAuthStore();
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);

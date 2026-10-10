@@ -36,12 +36,12 @@
  */
 import { logos } from 'virtual:starlight/user-images';
 import config from 'virtual:starlight/user-config';
-import { localizedPath, useTranslations } from '@/i18n/utils';
+import { localizedPath, getTranslations } from '@/i18n/utils';
 
 const { locale: starlightLocale } = Astro.locals.starlightRoute;
 const locale = starlightLocale === 'es' ? 'es' : 'en';
 const L = (path: string) => localizedPath(path, locale);
-const t = useTranslations(locale);
+const t = getTranslations(locale);
 ---
 
 <div class="site-title sl-flex">

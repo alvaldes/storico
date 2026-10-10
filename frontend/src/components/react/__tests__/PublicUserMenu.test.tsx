@@ -4,14 +4,14 @@ import userEvent from '@testing-library/user-event';
 
 import { PublicUserMenu } from '@/components/react/PublicUserMenu';
 import { signOut } from 'auth-astro/client';
-import { useTranslations } from '@/i18n/utils';
+import { getTranslations } from '@/i18n/utils';
 
 vi.mock('auth-astro/client', () => ({
   signOut: vi.fn(),
 }));
 
-const t = useTranslations('en');
-const tEs = useTranslations('es');
+const t = getTranslations('en');
+const tEs = getTranslations('es');
 
 const enUser = { name: 'Ada Lovelace Byron', email: 'ada@example.com', avatarUrl: null };
 

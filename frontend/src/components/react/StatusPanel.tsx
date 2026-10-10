@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { serviceStatus, summarizeHealth, type ServiceStatus } from '@/lib/health';
 import { fetchServiceHealth, type HealthOutcome } from '@/lib/status-health-api';
 
@@ -60,7 +60,7 @@ const bannerTextClass = (state: string) => {
 };
 
 export function StatusPanel({ locale }: { locale: Locale }) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
 
   const [outcome, setOutcome] = useState<HealthOutcome | null>(null);
   const [pending, setPending] = useState(true);

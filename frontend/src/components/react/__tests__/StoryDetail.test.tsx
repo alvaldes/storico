@@ -11,7 +11,7 @@ import { useProjectStore } from '@/stores/projectStore';
 import { useStoryStore } from '@/stores/storyStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useAuthStore } from '@/stores/authStore';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import * as tasksApi from '@/lib/tasks-api';
 import type { Project } from '@/types/project';
 import type { Task } from '@/types/task';
@@ -60,7 +60,7 @@ vi.mock('sonner', () => ({
 }));
 
 const LOCALE: Locale = 'en';
-const t = useTranslations(LOCALE);
+const t = getTranslations(LOCALE);
 const STORY_ID = 'story-1';
 
 function makeWorkspace(id: string, role: 'admin' | 'member' = 'admin'): Workspace {

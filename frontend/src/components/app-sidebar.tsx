@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useSidebar } from '@/components/ui/sidebar';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useProjectStore } from '@/stores/projectStore';
 
@@ -35,7 +35,7 @@ function stripLocale(path: string): string {
 }
 
 export function AppSidebar({ locale, currentPath, ...props }: AppSidebarProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const L = (path: string) => `/${locale}${path}`;
   const { workspaces, currentWorkspace, fetchWorkspaces } = useWorkspaceStore();
   const { projects, fetchProjects } = useProjectStore();

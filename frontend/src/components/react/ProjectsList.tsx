@@ -32,7 +32,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 
 interface ProjectsListProps {
   locale?: Locale;
@@ -40,7 +40,7 @@ interface ProjectsListProps {
 }
 
 export function ProjectsList({ locale = 'en', userId }: ProjectsListProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const { projects, loading, error, fetchProjects, createProject, updateProject, deleteProject } =
     useProjectStore();
   const [formOpen, setFormOpen] = useState(false);

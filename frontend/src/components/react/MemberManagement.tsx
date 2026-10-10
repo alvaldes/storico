@@ -127,7 +127,7 @@ export function MemberManagement({ locale, workspaceId }: MemberManagementProps)
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, t.members]);
 
   useEffect(() => {
     loadMembers();

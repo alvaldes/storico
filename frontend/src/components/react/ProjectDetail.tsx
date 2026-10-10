@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 
 interface ProjectDetailProps {
   locale?: Locale;
@@ -25,7 +25,7 @@ interface ProjectDetailProps {
 }
 
 export function ProjectDetail({ locale = 'en', projectId, userId }: ProjectDetailProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const { projects, loading, fetchProjects, updateProject, deleteProject } = useProjectStore();
   const project = projects.find((p) => p.id === projectId);
   const [editing, setEditing] = useState(false);

@@ -42,7 +42,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
+import { getTranslations, localizedPath, type Locale } from '@/i18n/utils';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 
 const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
@@ -58,7 +58,7 @@ interface StoryDetailProps {
 }
 
 export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
   const workspaceRole = useWorkspaceStore((s) => s.currentWorkspace?.role);
   const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace);

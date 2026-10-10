@@ -14,7 +14,7 @@ import {
   Moon,
   Monitor,
 } from 'lucide-react';
-import { useTranslations, type Locale, localizedPath } from '@/i18n/utils';
+import { getTranslations, type Locale, localizedPath } from '@/i18n/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -56,7 +56,7 @@ interface AccountPageProps {
 }
 
 export function AccountPage({ locale }: AccountPageProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const { settings, setExportFormat, loadFromApi, syncToApi } = useSettingsStore();
   const { user, loading: authLoading } = useAuthStore();
   const { theme, setTheme } = useUIStore();

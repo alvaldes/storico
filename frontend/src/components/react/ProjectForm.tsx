@@ -17,7 +17,7 @@ import {
   InputGroupTextarea,
 } from '@/components/ui/input-group';
 import { Loader2 } from 'lucide-react';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { createProjectSchema } from '@/schemas';
 import { IconPicker, IconTrigger } from '@/components/ui/icon-picker';
 
@@ -41,7 +41,7 @@ export function ProjectForm({
   initialData,
   title,
 }: ProjectFormProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const [name, setName] = useState(initialData?.name ?? '');
   const [description, setDescription] = useState(initialData?.description ?? '');
   const [icon, setIcon] = useState(initialData?.icon ?? 'folder-kanban');

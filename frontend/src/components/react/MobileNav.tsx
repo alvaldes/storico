@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Menu, X, LogOut, ChevronRight } from 'lucide-react';
 import { signOut } from 'auth-astro/client';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { getInitials } from '@/lib/initials';
 import { type PublicNavUser } from '@/components/react/PublicUserMenu';
 
@@ -43,7 +43,7 @@ export function MobileNav({
   activePath: _activePath,
   user,
 }: MobileNavProps) {
-  const t = useTranslations(locale as Locale);
+  const t = getTranslations(locale as Locale);
   const [open, setOpen] = useState(false);
 
   // Compute active path from window.location (handles View Transitions client-side nav)

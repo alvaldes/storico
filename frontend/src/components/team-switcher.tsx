@@ -31,7 +31,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { navigate } from 'astro:transitions/client';
 import { workspaceScopedPath, workspaceSettingsPath } from '@/lib/workspace-nav';
 import { IconPicker, IconTrigger } from '@/components/ui/icon-picker';
@@ -46,7 +46,7 @@ interface Team {
 export function TeamSwitcher({ teams, locale }: { teams: Team[]; locale: Locale }) {
   const { isMobile } = useSidebar();
   const { currentWorkspace, setCurrentWorkspace, createWorkspace, loading } = useWorkspaceStore();
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
 
   const [createOpen, setCreateOpen] = React.useState(false);
   const [workspaceName, setWorkspaceName] = React.useState('');

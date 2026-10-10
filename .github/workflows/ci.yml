@@ -70,6 +70,17 @@ jobs:
         working-directory: frontend
         run: pnpm exec tsc --noEmit
 
+      # The hook rules are the class of bug that put ExportPanel on production
+      # rendering nothing (early return above three useMemo calls, see the
+      # post-merge incident in odd/tasks/export-page-rework.md): 941 tests,
+      # tsc and the build were all green on a component that mounted to null.
+      # The config is deliberately narrow — react-hooks/rules-of-hooks as an
+      # error and exhaustive-deps as a warning — so a style sweep can never
+      # give this step a reason to be removed.
+      - name: Lint (react-hooks rules — the gate for the hooks-order incident class)
+        working-directory: frontend
+        run: pnpm run lint
+
       - name: Test (vitest)
         working-directory: frontend
         run: pnpm vitest run

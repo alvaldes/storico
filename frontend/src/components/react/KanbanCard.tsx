@@ -5,7 +5,7 @@ import { GripVertical, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { IconDisplay } from '@/components/ui/icon-display';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import {
   CONTEXT_LABEL_CAP,
   projectTreatment,
@@ -21,7 +21,7 @@ interface KanbanCardProps {
 }
 
 export function KanbanCard({ task, index, locale }: KanbanCardProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   // While a status PUT is in flight for this task, the card shows a subtle
   // loading indicator and must not be re-draggable.
   const isUpdating = useTaskStore((s) => s.updatingTaskId === task.id);

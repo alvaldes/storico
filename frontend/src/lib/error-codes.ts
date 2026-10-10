@@ -1,4 +1,4 @@
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 
 /**
  * Resolve a backend `error_code` into its translated, user-facing headline.
@@ -21,6 +21,6 @@ export function errorCodeHeadline(
   locale: Locale,
 ): string | undefined {
   if (!errorCode) return undefined;
-  const headlines = useTranslations(locale).errorCodes as Record<string, string | undefined>;
+  const headlines = getTranslations(locale).errorCodes as Record<string, string | undefined>;
   return headlines[errorCode];
 }

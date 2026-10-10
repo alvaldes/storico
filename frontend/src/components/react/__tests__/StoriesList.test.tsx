@@ -7,13 +7,13 @@ import { useStoryStore } from '@/stores/storyStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useAuthStore } from '@/stores/authStore';
 import { listVersions } from '@/lib/versioning-api';
-import { useTranslations } from '@/i18n/utils';
+import { getTranslations } from '@/i18n/utils';
 import type { Workspace } from '@/types/workspace';
 import type { Project } from '@/types/project';
 import type { UserStory } from '@/types/story';
 import type { StoryVersion } from '@/types/story';
 
-const t = useTranslations('en');
+const t = getTranslations('en');
 
 function makeWorkspace(id: string): Workspace {
   return {

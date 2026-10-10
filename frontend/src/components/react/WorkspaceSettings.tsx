@@ -142,7 +142,7 @@ export function WorkspaceSettings({ locale, workspaceId }: WorkspaceSettingsProp
     } finally {
       setLoading(false);
     }
-  }, [wsId]);
+  }, [wsId, t.workspace]);
 
   useEffect(() => {
     setMounted(true);

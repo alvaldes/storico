@@ -253,7 +253,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, t.workspace]);
 
   /* ── Fetch Available Models ── */
 

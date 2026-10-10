@@ -3,13 +3,13 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { MobileNav, type MobileNavLink } from '@/components/react/MobileNav';
-import { useTranslations } from '@/i18n/utils';
+import { getTranslations } from '@/i18n/utils';
 
 vi.mock('auth-astro/client', () => ({
   signOut: vi.fn(),
 }));
 
-const t = useTranslations('en');
+const t = getTranslations('en');
 
 const enUser = { name: 'Ada Lovelace Byron', email: 'ada@example.com', avatarUrl: null };
 

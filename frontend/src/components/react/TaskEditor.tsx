@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Field, FieldLabel, FieldError } from '@/components/ui/field';
 import { Loader2, X } from 'lucide-react';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import { createInvalidation, revokeInvalidation, fetchRepetition } from '@/lib/versioning-api';
 import { toast } from 'sonner';
@@ -103,7 +103,7 @@ export function TaskEditor({
   onOpenChange,
   locale = 'en',
 }: TaskEditorProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const updateTask = useTaskStore((s) => s.updateTask);
 
   const [labels, setLabels] = useState<string[]>(task.labels);

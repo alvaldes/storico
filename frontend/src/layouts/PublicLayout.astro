@@ -5,7 +5,7 @@ import globalsCss from '@/styles/globals.css?url';
 import PublicNavbar from '@/components/astro/PublicNavbar.astro';
 import PublicFooter from '@/components/astro/PublicFooter.astro';
 import { ArrowLeft } from 'lucide-react';
-import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
+import { getTranslations, localizedPath, type Locale } from '@/i18n/utils';
 import { publicNavLinks } from '@/lib/public-nav';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -24,7 +24,7 @@ export interface Props {
 }
 
 const { locale = 'en', title = 'Storico', description, showCta = true } = Astro.props;
-const t = useTranslations(locale);
+const t = getTranslations(locale);
 const L = (path: string) => localizedPath(path, locale);
 
 const session = await getSession(Astro.request);

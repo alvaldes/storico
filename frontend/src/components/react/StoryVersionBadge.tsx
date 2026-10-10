@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import type { StoryVersionSummary } from '@/types/story';
 
 interface StoryVersionBadgeProps {
@@ -23,7 +23,7 @@ interface StoryVersionBadgeProps {
  * and no count; nothing is invented.
  */
 export function StoryVersionBadge({ summary, locale = 'en' }: StoryVersionBadgeProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
 
   if (!summary) return null;
 
@@ -45,7 +45,7 @@ export function StoryVersionBadge({ summary, locale = 'en' }: StoryVersionBadgeP
  * between call sites.
  */
 export function versionCountLabel(count: number, locale: Locale): string {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
 
   return count === 1 ? t.stories.version_count_one : t.stories.version_count_other.replace('{count}', String(count));
 }

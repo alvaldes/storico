@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useProjectStore } from '@/stores/projectStore';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import { IconDisplay } from '@/components/ui/icon-display';
@@ -98,7 +98,7 @@ interface ExportPanelProps {
  * what is selected.
  */
 export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
   const { projects, fetchProjects } = useProjectStore();
 

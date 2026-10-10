@@ -18,7 +18,7 @@ import {
   InputGroupInput,
 } from '@/components/ui/input-group';
 import { Loader2, Check, X, Eye } from 'lucide-react';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import { ApiRequestError } from '@/lib/api';
 import { renderBoldMarkup } from '@/lib/render-bold-markup';
@@ -82,7 +82,7 @@ export function StoryForm({
   initialData,
   title,
 }: StoryFormProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
 
   // Mode state
   const [mode, setMode] = useState<StoryMode>('parts');
@@ -127,7 +127,7 @@ export function StoryForm({
     if (b) parts.push(`${t.stories?.keyword_so_that ?? 'so that'} ${b}`);
     else parts.push(`${t.stories?.keyword_so_that ?? 'so that'} […]`);
     return parts.join(', ');
-  }, [actor, feature, benefit]);
+  }, [actor, feature, benefit, t.stories]);
 
   // Derived: keyword validation in full mode
   const keywordCheck = useMemo(() => {

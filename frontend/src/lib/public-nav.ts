@@ -1,4 +1,4 @@
-import { localizedPath, useTranslations, type Locale } from '@/i18n/utils';
+import { localizedPath, getTranslations, type Locale } from '@/i18n/utils';
 
 export interface PublicNavLink {
   /** Locale-less app path, e.g. `/docs`. */
@@ -51,7 +51,7 @@ const NAV_LABEL_KEYS: Record<NavPath, 'documentation' | 'api_reference' | 'statu
  * the app navbar and the docs header.
  */
 function buildNavLinks(paths: readonly NavPath[], locale: Locale): PublicNavLink[] {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   return paths.map((path) => ({
     path,
     href: localizedPath(path, locale),

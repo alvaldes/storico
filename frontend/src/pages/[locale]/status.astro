@@ -1,10 +1,10 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { StatusPanel } from '@/components/react/StatusPanel';
 
 const locale = (Astro.params.locale as Locale) || 'en';
-const t = useTranslations(locale);
+const t = getTranslations(locale);
 
 // This page no longer fetches anything: the document must paint the moment the link is
 // clicked, whether or not the backend answers. The old design awaited
