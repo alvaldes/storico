@@ -6,6 +6,9 @@ import { useProjectStore } from '@/stores/projectStore';
 import { useTranslations, type Locale } from '@/i18n/utils';
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
+import { IconDisplay } from '@/components/ui/icon-display';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ContextSelectRow, type ContextSelectItem } from '@/components/ui/context-select-items';
 import {
   Select,
   SelectContent,
@@ -18,6 +21,13 @@ import { Loader2, Download, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import { ApiRequestError } from '@/lib/api';
+import {
+  CONTEXT_LABEL_CAP,
+  PROJECT_KIND_ICON,
+  projectTreatment,
+  STORY_KIND_ICON,
+  storySelectTreatment,
+} from '@/lib/context-treatment';
 import { listStories } from '@/lib/stories-api';
 import { listVersions } from '@/lib/versioning-api';
 import {
@@ -293,30 +303,69 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
 
   const trelloJobTerminal = trelloJob ? isTerminalTrelloExportStatus(trelloJob.status) : false;
 
-  // Select options, the board's convention: the top-level "not narrowed" row
-  // (value `null`), and rows that read as the human sentence — a project by
-  // its name, a story as `${actor}: ${feature}`, a version as `v{n}`.
-  const projectItems = useMemo<{ label: string; value: string | null }[]>(
+  // Select options, reading exactly as the board's cascade does — by
+  // construction, not by coincidence (EP6 of ``export-page-rework``): the
+  // icon, the label rule and the tooltip text come from the one treatment
+  // module (``lib/context-treatment.ts``) at the one shared cap
+  // (``CONTEXT_LABEL_CAP``), and the rows render through the same shared
+  // ``ContextSelectRow`` the board renders. The version select stays plain
+  // like the board's — no icon, no tooltip; a version is not a context — and
+  // only gains the `` · <current>`` mark on the current version, **with the
+  // same word the board uses** (``versionSelector.current``): one adjective in
+  // one place, so the two surfaces cannot end up reading "current" and
+  // "Current version" for the same row. The top row keeps this surface's own
+  // key (``exportPage.scope_version_current``), because there the word names
+  // the default — no version chosen means the current one — rather than
+  // qualifying a row.
+  const projectItems = useMemo<ContextSelectItem[]>(
     () => [
-      { label: t.exportPage.scope_workspace, value: null },
-      ...projects.map((p) => ({ label: p.name, value: p.id })),
+      { label: t.exportPage.scope_workspace, value: null, treatment: null },
+      ...projects.map((p) => {
+        const treatment = projectTreatment(p.name, CONTEXT_LABEL_CAP, p.icon ?? null);
+        return { label: treatment.label, value: p.id, treatment };
+      }),
     ],
     [projects, t],
   );
-  const storyItems = useMemo<{ label: string; value: string | null }[]>(
+  const storyItems = useMemo<ContextSelectItem[]>(
     () => [
-      { label: t.exportPage.scope_all_stories, value: null },
-      ...storyOptions.map((s) => ({ label: `${s.actor}: ${s.feature}`, value: s.id })),
+      { label: t.exportPage.scope_all_stories, value: null, treatment: null },
+      ...storyOptions.map((s) => {
+        const treatment = storySelectTreatment(s);
+        return { label: treatment.label, value: s.id, treatment };
+      }),
     ],
     [storyOptions, t],
   );
   const versionItems = useMemo<{ label: string; value: string | null }[]>(
     () => [
       { label: t.exportPage.scope_version_current, value: null },
-      ...versions.map((v) => ({ label: `v${v.versionNumber ?? '?'}`, value: v.id })),
+      ...versions.map((v) => ({
+        label: v.isCurrent
+          ? `v${v.versionNumber ?? '?'} · ${t.versionSelector.current}`
+          : `v${v.versionNumber ?? '?'}`,
+        value: v.id,
+      })),
     ],
     [versions, t],
   );
+
+  // The trigger's chip treatment, the board's shape (D18 of feature
+  // ``kanban-context-tooltips``): the real tooltip carries the full current
+  // value — the selected project's full name, the selected story's full
+  // sentence. With nothing selected the tooltip is disabled, so no empty
+  // popup can mount.
+  const selectedProject = projectFilter
+    ? (projects.find((p) => p.id === projectFilter) ?? null)
+    : null;
+  const projectTriggerTooltip = selectedProject
+    ? projectTreatment(selectedProject.name, CONTEXT_LABEL_CAP, selectedProject.icon ?? null)
+        .tooltip
+    : null;
+  const selectedStory = storyFilter
+    ? (storyOptions.find((s) => s.id === storyFilter) ?? null)
+    : null;
+  const storyTriggerTooltip = selectedStory ? storySelectTreatment(selectedStory).tooltip : null;
 
   // Every hook runs before this, on every render — and that is the whole point
   // of where it sits. It used to sit above the three option memos, so the first
@@ -351,18 +400,43 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
             until a story is — a version belongs to a story, and the API
             answers `422` for one asked at project or workspace level, so the
             controls make that impossible instead of letting the user find
-            out. The resolved target carries exactly one target — never two. */}
+            out. The resolved target carries exactly one target — never two.
+
+            The rows and the triggers read exactly as the board's cascade does:
+            the project and story rows render through the shared
+            ``ContextSelectRow`` and the triggers carry the chip treatment —
+            the kind's icon, `SelectValue`, and a tooltip with the selected
+            value's full text (disabled when nothing is selected). The provider
+            sits here because this island owns the toolbar's tooltips: Astro
+            hydrates every island as its own React tree, and ``delay={0}`` is
+            load-bearing — Base UI's default is a 600 ms wait before a tooltip
+            opens, so a user who hovers and moves on sees nothing at all. */}
+        <TooltipProvider delay={0}>
         <div className="flex flex-wrap items-center gap-2">
           <Select value={projectFilter} onValueChange={handleProjectChange} items={projectItems}>
-            <SelectTrigger className="w-56" aria-label={t.exportPage.scope_project_label}>
-              <SelectValue />
-            </SelectTrigger>
+            <Tooltip disabled={!projectTriggerTooltip}>
+              <TooltipTrigger
+                render={
+                  <SelectTrigger className="w-56" aria-label={t.exportPage.scope_project_label} />
+                }
+              >
+                {/* The trigger reads like a chip: the same mark the rows and
+                    the board's trigger use, always present, so the closed
+                    control says what kind of thing it narrows even with
+                    nothing chosen. */}
+                <IconDisplay
+                  name={selectedProject?.icon ?? null}
+                  fallback={PROJECT_KIND_ICON}
+                  className="size-4 shrink-0 text-muted-foreground"
+                />
+                <SelectValue />
+              </TooltipTrigger>
+              {projectTriggerTooltip && <TooltipContent>{projectTriggerTooltip}</TooltipContent>}
+            </Tooltip>
             <SelectContent>
               <SelectGroup>
                 {projectItems.map((item) => (
-                  <SelectItem key={item.value ?? '_all_projects'} value={item.value}>
-                    {item.label}
-                  </SelectItem>
+                  <ContextSelectRow key={item.value ?? '_all_projects'} item={item} />
                 ))}
               </SelectGroup>
             </SelectContent>
@@ -373,17 +447,30 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
             disabled={!projectFilter}
             items={storyItems}
           >
-            <SelectTrigger className="w-56" aria-label={t.exportPage.scope_story_label}>
-              <SelectValue>
-                {projectFilter ? undefined : t.exportPage.scope_select_project}
-              </SelectValue>
-            </SelectTrigger>
+            <Tooltip disabled={!storyTriggerTooltip}>
+              <TooltipTrigger
+                render={
+                  <SelectTrigger className="w-56" aria-label={t.exportPage.scope_story_label} />
+                }
+              >
+                {/* The story's own mark, and the placeholder while the parent
+                    is unchosen: the value is null and the placeholder — not
+                    the "all stories" label — names what to pick first. */}
+                <IconDisplay
+                  name={null}
+                  fallback={STORY_KIND_ICON}
+                  className="size-4 shrink-0 text-muted-foreground"
+                />
+                <SelectValue>
+                  {projectFilter ? undefined : t.exportPage.scope_select_project}
+                </SelectValue>
+              </TooltipTrigger>
+              {storyTriggerTooltip && <TooltipContent>{storyTriggerTooltip}</TooltipContent>}
+            </Tooltip>
             <SelectContent>
               <SelectGroup>
                 {storyItems.map((item) => (
-                  <SelectItem key={item.value ?? '_all_stories'} value={item.value}>
-                    {item.label}
-                  </SelectItem>
+                  <ContextSelectRow key={item.value ?? '_all_stories'} item={item} />
                 ))}
               </SelectGroup>
             </SelectContent>
@@ -394,6 +481,9 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
             disabled={!storyFilter}
             items={versionItems}
           >
+            {/* Plain, exactly like the board's version select: no icon and no
+                tooltip — a version is not a context. Its only gain is the
+                `` · <current>`` mark on the current version's row. */}
             <SelectTrigger className="w-56" aria-label={t.exportPage.scope_version_label}>
               <SelectValue>{storyFilter ? undefined : t.exportPage.scope_select_story}</SelectValue>
             </SelectTrigger>
@@ -408,6 +498,7 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
             </SelectContent>
           </Select>
         </div>
+        </TooltipProvider>
 
         {/* Format selector — the four formats, in the order the product serves
             them. CSV, JSON and MD are the file download against the same

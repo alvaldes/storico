@@ -44,6 +44,19 @@ vi.mock('@/lib/trello-api', async (importOriginal) => ({
 
 const t = useTranslations('en');
 
+/* The treated row labels this page must share with the board (EP6): the
+ * project's name cut at the one shared cap (`CONTEXT_LABEL_CAP`, 12), the
+ * story as ``shortUUID · label`` (the id never truncated, the label cut at the
+ * same cap), and the current version carrying the same current marker word the
+ * board uses (`versionSelector.current`). Composed here once so each assertion
+ * names the shape, not a copy of it. */
+const PROJECT_ROW = 'Alpha Projec...';
+const PROJECT_FULL_NAME = 'Alpha Project';
+const STORY_ROW = 'story-1 · user: to log...';
+const STORY_2_ROW = 'story-2 · user: to exp...';
+const STORY_SENTENCE = 'As a user, I want to log in, so that I can access my account';
+const CURRENT_VERSION_ROW = `v2 · ${en.versionSelector.current}`;
+
 function makeProject(id = 'project-1', name = 'Alpha Project'): Project {
   return {
     id,
@@ -251,10 +264,10 @@ describe('ExportPanel — the toolbar', () => {
     });
     expect(versionSelect).toBeDisabled();
 
-    await pick(user, t.exportPage.scope_project_label, 'Alpha Project');
+    await pick(user, t.exportPage.scope_project_label, PROJECT_ROW);
     expect(screen.getByRole('combobox', { name: t.exportPage.scope_version_label })).toBeDisabled();
 
-    await pick(user, t.exportPage.scope_story_label, 'user: to log in');
+    await pick(user, t.exportPage.scope_story_label, STORY_ROW);
     expect(screen.getByRole('combobox', { name: t.exportPage.scope_version_label })).toBeEnabled();
   });
 
@@ -269,9 +282,9 @@ describe('ExportPanel — the toolbar', () => {
     vi.mocked(triggerTrelloExport).mockResolvedValue(makeJob({ status: 'running' }));
     render(<ExportPanel locale="en" />);
 
-    await pick(user, t.exportPage.scope_project_label, 'Alpha Project');
-    await pick(user, t.exportPage.scope_story_label, 'user: to log in');
-    await pick(user, t.exportPage.scope_version_label, 'v2');
+    await pick(user, t.exportPage.scope_project_label, PROJECT_ROW);
+    await pick(user, t.exportPage.scope_story_label, STORY_ROW);
+    await pick(user, t.exportPage.scope_version_label, CURRENT_VERSION_ROW);
     await chooseTrello(user);
     await user.click(screen.getByRole('button', { name: t.exportPage.trello_trigger }));
 
@@ -287,7 +300,7 @@ describe('ExportPanel — the toolbar', () => {
     vi.mocked(triggerTrelloExport).mockResolvedValue(makeJob({ status: 'running' }));
     render(<ExportPanel locale="en" />);
 
-    await pick(user, t.exportPage.scope_project_label, 'Alpha Project');
+    await pick(user, t.exportPage.scope_project_label, PROJECT_ROW);
     await chooseTrello(user);
     await user.click(screen.getByRole('button', { name: t.exportPage.trello_trigger }));
 
@@ -321,13 +334,13 @@ describe('ExportPanel — the toolbar', () => {
     vi.mocked(triggerTrelloExport).mockResolvedValue(makeJob({ status: 'running' }));
     render(<ExportPanel locale="en" />);
 
-    await pick(user, t.exportPage.scope_project_label, 'Alpha Project');
-    await pick(user, t.exportPage.scope_story_label, 'user: to log in');
-    await pick(user, t.exportPage.scope_version_label, 'v2');
+    await pick(user, t.exportPage.scope_project_label, PROJECT_ROW);
+    await pick(user, t.exportPage.scope_story_label, STORY_ROW);
+    await pick(user, t.exportPage.scope_version_label, CURRENT_VERSION_ROW);
     // Move to the other story: the version choice was that story's, so it is
     // gone — a surviving extraction would name a story this export no longer
     // names.
-    await pick(user, t.exportPage.scope_story_label, 'user: to export reports');
+    await pick(user, t.exportPage.scope_story_label, STORY_2_ROW);
     await chooseTrello(user);
     await user.click(screen.getByRole('button', { name: t.exportPage.trello_trigger }));
 
@@ -339,9 +352,9 @@ describe('ExportPanel — the toolbar', () => {
     const user = userEvent.setup();
     render(<ExportPanel locale="en" />);
 
-    await pick(user, t.exportPage.scope_project_label, 'Alpha Project');
-    await pick(user, t.exportPage.scope_story_label, 'user: to log in');
-    await pick(user, t.exportPage.scope_version_label, 'v2');
+    await pick(user, t.exportPage.scope_project_label, PROJECT_ROW);
+    await pick(user, t.exportPage.scope_story_label, STORY_ROW);
+    await pick(user, t.exportPage.scope_version_label, CURRENT_VERSION_ROW);
     await user.click(screen.getByRole('button', { name: t.exportPage.download }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -499,7 +512,7 @@ describe('ExportPanel — the preview', () => {
     );
 
     // Narrowing the selection re-reads the preview for the narrowed scope.
-    await pick(t.exportPage.scope_project_label, 'Alpha Project');
+    await pick(t.exportPage.scope_project_label, PROJECT_ROW);
     await waitFor(() => {
       expect(String(fetchMock.mock.calls.at(-1)![0])).toContain('project_id=project-1');
     });
@@ -547,9 +560,9 @@ describe('ExportPanel — the preview', () => {
     render(<ExportPanel locale="en" />);
     await screen.findByTestId('export-preview');
 
-    await pick(t.exportPage.scope_project_label, 'Alpha Project');
-    await pick(t.exportPage.scope_story_label, 'user: to log in');
-    await pick(t.exportPage.scope_version_label, 'v2');
+    await pick(t.exportPage.scope_project_label, PROJECT_ROW);
+    await pick(t.exportPage.scope_story_label, STORY_ROW);
+    await pick(t.exportPage.scope_version_label, CURRENT_VERSION_ROW);
     await user.click(screen.getByRole('button', { name: 'Trello' }));
 
     await waitFor(() => expect(previewTrelloExport).toHaveBeenCalled());
@@ -868,6 +881,193 @@ describe('ExportPanel — Trello export', () => {
       expect(getTrelloExport).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
+    }
+  });
+});
+
+/* ── The selects read like the board's (EP6) ──
+ *
+ * The export page's cascade was built with plain labels — a bare project name,
+ * a bare ``actor: feature`` — and never consumed the shared context treatments
+ * the board's cascade renders through, so the same project read two different
+ * ways on two pages. These cases pin the parity: the project rows carry the
+ * kind's icon and the 12-character label with ``...``, the story rows carry
+ * the fingerprint and the ``shortUUID · label`` shape, the triggers carry the
+ * chip treatment with the full value in a real tooltip (none when nothing is
+ * selected), and the version select stays plain like the board's — its only
+ * gain is the `` · <current>`` mark on the current version.
+ */
+describe('ExportPanel — the selects read like the board\'s (EP6)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspace: {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        ownerId: 'user-1',
+        role: 'admin',
+        memberCount: 1,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      } as Workspace,
+      loading: false,
+      saving: false,
+    });
+    useProjectStore.setState({
+      projects: [makeProject()],
+      loading: false,
+      saving: false,
+      error: null,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    vi.mocked(listStories).mockResolvedValue({
+      items: [makeStory()],
+      total: 1,
+      page: 1,
+      size: 100,
+    });
+    vi.mocked(listVersions).mockResolvedValue([makeVersion()]);
+    vi.mocked(previewTrelloExport).mockResolvedValue({ name: 'Test Workspace', columns: [] });
+    fetchMock = stubFetch([
+      {
+        match: (url) => FILE_EXPORT_URL.test(url),
+        respond: () => httpResponse('[]'),
+      },
+    ]);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Open the select whose accessible name is `label` and pick `optionLabel`. */
+  async function pick(
+    user: ReturnType<typeof userEvent.setup>,
+    label: string,
+    optionLabel: string,
+  ) {
+    await user.click(await screen.findByRole('combobox', { name: label }));
+    await user.click(await screen.findByRole('option', { name: optionLabel }));
+  }
+
+  it('gives the project rows the folder fallback, the shared 12-character label and the full name in our own tooltip', async () => {
+    const user = userEvent.setup();
+    render(<ExportPanel locale="en" />);
+    await screen.findByTestId('export-preview');
+
+    await user.click(
+      await screen.findByRole('combobox', { name: t.exportPage.scope_project_label }),
+    );
+    const option = await screen.findByRole('option', { name: PROJECT_ROW });
+    // The kind's mark, drawn through the shared treatment's fallback — the same
+    // one the board's rows draw for an icon-less project.
+    expect(option.querySelector('.lucide-folder-kanban')).not.toBeNull();
+    // The label is the shared cap's short text, not the full name: the same
+    // project must not read two different ways on two pages.
+    expect(option.textContent).toContain(PROJECT_ROW);
+    expect(option.textContent).not.toContain(PROJECT_FULL_NAME);
+    // The row's hover is our tooltip, never a native `title`, and the option
+    // *is* the tooltip's trigger — a wrapper span inside it swallowed the
+    // click and the row stopped selecting, the board's load-bearing subtlety.
+    expect(option).not.toHaveAttribute('title');
+    expect(option).toHaveAttribute('data-base-ui-tooltip-trigger');
+    await user.hover(option);
+    expect(await screen.findByText(PROJECT_FULL_NAME)).toBeInTheDocument();
+  });
+
+  it('carries the project\'s own icon onto its row — the fallback is only for an icon-less project', async () => {
+    const user = userEvent.setup();
+    useProjectStore.setState({ projects: [{ ...makeProject(), icon: 'rocket' }] });
+    render(<ExportPanel locale="en" />);
+    await screen.findByTestId('export-preview');
+
+    await user.click(
+      await screen.findByRole('combobox', { name: t.exportPage.scope_project_label }),
+    );
+    const option = await screen.findByRole('option', { name: PROJECT_ROW });
+    expect(option.querySelector('.lucide-rocket')).not.toBeNull();
+    expect(option.querySelector('.lucide-folder-kanban')).toBeNull();
+  });
+
+  it('gives the story rows the fingerprint, the short id · shortened label shape and the sentence in our own tooltip', async () => {
+    const user = userEvent.setup();
+    render(<ExportPanel locale="en" />);
+    await screen.findByTestId('export-preview');
+
+    await pick(user, t.exportPage.scope_project_label, PROJECT_ROW);
+    await user.click(await screen.findByRole('combobox', { name: t.exportPage.scope_story_label }));
+    const option = await screen.findByRole('option', { name: STORY_ROW });
+    // The fingerprint, the id (which `shortUUID` passes through — `story-1` is
+    // not a uuid) and the human label cut at the shared cap, in that order.
+    expect(option.querySelector('.lucide-fingerprint')).not.toBeNull();
+    expect(option.textContent).toContain('story-1');
+    expect(option.textContent).toContain('user: to log...');
+    expect(option).not.toHaveAttribute('title');
+    expect(option).toHaveAttribute('data-base-ui-tooltip-trigger');
+    await user.hover(option);
+    expect(await screen.findByText(STORY_SENTENCE)).toBeInTheDocument();
+  });
+
+  it('gives the triggers the kind\'s icon and a tooltip with the selected value\'s full text — none when nothing is selected', async () => {
+    const user = userEvent.setup();
+    render(<ExportPanel locale="en" />);
+    await screen.findByTestId('export-preview');
+
+    // With nothing selected the tooltip is disabled, so no empty popup mounts.
+    const projectTrigger = await screen.findByRole('combobox', {
+      name: t.exportPage.scope_project_label,
+    });
+    await user.hover(projectTrigger);
+    expect(screen.queryByText(PROJECT_FULL_NAME)).not.toBeInTheDocument();
+    expect(document.querySelector('[data-slot="tooltip-content"]')).toBeNull();
+
+    // Once a project is chosen, the trigger reads like a chip: the kind's icon
+    // and a tooltip carrying the full name.
+    await pick(user, t.exportPage.scope_project_label, PROJECT_ROW);
+    const chosenProjectTrigger = screen.getByRole('combobox', {
+      name: t.exportPage.scope_project_label,
+    });
+    expect(chosenProjectTrigger.querySelector('.lucide-folder-kanban')).not.toBeNull();
+    await user.hover(chosenProjectTrigger);
+    expect(await screen.findByText(PROJECT_FULL_NAME)).toBeInTheDocument();
+
+    // …and the story trigger's is the full sentence, once a story is chosen.
+    await pick(user, t.exportPage.scope_story_label, STORY_ROW);
+    const storyTrigger = screen.getByRole('combobox', {
+      name: t.exportPage.scope_story_label,
+    });
+    expect(storyTrigger.querySelector('.lucide-fingerprint')).not.toBeNull();
+    await user.hover(storyTrigger);
+    expect(await screen.findByText(STORY_SENTENCE)).toBeInTheDocument();
+  });
+
+  it('leaves the version rows plain — no icon, no tooltip — and marks the current one', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listVersions).mockResolvedValue([
+      makeVersion('ext-1', 2),
+      { ...makeVersion('ext-0', 1), isCurrent: false },
+    ]);
+    render(<ExportPanel locale="en" />);
+    await screen.findByTestId('export-preview');
+
+    await pick(user, t.exportPage.scope_project_label, PROJECT_ROW);
+    await pick(user, t.exportPage.scope_story_label, STORY_ROW);
+    await user.click(
+      await screen.findByRole('combobox', { name: t.exportPage.scope_version_label }),
+    );
+
+    // The missing half of the parity: the current version carries the mark,
+    // with the same word the board prints (`versionSelector.current`).
+    const current = await screen.findByRole('option', { name: CURRENT_VERSION_ROW });
+    const plain = screen.getByRole('option', { name: 'v1' });
+    for (const option of [current, plain]) {
+      // Plain, exactly like the board's version rows: no icon and no tooltip.
+      expect(option.querySelector('svg')).toBeNull();
+      expect(option).not.toHaveAttribute('data-base-ui-tooltip-trigger');
     }
   });
 });

@@ -20,8 +20,8 @@ import {
   projectTreatment,
   STORY_KIND_ICON,
   storySelectTreatment,
-  type ContextTreatment,
 } from '@/lib/context-treatment';
+import { ContextSelectRow, type ContextSelectItem } from '@/components/ui/context-select-items';
 import {
   Select,
   SelectContent,
@@ -51,22 +51,6 @@ interface InvalidDropToast {
   show: boolean;
   message: string;
   allowed: TaskStatus[];
-}
-
-/** One row of the cascade's selects. The label is the visible (truncated) one;
- * `title` is the full value the listbox option exposes as a native `title`
- * (D18 of feature ``kanban-context-tooltips``: a Tooltip per option fights the
- * listbox's focus and keyboard navigation, so the listbox keeps the native
- * mechanism and the trigger gets the real one); `treatment` is the shared
- * context treatment — its icon is a name plus fallback rendered through
- * ``IconDisplay`` (D23 of feature ``kanban-project-icons``) —, `null` for the
- * "All …" rows that name no project or story. */
-interface ContextSelectItem {
-  label: string;
-  value: string | null;
-  /** The shared treatment, which carries the icon and the tooltip's full value;
-   * `null` for the "All …" rows that name no project or story. */
-  treatment: ContextTreatment | null;
 }
 
 export function KanbanBoard({ locale = 'en', initialProjectId, initialStoryId }: KanbanBoardProps) {
@@ -355,12 +339,15 @@ export function KanbanBoard({ locale = 'en', initialProjectId, initialStoryId }:
   // The project and story rows go through the one shared context treatment
   // (WU17): icon, truncated label and full-value tooltip text come from
   // ``lib/context-treatment.ts``, the same functions the card's chips consume. The options
-  // truncate at the select's wider cap (D21) — a dropdown row must stay
-  // choosable without hovering, which the card's 12-character cap would make
-  // impossible — and carry the full value as a native `title` (D18). The project
+  // truncate at the shared cap — the owner's call of 2026-10-08, which reversed
+  // the wider select cap of D21: seeing the same project two different ways
+  // reads as two different projects — and carry the full value in the row's own
+  // tooltip. The project
   // rows pass the icon name the project row already carries (D24 of feature
   // ``kanban-project-icons``): the same icon the card shows for the same
-  // project, through the same treatment.
+  // project, through the same treatment. The rows themselves render through the
+  // one shared ``ContextSelectRow`` (EP6 of ``export-page-rework``), which the
+  // export page's toolbar renders too — the treated row is defined once.
   const projectItems = useMemo<ContextSelectItem[]>(
     () => [
       { label: t.stories.allProjects, value: null, treatment: null },
@@ -650,31 +637,7 @@ export function KanbanBoard({ locale = 'en', initialProjectId, initialStoryId }:
               <SelectContent>
                 <SelectGroup>
                   {projectItems.map((item) => (
-                    // The row's hover is our tooltip, never a native `title`: the
-                    // title arrives late in the browser's own style, and it is the
-                    // only way to read a value the shared cap shortened — a row cut
-                    // to a dozen characters behind a tooltip nobody sees loses the
-                    // name entirely.
-                    //
-                    // The trigger *is* the option, not a span inside it: a wrapper
-                    // there swallowed the click and the row stopped selecting,
-                    // which is a worse failure than the hover it was meant to fix.
-                    <Tooltip key={item.value ?? '_all_projects'} disabled={!item.treatment}>
-                      <TooltipTrigger render={<SelectItem value={item.value} />}>
-                        {item.treatment && (
-                          <span aria-hidden="true">
-                            <IconDisplay
-                              name={item.treatment.iconName}
-                              fallback={item.treatment.fallback}
-                            />
-                          </span>
-                        )}
-                        {item.label}
-                      </TooltipTrigger>
-                      {item.treatment && (
-                        <TooltipContent>{item.treatment.tooltip}</TooltipContent>
-                      )}
-                    </Tooltip>
+                    <ContextSelectRow key={item.value ?? '_all_projects'} item={item} />
                   ))}
                 </SelectGroup>
               </SelectContent>
@@ -717,31 +680,7 @@ export function KanbanBoard({ locale = 'en', initialProjectId, initialStoryId }:
               <SelectContent>
                 <SelectGroup>
                   {storyItems.map((item) => (
-                    // The row's hover is our tooltip, never a native `title`: the
-                    // title arrives late in the browser's own style, and it is the
-                    // only way to read a value the shared cap shortened — a row cut
-                    // to a dozen characters behind a tooltip nobody sees loses the
-                    // name entirely.
-                    //
-                    // The trigger *is* the option, not a span inside it: a wrapper
-                    // there swallowed the click and the row stopped selecting,
-                    // which is a worse failure than the hover it was meant to fix.
-                    <Tooltip key={item.value ?? '_all_stories'} disabled={!item.treatment}>
-                      <TooltipTrigger render={<SelectItem value={item.value} />}>
-                        {item.treatment && (
-                          <span aria-hidden="true">
-                            <IconDisplay
-                              name={item.treatment.iconName}
-                              fallback={item.treatment.fallback}
-                            />
-                          </span>
-                        )}
-                        {item.label}
-                      </TooltipTrigger>
-                      {item.treatment && (
-                        <TooltipContent>{item.treatment.tooltip}</TooltipContent>
-                      )}
-                    </Tooltip>
+                    <ContextSelectRow key={item.value ?? '_all_stories'} item={item} />
                   ))}
                 </SelectGroup>
               </SelectContent>
