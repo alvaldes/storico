@@ -5,6 +5,16 @@
 > **Propósito:** Documento vivo del frontend de Storico — decisiones de UI/UX, pantallas, arquitectura de componentes, estado, routing, y roadmap.
 > **Scope:** Exclusivamente el frontend (`frontend/`). El backend vive en su propio contexto.
 
+> [!IMPORTANT] **Estado (2026-10-09): esto es un documento de diseño, no de estado.**
+> Se compiló el 2026-07-06, antes de que la exportación a Trello existiera, y describe lo que se
+> **pensaba** construir. Lo que se construyó difiere en tres cosas, y las tres importan a quien
+> lea este archivo como si fuera el estado: la credencial de Trello es un par clave+token que un
+> admin pega en Configuración, **no** un flujo OAuth; cada exportación crea un tablero **nuevo**,
+> en vez de actualizar uno designado; y los formatos de archivo son `csv`, `json` y `markdown`,
+> con Trello como su propio camino y no como un cuarto formato de descarga. El estado real vive en
+> `AGENTS.md`, en `openspec/specs/` y en `odd/tasks/`; las casillas de roadmap de más abajo son del
+> brief que las escribió, no un tablero de estado.
+
 ---
 
 ## Producto en una línea
@@ -263,7 +273,7 @@ Configuración y preview de la exportación de tareas a diferentes formatos y de
 - Para Trello: muestra preview del board que se creará
 
 **Botón de acción:**
-- "Exportar" → descarga el archivo (formato local) o abre OAuth flow (Trello)
+- "Exportar" → descarga el archivo (formato local) o abre OAuth flow (Trello) — **corregido el 2026-10-09**: no hay OAuth; la credencial se pega en Configuración, cifrada, y el export a Trello crea un tablero nuevo
 
 **Estados:**
 | Estado | Qué se muestra |
@@ -596,7 +606,7 @@ El frontend consume estos endpoints REST. Los schemas Pydantic se reflejan en `s
 
 - [ ] **Fase 3: Exportación y Settings (`/export`, `/settings`)**
   - [ ] `ExportPanel.tsx` — selector de formato (JSON, Markdown), preview en vivo, descarga
-  - [ ] Conector Trello (vía backend)
+  - [x] Conector Trello (vía backend) — **implementado el 2026-10-09** en `feat/trello-export` (`domain/ports/trello_export_port.py`, `infrastructure/export/trello_adapter.py`, migraciones `0030`/`0031`; registro en `odd/tasks/trello-export.md`)
   - [ ] `ModelSelector.tsx` — selector de modelo LLM, temperatura, max tokens, test de conexión
   - [ ] Settings de tema (claro/oscuro/auto) e idioma (es/en)
 
