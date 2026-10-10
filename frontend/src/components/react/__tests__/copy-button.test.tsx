@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { CopyButton, copyToClipboard } from '@/components/ui/copy-button';
@@ -68,21 +68,35 @@ describe('CopyButton', () => {
   });
 
   it('reverts to the idle name after a moment', async () => {
-    // A short reset window instead of fake timers: userEvent's own event loop
-    // and fake timers agree badly, and the claim — the copied state is momentary
-    // — is the same claim at 10 ms that it is at 2000.
-    const user = userEvent.setup();
-    stubClipboard();
+    // The clock is driven, not raced. This test used to inject a real 10 ms
+    // reset timer and assert the copied state synchronously after the awaited
+    // click, so any real-time stall longer than 10 ms between the two reverted
+    // the state first and the assertion failed — it failed exactly once in a
+    // full suite (EP4), then twice more under EP8's shuffled hunt before it was
+    // named. Patience (a longer window, a more patient `waitFor`) would only
+    // have hidden the class; the claim — the copied state is momentary — is
+    // proven deterministically by advancing the clock instead. `fireEvent` is
+    // used because `userEvent`'s own event loop hangs against fake timers.
+    vi.useFakeTimers();
+    try {
+      stubClipboard();
 
-    render(
-      <CopyButton text="the body" label="Copy" copiedLabel="Copied!" copiedResetMs={10} />,
-    );
-    await user.click(screen.getByRole('button', { name: 'Copy' }));
-    expect(screen.getByRole('button', { name: 'Copied!' })).toBeInTheDocument();
+      render(
+        <CopyButton text="the body" label="Copy" copiedLabel="Copied!" copiedResetMs={10} />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+      // The write resolves in a microtask, outside the timer world; one flush
+      // applies the copied state deterministically.
+      await act(async () => {});
+      expect(screen.getByRole('button', { name: 'Copied!' })).toBeInTheDocument();
 
-    await waitFor(() => {
+      act(() => {
+        vi.advanceTimersByTime(10);
+      });
       expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument();
-    });
-    expect(screen.queryByRole('button', { name: 'Copied!' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Copied!' })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
