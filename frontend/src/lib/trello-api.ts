@@ -1,13 +1,20 @@
 import { api } from './api';
 import { toCamelCase, toSnakeCase } from './utils';
+import type { ExportScopeTarget } from './task-export-api';
 
 /**
- * Client for the four Trello export endpoints the backend serves:
+ * Client for the five Trello export endpoints the backend serves:
  *
  * - `GET/PUT /api/v1/workspaces/{id}/settings/trello` — the credential pair, admin-only.
  * - `GET /api/v1/workspaces/{id}/settings/trello/status` — member-readable, field names only.
  * - `POST /api/v1/workspaces/{id}/export/trello` — 202 + the job, open to any member (D7).
  * - `GET /api/v1/workspaces/{id}/export/trello/{export_id}` — the polled job state.
+ * - `GET /api/v1/workspaces/{id}/export/trello/preview` — the board plan as JSON, no job created.
+ *
+ * The export scope is not resolved here: every body and query is built from
+ * `resolveExportTarget` (`lib/task-export-api.ts`), the one resolver all four
+ * export formats share, so the Trello path can never disagree with the file
+ * path about what is selected.
  *
  * Errors travel through the shared `api` client, which raises `ApiRequestError`
  * carrying the canonical envelope's `error_code` — the caller renders it through
@@ -63,6 +70,8 @@ export interface TrelloExportJob {
   scope: string;
   projectId: string | null;
   userStoryId: string | null;
+  /** The version the job exported, named by its extraction id; null for current versions. */
+  extractionId: string | null;
   status: TrelloExportJobStatus;
   /** Set only on failure, with a value from the backend's error-code registry. */
   errorCode: string | null;
@@ -80,6 +89,7 @@ interface TrelloExportJobRaw {
   scope: string;
   project_id: string | null;
   user_story_id: string | null;
+  extraction_id: string | null;
   status: string;
   error_code: string | null;
   board_id: string | null;
@@ -92,36 +102,6 @@ interface TrelloExportJobRaw {
 function mapJob(raw: TrelloExportJobRaw): TrelloExportJob {
   const job = toCamelCase<TrelloExportJob>(raw);
   return { ...job, status: job.status as TrelloExportJobStatus };
-}
-
-/**
- * The scope fields the POST body accepts, in wire spelling.
- *
- * This is the client-side half of the never-two rule the backend enforces with
- * `422` (D1): the type carries two optional keys, but `resolveTrelloExportTarget`
- * is the only way a caller builds one, and it can never return both.
- */
-export interface TrelloExportScopeBody {
-  project_id?: string;
-  user_story_id?: string;
-}
-
-/**
- * Resolve the export target from the scope cascade's two levels.
- *
- * Most-specific-wins, the same rule the Kanban cascade applies: a story
- * implies its project, so when both levels are held only the story travels.
- * The two keys are written in mutually exclusive branches — one function, one
- * return each — so two targets in one body is impossible by construction, not
- * by discipline.
- */
-export function resolveTrelloExportTarget(
-  projectId: string | null,
-  userStoryId: string | null,
-): TrelloExportScopeBody {
-  if (userStoryId) return { user_story_id: userStoryId };
-  if (projectId) return { project_id: projectId };
-  return {};
 }
 
 /** Get the workspace Trello credentials, decrypted. Admin only. */
@@ -169,13 +149,13 @@ export async function getTrelloConfigStatus(wsId: string): Promise<TrelloConfigS
 /**
  * Trigger a Trello export. Any member (D7); answers `202` with the job.
  *
- * `scope` must come from `resolveTrelloExportTarget` — the raw type exists for
- * the wire, and the API refuses two targets with `422`, so the caller that
- * builds the body by hand owns whatever it sends.
+ * `scope` must come from `resolveExportTarget` — the resolver all four export
+ * formats share, so a body carries exactly one target and a version only
+ * beside its story; the API refuses anything else with `422`.
  */
 export async function triggerTrelloExport(
   wsId: string,
-  scope: TrelloExportScopeBody = {},
+  scope: ExportScopeTarget = {},
 ): Promise<TrelloExportJob> {
   const raw = await api.post<TrelloExportJobRaw>(
     `/api/v1/workspaces/${wsId}/export/trello`,
@@ -190,4 +170,47 @@ export async function getTrelloExport(wsId: string, exportId: string): Promise<T
     `/api/v1/workspaces/${wsId}/export/trello/${exportId}`,
   );
   return mapJob(raw);
+}
+
+/** One card of the preview's plan — everything resolved already. */
+export interface TrelloBoardPlanCard {
+  title: string;
+  description: string;
+  labels: string[];
+  /** Already-resolved dependency titles, the same values the adapter sends. */
+  dependencyTitles: string[];
+}
+
+/** One board list of the preview's plan, with its cards in order. */
+export interface TrelloBoardPlanColumn {
+  name: string;
+  cards: TrelloBoardPlanCard[];
+}
+
+/** The board plan the trigger would send — the preview's shape (E4). */
+export interface TrelloBoardPlan {
+  name: string;
+  columns: TrelloBoardPlanColumn[];
+}
+
+/**
+ * The board plan as JSON, without creating a job (E4's preview).
+ *
+ * The same `TrelloBoardPlan` the runner builds, serialized by the backend —
+ * an export that only describes itself must not cost a board, and what the
+ * preview shows is what the trigger would create.
+ */
+export async function previewTrelloExport(
+  wsId: string,
+  scope: ExportScopeTarget = {},
+): Promise<TrelloBoardPlan> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(scope)) {
+    if (value !== undefined) params.set(key, value);
+  }
+  const query = params.toString();
+  const raw = await api.get<Record<string, unknown>>(
+    `/api/v1/workspaces/${wsId}/export/trello/preview${query ? `?${query}` : ''}`,
+  );
+  return toCamelCase<TrelloBoardPlan>(raw);
 }
