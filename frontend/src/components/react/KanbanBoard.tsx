@@ -9,7 +9,7 @@ import { listStories } from '@/lib/stories-api';
 import { listVersions } from '@/lib/versioning-api';
 import type { WorkspaceTaskFilters } from '@/lib/tasks-api';
 import type { StoryVersion, UserStory } from '@/types/story';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { AlertCircle, LoaderCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -54,7 +54,7 @@ interface InvalidDropToast {
 }
 
 export function KanbanBoard({ locale = 'en', initialProjectId, initialStoryId }: KanbanBoardProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
   const { projects, loading: projectsLoading, fetchProjects } = useProjectStore();
   const {
@@ -476,7 +476,7 @@ export function KanbanBoard({ locale = 'en', initialProjectId, initialStoryId }:
         }
       }
     },
-    [localTasks, updateTaskStatus],
+    [localTasks, updateTaskStatus, t.kanban.backend_invalid_transition, t.kanban.columns, t.kanban.invalid_drop],
   );
 
   // ── Loading levels (D8–D10) ──

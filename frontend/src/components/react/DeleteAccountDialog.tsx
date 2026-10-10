@@ -14,7 +14,7 @@ import { api, ApiRequestError } from '@/lib/api';
 import { errorCodeHeadline } from '@/lib/error-codes';
 import { renderBoldMarkup } from '@/lib/render-bold-markup';
 import { useAuthStore } from '@/stores/authStore';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { TriangleAlert, LoaderCircle } from 'lucide-react';
 
 interface DeleteAccountDialogProps {
@@ -24,7 +24,7 @@ interface DeleteAccountDialogProps {
 }
 
 export function DeleteAccountDialog({ locale, open, onOpenChange }: DeleteAccountDialogProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clear);
   const [emailInput, setEmailInput] = useState('');

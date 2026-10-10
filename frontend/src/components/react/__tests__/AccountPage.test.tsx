@@ -8,9 +8,9 @@ import { api, ApiRequestError } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { DEFAULT_SETTINGS, type ExportFormat } from '@/types/settings';
 import { fetchSettings, saveSettings } from '@/lib/settings-api';
-import { useTranslations } from '@/i18n/utils';
+import { getTranslations } from '@/i18n/utils';
 
-const t = useTranslations('en');
+const t = getTranslations('en');
 
 vi.mock('@/lib/settings-api', () => ({
   fetchSettings: vi.fn(),

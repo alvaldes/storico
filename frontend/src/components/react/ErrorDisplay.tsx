@@ -8,7 +8,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { errorCodeHeadline } from '@/lib/error-codes';
 
 export interface BackendError {
@@ -27,7 +27,7 @@ export interface BackendError {
   /** Optional dismiss handler */
   onDismiss?: () => void;
   /**
-   * Locale for the component's own copy (it called useTranslations before
+   * Locale for the component's own copy (it called getTranslations before
    * the placeholder rewrite in 353224f). Callers already pass it.
    */
   locale?: Locale;
@@ -42,7 +42,7 @@ export interface BackendError {
  * so the move stayed mechanical.
  */
 function RawDetail({ detail, locale }: { detail: string; locale: Locale }) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
 
   return (
     <Collapsible className="group/collapsible space-y-2 border-t border-destructive/20 pt-3">
@@ -128,7 +128,7 @@ export function ErrorDisplay({
   onDismiss,
   locale = 'en',
 }: BackendError) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
 
   const formattedDetail = formatRawDetail(rawDetail);
   // Headline priority: a translated backend code beats the caller's message,

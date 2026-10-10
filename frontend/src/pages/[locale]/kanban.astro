@@ -1,10 +1,10 @@
 ---
 import MainLayout from '@/layouts/MainLayout.astro';
 import { KanbanBoard } from '@/components/react/KanbanBoard';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 
 const locale = (Astro.params.locale as Locale) || 'en';
-const t = useTranslations(locale);
+const t = getTranslations(locale);
 
 // Deep link entry (feature ``view-in-kanban``): a link to the board lands
 // here with `?project=<id>&story=<id>`. The page output is SSR

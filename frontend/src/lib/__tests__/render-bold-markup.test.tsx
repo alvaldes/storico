@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { renderBoldMarkup } from '@/lib/render-bold-markup';
-import { useTranslations } from '@/i18n/utils';
+import { getTranslations } from '@/i18n/utils';
 
 describe('renderBoldMarkup', () => {
   it('splits on the authored tag and renders only the authored segments as elements', () => {
@@ -82,7 +82,7 @@ describe('renderBoldMarkup — against the real call-site strings', () => {
   // different tag, the call site would silently stop emphasising it. Expectations are derived from
   // the source string rather than duplicated, so a copy edit does not fail a helper test.
   it('renders the delete-account email label with `<b>` and keeps the email inside it', () => {
-    const en = useTranslations('en');
+    const en = getTranslations('en');
     const label = en.settings.danger_delete_dialog_email_label;
     const email = 'a@b.com';
     const withEmail = label.replace('{email}', email);
@@ -97,7 +97,7 @@ describe('renderBoldMarkup — against the real call-site strings', () => {
   });
 
   it('renders the dialog boilerplate with `<b>`', () => {
-    const en = useTranslations('en');
+    const en = getTranslations('en');
     const copy = en.settings.danger_delete_dialog_description_1;
 
     const { container } = render(<>{renderBoldMarkup(copy, 'b')}</>);
@@ -107,7 +107,7 @@ describe('renderBoldMarkup — against the real call-site strings', () => {
   });
 
   it('renders the story format hint with `<strong>` and never as `<b>`', () => {
-    const en = useTranslations('en');
+    const en = getTranslations('en');
     const hint = en.stories.story_format_hint;
 
     const { container } = render(<>{renderBoldMarkup(hint, 'strong')}</>);

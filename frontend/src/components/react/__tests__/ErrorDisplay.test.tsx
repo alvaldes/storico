@@ -3,10 +3,10 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
-import { useTranslations } from '@/i18n/utils';
+import { getTranslations } from '@/i18n/utils';
 
-const t = useTranslations('en');
-const esT = useTranslations('es');
+const t = getTranslations('en');
+const esT = getTranslations('es');
 
 beforeEach(() => {
   vi.clearAllMocks();

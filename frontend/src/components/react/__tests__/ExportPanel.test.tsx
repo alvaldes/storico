@@ -14,7 +14,7 @@ import { resolveExportTarget } from '@/lib/task-export-api';
 import { ApiRequestError } from '@/lib/api';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useProjectStore } from '@/stores/projectStore';
-import { useTranslations } from '@/i18n/utils';
+import { getTranslations } from '@/i18n/utils';
 import en from '@/i18n/en.json';
 import type { Workspace } from '@/types/workspace';
 import type { Project } from '@/types/project';
@@ -42,7 +42,7 @@ vi.mock('@/lib/trello-api', async (importOriginal) => ({
   previewTrelloExport: vi.fn(),
 }));
 
-const t = useTranslations('en');
+const t = getTranslations('en');
 
 /* The treated row labels this page must share with the board (EP6): the
  * project's name cut at the one shared cap (`CONTEXT_LABEL_CAP`, 12), the

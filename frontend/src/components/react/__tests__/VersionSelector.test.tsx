@@ -2,10 +2,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { VersionSelector } from '@/components/react/VersionSelector';
-import { useTranslations } from '@/i18n/utils';
+import { getTranslations } from '@/i18n/utils';
 import type { StoryVersion } from '@/types/story';
 
-const t = useTranslations('en');
+const t = getTranslations('en');
 
 function makeVersion(overrides: Partial<StoryVersion> = {}): StoryVersion {
   return {

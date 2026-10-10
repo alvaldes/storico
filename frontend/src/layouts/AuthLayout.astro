@@ -2,10 +2,10 @@
 import { ClientRouter } from 'astro:transitions';
 import ThemeScript from '@/components/astro/ThemeScript.astro';
 import globalsCss from '@/styles/globals.css?url';
-import { useTranslations } from '@/i18n/utils';
+import { getTranslations } from '@/i18n/utils';
 
 const { locale = 'en' } = Astro.props;
-const t = useTranslations(locale);
+const t = getTranslations(locale);
 ---
 
 <!DOCTYPE html>

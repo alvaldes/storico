@@ -6,7 +6,7 @@ import { IconDisplay } from '@/components/ui/icon-display';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 
 /* ── curated set shown when no search query ── */
 
@@ -211,7 +211,7 @@ export function IconPicker({
   onOpenChange,
   locale = 'en',
 }: IconPickerProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const [query, setQuery] = useState('');
 
   const normalizedQuery = query.toLowerCase().replace(/\s+/g, '-');
@@ -315,7 +315,7 @@ interface IconTriggerProps {
 }
 
 export function IconTrigger({ value, onClick, className, locale = 'en' }: IconTriggerProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   return (
     <button
       type="button"

@@ -13,7 +13,7 @@ import { useStoryStore } from '@/stores/storyStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useAuthStore } from '@/stores/authStore';
-import { useTranslations } from '@/i18n/utils';
+import { getTranslations } from '@/i18n/utils';
 import type { Task } from '@/types/task';
 import type { Workspace } from '@/types/workspace';
 import type { UserStory } from '@/types/story';
@@ -79,7 +79,7 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
-const t = useTranslations('en');
+const t = getTranslations('en');
 
 /* ── The rule, in one place ── */
 

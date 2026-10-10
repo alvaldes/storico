@@ -1,6 +1,6 @@
 ---
 import GitHubIcon from './GitHubIcon.astro';
-import { useTranslations, localizedPath, type Locale } from '@/i18n/utils';
+import { getTranslations, localizedPath, type Locale } from '@/i18n/utils';
 
 export interface Props {
   locale: Locale;
@@ -10,7 +10,7 @@ export interface Props {
 }
 
 const { locale, langToggleHref, isLoggedIn } = Astro.props;
-const t = useTranslations(locale);
+const t = getTranslations(locale);
 const L = (path: string) => localizedPath(path, locale);
 ---
 

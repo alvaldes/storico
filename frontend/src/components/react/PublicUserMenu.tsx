@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { getInitials } from '@/lib/initials';
 
 export interface PublicNavUser {
@@ -24,7 +24,7 @@ export interface PublicNavUser {
 }
 
 export function PublicUserMenu({ locale, user }: { locale: Locale; user: PublicNavUser }) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const L = (path: string) => `/${locale}${path}`;
   const initials = getInitials(user.name);
 

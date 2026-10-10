@@ -6,7 +6,7 @@
  * Used by PublicLayout and landing page (index.astro).
  */
 
-import { useTranslations } from '@/i18n/utils';
+import { getTranslations } from '@/i18n/utils';
 
 export interface Props {
   href: string;
@@ -14,7 +14,7 @@ export interface Props {
 }
 
 const { href, locale } = Astro.props;
-const t = useTranslations(locale);
+const t = getTranslations(locale);
 const targetLang = locale === 'en' ? t.language.es : t.language.en;
 ---
 

@@ -4,12 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { KanbanBoard } from '@/components/react/KanbanBoard';
 import { useTaskStore } from '@/stores/taskStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
-import { useTranslations } from '@/i18n/utils';
+import { getTranslations } from '@/i18n/utils';
 import { shortProjectTitle, shortUUID } from '@/lib/utils';
 import type { Task } from '@/types/task';
 import type { Workspace } from '@/types/workspace';
 
-const t = useTranslations('en');
+const t = getTranslations('en');
 
 // Mock the api module — the store consumes these mocks.
 vi.mock('@/lib/tasks-api', () => ({

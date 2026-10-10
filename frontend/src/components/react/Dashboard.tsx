@@ -6,11 +6,11 @@ import { useAuthStore } from '@/stores/authStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { StoryVersionBadge, versionCountLabel } from '@/components/react/StoryVersionBadge';
 
 export function Dashboard({ locale = 'en' }: { locale?: Locale }) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const { projects, fetchProjects } = useProjectStore();
   const { stories, fetchStories } = useStoryStore();
   const { currentWorkspace } = useWorkspaceStore();

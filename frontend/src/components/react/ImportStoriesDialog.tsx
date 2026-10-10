@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel, FieldDescription } from '@/components/ui/field';
 import { CircleCheck, FileUp, Loader2, X } from 'lucide-react';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import { ApiRequestError } from '@/lib/api';
 import { IMPORT_MAX_FILE_BYTES, readImportFailure } from '@/lib/stories-api';
@@ -38,7 +38,7 @@ export interface ImportReasonItem {
  * `stories.import_reason_unknown` instead of leaking raw backend text.
  */
 export function describeImportReason(
-  t: ReturnType<typeof useTranslations>,
+  t: ReturnType<typeof getTranslations>,
   item: ImportReasonItem,
 ): string {
   const s = t.stories;
@@ -127,7 +127,7 @@ export function ImportStoriesDialog({
   projectId,
   workspaceId,
 }: ImportStoriesDialogProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const importStories = useStoryStore((s) => s.importStories);
 
   const [file, setFile] = useState<File | null>(null);

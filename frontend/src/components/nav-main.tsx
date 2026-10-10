@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   SidebarGroup,
@@ -28,7 +28,7 @@ export interface NavItem {
 }
 
 export function NavMain({ items, locale: _locale }: { items: NavItem[]; locale: Locale }) {
-  const t = useTranslations(_locale);
+  const t = getTranslations(_locale);
   const { state, isMobile } = useSidebar();
   // In icon/collapsed mode the submenu is hidden by CSS, so a collapsible
   // trigger would toggle nothing visible; degrade such items to plain links.

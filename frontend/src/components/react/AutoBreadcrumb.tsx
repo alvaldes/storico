@@ -8,7 +8,7 @@ import {
   BreadcrumbSeparator,
   BreadcrumbEllipsis,
 } from '@/components/ui/breadcrumb';
-import { localizedPath, useTranslations, type Locale } from '@/i18n/utils';
+import { localizedPath, getTranslations, type Locale } from '@/i18n/utils';
 import { useProjectStore } from '@/stores/projectStore';
 import { useStoryStore } from '@/stores/storyStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
@@ -58,7 +58,7 @@ function LoadingDots() {
 }
 
 export function AutoBreadcrumb({ locale, segments }: AutoBreadcrumbProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
   const [resolvedLabels, setResolvedLabels] = useState<Record<string, string>>({});
 

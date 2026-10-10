@@ -2,7 +2,7 @@
 
 import { LoadingVeil } from '@/components/react/LoadingVeil';
 import { useLoadingStore } from '@/stores/loadingStore';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 
 /**
  * Full-page blocking overlay raised by the loading store while a
@@ -17,7 +17,7 @@ export function FullPageLoader({ locale }: { locale: Locale }) {
   // Boolean selector, not an object: zustand v5 subscribes through
   // useSyncExternalStore, and a freshly allocated snapshot would loop.
   const visible = useLoadingStore((s) => s.visible);
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
 
   if (!visible) return null;
 

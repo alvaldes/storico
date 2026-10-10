@@ -9,6 +9,7 @@
     "dev": "NODE_OPTIONS=\"--dns-result-order=ipv4first\" astro dev",
     "dev:debug": "NODE_OPTIONS=\"--dns-result-order=ipv4first\" astro dev --host --verbose",
     "build": "astro build",
+    "lint": "eslint .",
     "preview": "astro preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -45,11 +46,14 @@
     "@types/node": "^26.1.1",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.18",
     "shadcn": "^4.13.0",
     "tailwindcss": "^4.1.6",
     "typescript": "^5.8.3",
+    "typescript-eslint": "^8.71.1",
     "vitest": "^4.1.10"
   }
 }

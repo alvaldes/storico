@@ -9,7 +9,7 @@ const translations: Record<Locale, typeof en> = { en, es };
  * Returns the translation object for the given locale.
  * Falls back to English if the locale is not supported.
  */
-export function useTranslations(locale: string): typeof en {
+export function getTranslations(locale: string): typeof en {
   if (locale === 'es') return translations.es;
   return translations.en;
 }

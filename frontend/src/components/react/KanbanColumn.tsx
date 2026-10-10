@@ -2,7 +2,7 @@
 
 import { Droppable } from '@hello-pangea/dnd';
 import { KanbanCard } from '@/components/react/KanbanCard';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Task } from '@/types/task';
 
@@ -14,7 +14,7 @@ interface KanbanColumnProps {
 }
 
 export function KanbanColumn({ columnId, title, tasks, locale }: KanbanColumnProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
 
   return (
     <div className="flex h-full w-72 shrink-0 flex-col rounded-xl border border-border bg-(--color-surface-secondary)/50">

@@ -1,4 +1,4 @@
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import type { StoryVersion } from '@/types/story';
 
 interface VersionSelectorProps {
@@ -33,7 +33,7 @@ export function VersionSelector({
   onSelect,
   locale = 'en',
 }: VersionSelectorProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
 
   const formatDate = (iso: string) =>
     new Date(iso).toLocaleDateString(locale === 'es' ? 'es-MX' : 'en-US');

@@ -27,7 +27,7 @@ import { StoryVersionBadge, versionCountLabel } from '@/components/react/StoryVe
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { ApiRequestError } from '@/lib/api';
 import {
   Select,
@@ -61,7 +61,7 @@ interface StoriesListProps {
 }
 
 export function StoriesList({ locale = 'en', projectId: initialProjectId }: StoriesListProps) {
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const { projects, fetchProjects } = useProjectStore();
   const { stories, loading, fetchStories, createStory, updateStory, deleteStory } = useStoryStore();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
@@ -122,7 +122,7 @@ export function StoriesList({ locale = 'en', projectId: initialProjectId }: Stor
       { label: t.stories?.allProjects ?? 'All projects', value: null },
       ...projects.map((p) => ({ label: p.name, value: p.id })),
     ],
-    [projects],
+    [projects, t.stories],
   );
 
   // Fetch projects if they haven't been loaded yet (needed for the filter dropdown)

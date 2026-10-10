@@ -20,14 +20,14 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { useTranslations, type Locale } from '@/i18n/utils';
+import { getTranslations, type Locale } from '@/i18n/utils';
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getInitials } from '@/lib/initials';
 
 export function NavUser({ locale, currentPath }: { locale: Locale; currentPath: string }) {
   const { isMobile } = useSidebar();
-  const t = useTranslations(locale);
+  const t = getTranslations(locale);
   const { theme, toggleTheme } = useUIStore();
   const L = (path: string) => `/${locale}${path}`;
   const user = useAuthStore((s) => s.user);
