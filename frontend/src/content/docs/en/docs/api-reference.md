@@ -44,24 +44,54 @@ _No parameters._
 
 Export Tasks
 
-Export tasks from a workspace in the requested format.
+Export tasks from a workspace in the requested format and scope.
 
 Supported formats:
 - ``json`` (default): JSON array of tasks
 - ``markdown``: Markdown document with one section per story
+- ``csv``: one row per task, columns in this order — ``story, version,
+  title, description, status, priority, labels, dependencies`` — with
+  multi-value cells (``labels``, ``dependencies``) joined by ``;``. The
+  column order is a contract: adding a column later is compatible;
+  renaming or reordering one is not.
 
-Only each story's current version (the highest-numbered ``completed``
-run) is exported — the filter rides the serializing statement itself, so
-a superseded version's tasks can never leak into a file.
+**Scope — one target, never two** (the same rule the Trello trigger
+resolves through): no target exports the whole workspace; ``project_id``
+or ``user_story_id`` narrows it to that project or story; both together
+answer ``422 REQUEST_VALIDATION_FAILED``. A target must exist and sit in
+the path workspace (a foreign project or story answers ``403``, a missing
+one ``404``).
 
-The response includes a ``Content-Disposition`` header for file download.
+**Version**: without ``extraction_id``, each story's current version (the
+highest-numbered ``completed`` run) is exported — the filter rides the
+serializing statement itself, so a superseded version's tasks can never
+leak into the file. With ``extraction_id`` **and** ``user_story_id``, the
+named version's tasks are exported even when a newer run superseded it —
+the version is identified by its extraction id, never by its version
+number, which is a position in a history the next run moves. An
+``extraction_id`` without ``user_story_id`` answers ``422``: a version
+belongs to a story, and a version asked for at project or workspace level
+is a question with no answer. The ``version`` column of the CSV carries
+the run's version number; the ``json`` and ``markdown`` shapes are
+unchanged.
+
+The response includes a ``Content-Disposition`` header for file download,
+unless ``preview=true``: then the exact same body — the same endpoint, the
+same parameters, one code path — is returned **without** that header, so
+the browser displays it instead of saving it. One serialization, two
+dispositions: what a preview shows cannot differ from what the download
+saves, because they are the same bytes.
 
 **Parameters**
 
 | Name | In | Required | Type |
 | --- | --- | --- | --- |
 | `workspace_id` | `path` | yes | `string` |
+| `extraction_id` | `query` | no | `string | null` |
 | `format` | `query` | no | `string` |
+| `preview` | `query` | no | `boolean` |
+| `project_id` | `query` | no | `string | null` |
+| `user_story_id` | `query` | no | `string | null` |
 
 **Responses**
 
@@ -90,8 +120,14 @@ credential pair stored answers ``409 TRELLO_CREDENTIALS_MISSING`` before
 anything is created.
 
 The scope is one of three, never two (D1): both optional targets given is a
-``422`` — the rule the Kanban cascade applies. Only each story's current
-version is exported (D8), the same filter the file export rides.
+``422`` — the rule the Kanban cascade applies. Without ``extraction_id``,
+only each story's current version is exported (D8), the same filter the
+file export rides. With ``extraction_id`` **and** ``user_story_id``, the
+named version is exported even when a newer run superseded it — the same
+read the file export makes — and the job row records that extraction id, so
+a member polling the job can say which version the board came from. An
+``extraction_id`` without ``user_story_id`` answers ``422``, the pairing
+rule the file export already enforces.
 
 **Parameters**
 
@@ -105,12 +141,58 @@ version is exported (D8), the same filter the file export rides.
 | --- | --- | --- |
 | `project_id` | `string | null` | no |
 | `user_story_id` | `string | null` | no |
+| `extraction_id` | `string | null` | no |
 
 **Responses**
 
 | Status | Description | Schema |
 | --- | --- | --- |
 | `202` | Successful Response | `TrelloExportResponse` |
+| `422` | Validation Error | `HTTPValidationError` |
+
+### `GET` `/api/v1/workspaces/{workspace_id}/export/trello/preview`
+
+Preview Trello Export
+
+Return the board plan the Trello trigger would send — as JSON, creating nothing.
+
+The shape (decision E4, record ``export-page-rework``): the board's name,
+its lists in Kanban order, and each card's title, description, labels and
+resolved dependency titles — the same ``TrelloBoardPlan`` the runner builds,
+through the same application entry point (``build_board_plan_for_scope``),
+so the preview can only ever show what the export would create.
+
+**It describes, it does not perform.** No ``trello_exports`` row is written
+and the workspace's Trello credentials are never read: describing what
+would be exported requires no permission to create it, so a workspace
+without credentials answers the preview instead of ``409``.
+
+**Scope — the trigger's rule, inherited**: no target previews the whole
+workspace's board; ``project_id`` or ``user_story_id`` narrows it; both
+together answer ``422 REQUEST_VALIDATION_FAILED``, a foreign target ``403``
+and a missing one ``404`` — the same refusals the trigger and the file
+export apply.
+
+**Version**: ``extraction_id`` names the version the plan reads, the same
+read the trigger would run — a superseded version previews exactly as it
+was. It is accepted only with ``user_story_id`` (a version belongs to a
+story, the pairing the file export and the trigger enforce); without it,
+the plan stays the current-version read it has always been.
+
+**Parameters**
+
+| Name | In | Required | Type |
+| --- | --- | --- | --- |
+| `workspace_id` | `path` | yes | `string` |
+| `extraction_id` | `query` | no | `string | null` |
+| `project_id` | `query` | no | `string | null` |
+| `user_story_id` | `query` | no | `string | null` |
+
+**Responses**
+
+| Status | Description | Schema |
+| --- | --- | --- |
+| `200` | Successful Response | `TrelloBoardPlanResponse` |
 | `422` | Validation Error | `HTTPValidationError` |
 
 ### `GET` `/api/v1/workspaces/{workspace_id}/export/trello/{export_id}`

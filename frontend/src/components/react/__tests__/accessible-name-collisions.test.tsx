@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StoryForm } from '@/components/react/StoryForm';
@@ -29,9 +29,13 @@ import type { Project } from '@/types/project';
  *   beside the form's own submit / the header action, and both reach one
  *   handler. The rule: a retry that sits beside the form's own submit takes
  *   `common.retry` and never the submit's copy.
- * - Two different actions, one name (ExportPanel): the store-error retry and
- *   the download retry were both named "Retry" while retrying different
- *   actions. The download retry must name the download.
+ * - Two different actions, one name (ExportPanel): the preview retry and the
+ *   download retry can both be on the page at once while retrying different
+ *   actions. The preview retry takes `common.retry`; the download retry must
+ *   name the download. (The panel's older pair — the store-error retry and the
+ *   download retry — ended with the one-section rework: the panel no longer
+ *   fetches the workspace's tasks through the task store, so there is no
+ *   store-error card to retry.)
  *
  * The rule lives in ONE helper (`expectNoSharedAccessibleButtonName`): render
  * each component in the exact state where the collision happens and assert
@@ -315,33 +319,32 @@ describe('StoryDetail — the extraction-error retry never borrows the header co
 
 /* ── Site 4: ExportPanel — two different actions must not share one name ── */
 
-describe('ExportPanel — the store-error retry and the download retry have different names', () => {
+describe('ExportPanel — the preview retry and the download retry have different names', () => {
   it('no two buttons share an accessible name while both error cards show', async () => {
     const user = userEvent.setup();
-    // The store-level read failed before the render…
-    useTaskStore.setState({
-      error: {
-        friendlyMessage: 'the workspace could not be read',
-        rawDetail: { detail: 'the workspace could not be read' },
-        status: 500,
-        errorCode: 'WORKSPACE_TASKS_FAILED',
-      },
-    });
-    // …and the download fails too, on the fetch itself.
+    // Every request the panel makes fails at the network itself, so no
+    // envelope code is translated and the caller's copy carries the cards.
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
 
     render(<ExportPanel locale="en" />);
 
-    // Both cards are up at once: the store error once the initial load settled,
-    // and the download error after the user clicked Download.
+    // The preview read runs on mount, so the preview's failure card is up
+    // first; its retry takes the shared `common.retry` name.
     await waitFor(() => {
-      expect(useTaskStore.getState().fetchTasksForWorkspace).toHaveBeenCalled();
+      expect(screen.getAllByRole('alert')).toHaveLength(1);
     });
+    // The download fails too, on the same dead network, and its card joins
+    // the preview's: two different actions, retried by two buttons that had
+    // better not share one name.
     await user.click(screen.getByRole('button', { name: t.exportPage.download }));
     await waitFor(() => {
       expect(screen.getAllByRole('alert')).toHaveLength(2);
     });
 
     expectNoSharedAccessibleButtonName();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 });

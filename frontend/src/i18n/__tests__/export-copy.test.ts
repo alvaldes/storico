@@ -89,11 +89,38 @@ function stringEntries(
  */
 const FORMAT_COPY_KEYS = [
   'exportPage.format_label',
+  'exportPage.format_csv',
   'exportPage.format_json',
   'exportPage.format_markdown',
   'settings.export_format',
   'settings.export_format_json',
   'settings.export_format_markdown',
+];
+
+/* `exportPage.format_csv` joins the list deliberately: a new format in the
+ * selector is exactly what this guard is for. `exportPage.format_trello`
+ * deliberately does not: `trello` is the one retired *file* format that is
+ * also the name of a live feature (see the header), so the selector's Trello
+ * button is true copy and would trip the retired-format scan above by string
+ * matching. The parity test keeps both files in step for it instead.
+ */
+
+/**
+ * The keys the two-panel export page carried and the merged section retired.
+ * They must be gone from both catalogs: a dead key is a promise the UI no
+ * longer keeps, and the parity test alone would happily keep both files wrong
+ * together.
+ */
+const MERGED_AWAY_KEYS = [
+  'exportPage.no_tasks',
+  'exportPage.error_fetch',
+  'exportPage.trello_section_title',
+  'exportPage.trello_section_description',
+  'exportPage.trello_scope_project_label',
+  'exportPage.trello_scope_story_label',
+  'exportPage.trello_scope_workspace',
+  'exportPage.trello_scope_all_stories',
+  'exportPage.trello_scope_select_project',
 ];
 
 describe('export copy', () => {
@@ -146,6 +173,17 @@ describe('export copy', () => {
       expect(
         offenders,
         `the ${locale} catalog must not promise a format the API refuses`,
+      ).toEqual([]);
+    });
+
+    it('no longer declares a key the merged export section retired', () => {
+      const stillThere = MERGED_AWAY_KEYS.filter((key) =>
+        stringEntries(catalog).some(({ path }) => path === key),
+      );
+
+      expect(
+        stillThere,
+        `the ${locale} catalog still carries keys the one-section rework removed`,
       ).toEqual([]);
     });
   });

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { AlertCircle, Check, ChevronDown, Copy, RotateCw, X } from 'lucide-react';
+import { AlertCircle, ChevronDown, RotateCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CopyButton } from '@/components/ui/copy-button';
 import {
   Collapsible,
   CollapsibleContent,
@@ -37,23 +37,12 @@ export interface BackendError {
  * The collapsible raw response, with its own copy affordance.
  *
  * Its own component so the copy state lives with the thing it reports on, and so the card
- * above stays a short render instead of one block of nested conditionals.
+ * above stays a short render instead of one block of nested conditionals. The copy button
+ * is the shared one (`ui/copy-button.tsx`) — the same shape this disclosure used to inline,
+ * so the move stayed mechanical.
  */
 function RawDetail({ detail, locale }: { detail: string; locale: Locale }) {
   const t = useTranslations(locale);
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      // Straight to the browser API: a function whose whole body is this one call would be
-      // a seam with nothing behind it.
-      await navigator.clipboard.writeText(detail);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // The clipboard API is not available in every context; the detail stays readable.
-    }
-  };
 
   return (
     <Collapsible className="group/collapsible space-y-2 border-t border-destructive/20 pt-3">
@@ -90,19 +79,12 @@ function RawDetail({ detail, locale }: { detail: string; locale: Locale }) {
             <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               {t.errorDisplay.raw_response}
             </p>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleCopy}
-              aria-label={copied ? t.errorDisplay.copied : t.errorDisplay.copy}
+            <CopyButton
+              text={detail}
+              label={t.errorDisplay.copy}
+              copiedLabel={t.errorDisplay.copied}
               className="text-xs text-muted-foreground hover:text-foreground"
-            >
-              {copied ? (
-                <Check className="h-3.5 w-3.5 text-(--color-success)" />
-              ) : (
-                <Copy className="h-3.5 w-3.5" />
-              )}
-            </Button>
+            />
           </div>
           <pre className="max-h-60 overflow-auto font-mono text-[10px] break-all whitespace-pre-wrap text-foreground/90">
             {detail}

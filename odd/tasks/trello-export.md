@@ -33,6 +33,15 @@ intention; this feature is what makes them true.
 | D7 | Permissions (parent, not asked) | credentials admin-only like `/settings/llm`; **triggering** an export open to any member, like the file export |
 | D8 | Exported version (parent, not asked) | only each story's current version, like `api/routes/export.py:100` |
 
+> **Amendment (2026-10-09) — D8 was replaced.** "Only each story's current version" was the rule
+> when this feature landed and remains the **default**, but it is no longer the only answer: the
+> Trello trigger now accepts `extraction_id` beside `user_story_id` and exports the named version
+> even when a newer run superseded it, the job row records which `extraction_id` it exported, and
+> one pairing rule (`extraction_id` without its story answers `422`) governs all three export
+> routes — file, trigger and preview. The export page rework replaced it: decision E1 and work
+> unit EP3 in `odd/tasks/export-page-rework.md`. The decision rows above stay as history,
+> unrewritten.
+
 D7 is deliberately split: what needs the admin is the secret, not the export. `GET .../export/tasks`
 already lets any member read the same tasks out of the workspace
 (`api/routes/export.py:79`, `get_workspace_for_user`), so making the board require an admin would
@@ -175,7 +184,9 @@ protect nothing and would contradict the endpoint sitting next to it.
 - **Not a Trello OAuth flow.** The credential is a key and a token an admin pastes; Storico never
   holds the user's Trello password.
 - **Not retroactive.** Tasks from a superseded extraction version stay out of the board, exactly as
-  they stay out of the file export.
+  they stay out of the file export. — **Amended 2026-10-09** (EP3 of
+  `odd/tasks/export-page-rework.md`): true by default only — a version chosen by `extraction_id`
+  beside its story exports the tasks as that run left them, and the job row records which one.
 
 ## Limitations to record, not bury
 

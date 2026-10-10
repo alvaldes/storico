@@ -116,6 +116,19 @@ class TaskRepository(ABC):
         ...
 
     @abstractmethod
+    async def list_by_story_version(self, user_story_id: UUID, extraction_id: UUID) -> list[Task]:
+        """Return exactly one story version's tasks, named by its extraction id.
+
+        The version read the file export's selector needs: a superseded
+        version's tasks come back too — currency is not the question being
+        asked here. Both filters ride in the ``WHERE``, so an extraction id
+        belonging to another story matches no row: a version can only be read
+        through its own story, and a valid id aimed at the wrong story cannot
+        leak across.
+        """
+        ...
+
+    @abstractmethod
     async def list(self) -> list[Task]:
         """Return all tasks."""
         ...

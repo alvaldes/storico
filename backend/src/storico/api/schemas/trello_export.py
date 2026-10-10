@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from storico.domain.entities.trello_board import TrelloBoardPlan
+
 
 class TrelloExportCreateRequest(BaseModel):
     """Request body for triggering a Trello export — the optional scope targets.
@@ -12,13 +14,76 @@ class TrelloExportCreateRequest(BaseModel):
     Both omitted exports the whole workspace; each one present narrows the
     export to that project or story; both present is refused with 422
     ``REQUEST_VALIDATION_FAILED`` — the Kanban cascade's never-two rule, applied
-    by ``resolve_export_scope`` (application/export).
+    by ``resolve_export_scope`` (``domain/services/export_scope.py``).
+
+    ``extraction_id`` names the version to export, identified by the extraction
+    that produced it (never by a version number, which is a position the next
+    run moves). It is accepted only together with ``user_story_id`` — a version
+    belongs to a story, so asking for one at project or workspace level is a
+    422, the same refusal the file export answers.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     project_id: UUID | None = None
     user_story_id: UUID | None = None
+    extraction_id: UUID | None = None
+
+
+class TrelloBoardCardResponse(BaseModel):
+    """One card of the preview's plan — everything resolved already.
+
+    ``labels`` are label names and ``dependency_titles`` are already-resolved
+    dependency titles: the same values the adapter turns into Trello objects,
+    serialized so the UI can show what would be created.
+    """
+
+    title: str
+    description: str = ""
+    labels: list[str] = []
+    dependency_titles: list[str] = []
+
+
+class TrelloBoardColumnResponse(BaseModel):
+    """One board list of the preview's plan, with its cards in order."""
+
+    name: str
+    cards: list[TrelloBoardCardResponse] = []
+
+
+class TrelloBoardPlanResponse(BaseModel):
+    """The board plan the trigger would send — decision E4's preview shape.
+
+    The board's name, its lists in Kanban order, and each card with its title,
+    description, labels and resolved dependency titles. Serialized from the
+    domain's ``TrelloBoardPlan`` via :meth:`from_plan` — the same value the
+    adapter receives — so the preview and the export cannot disagree.
+    """
+
+    name: str
+    columns: list[TrelloBoardColumnResponse] = []
+
+    @classmethod
+    def from_plan(cls, plan: TrelloBoardPlan) -> "TrelloBoardPlanResponse":
+        """Serialize the domain plan field by field — no re-derivation here."""
+        return cls(
+            name=plan.name,
+            columns=[
+                TrelloBoardColumnResponse(
+                    name=column.name,
+                    cards=[
+                        TrelloBoardCardResponse(
+                            title=card.title,
+                            description=card.description,
+                            labels=list(card.labels),
+                            dependency_titles=list(card.dependency_titles),
+                        )
+                        for card in column.cards
+                    ],
+                )
+                for column in plan.columns
+            ],
+        )
 
 
 class TrelloExportResponse(BaseModel):
@@ -37,6 +102,9 @@ class TrelloExportResponse(BaseModel):
     scope: str
     project_id: UUID | None = None
     user_story_id: UUID | None = None
+    # The version the job exported, named by its extraction id; null when the
+    # trigger asked for current versions.
+    extraction_id: UUID | None = None
     status: str
     error_code: str | None = None
     board_id: str | None = None

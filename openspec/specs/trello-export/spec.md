@@ -2,7 +2,8 @@
 
 ## Purpose
 
-Export a workspace's current-version tasks to a new Trello board, asynchronously,
+Export a workspace's tasks to a new Trello board — by default each story's
+current version, or a version chosen by its extraction id — asynchronously,
 using per-workspace credentials an admin stores encrypted. The feature is
 specified against the code that carries it: the port
 `backend/src/storico/domain/ports/trello_export_port.py`, the adapter
@@ -10,7 +11,7 @@ specified against the code that carries it: the port
 `backend/src/storico/api/routes/export.py` and
 `backend/src/storico/api/routes/workspace_trello.py`, migrations `0030`
 (`workspace_trello_configs`) and `0031` (`trello_exports`), and the browser
-surface `frontend/src/lib/trello-api.ts`,
+surface `frontend/src/lib/trello-api.ts`, `frontend/src/lib/task-export-api.ts`,
 `frontend/src/components/react/TrelloCredentialsForm.tsx` and
 `frontend/src/components/react/ExportPanel.tsx`.
 
@@ -68,9 +69,17 @@ A body carrying both `project_id` and `user_story_id` MUST be refused with
 `422 REQUEST_VALIDATION_FAILED` — the rule the Kanban cascade already applies.
 A target that exists but does not belong to the path workspace MUST be refused.
 
-Only each story's **current** extraction version's tasks MUST be exported (D8),
-the same filter the file export applies. Tasks of superseded versions MUST NOT
-appear on the board.
+By default only each story's **current** extraction version's tasks MUST be
+exported (D8, amended 2026-10-09 by the export page rework —
+`odd/tasks/export-page-rework.md`, EP3), the same filter the file export
+applies. With `extraction_id` **and** `user_story_id`, the named version's
+tasks MUST be exported exactly as that run left them, even when a newer run
+has superseded it, and the job row MUST record the `extraction_id` it
+exported, so a poll can say which version the board came from. An
+`extraction_id` without `user_story_id` MUST be refused with `422` — a version
+belongs to a story, the same pairing the file export and the preview apply.
+Without a chosen version, tasks of superseded versions MUST NOT appear on the
+board.
 
 A workspace with no complete credential pair stored MUST answer
 `409 TRELLO_CREDENTIALS_MISSING` before any job row is created — a state
@@ -90,17 +99,60 @@ other absent) counts as not configured.
 - **WHEN** a POST carries both `project_id` and `user_story_id`
 - **THEN** the backend answers `422 REQUEST_VALIDATION_FAILED` and creates no job
 
+#### Scenario: A chosen version is exported as it was
+
+- **GIVEN** a workspace with credentials and a story whose v1 and v2 are both
+  `completed`, v1 with 3 tasks and v2 with 4 tasks
+- **WHEN** a member POSTs with that story's `user_story_id` and the
+  `extraction_id` of v1
+- **THEN** the response is `202` and the board covers exactly the 3 tasks of v1
+- **AND** the job row records that `extraction_id`
+
+#### Scenario: A version without its story is refused
+
+- **GIVEN** a workspace with credentials
+- **WHEN** a POST carries an `extraction_id` and no `user_story_id`
+- **THEN** the backend answers `422 REQUEST_VALIDATION_FAILED` and creates no job
+
 #### Scenario: No credentials is a conflict, not a start
 
 - **GIVEN** a workspace whose Trello credentials were never stored
 - **WHEN** a member POSTs to `/export/trello`
 - **THEN** the backend answers `409 TRELLO_CREDENTIALS_MISSING` and no job row exists
 
+### Requirement: Board Plan Preview
+
+`GET /api/v1/workspaces/{workspace_id}/export/trello/preview` MUST return the
+same `TrelloBoardPlan` the trigger would send — board name, the five lists in
+Kanban order, cards with their labels and resolved dependency titles — built
+by the same application-layer entry point the runner uses, so the preview can
+only show what the export would create. The preview MUST NOT create a job row,
+MUST NOT dispatch work, and MUST NOT read the workspace's Trello credentials:
+a workspace with no credential pair MUST get its plan, not `409`. It MUST take
+the same scope parameters as the trigger, with the same refusals — two targets
+`422`, a foreign target refused, a missing one `404`, and an `extraction_id`
+only beside its `user_story_id` — and name the version the plan reads.
+
+#### Scenario: The preview describes without creating anything
+
+- **GIVEN** a workspace with credentials and tasks
+- **WHEN** a member calls `GET .../export/trello/preview`
+- **THEN** the response is the board plan as JSON
+- **AND** no `trello_exports` row exists and no board was created
+
+#### Scenario: The preview needs no credentials
+
+- **GIVEN** a workspace whose Trello credentials were never stored
+- **WHEN** a member calls `GET .../export/trello/preview`
+- **THEN** the response is the board plan, not `409 TRELLO_CREDENTIALS_MISSING`
+- **AND** no job row exists
+
 ### Requirement: Job Lifecycle and Polling
 
 `GET /api/v1/workspaces/{workspace_id}/export/trello/{export_id}` MUST be
 readable by any workspace member and report the job: `status`, `board_url`,
-`error_code`, `cards_created`. The status MUST move through `pending` and
+`error_code`, `cards_created`, and the `extraction_id` of the version it
+exported, when one was chosen. The status MUST move through `pending` and
 `running` to one of the two terminal states, `completed` or `failed`;
 `completed_at` is stamped exactly when the state becomes terminal. A job whose
 id exists but belongs to another workspace MUST be reported as `404
@@ -202,6 +254,9 @@ for the next boot.
 The feature accepts these limits on purpose, and documents must not describe
 them as gaps to fix silently:
 
+- **A preview that describes, not executes.** The plan endpoint creates no job
+  and reads no credentials; describing an export is not starting one, so a
+  workspace without credentials can still see what an export would build.
 - **A new board per export** (D3). No `board_id` is stored, no board is
   designated, and no reconciliation is attempted. A repeated export duplicates.
 - **Not two-way.** The board never writes back: no card import, no status sync

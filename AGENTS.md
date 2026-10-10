@@ -544,8 +544,18 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | --- | ----------------------------- | --------- |
 | 21  | Exportación JSON estructurado | MVP       |
 | 22  | Exportación Markdown          | MVP       |
-| 23  | Exportación CSV               | V2        |
+| 23  | Exportación CSV               | ✅ MVP    |
 | 24  | Exportación XML               | V3        |
+
+> **Nota**: la exportación de archivos es una sola sección con alcance: `project_id` o
+> `user_story_id` estrechan la exportación (los dos a la vez responden `422`, la misma regla que la
+> cascada del Kanban y el disparo de Trello ya aplican), y con `extraction_id` junto a su
+> `user_story_id` se exporta la versión nombrada aunque una corrida más nueva la haya sustituido —
+> sin él, la versión actual de cada historia. `preview=true` devuelve el mismo cuerpo sin el header
+> de descarga: una serialización, dos disposiciones. CSV es una fila por tarea con columnas en
+> orden fijo (`story, version, title, description, status, priority, labels, dependencies`; celdas
+> multivalor unidas con `;`) — el orden es un contrato, escrito en `docs/api.md` y en
+> `openspec/specs/export-download/spec.md`. Registro en `odd/tasks/export-page-rework.md`.
 
 ### 🔗 Conectores (MVP → V3)
 
@@ -556,7 +566,7 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | 27  | Conector GitHub Projects | V2        |
 | 28  | Conector Azure DevOps    | V3        |
 
-> **Nota**: el conector Trello **existe** (rama `feat/trello-export`, registro en `odd/tasks/trello-export.md`). El puerto es `domain/ports/trello_export_port.py`, el adaptador `infrastructure/export/trello_adapter.py` (sobre `py-trello>=0.20.1`), las migraciones `0030` (`workspace_trello_configs`) y `0031` (`trello_exports`), y las rutas `GET`/`PUT /settings/trello` + `GET .../settings/trello/status` (`api/routes/workspace_trello.py`) y `POST /api/v1/workspaces/{id}/export/trello` → `202` + `GET .../export/trello/{export_id}` (`api/routes/export.py`). El navegador lo consume con `frontend/src/lib/trello-api.ts`, `TrelloCredentialsForm.tsx` y `ExportPanel.tsx`. Lo que NO existe y ninguna copy debe prometer: sincronización bidireccional, un tablero designado que se actualiza en vez de recrearse (cada exportación crea un tablero nuevo, D3), fechas límite, asignaciones o flujo OAuth de Trello (la credencial es un par clave+token que el admin pega, cifrado con Fernet). El valor de formato `trello` de la exportación de archivos sigue retirado: esa exportación sigue siendo `json`/`markdown`; el conector va por sus propios endpoints.
+> **Nota**: el conector Trello **existe** (rama `feat/trello-export`, registro en `odd/tasks/trello-export.md`). El puerto es `domain/ports/trello_export_port.py`, el adaptador `infrastructure/export/trello_adapter.py` (sobre `py-trello>=0.20.1`), las migraciones `0030` (`workspace_trello_configs`) y `0031` (`trello_exports`), y las rutas `GET`/`PUT /settings/trello` + `GET .../settings/trello/status` (`api/routes/workspace_trello.py`) y `POST /api/v1/workspaces/{id}/export/trello` → `202` + `GET .../export/trello/{export_id}`, más `GET /api/v1/workspaces/{id}/export/trello/preview` (el plan del tablero como JSON: no crea nada y no pide credenciales) (`api/routes/export.py`). El disparo acepta hoy también `extraction_id` junto a `user_story_id` y el job graba qué versión exportó (EP3 de `odd/tasks/export-page-rework.md`). El navegador lo consume con `frontend/src/lib/trello-api.ts`, `frontend/src/lib/task-export-api.ts`, `TrelloCredentialsForm.tsx` y `ExportPanel.tsx`. Lo que NO existe y ninguna copy debe prometer: sincronización bidireccional, un tablero designado que se actualiza en vez de recrearse (cada exportación crea un tablero nuevo, D3), fechas límite, asignaciones o flujo OAuth de Trello (la credencial es un par clave+token que el admin pega, cifrado con Fernet). El valor de formato `trello` de la exportación de archivos sigue retirado: esa exportación hoy es `csv`/`json`/`markdown`; el conector va por sus propios endpoints.
 
 ### 🖥️ Frontend — Astro + React Islands (MVP)
 

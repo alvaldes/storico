@@ -156,6 +156,60 @@ Razones bloqueantes de una fila: `missing_field`, `empty_field`, `too_long`, `un
 en `/api/v1/extract/` y en cualquiera de sus subrutas — la forma sin barra redirige ahí,
 como toda ruta de colección. La única ruta vigente es la workspace-scoped.
 
+### Exportación de archivos (scoped a workspace)
+
+`GET /api/v1/workspaces/{wsId}/export/tasks` serializa tareas a un archivo
+adjunto (`Content-Disposition`). Tres formatos, con `?format=`:
+
+| `format` | Cuerpo | Filename |
+|--------|------|--------|
+| `json` (default) | Array JSON de tareas | `tasks-export-{wsId}.json` |
+| `markdown` | Documento con una sección por historia | `tasks-export-{wsId}.md` |
+| `csv` | Una fila por tarea (ver contrato de columnas) | `tasks-export-{wsId}.csv` |
+
+Cualquier otro valor responde `400 UNSUPPORTED_EXPORT_FORMAT`.
+
+**Alcance — un target, nunca dos.** Los query parameters `project_id` y
+`user_story_id` estrechan la exportación al proyecto o a la historia nombrada;
+sin targets exporta todo el workspace. Es la misma regla que resuelve el
+disparo de Trello (`resolve_export_scope`, en
+`domain/services/export_scope.py`): los dos targets a la vez responden `422
+REQUEST_VALIDATION_FAILED`. Un target debe existir y pertenecer al workspace
+del path: uno de otro workspace responde `403`, uno inexistente `404`.
+
+**Versión.** Sin `extraction_id`, se exporta la versión actual de cada
+historia (la de número más alto entre las corridas `completed`) — el filtro
+viaja en la propia sentencia de lectura, así que las tareas de una versión
+sustituida nunca se cuelan en el archivo. Con `extraction_id` **y**
+`user_story_id`, se exportan las tareas de esa versión aunque una corrida
+posterior la haya sustituido — la versión se nombra por su id de extracción,
+nunca por su número de versión, que es una posición en una historia que la
+siguiente corrida mueve. Un `extraction_id` sin `user_story_id` responde `422`:
+una versión pertenece a una historia, y una versión pedida a nivel de proyecto
+o de workspace es una pregunta sin respuesta.
+
+**Vista previa.** `?preview=true` devuelve exactamente el mismo cuerpo —el mismo
+endpoint, los mismos parámetros, un solo camino de código— pero **sin** el header
+`Content-Disposition`, así que el navegador lo muestra en vez de guardarlo. Una
+serialización, dos disposiciones: lo que una vista previa muestra no puede
+diferir de lo que la descarga guarda, porque son los mismos bytes.
+
+**Contrato de columnas CSV.** Una fila por tarea, con las columnas en este
+orden exacto:
+
+```
+story, version, title, description, status, priority, labels, dependencies
+```
+
+`story` es el texto crudo de la historia y `version` el número de versión de
+la corrida que produjo la tarea. Las celdas multivalor (`labels`,
+`dependencies`) van unidas con `;`. El archivo se escribe con el módulo `csv`
+de Python, así que una descripción con saltos de línea o comas viaja
+entrecomillada y sobrevive al round trip. El orden de columnas es un
+contrato, no una elección: un archivo que la gente parsea deja de ser libre
+de reordenarse — agregar una columna después es compatible; renombrar o
+reordenar una, no.
+
 ### Exportación a Trello (scoped a workspace)
 
 La exportación a Trello es asíncrona como la extracción (D5): `POST` crea un job
@@ -168,8 +222,14 @@ creación carga el `board_ref`, así que la mitad construida nunca se esconde).
 El alcance es uno de tres, nunca dos (D1): sin targets exporta todo el workspace; con
 `project_id` o `user_story_id` exporta ese proyecto o esa historia; con los dos a la
 vez responde `422 REQUEST_VALIDATION_FAILED` — la regla que la cascada del Kanban ya
-aplica. Solo se exporta la versión actual de cada historia (D8), el mismo filtro que
-usa la exportación de archivos.
+aplica. Sin `extraction_id` solo se exporta la versión actual de cada historia (D8),
+el mismo filtro que usa la exportación de archivos. Con `extraction_id` **y**
+`user_story_id`, se exporta la versión nombrada aunque una corrida más nueva la haya
+sustituido — la misma lectura que hace la exportación de archivos — y la fila del job
+queda grabada con ese `extraction_id`: quien consulta el job puede decir de qué versión
+salió el tablero. Un `extraction_id` sin `user_story_id` responde `422`: una versión
+pertenece a una historia, la misma regla de emparejamiento que la exportación de
+archivos aplica, un solo código para las tres rutas de exportación.
 
 **Cualquier miembro puede disparar** (D7): lo admin-only son las credenciales
 (`/settings/trello`), no la exportación, que lee las mismas tareas que
@@ -181,10 +241,28 @@ En cada exportación se crea un tablero nuevo (D3): repetir no sobrescribe, y lo
 duplicados son aceptados. El tablero tiene las cinco columnas Kanban siempre, en
 orden canónico, aunque queden vacías.
 
+**La vista previa del tablero.** `GET /api/v1/workspaces/{wsId}/export/trello/preview`
+devuelve el plan del tablero que el disparador enviaría, como JSON: el nombre del
+tablero, sus listas en orden Kanban, y cada tarjeta con su título, descripción,
+etiquetas y títulos de dependencias ya resueltos. Es el mismo `TrelloBoardPlan`
+que construye el runner, por el mismo punto de entrada de la capa de aplicación,
+así que la vista previa solo puede mostrar lo que la exportación crearía.
+
+**Describe, no ejecuta.** No escribe ninguna fila en `trello_exports` y nunca lee
+las credenciales de Trello del workspace: describir lo que se exportaría no
+requiere permiso para crearlo, así que un workspace sin credenciales responde la
+vista previa, no `409`. Toma los mismos parámetros de alcance que el disparador, con las mismas
+negativas: dos targets `422`, uno de otro workspace `403`, uno inexistente `404`.
+`extraction_id` nombra la versión que el plan lee — la misma lectura que correría el
+disparador, así que una versión sustituida se previsualiza tal como quedó — y exige
+`user_story_id`, el emparejamiento que el disparador y la exportación de archivos ya
+aplican. Sin él, el plan sigue siendo la lectura de versión actual de siempre.
+
 | Método | Path | Descripción |
 |--------|------|-------------|
 | POST | `/api/v1/workspaces/{wsId}/export/trello` | Iniciar la exportación a un tablero nuevo (asíncrona: responde `202` con el job) |
-| GET | `/api/v1/workspaces/{wsId}/export/trello/{exportId}` | Estado del job: `status`, `board_url`, `error_code`, `cards_created` |
+| GET | `/api/v1/workspaces/{wsId}/export/trello/preview` | El plan del tablero como JSON: nombre, listas en orden Kanban, tarjetas con etiquetas y dependencias. No crea nada y no pide credenciales |
+| GET | `/api/v1/workspaces/{wsId}/export/trello/{exportId}` | Estado del job: `status`, `board_url`, `error_code`, `cards_created`, `extraction_id` |
 
 Códigos de la familia: `TRELLO_CREDENTIALS_MISSING` (409, sin credenciales),
 `TRELLO_EXPORT_NOT_FOUND` (404, job inexistente o de otro workspace), y en el job
