@@ -22,6 +22,10 @@ from storico.api.schemas.story import (
     UserStoryResponse,
 )
 from storico.api.schemas.task import TaskResponse, UpdateTaskRequest
+from storico.api.schemas.trello_export import (
+    TrelloExportCreateRequest,
+    TrelloExportResponse,
+)
 from storico.api.schemas.user import AuthSyncRequest, UserResponse
 from storico.api.schemas.workspace import (
     CreateWorkspaceRequest,
@@ -37,6 +41,11 @@ from storico.api.schemas.workspace_member import (
     TransferOwnershipRequest,
 )
 from storico.api.schemas.workspace_prompt import PromptRequest, PromptResponse
+from storico.api.schemas.workspace_trello import (
+    TrelloConfigRequest,
+    TrelloConfigResponse,
+    TrelloConfigStatusResponse,
+)
 
 __all__ = [
     "ErrorResponse",
@@ -58,6 +67,8 @@ __all__ = [
     "UpdateUserStoryRequest",
     "TaskResponse",
     "UpdateTaskRequest",
+    "TrelloExportCreateRequest",
+    "TrelloExportResponse",
     "AuthSyncRequest",
     "UserResponse",
     "CreateWorkspaceRequest",
@@ -72,4 +83,7 @@ __all__ = [
     "MemberListResponse",
     "PromptRequest",
     "PromptResponse",
+    "TrelloConfigRequest",
+    "TrelloConfigResponse",
+    "TrelloConfigStatusResponse",
 ]

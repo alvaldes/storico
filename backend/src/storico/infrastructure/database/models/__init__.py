@@ -7,6 +7,7 @@ from storico.infrastructure.database.models.project import ProjectModel
 from storico.infrastructure.database.models.story_deletion import StoryDeletionModel
 from storico.infrastructure.database.models.task import TaskModel
 from storico.infrastructure.database.models.task_invalidation import TaskInvalidationModel
+from storico.infrastructure.database.models.trello_export import TrelloExportModel
 from storico.infrastructure.database.models.user import UserModel
 from storico.infrastructure.database.models.user_account import UserAccountModel
 from storico.infrastructure.database.models.user_preferences import (
@@ -23,6 +24,9 @@ from storico.infrastructure.database.models.workspace_member import (
 from storico.infrastructure.database.models.workspace_prompt import (
     WorkspacePromptModel,
 )
+from storico.infrastructure.database.models.workspace_trello_config import (
+    WorkspaceTrelloConfigModel,
+)
 
 __all__ = [
     "Base",
@@ -32,6 +36,7 @@ __all__ = [
     "ProjectModel",
     "UserStoryModel",
     "TaskModel",
+    "TrelloExportModel",
     "TaskInvalidationModel",
     "StoryDeletionModel",
     "ExtractionModel",
@@ -39,5 +44,6 @@ __all__ = [
     "WorkspaceMemberModel",
     "WorkspaceLLMConfigModel",
     "WorkspacePromptModel",
+    "WorkspaceTrelloConfigModel",
     "CustomProviderModel",
 ]

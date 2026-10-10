@@ -386,7 +386,7 @@ El checklist completo está en [`prod.todo.md`](../prod.todo.md). Resumen de pri
 | 🟡 Medio | Qdrant Cloud + Embedding adapter | ✅ Operativo — medido en producción el 2026-09-28: `/api/v1/health/services` responde `qdrant: ok` y `embeddings: ok` (`google` / `gemini-embedding-001` / 768). Esta fila contradecía a la línea 73 del mismo archivo |
 | 🟡 Medio | Vercel env audit | ✅ Hecho (2026-09-24) |
 | 🟡 Medio | Error monitoring (Sentry) | 🔲 Pendiente |
-| 🟡 Medio | Trello connector | 🔲 Pendiente |
+| 🟡 Medio | Trello connector | ✅ Implementado (2026-10-08, rama `feat/trello-export`): credenciales por workspace cifradas (migración `0030`), job asíncrono `trello_exports` (migración `0031`), `POST /api/v1/workspaces/{id}/export/trello` → `202` + `GET .../export/trello/{export_id}` (`api/routes/export.py`), adaptador `infrastructure/export/trello_adapter.py` sobre `py-trello`, sweep de arranque (`infrastructure/tasks/trello_export_task.py`) y panel en el navegador (`frontend/src/components/react/TrelloCredentialsForm.tsx`, `ExportPanel.tsx`). Detalle en `odd/tasks/trello-export.md` |
 | 🟡 Medio | Juicio de expertos (evaluación tesis) | 🔲 Pendiente |
 | 🟤 Bajo | Custom domain | 🔲 Pendiente |
 | 🟤 Bajo | Rate limiting | 🔲 Pendiente |

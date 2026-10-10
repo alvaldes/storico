@@ -23,6 +23,13 @@ vi.mock('@/components/react/MemberManagement', () => ({
 vi.mock('@/components/react/LLMConfigEditor', () => ({
   LLMConfigEditor: () => <div data-testid="llm-config-editor" />,
 }));
+// Same reason as its neighbours: the form fetches the Trello status on mount, and
+// that fetch has nowhere to go in jsdom. Left real, it renders its load-error line
+// here and the assertions below would be reading a state this test never set up.
+// Its own behaviour is covered in TrelloCredentialsForm.test.tsx.
+vi.mock('@/components/react/TrelloCredentialsForm', () => ({
+  TrelloCredentialsForm: () => <div data-testid="trello-credentials-form" />,
+}));
 
 function makeWorkspace(id: string, name = id): Workspace {
   return {

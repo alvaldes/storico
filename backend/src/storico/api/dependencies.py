@@ -34,6 +34,7 @@ from storico.infrastructure.database.repositories import (
     SQLAlchemyUserRepository,
     SQLAlchemyUserStoryRepository,
     SQLAlchemyWorkspaceLLMConfigRepository,
+    SQLAlchemyWorkspaceTrelloConfigRepository,
 )
 from storico.infrastructure.database.repositories.workspace_member_repository import (
     SQLAlchemyWorkspaceMemberRepository,
@@ -173,6 +174,20 @@ def get_llm_config_repository(
     test — or a future key rotation — can substitute it per request.
     """
     return SQLAlchemyWorkspaceLLMConfigRepository(session, cipher)
+
+
+def get_trello_config_repository(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    cipher: Annotated[CipherPort, Depends(get_cipher)],
+) -> SQLAlchemyWorkspaceTrelloConfigRepository:
+    """Factory for the workspace Trello config repository.
+
+    Same reason as ``get_llm_config_repository``: ``get_repository`` injects only a
+    session, and this repository needs the cipher too, because it encrypts on write
+    and decrypts on read. The cipher arrives as an explicit dependency, so a test —
+    or a future key rotation — can substitute it per request.
+    """
+    return SQLAlchemyWorkspaceTrelloConfigRepository(session, cipher)
 
 
 def get_task_parser() -> TaskParser:

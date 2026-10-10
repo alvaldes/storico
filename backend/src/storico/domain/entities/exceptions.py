@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from storico.domain.entities.trello_board import TrelloBoardRef
+
 
 class RepositoryError(Exception):
     """Base exception for all repository errors."""
@@ -203,3 +205,147 @@ class CredentialUndecryptable(CipherError):
         ),
     ) -> None:
         super().__init__(message)
+
+
+# The code a cancelled or swept export job carries — not a typed failure of any
+# family member, but the terminal state the runner's cancellation handler and
+# the startup sweep write when the work never finished. The registry
+# (``api/error_codes.py``) declares the literal; this mirror and the pin test
+# (``tests/test_unit/test_trello_error_codes.py``) keep the two equal, so the
+# application runner can write it without importing anything from ``api``.
+TRELLO_EXPORT_INTERRUPTED = "TRELLO_EXPORT_INTERRUPTED"
+
+
+class TrelloExportError(Exception):
+    """Base exception for all Trello export errors.
+
+    Carries ``board_ref`` when the failure happened *after* the board was
+    created. That is the partial-failure contract: an export that died halfway
+    must not report as if nothing happened, because the half-built board exists
+    on Trello and the member needs its URL to go look at it. Failures before
+    the board existed carry ``board_ref=None``.
+
+    Messages never contain credentials, and the py-trello exceptions behind
+    them are deliberately not chained either (``raise ... from None``). On the
+    installed 0.20.1 those messages are already credential-free — the base URL
+    and the response text, with the credentials in a separate ``params`` dict —
+    but the policy does not rest on that: a chained cause reaches every
+    traceback a logger prints without passing through anything this module
+    controls, and the message shape is a library detail with no promise attached
+    to it.
+
+    Each member of the family carries its failure code as a class attribute
+    (``code``), with the same literal string ``api/error_codes.py`` declares —
+    the registry the frontend translates and the job row stores. The mapping
+    from failure to code therefore lives here, next to the failures, and the
+    pin test (``tests/test_unit/test_trello_error_codes.py``) keeps the
+    literals equal to the registry's. The base carries ``INTERNAL_ERROR``: an
+    untyped member of the family degrades to the generic code on both the job
+    row and the HTTP envelope, exactly as the registry-keyed mapping it
+    replaced did.
+    """
+
+    code = "INTERNAL_ERROR"
+
+    def __init__(self, message: str, board_ref: TrelloBoardRef | None = None) -> None:
+        self.message = message
+        self.board_ref = board_ref
+        super().__init__(self.message)
+
+    def __str__(self) -> str:
+        return self.message
+
+
+class TrelloCredentialRejectedError(TrelloExportError):
+    """Raised when Trello rejects the workspace's API key or token (HTTP 401).
+
+    Not retryable: the credential is wrong or revoked, and retrying cannot fix
+    it — the workspace's credentials have to be re-entered by an admin.
+    """
+
+    code = "TRELLO_CREDENTIAL_REJECTED"
+
+    def __init__(
+        self,
+        message: str = "Trello rejected the workspace credentials: the API key or token was not accepted",
+        board_ref: TrelloBoardRef | None = None,
+    ) -> None:
+        super().__init__(message, board_ref)
+
+
+class TrelloServiceUnavailableError(TrelloExportError):
+    """Raised when Trello failed unexpectedly (connection errors, 5xx).
+
+    Retryable in principle — the failure is transient and not the caller's
+    fault — but this adapter raises it without retrying: only the rate-limit
+    kind of failure earns the bounded backoff, matching csv2trello's measured
+    policy. A caller that wants to may retry an export that failed this way.
+    """
+
+    code = "TRELLO_SERVICE_UNAVAILABLE"
+
+    def __init__(
+        self,
+        message: str = "Trello was unreachable or failed unexpectedly during the export",
+        board_ref: TrelloBoardRef | None = None,
+    ) -> None:
+        super().__init__(message, board_ref)
+
+
+class TrelloRateLimitExhaustedError(TrelloExportError):
+    """Raised when Trello kept failing with rate-limit responses and the
+    adapter's bounded retries ran out.
+
+    Not retryable by the caller: the adapter already backed off exponentially
+    through its full budget of attempts, and an immediate retry would start
+    from the same saturated window. Waiting and re-exporting creates a new
+    board (a new job), which is the accepted recovery path.
+    """
+
+    code = "TRELLO_RATE_LIMIT_EXHAUSTED"
+
+    def __init__(
+        self,
+        message: str = "Trello kept rate-limiting the export after the retries ran out",
+        board_ref: TrelloBoardRef | None = None,
+    ) -> None:
+        super().__init__(message, board_ref)
+
+
+class TrelloBoardRefusedError(TrelloExportError):
+    """Raised when Trello refused to create the board itself.
+
+    Not retryable: the refusal is a quota or workspace limit on the Trello
+    account (csv2trello measured that these messages must never be retried —
+    "workspace full", "limit", "quota"), so only a human action on the Trello
+    account can change the outcome. The board never existed, so ``board_ref``
+    is always ``None``.
+    """
+
+    code = "TRELLO_BOARD_REFUSED"
+
+    def __init__(
+        self,
+        message: str = "Trello refused to create the board: the account appears to have reached a board or quota limit",
+        board_ref: TrelloBoardRef | None = None,
+    ) -> None:
+        super().__init__(message, board_ref)
+
+
+class TrelloCardRefusedError(TrelloExportError):
+    """Raised when Trello refused part of the board's content — a list, a
+    label, a card or a checklist — after the board already existed.
+
+    Not retryable: like the board refusal, the refusal is a quota or workspace
+    limit, and retrying cannot lift it. Always carries ``board_ref`` so the
+    half-built board is never hidden from the member.
+    """
+
+    code = "TRELLO_CARD_REFUSED"
+
+    def __init__(
+        self,
+        message: str = "Trello refused part of the board's content: the account appears to have reached a board or quota limit",
+        board_ref: TrelloBoardRef | None = None,
+    ) -> None:
+        super().__init__(message, board_ref)

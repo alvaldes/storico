@@ -45,6 +45,7 @@ from storico.domain.entities.exceptions import (
     CipherError,
     CredentialUndecryptable,
     EncryptionKeyMissing,
+    TrelloExportError,
     VectorStoreError,
     VersionAllocationConflictError,
 )
@@ -68,6 +69,8 @@ __all__ = [
     "parse_error_handler",
     "repository_error_handler",
     "request_validation_error_handler",
+    "trello_export_error_code",
+    "trello_export_error_handler",
     "vector_store_error_handler",
     "version_allocation_conflict_handler",
 ]
@@ -373,5 +376,50 @@ async def vector_store_error_handler(
             "detail": "Vector store unavailable",
             "error_code": VECTOR_STORE_UNAVAILABLE,
             "message": str(exc),
+        },
+    )
+
+
+# ── Trello export exception handler ───────────────────────────────
+
+# The family's codes live on the exceptions themselves: every member of the
+# typed ``TrelloExportError`` family declares its code as a class attribute
+# (``domain/entities/exceptions.py``) with the same literal the registry
+# declares, and the pin test (``tests/test_unit/test_trello_error_codes.py``)
+# keeps the two from drifting. ``trello_export_error_code`` below is the one
+# read site this module keeps: the envelope handler uses it, and the background
+# runner (application/export) reads the same attribute, so a job row and an
+# HTTP envelope can never disagree about what a failure is called — one
+# mapping, in the direction the architecture allows.
+
+
+def trello_export_error_code(exc: TrelloExportError) -> str:
+    """The code for a member of the ``TrelloExportError`` family.
+
+    Read off the exception itself: every member declares its code as a class
+    attribute with the same literal the registry declares. An untyped member
+    inherits the base's ``INTERNAL_ERROR`` — the same fallback an untyped
+    member has always received.
+    """
+    return exc.code
+
+
+async def trello_export_error_handler(
+    request: Request,
+    exc: TrelloExportError,
+) -> JSONResponse:
+    """Maps ``TrelloExportError`` to a 502 JSON response.
+
+    The export's failures happen in the background and are recorded on the job
+    row — this handler is the envelope for the day a port call happens inside a
+    request, so the typed family can never degrade into a bare 500. The codes
+    are per family member; the message is the exception's own, which the
+    adapter constructs without credentials.
+    """
+    return JSONResponse(
+        status_code=502,
+        content={
+            "detail": str(exc),
+            "error_code": trello_export_error_code(exc),
         },
     )

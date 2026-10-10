@@ -98,6 +98,16 @@ class UserStoryRepository(ABC):
         ...
 
     @abstractmethod
+    async def list_by_project(self, project_id: UUID) -> list[UserStory]:
+        """Return all user stories belonging to a project, unpaginated.
+
+        The Trello export's project-scope read: the plan builder attributes each
+        card to its story, so the export needs every story the exported tasks
+        may reference, not a page of them.
+        """
+        ...
+
+    @abstractmethod
     async def list(self) -> list[UserStory]:
         """Return all user stories."""
         ...

@@ -21,6 +21,15 @@ import es from '@/i18n/es.json';
  * Both sides are derived from the backend by regex against the source (not by importing Python),
  * so retiring a format in `RETIRED_EXPORT_FORMATS` is the only step needed for this guard to
  * start flagging copy that still promises it.
+ *
+ * The scan covers only the strings that present the *download format choice* — the keys listed in
+ * `FORMAT_COPY_KEYS` below. It used to cover the whole catalog, and that premise died with the
+ * Trello export: `trello` is the one retired format that is also the name of a live feature, so a
+ * landing card saying "send your tasks to Trello" is true copy now and, by string matching,
+ * indistinguishable from one promising a format the API refuses. What still means something is the
+ * narrower rule this guard was born from: the format selector and the default-format setting must
+ * not offer a format the API refuses. That was the original bug — `trello` was a selectable value
+ * whose every request answered `400` — and that is the bug this still catches.
  */
 const settingsSource = readFileSync(
   new URL('../../../../backend/src/storico/api/schemas/settings.py', import.meta.url),
@@ -72,6 +81,21 @@ function stringEntries(
   return entries;
 }
 
+/**
+ * The keys that present the download format choice. Nothing else is scanned, on purpose: see the
+ * header. Every name here has to resolve in the catalog — the test below fails when one stops
+ * matching, because a renamed key would otherwise turn this guard into a scan of nothing, and a
+ * guard that silently scans nothing reads exactly like a guard that passes.
+ */
+const FORMAT_COPY_KEYS = [
+  'exportPage.format_label',
+  'exportPage.format_json',
+  'exportPage.format_markdown',
+  'settings.export_format',
+  'settings.export_format_json',
+  'settings.export_format_markdown',
+];
+
 describe('export copy', () => {
   it('derives the retired and accepted export formats from the backend schema', () => {
     // Both extractions must be non-empty before any case below is trusted: an empty match means
@@ -101,10 +125,23 @@ describe('export copy', () => {
   });
 
   describe.each(Object.entries(CATALOGS))('the %s catalog', (locale, catalog) => {
-    it('names no retired export format in any string', () => {
-      const offenders = stringEntries(catalog).flatMap(({ path, value }) =>
-        mentionedFormats(value, RETIRED_FORMATS).map((format) => `${path}: promises "${format}"`),
+    it('scans every key that presents the format choice, and no key it cannot find', () => {
+      const missing = FORMAT_COPY_KEYS.filter(
+        (key) => !stringEntries(catalog).some(({ path }) => path === key),
       );
+
+      expect(
+        missing,
+        `the ${locale} catalog must still declare every key this guard reads; a rename has to be deliberate`,
+      ).toEqual([]);
+    });
+
+    it('names no retired export format in the copy that presents the format choice', () => {
+      const offenders = stringEntries(catalog)
+        .filter(({ path }) => FORMAT_COPY_KEYS.includes(path))
+        .flatMap(({ path, value }) =>
+          mentionedFormats(value, RETIRED_FORMATS).map((format) => `${path}: promises "${format}"`),
+        );
 
       expect(
         offenders,

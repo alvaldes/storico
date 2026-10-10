@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { MemberManagement } from '@/components/react/MemberManagement';
 import { LLMConfigEditor } from '@/components/react/LLMConfigEditor';
+import { TrelloCredentialsForm } from '@/components/react/TrelloCredentialsForm';
 import { IconPicker, IconTrigger } from '@/components/ui/icon-picker';
 import * as workspaceApi from '@/lib/workspace-api';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
@@ -299,6 +300,11 @@ export function WorkspaceSettings({ locale, workspaceId }: WorkspaceSettingsProp
         <>
           {/* LLM Config + Prompt Config Editor */}
           <LLMConfigEditor locale={locale} workspaceId={wsId} />
+
+          {/* Trello credentials: the pair is admin-only, the status line is
+              readable by any member so they learn the workspace is not
+              configured before triggering an export that cannot finish. */}
+          <TrelloCredentialsForm locale={locale} workspaceId={wsId} isAdmin={wsRole === 'admin'} />
 
           {/* ── Section 3: Member Management ── */}
           <Card>

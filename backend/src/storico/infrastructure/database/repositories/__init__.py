@@ -15,6 +15,9 @@ from storico.infrastructure.database.repositories.task_invalidation_repository i
 from storico.infrastructure.database.repositories.task_repository import (
     SQLAlchemyTaskRepository,
 )
+from storico.infrastructure.database.repositories.trello_export_repository import (
+    SQLAlchemyTrelloExportRepository,
+)
 from storico.infrastructure.database.repositories.user_preferences_repository import (
     SQLAlchemyUserPreferencesRepository,
 )
@@ -36,6 +39,9 @@ from storico.infrastructure.database.repositories.workspace_prompt_repository im
 from storico.infrastructure.database.repositories.workspace_repository import (
     SQLAlchemyWorkspaceRepository,
 )
+from storico.infrastructure.database.repositories.workspace_trello_config_repository import (
+    SQLAlchemyWorkspaceTrelloConfigRepository,
+)
 
 __all__ = [
     "SQLAlchemyUserRepository",
@@ -44,10 +50,12 @@ __all__ = [
     "SQLAlchemyUserStoryRepository",
     "SQLAlchemyTaskRepository",
     "SQLAlchemyTaskInvalidationRepository",
+    "SQLAlchemyTrelloExportRepository",
     "SQLAlchemyExtractionRepository",
     "SQLAlchemyWorkspaceRepository",
     "SQLAlchemyWorkspaceMemberRepository",
     "SQLAlchemyWorkspaceLLMConfigRepository",
     "SQLAlchemyWorkspacePromptRepository",
+    "SQLAlchemyWorkspaceTrelloConfigRepository",
     "SQLAlchemyCustomProviderRepository",
 ]

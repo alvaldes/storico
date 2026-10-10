@@ -5,6 +5,8 @@ from storico.domain.ports.extraction_repository import ExtractionRepository
 from storico.domain.ports.llm_port import ExtractionResult, LLMConfig, LLMPort, ParsedTask
 from storico.domain.ports.project_repository import ProjectRepository
 from storico.domain.ports.task_repository import TaskContextRow, TaskRepository
+from storico.domain.ports.trello_export_port import TrelloExportPort
+from storico.domain.ports.trello_export_repository import TrelloExportRepository
 from storico.domain.ports.user_preferences_repository import (
     UserPreferencesRepository,
 )
@@ -23,6 +25,9 @@ from storico.domain.ports.workspace_member_repository import (
 )
 from storico.domain.ports.workspace_prompt_repository import WorkspacePromptRepository
 from storico.domain.ports.workspace_repository import WorkspaceRepository
+from storico.domain.ports.workspace_trello_config_repository import (
+    WorkspaceTrelloConfigRepository,
+)
 
 __all__ = [
     "UserRepository",
@@ -33,6 +38,8 @@ __all__ = [
     "StoryContextRow",
     "TaskRepository",
     "TaskContextRow",
+    "TrelloExportPort",
+    "TrelloExportRepository",
     "ExtractionRepository",
     "LLMPort",
     "LLMConfig",
@@ -45,6 +52,7 @@ __all__ = [
     "WorkspaceMemberRepository",
     "WorkspaceLLMConfigRepository",
     "WorkspacePromptRepository",
+    "WorkspaceTrelloConfigRepository",
     "CustomProviderRepository",
     "CipherPort",
 ]

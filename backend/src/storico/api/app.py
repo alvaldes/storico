@@ -27,6 +27,7 @@ from storico.api.errors import (
     parse_error_handler,
     repository_error_handler,
     request_validation_error_handler,
+    trello_export_error_handler,
     vector_store_error_handler,
     version_allocation_conflict_handler,
 )
@@ -46,6 +47,7 @@ from storico.api.routes import (
     tasks,
     users,
     workspace_settings,
+    workspace_trello,
     workspaces,
 )
 from storico.api.routes import (
@@ -68,6 +70,7 @@ from storico.domain.entities import (
 )
 from storico.domain.entities.exceptions import (
     CipherError,
+    TrelloExportError,
     VectorStoreError,
     VersionAllocationConflictError,
 )
@@ -134,6 +137,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.exception("recover_stuck_extractions failed")
 
+    # Same recovery posture for Trello export jobs: a row stranded at pending/
+    # running by a crash or a cancelled task is swept to failed so the member
+    # polling it gets an answer instead of waiting forever. Non-blocking by
+    # design — a sweep failure must not stop the API from starting.
+    try:
+        from storico.infrastructure.tasks.trello_export_task import recover_stuck_trello_exports
+
+        await recover_stuck_trello_exports()
+    except Exception:
+        logger.exception("recover_stuck_trello_exports failed")
+
     yield
     dispose_engine()
 
@@ -193,6 +207,10 @@ def create_app() -> FastAPI:
     # Credential cipher errors. Registered on the base class so both subclasses are covered;
     # the handler itself distinguishes them for the machine-readable ``error_code``.
     app.add_exception_handler(CipherError, cipher_error_handler)
+    # The Trello export's typed failure family: the envelope for the day a port
+    # call happens inside a request, sharing its type→code map with the
+    # background runner that records the same codes on the job row.
+    app.add_exception_handler(TrelloExportError, trello_export_error_handler)
 
     # FastAPI's own body-validation 422: keep the default ``detail`` list and add the
     # app code. Deliberately NOT registered for StarletteHTTPException or 404/405:
@@ -223,6 +241,7 @@ def create_app() -> FastAPI:
     # Workspace routes
     app.include_router(workspaces.router)
     app.include_router(workspace_settings.router)
+    app.include_router(workspace_trello.router)
     app.include_router(projects.projects_router)  # workspace-scoped
     app.include_router(extraction.extraction_router)  # workspace-scoped
     app.include_router(export.router)  # workspace-scoped

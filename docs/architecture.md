@@ -200,7 +200,7 @@
 
 **Consecuencias**:
 - Motor de extracción basado en prompts validados en LocalLLM-DataForge
-- Conector Trello reutiliza lógica de csv2trello
+- Conector Trello implementado sobre los hechos que csv2trello midió (ventana de rate, backoff `2**n`, auth por query param), sin reutilizar su código: `domain/ports/trello_export_port.py` y `infrastructure/export/trello_adapter.py` (migraciones `0030`/`0031`, rutas en `api/routes/export.py` y `api/routes/workspace_trello.py`)
 - Parsing de respuestas LLM hereda ExplodeTasks de DataForge
 - Validación LLM-as-a-Judge basada en OllamaJudgeStep
 - Storico NO copia la arquitectura de pipeline de DataForge

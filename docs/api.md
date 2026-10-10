@@ -156,6 +156,49 @@ Razones bloqueantes de una fila: `missing_field`, `empty_field`, `too_long`, `un
 en `/api/v1/extract/` y en cualquiera de sus subrutas — la forma sin barra redirige ahí,
 como toda ruta de colección. La única ruta vigente es la workspace-scoped.
 
+### Exportación a Trello (scoped a workspace)
+
+La exportación a Trello es asíncrona como la extracción (D5): `POST` crea un job
+persistido en `trello_exports`, despacha el trabajo con `asyncio.create_task` en el
+proceso de la API y responde `202` de inmediato. El cliente consulta `GET` hasta que
+el job llega a `completed` (con la URL del tablero) o `failed` (con su `error_code`, y
+con `board_url` también cuando el tablero quedó a medias — un fallo posterior a la
+creación carga el `board_ref`, así que la mitad construida nunca se esconde).
+
+El alcance es uno de tres, nunca dos (D1): sin targets exporta todo el workspace; con
+`project_id` o `user_story_id` exporta ese proyecto o esa historia; con los dos a la
+vez responde `422 REQUEST_VALIDATION_FAILED` — la regla que la cascada del Kanban ya
+aplica. Solo se exporta la versión actual de cada historia (D8), el mismo filtro que
+usa la exportación de archivos.
+
+**Cualquier miembro puede disparar** (D7): lo admin-only son las credenciales
+(`/settings/trello`), no la exportación, que lee las mismas tareas que
+`GET .../export/tasks` ya deja leer a cualquier miembro. Un workspace sin el par
+de credenciales guardado responde `409 TRELLO_CREDENTIALS_MISSING` antes de crear
+nada — conflicto de estado, no request malformado, y nunca un `500`.
+
+En cada exportación se crea un tablero nuevo (D3): repetir no sobrescribe, y los
+duplicados son aceptados. El tablero tiene las cinco columnas Kanban siempre, en
+orden canónico, aunque queden vacías.
+
+| Método | Path | Descripción |
+|--------|------|-------------|
+| POST | `/api/v1/workspaces/{wsId}/export/trello` | Iniciar la exportación a un tablero nuevo (asíncrona: responde `202` con el job) |
+| GET | `/api/v1/workspaces/{wsId}/export/trello/{exportId}` | Estado del job: `status`, `board_url`, `error_code`, `cards_created` |
+
+Códigos de la familia: `TRELLO_CREDENTIALS_MISSING` (409, sin credenciales),
+`TRELLO_EXPORT_NOT_FOUND` (404, job inexistente o de otro workspace), y en el job
+fallido `TRELLO_CREDENTIAL_REJECTED`, `TRELLO_SERVICE_UNAVAILABLE`,
+`TRELLO_RATE_LIMIT_EXHAUSTED`, `TRELLO_BOARD_REFUSED`, `TRELLO_CARD_REFUSED` — un
+código por miembro de la familia tipada `TrelloExportError` — más
+`TRELLO_EXPORT_INTERRUPTED`, que no es de la familia tipada: lo escriben el runner
+ante una cancelación y el **sweep de arranque**
+(`infrastructure/tasks/trello_export_task.py`), que marca en el inicio todo job
+`pending` o `running` más viejo que su cota de edad como `failed` con ese código,
+para que un job abandonado por un crash responda en vez de dejar al miembro
+esperando para siempre. Hereda la limitación del sweep de extracciones: un job
+más joven que la cota en el momento del arranque espera al siguiente.
+
 ### Users
 
 | Método | Path | Descripción |
@@ -221,6 +264,31 @@ exige pertenencia al workspace y rol de administrador, y la verificación ocurre
 de construir ningún adaptador. Si falla, la respuesta nombra al proveedor y una razón
 clasificada (un código HTTP, o que no se pudo alcanzar al proveedor); el texto de la
 excepción original va al log, nunca al cuerpo de la respuesta.
+
+### Credenciales de Trello (scoped a workspace)
+
+`GET` y `PUT /settings/trello` requieren admin. El `PUT` guarda el par que el admin
+pega (clave y token de Trello), **cifrado en reposo**: el repositorio cifra al
+escribir y descifra al leer, de modo que ningún llamador maneja ciphertext y la
+columna nunca guarda el plaintext. El `GET` devuelve el par descifrado — la misma
+convención de `/settings/llm` — y responde campos en `null` para un workspace sin
+fila. Un valor en blanco se guarda como `None`, y un campo omitido conserva el valor
+almacenado.
+
+`GET /settings/trello/status` es la excepción legible por cualquier miembro:
+responde `{configured, missing}` con los **nombres de los campos** que faltan
+(`api_key`, `token`) y nunca con la credencial, porque el miembro que no puede leer
+las credenciales es justamente quien lanza la exportación que depende de ellas.
+
+Si el servidor no tiene clave maestra configurada, escribir responde `500` con
+`error_code: "ENCRYPTION_KEY_MISSING"` y leer una fila ya cifrada responde `500` con
+`"CREDENTIAL_UNDECRYPTABLE"` — el sobre canónico de §Errores, no un crash.
+
+| Método | Path | Descripción |
+|--------|------|-------------|
+| GET | `/api/v1/workspaces/{wsId}/settings/trello` | Obtener las credenciales de Trello (descifradas) |
+| PUT | `/api/v1/workspaces/{wsId}/settings/trello` | Guardar las credenciales de Trello (cifradas en reposo) |
+| GET | `/api/v1/workspaces/{wsId}/settings/trello/status` | ¿Tiene el workspace credenciales de Trello? |
 
 ### Proveedores personalizados (scoped a workspace)
 
