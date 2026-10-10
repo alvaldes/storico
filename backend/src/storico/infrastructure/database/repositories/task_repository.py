@@ -300,6 +300,21 @@ class SQLAlchemyTaskRepository(TaskRepository):
         result = await self._session.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
 
+    async def list_by_story_version(self, user_story_id: UUID, extraction_id: UUID) -> list[Task]:
+        """Exactly one story version's tasks, named by its extraction id.
+
+        No currency predicate — the whole point is reading a version the
+        selector names, superseded or not. Both filters ride in the ``WHERE``:
+        an extraction id from another story matches no row rather than leaking
+        its tasks into a story-scoped export.
+        """
+        stmt = select(TaskModel).where(
+            TaskModel.user_story_id == user_story_id,
+            TaskModel.extraction_id == extraction_id,
+        )
+        result = await self._session.execute(stmt)
+        return [self._to_domain(row) for row in result.scalars()]
+
     async def list(self) -> list[Task]:
         result = await self._session.execute(select(TaskModel))
         return [self._to_domain(row) for row in result.scalars()]

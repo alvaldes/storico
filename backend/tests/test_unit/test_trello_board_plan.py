@@ -1,5 +1,4 @@
-"""Unit tests for the Trello board plan builder, the shared dependency rule
-and the export scope resolver.
+"""Unit tests for the Trello board plan builder and the shared dependency rule.
 
 The plan builder is pure: rows in, ``TrelloBoardPlan`` out. Everything the
 adapter later does to Trello is decided here, so these tests pin the decisions
@@ -8,19 +7,15 @@ the record binds: the five Kanban columns in the canonical order (reused from
 csv2trello's metadata shape, labels carried, dependencies resolved with the
 same rule the Markdown export applies — and an unresolvable reference rendered
 as the reference, never dropped.
+
+The export scope resolver's tests live beside the rule now, in
+``test_export_scope.py``.
 """
 
 from uuid import UUID, uuid4
 
-import pytest
-
-from storico.application.export.export_workspace_to_trello import (
-    AmbiguousExportScopeError,
-    resolve_export_scope,
-)
 from storico.domain.entities.task import Task, TaskStatus
 from storico.domain.entities.trello_board import TrelloBoardPlan
-from storico.domain.entities.trello_export import TrelloExportScope
 from storico.domain.services.dependency_resolution import (
     build_dependency_title_index,
     resolve_dependency,
@@ -188,25 +183,3 @@ class TestDependencyResolution:
 
         by_name = {column.name: column for column in plan.columns}
         assert by_name["To Do"].cards[0].dependency_titles == ("Auth API",)
-
-
-# ── The scope resolver: one target, never two ───────────────────────
-
-
-class TestResolveExportScope:
-    def test_no_target_is_the_whole_workspace(self) -> None:
-        assert resolve_export_scope(None, None) is TrelloExportScope.WORKSPACE
-
-    def test_project_id_alone_is_the_project_scope(self) -> None:
-        project_id = uuid4()
-        scope = resolve_export_scope(project_id, None)
-        assert scope.value == "project"
-
-    def test_user_story_id_alone_is_the_story_scope(self) -> None:
-        story_id = uuid4()
-        scope = resolve_export_scope(None, story_id)
-        assert scope.value == "story"
-
-    def test_two_targets_are_refused(self) -> None:
-        with pytest.raises(AmbiguousExportScopeError):
-            resolve_export_scope(uuid4(), uuid4())

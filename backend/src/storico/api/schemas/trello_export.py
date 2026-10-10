@@ -12,7 +12,7 @@ class TrelloExportCreateRequest(BaseModel):
     Both omitted exports the whole workspace; each one present narrows the
     export to that project or story; both present is refused with 422
     ``REQUEST_VALIDATION_FAILED`` — the Kanban cascade's never-two rule, applied
-    by ``resolve_export_scope`` (application/export).
+    by ``resolve_export_scope`` (``domain/services/export_scope.py``).
     """
 
     model_config = ConfigDict(extra="forbid")

@@ -156,6 +156,54 @@ Razones bloqueantes de una fila: `missing_field`, `empty_field`, `too_long`, `un
 en `/api/v1/extract/` y en cualquiera de sus subrutas — la forma sin barra redirige ahí,
 como toda ruta de colección. La única ruta vigente es la workspace-scoped.
 
+### Exportación de archivos (scoped a workspace)
+
+`GET /api/v1/workspaces/{wsId}/export/tasks` serializa tareas a un archivo
+adjunto (`Content-Disposition`). Tres formatos, con `?format=`:
+
+| `format` | Cuerpo | Filename |
+|--------|------|--------|
+| `json` (default) | Array JSON de tareas | `tasks-export-{wsId}.json` |
+| `markdown` | Documento con una sección por historia | `tasks-export-{wsId}.md` |
+| `csv` | Una fila por tarea (ver contrato de columnas) | `tasks-export-{wsId}.csv` |
+
+Cualquier otro valor responde `400 UNSUPPORTED_EXPORT_FORMAT`.
+
+**Alcance — un target, nunca dos.** Los query parameters `project_id` y
+`user_story_id` estrechan la exportación al proyecto o a la historia nombrada;
+sin targets exporta todo el workspace. Es la misma regla que resuelve el
+disparo de Trello (`resolve_export_scope`, en
+`domain/services/export_scope.py`): los dos targets a la vez responden `422
+REQUEST_VALIDATION_FAILED`. Un target debe existir y pertenecer al workspace
+del path: uno de otro workspace responde `403`, uno inexistente `404`.
+
+**Versión.** Sin `extraction_id`, se exporta la versión actual de cada
+historia (la de número más alto entre las corridas `completed`) — el filtro
+viaja en la propia sentencia de lectura, así que las tareas de una versión
+sustituida nunca se cuelan en el archivo. Con `extraction_id` **y**
+`user_story_id`, se exportan las tareas de esa versión aunque una corrida
+posterior la haya sustituido — la versión se nombra por su id de extracción,
+nunca por su número de versión, que es una posición en una historia que la
+siguiente corrida mueve. Un `extraction_id` sin `user_story_id` responde `422`:
+una versión pertenece a una historia, y una versión pedida a nivel de proyecto
+o de workspace es una pregunta sin respuesta.
+
+**Contrato de columnas CSV.** Una fila por tarea, con las columnas en este
+orden exacto:
+
+```
+story, version, title, description, status, priority, labels, dependencies
+```
+
+`story` es el texto crudo de la historia y `version` el número de versión de
+la corrida que produjo la tarea. Las celdas multivalor (`labels`,
+`dependencies`) van unidas con `;`. El archivo se escribe con el módulo `csv`
+de Python, así que una descripción con saltos de línea o comas viaja
+entrecomillada y sobrevive al round trip. El orden de columnas es un
+contrato, no una elección: un archivo que la gente parsea deja de ser libre
+de reordenarse — agregar una columna después es compatible; renombrar o
+reordenar una, no.
+
 ### Exportación a Trello (scoped a workspace)
 
 La exportación a Trello es asíncrona como la extracción (D5): `POST` crea un job

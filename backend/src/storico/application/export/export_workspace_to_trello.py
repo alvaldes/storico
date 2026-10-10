@@ -1,10 +1,8 @@
-"""The Trello export use case — scope resolution and the background run.
+"""The Trello export use case — the background run.
 
-``resolve_export_scope`` is the pure rule the Kanban cascade already applies
-(feature ``versioning-visibility``'s D7): ``project_id``, ``user_story_id`` or
-the whole workspace, never two — two targets are refused, not resolved, because
-an ``if``/``elif`` chain would silently answer one of them, a wrong answer
-shaped like a right one.
+The scope rule the trigger applies lives in
+``domain/services/export_scope.py`` — the same rule the file export resolves
+through, one implementation for both.
 
 ``run_trello_export`` is the background function the route dispatches with
 ``asyncio.create_task`` — the extraction's dispatch site, mirrored: no Celery,
@@ -63,28 +61,6 @@ from storico.infrastructure.database.repositories import (
 from storico.infrastructure.export.trello_adapter import PyTrelloExportAdapter
 
 logger = logging.getLogger(__name__)
-
-
-class AmbiguousExportScopeError(ValueError):
-    """Two export targets in one request — refused, never resolved."""
-
-
-def resolve_export_scope(project_id: UUID | None, user_story_id: UUID | None) -> TrelloExportScope:
-    """Resolve exactly one export scope from the optional targets.
-
-    Raises ``AmbiguousExportScopeError`` when both are given — the same shape
-    refusal the tasks route answers with 422 ``REQUEST_VALIDATION_FAILED``.
-    """
-    if project_id is not None and user_story_id is not None:
-        raise AmbiguousExportScopeError(
-            "project_id and user_story_id are mutually exclusive: an export "
-            "covers the workspace, one project or one story, never two"
-        )
-    if project_id is not None:
-        return TrelloExportScope.PROJECT
-    if user_story_id is not None:
-        return TrelloExportScope.STORY
-    return TrelloExportScope.WORKSPACE
 
 
 async def execute_trello_export(

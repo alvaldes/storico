@@ -1,6 +1,8 @@
-"""Export API routes — file export (JSON/Markdown) and the Trello board export."""
+"""Export API routes — file export (JSON/Markdown/CSV) and the Trello board export."""
 
 import asyncio
+import csv
+import io
 import json
 import logging
 from typing import Annotated
@@ -25,20 +27,21 @@ from storico.api.error_codes import (
 from storico.api.errors import ApiError
 from storico.api.schemas.task import TaskResponse
 from storico.api.schemas.trello_export import TrelloExportCreateRequest, TrelloExportResponse
-from storico.application.export.export_workspace_to_trello import (
-    AmbiguousExportScopeError,
-    resolve_export_scope,
-    run_trello_export,
-)
+from storico.application.export.export_workspace_to_trello import run_trello_export
 from storico.domain.entities import EntityNotFound, Workspace, WorkspaceRole
-from storico.domain.entities.trello_export import TrelloExport
+from storico.domain.entities.trello_export import TrelloExport, TrelloExportScope
 from storico.domain.entities.workspace_trello_config import WorkspaceTrelloConfig
 from storico.domain.services.dependency_resolution import (
     build_dependency_title_index,
     resolve_dependency,
 )
+from storico.domain.services.export_scope import (
+    AmbiguousExportScopeError,
+    resolve_export_scope,
+)
 from storico.domain.services.llm_config_readiness import normalize_optional
 from storico.infrastructure.database.repositories import (
+    SQLAlchemyExtractionRepository,
     SQLAlchemyProjectRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyTrelloExportRepository,
@@ -74,6 +77,10 @@ TrelloConfigRepoDep = Annotated[
 TrelloExportRepoDep = Annotated[
     SQLAlchemyTrelloExportRepository,
     Depends(get_repository(SQLAlchemyTrelloExportRepository)),
+]
+ExtractionRepoDep = Annotated[
+    SQLAlchemyExtractionRepository,
+    Depends(get_repository(SQLAlchemyExtractionRepository)),
 ]
 
 
@@ -112,35 +119,147 @@ def _build_markdown(tasks: list[TaskResponse], story_text: dict[UUID, str]) -> s
     return "\n".join(lines)
 
 
+# The CSV column order is a contract (record ``export-page-rework``, E3): a
+# file people parse stops being free to reorder. Adding a column is compatible;
+# renaming or reordering one is not.
+CSV_COLUMNS = (
+    "story",
+    "version",
+    "title",
+    "description",
+    "status",
+    "priority",
+    "labels",
+    "dependencies",
+)
+
+
+def _build_csv(
+    tasks: list[TaskResponse],
+    story_text: dict[UUID, str],
+    version_by_task_id: dict[UUID, int | str],
+) -> str:
+    """Build the CSV export — one row per task, columns in contract order.
+
+    Written through the ``csv`` module so a description containing a newline
+    or a comma is quoted and survives the round trip. Multi-value cells
+    (``labels``, ``dependencies``) are joined with ``;`` — a separator that
+    never appears inside a task id or a label, so the cell splits cleanly.
+    """
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(CSV_COLUMNS)
+    for task in tasks:
+        writer.writerow(
+            [
+                story_text.get(task.user_story_id, "Untitled story"),
+                version_by_task_id.get(task.id, ""),
+                task.title,
+                task.description or "",
+                task.status.value,
+                task.priority or "",
+                ";".join(task.labels),
+                ";".join(task.dependencies),
+            ]
+        )
+    return buffer.getvalue()
+
+
 @router.get("/tasks")
 async def export_tasks(
     ctx: tuple[Workspace, WorkspaceRole] = Depends(get_workspace_for_user),
     repo: TaskRepoDep = None,  # type: ignore[assignment]
     story_repo: StoryRepoDep = None,  # type: ignore[assignment]
-    format: str = Query("json", description="Export format: json or markdown"),
+    project_repo: ProjectRepoDep = None,  # type: ignore[assignment]
+    extraction_repo: ExtractionRepoDep = None,  # type: ignore[assignment]
+    format: str = Query("json", description="Export format: json, markdown or csv"),
+    project_id: UUID | None = Query(None, description="Narrow the export to one project"),
+    user_story_id: UUID | None = Query(None, description="Narrow the export to one story"),
+    extraction_id: UUID | None = Query(
+        None, description="Export exactly this version (requires user_story_id)"
+    ),
 ) -> PlainTextResponse:
-    """Export tasks from a workspace in the requested format.
+    """Export tasks from a workspace in the requested format and scope.
 
     Supported formats:
     - ``json`` (default): JSON array of tasks
     - ``markdown``: Markdown document with one section per story
+    - ``csv``: one row per task, columns in this order — ``story, version,
+      title, description, status, priority, labels, dependencies`` — with
+      multi-value cells (``labels``, ``dependencies``) joined by ``;``. The
+      column order is a contract: adding a column later is compatible;
+      renaming or reordering one is not.
 
-    Only each story's current version (the highest-numbered ``completed``
-    run) is exported — the filter rides the serializing statement itself, so
-    a superseded version's tasks can never leak into a file.
+    **Scope — one target, never two** (the same rule the Trello trigger
+    resolves through): no target exports the whole workspace; ``project_id``
+    or ``user_story_id`` narrows it to that project or story; both together
+    answer ``422 REQUEST_VALIDATION_FAILED``. A target must exist and sit in
+    the path workspace (a foreign project or story answers ``403``, a missing
+    one ``404``).
+
+    **Version**: without ``extraction_id``, each story's current version (the
+    highest-numbered ``completed`` run) is exported — the filter rides the
+    serializing statement itself, so a superseded version's tasks can never
+    leak into the file. With ``extraction_id`` **and** ``user_story_id``, the
+    named version's tasks are exported even when a newer run superseded it —
+    the version is identified by its extraction id, never by its version
+    number, which is a position in a history the next run moves. An
+    ``extraction_id`` without ``user_story_id`` answers ``422``: a version
+    belongs to a story, and a version asked for at project or workspace level
+    is a question with no answer. The ``version`` column of the CSV carries
+    the run's version number; the ``json`` and ``markdown`` shapes are
+    unchanged.
 
     The response includes a ``Content-Disposition`` header for file download.
     """
     workspace, _ = ctx  # validates workspace membership
 
-    if format not in ("json", "markdown"):
+    if format not in ("json", "markdown", "csv"):
         raise ApiError(
             status_code=status.HTTP_400_BAD_REQUEST,
             error_code=UNSUPPORTED_EXPORT_FORMAT,
-            detail=f"Unsupported format '{format}'. Supported formats: json, markdown",
+            detail=f"Unsupported format '{format}'. Supported formats: json, markdown, csv",
         )
 
-    tasks = await repo.list_current_by_workspace(workspace.id)
+    try:
+        scope = resolve_export_scope(project_id, user_story_id)
+    except AmbiguousExportScopeError as exc:
+        raise ApiError(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            error_code=REQUEST_VALIDATION_FAILED,
+            detail=str(exc),
+        )
+
+    if extraction_id is not None and user_story_id is None:
+        raise ApiError(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            error_code=REQUEST_VALIDATION_FAILED,
+            detail=(
+                "extraction_id requires user_story_id: a version belongs to a "
+                "story, so it can only be asked for at story level"
+            ),
+        )
+
+    if project_id is not None:
+        await _validate_project_in_workspace(project_id, workspace, project_repo)
+    if user_story_id is not None:
+        await _validate_story_in_workspace(user_story_id, workspace, story_repo, project_repo)
+
+    match scope:
+        case TrelloExportScope.WORKSPACE:
+            tasks = await repo.list_current_by_workspace(workspace.id)
+        case TrelloExportScope.PROJECT:
+            assert project_id is not None  # resolved by resolve_export_scope
+            tasks = await repo.list_current_by_project(project_id)
+        case TrelloExportScope.STORY:
+            assert user_story_id is not None  # resolved by resolve_export_scope
+            if extraction_id is not None:
+                # A version named on purpose: no currency predicate, or the
+                # selector could never export a superseded version's tasks.
+                tasks = await repo.list_by_story_version(user_story_id, extraction_id)
+            else:
+                tasks = await repo.list_current_by_story(user_story_id)
+
     task_responses = [
         TaskResponse(
             id=t.id,
@@ -157,12 +276,39 @@ async def export_tasks(
         for t in tasks
     ]
 
+    story_text: dict[UUID, str] = {}
+    if format in ("markdown", "csv"):
+        match scope:
+            case TrelloExportScope.WORKSPACE:
+                stories = await story_repo.list_by_workspace(workspace.id)
+            case TrelloExportScope.PROJECT:
+                assert project_id is not None
+                stories = await story_repo.list_by_project(project_id)
+            case TrelloExportScope.STORY:
+                assert user_story_id is not None
+                story = await story_repo.find_by_id(user_story_id)
+                stories = [story] if story is not None else []
+        story_text = {s.id: s.raw_text for s in stories}
+
     if format == "markdown":
-        stories = await story_repo.list_by_workspace(workspace.id)
-        story_text: dict[UUID, str] = {s.id: s.raw_text for s in stories}
         content = _build_markdown(task_responses, story_text)
         media_type = "text/markdown; charset=utf-8"
         filename = f"tasks-export-{workspace.id}.md"
+    elif format == "csv":
+        # The version column rides the domain tasks' ``extraction_id`` — the
+        # ``TaskResponse`` construction keeps ``extraction_id``/``version_number``
+        # unset, so the ``json`` shape stays byte-identical to what it has always
+        # produced and the new column costs the other two formats nothing.
+        extraction_ids = list({t.extraction_id for t in tasks})
+        version_numbers: dict[UUID, int] = (
+            await extraction_repo.version_numbers(extraction_ids) if extraction_ids else {}
+        )
+        version_by_task_id: dict[UUID, int | str] = {
+            t.id: version_numbers.get(t.extraction_id, "") for t in tasks
+        }
+        content = _build_csv(task_responses, story_text, version_by_task_id)
+        media_type = "text/csv; charset=utf-8"
+        filename = f"tasks-export-{workspace.id}.csv"
     else:
         content = json.dumps(
             [t.model_dump(mode="json") for t in task_responses],

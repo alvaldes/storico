@@ -44,15 +44,36 @@ _Sin parámetros._
 
 Export Tasks
 
-Export tasks from a workspace in the requested format.
+Export tasks from a workspace in the requested format and scope.
 
 Supported formats:
 - ``json`` (default): JSON array of tasks
 - ``markdown``: Markdown document with one section per story
+- ``csv``: one row per task, columns in this order — ``story, version,
+  title, description, status, priority, labels, dependencies`` — with
+  multi-value cells (``labels``, ``dependencies``) joined by ``;``. The
+  column order is a contract: adding a column later is compatible;
+  renaming or reordering one is not.
 
-Only each story's current version (the highest-numbered ``completed``
-run) is exported — the filter rides the serializing statement itself, so
-a superseded version's tasks can never leak into a file.
+**Scope — one target, never two** (the same rule the Trello trigger
+resolves through): no target exports the whole workspace; ``project_id``
+or ``user_story_id`` narrows it to that project or story; both together
+answer ``422 REQUEST_VALIDATION_FAILED``. A target must exist and sit in
+the path workspace (a foreign project or story answers ``403``, a missing
+one ``404``).
+
+**Version**: without ``extraction_id``, each story's current version (the
+highest-numbered ``completed`` run) is exported — the filter rides the
+serializing statement itself, so a superseded version's tasks can never
+leak into the file. With ``extraction_id`` **and** ``user_story_id``, the
+named version's tasks are exported even when a newer run superseded it —
+the version is identified by its extraction id, never by its version
+number, which is a position in a history the next run moves. An
+``extraction_id`` without ``user_story_id`` answers ``422``: a version
+belongs to a story, and a version asked for at project or workspace level
+is a question with no answer. The ``version`` column of the CSV carries
+the run's version number; the ``json`` and ``markdown`` shapes are
+unchanged.
 
 The response includes a ``Content-Disposition`` header for file download.
 
@@ -61,7 +82,10 @@ The response includes a ``Content-Disposition`` header for file download.
 | Nombre | Ubicación | Obligatorio | Tipo |
 | --- | --- | --- | --- |
 | `workspace_id` | `path` | sí | `string` |
+| `extraction_id` | `query` | no | `string | null` |
 | `format` | `query` | no | `string` |
+| `project_id` | `query` | no | `string | null` |
+| `user_story_id` | `query` | no | `string | null` |
 
 **Respuestas**
 
