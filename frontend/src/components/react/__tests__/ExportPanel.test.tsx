@@ -871,3 +871,67 @@ describe('ExportPanel — Trello export', () => {
     }
   });
 });
+
+/* The state the server and the first paint are actually in, and the one nothing
+ * else in this file renders: the workspace store has not resolved yet. The "no
+ * workspace" early return used to sit above the option memos, so this transition
+ * — undefined, then defined — ran more hooks than the first render and React
+ * threw "Rendered more hooks than during the previous render". The island
+ * unmounted and the page showed nothing, in production, while 941 tests, `tsc`,
+ * `astro build` and CI all passed on a component that rendered nothing. This is
+ * the test that fails instead of passing along. */
+describe('ExportPanel — the workspace arrives after the first render', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('shows the empty state and then the panel without changing the hook order', async () => {
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspace: null,
+      loading: true,
+      saving: false,
+    });
+    useProjectStore.setState({
+      projects: [],
+      loading: false,
+      saving: false,
+      error: null,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    vi.mocked(listStories).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 50,
+      totalPages: 0,
+    } as never);
+    vi.mocked(listVersions).mockResolvedValue([]);
+    stubFetch([
+      jsonRoute(FILE_EXPORT_URL, []),
+      jsonRoute(TRELLO_PREVIEW_URL, { name: 'Board', columns: [] }),
+    ]);
+
+    render(<ExportPanel locale="en" />);
+    expect(screen.getByText(en.exportPage.no_workspace)).toBeTruthy();
+
+    // The store resolves, which is what production does a moment after paint.
+    act(() => {
+      useWorkspaceStore.setState({
+        currentWorkspace: {
+          id: 'workspace-1',
+          name: 'Test Workspace',
+          slug: 'test-workspace',
+          ownerId: 'user-1',
+          role: 'admin',
+          memberCount: 1,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+        } as Workspace,
+        loading: false,
+      });
+    });
+
+    await waitFor(() => expect(screen.getByText(en.exportPage.title)).toBeTruthy());
+  });
+});

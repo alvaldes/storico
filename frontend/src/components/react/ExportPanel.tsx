@@ -291,15 +291,6 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
     return () => clearTimeout(timer);
   }, [trelloJob, workspaceId, t]);
 
-  if (!workspaceId) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
-        <Download className="mb-3 h-10 w-10 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">{t.exportPage.no_workspace}</p>
-      </div>
-    );
-  }
-
   const trelloJobTerminal = trelloJob ? isTerminalTrelloExportStatus(trelloJob.status) : false;
 
   // Select options, the board's convention: the top-level "not narrowed" row
@@ -326,6 +317,22 @@ export function ExportPanel({ locale = 'en' }: ExportPanelProps) {
     ],
     [versions, t],
   );
+
+  // Every hook runs before this, on every render — and that is the whole point
+  // of where it sits. It used to sit above the three option memos, so the first
+  // render (no workspace yet, which is what the server and the first paint see)
+  // ran fewer hooks than the second, and React threw "Rendered more hooks than
+  // during the previous render": the island unmounted and the page showed
+  // nothing. The tests never saw it because they seed the store before the
+  // first render, which is the one state production is not in.
+  if (!workspaceId) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
+        <Download className="mb-3 h-10 w-10 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">{t.exportPage.no_workspace}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
