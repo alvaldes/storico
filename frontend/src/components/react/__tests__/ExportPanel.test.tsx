@@ -1072,6 +1072,225 @@ describe('ExportPanel — the selects read like the board\'s (EP6)', () => {
   });
 });
 
+/* ── The cascade's pending states (EP8) ──
+ *
+ * The export toolbar's three reads had no loading state at all: the panel only
+ * tracked `previewLoading` and `downloading`, so nothing could show while the
+ * projects, the stories or the versions were in flight. The board's cascade
+ * shows `aria-busy` and a spinner on each trigger while its own read is pending
+ * (D9), and these cases pin that parity here. Every read is held on a deferred
+ * promise — no timers — so the pending state is observed, not slept through,
+ * and the failure cases pin the flag clearing on the rejection path: a failed
+ * read must not leave a spinner turning forever.
+ */
+describe('ExportPanel — the cascade\'s pending states (EP8)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspace: {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        ownerId: 'user-1',
+        role: 'admin',
+        memberCount: 1,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      } as Workspace,
+      loading: false,
+      saving: false,
+    });
+    useProjectStore.setState({
+      projects: [makeProject()],
+      loading: false,
+      saving: false,
+      error: null,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    vi.mocked(listStories).mockResolvedValue({
+      items: [makeStory()],
+      total: 1,
+      page: 1,
+      size: 100,
+    });
+    vi.mocked(listVersions).mockResolvedValue([makeVersion()]);
+    vi.mocked(previewTrelloExport).mockResolvedValue({ name: 'Test Workspace', columns: [] });
+    stubFetch([
+      {
+        match: (url) => FILE_EXPORT_URL.test(url),
+        respond: () => httpResponse('[]'),
+      },
+    ]);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Open the select whose accessible name is `label` and pick `optionLabel`. */
+  async function pick(
+    user: ReturnType<typeof userEvent.setup>,
+    label: string,
+    optionLabel: string,
+  ) {
+    await user.click(await screen.findByRole('combobox', { name: label }));
+    await user.click(await screen.findByRole('option', { name: optionLabel }));
+  }
+
+  /** A read held in flight until the test releases it — no timers. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  /** The board's pending markup, asserted on one trigger: `aria-busy` on the
+   * control (not on the svg — several screen readers ignore an `aria-label` on
+   * a bare svg) and the spinner beside the label it already shows. */
+  function expectPending(trigger: HTMLElement) {
+    expect(trigger).toHaveAttribute('aria-busy', 'true');
+    const spinner = trigger.querySelector('.lucide-loader-circle');
+    expect(spinner).not.toBeNull();
+    expect(spinner).toHaveAttribute('aria-label', t.common.loading);
+  }
+
+  function expectSettled(label: string) {
+    const trigger = screen.getByRole('combobox', { name: label });
+    expect(trigger).toHaveAttribute('aria-busy', 'false');
+    expect(trigger.querySelector('.lucide-loader-circle')).toBeNull();
+  }
+
+  it('shows the spinner and aria-busy on the project trigger while the store reads the projects', async () => {
+    // The projects read goes through the store, so the pending state is the
+    // store's `loading` — a second flag could disagree with it.
+    useProjectStore.setState({
+      projects: [],
+      loading: true,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    render(<ExportPanel locale="en" />);
+
+    expectPending(
+      screen.getByRole('combobox', { name: t.exportPage.scope_project_label }),
+    );
+
+    // The read settles: the spinner leaves and aria-busy clears.
+    act(() => {
+      useProjectStore.setState({ projects: [makeProject()], loading: false });
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('combobox', { name: t.exportPage.scope_project_label }),
+      ).toHaveAttribute('aria-busy', 'false'),
+    );
+    expectSettled(t.exportPage.scope_project_label);
+  });
+
+  it('clears the project spinner when the read fails — the store records the failure, not a pending flag', async () => {
+    useProjectStore.setState({
+      projects: [],
+      loading: true,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    render(<ExportPanel locale="en" />);
+    expectPending(
+      screen.getByRole('combobox', { name: t.exportPage.scope_project_label }),
+    );
+
+    // The store's fetch rejects and the store clears `loading` itself; the
+    // trigger must follow it, not hold a spinner of its own.
+    act(() => {
+      useProjectStore.setState({
+        projects: [],
+        loading: false,
+        error: { friendlyMessage: 'boom', status: 500, rawDetail: 'boom' },
+      });
+    });
+    await waitFor(() => expectSettled(t.exportPage.scope_project_label));
+  });
+
+  it('shows the spinner and aria-busy on the story trigger while its read is pending, and clears it when the read settles', async () => {
+    const user = userEvent.setup();
+    const read = deferred<{ items: UserStory[]; total: number; page: number; size: number }>();
+    vi.mocked(listStories).mockReturnValue(read.promise);
+    render(<ExportPanel locale="en" />);
+    await screen.findByTestId('export-preview');
+
+    await pick(user, t.exportPage.scope_project_label, PROJECT_ROW);
+
+    expectPending(
+      await screen.findByRole('combobox', { name: t.exportPage.scope_story_label }),
+    );
+
+    await act(async () => {
+      read.resolve({ items: [makeStory()], total: 1, page: 1, size: 100 });
+    });
+    await waitFor(() => expectSettled(t.exportPage.scope_story_label));
+  });
+
+  it('clears the story spinner when its read is rejected — a failed read cannot leave a spinner turning forever', async () => {
+    const user = userEvent.setup();
+    const read = deferred<{ items: UserStory[]; total: number; page: number; size: number }>();
+    vi.mocked(listStories).mockReturnValue(read.promise);
+    render(<ExportPanel locale="en" />);
+    await screen.findByTestId('export-preview');
+
+    await pick(user, t.exportPage.scope_project_label, PROJECT_ROW);
+    expectPending(
+      await screen.findByRole('combobox', { name: t.exportPage.scope_story_label }),
+    );
+
+    await act(async () => {
+      read.reject(new Error('boom'));
+    });
+    await waitFor(() => expectSettled(t.exportPage.scope_story_label));
+  });
+
+  it('shows the spinner and aria-busy on the version trigger while its read is pending, and clears it when the read settles', async () => {
+    const user = userEvent.setup();
+    const read = deferred<StoryVersion[]>();
+    vi.mocked(listVersions).mockReturnValue(read.promise);
+    render(<ExportPanel locale="en" />);
+    await screen.findByTestId('export-preview');
+
+    await pick(user, t.exportPage.scope_project_label, PROJECT_ROW);
+    await pick(user, t.exportPage.scope_story_label, STORY_ROW);
+
+    expectPending(
+      await screen.findByRole('combobox', { name: t.exportPage.scope_version_label }),
+    );
+
+    await act(async () => {
+      read.resolve([makeVersion()]);
+    });
+    await waitFor(() => expectSettled(t.exportPage.scope_version_label));
+  });
+
+  it('clears the version spinner when its read is rejected — a failed read cannot leave a spinner turning forever', async () => {
+    const user = userEvent.setup();
+    const read = deferred<StoryVersion[]>();
+    vi.mocked(listVersions).mockReturnValue(read.promise);
+    render(<ExportPanel locale="en" />);
+    await screen.findByTestId('export-preview');
+
+    await pick(user, t.exportPage.scope_project_label, PROJECT_ROW);
+    await pick(user, t.exportPage.scope_story_label, STORY_ROW);
+    expectPending(
+      await screen.findByRole('combobox', { name: t.exportPage.scope_version_label }),
+    );
+
+    await act(async () => {
+      read.reject(new Error('boom'));
+    });
+    await waitFor(() => expectSettled(t.exportPage.scope_version_label));
+  });
+});
+
 /* The state the server and the first paint are actually in, and the one nothing
  * else in this file renders: the workspace store has not resolved yet. The "no
  * workspace" early return used to sit above the option memos, so this transition
