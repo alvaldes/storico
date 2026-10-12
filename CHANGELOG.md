@@ -1,3 +1,60 @@
+## v0.13.0 (2026-10-12)
+
+### Feat
+
+- **landing**: add the demo video section after the features band
+- **export**: the cascade says when it is still reading
+- **export**: the select rows come from one place, and the export reads like the board
+- **export**: one section, four formats, and the preview before it leaves
+- **trello**: the export can be told which version to send
+- **export**: show what would be exported before it leaves
+- **export**: the file export learns what to export, in three formats
+- **trello**: export to Trello from the browser
+- **trello**: expose the export over POST and GET
+- **trello**: run an export job and keep its state
+- **trello**: build a board from a plan, over py-trello
+- **trello**: store per-workspace Trello credentials, encrypted
+- **kanban**: a View in Kanban link on the project and story surfaces
+- **kanban**: a deep link seeds the cascade, and the first workspace is not a switch
+- **kanban**: one short text on both surfaces, and the story's id in the select
+- **kanban**: draw each project's own icon instead of one folder for all
+- **tasks**: carry the project's own icon on every task read
+- **kanban**: real tooltips on the context chips, and the same treatment in the selects
+- **tasks**: carry the story's sentence on every task read
+- **kanban**: show the project and the story on each card
+- **tasks**: name the project on every task read
+- **kanban**: give the board three loading levels instead of one
+- **kanban**: show a full-board loading veil while the board reads
+- **kanban**: name the task's version on its card
+- **kanban**: filter the board by project, story and version
+- **dashboard**: show the version on recent stories through one shared badge
+- **stories**: show the current version on story cards
+- **tasks**: name the version on task reads and filter the board by project
+- **stories**: project a batched version summary on story reads
+- **web**: translate the 429 headline, and record the limiter in the documents
+- **api**: limit requests per user, with the health routes exempt
+- **api**: scope the LLM connection probe to a workspace and require admin
+
+### Fix
+
+- **export**: the export panel renders every hook on every render
+- **migrations**: 0031 creates its enum once, not twice
+- **export**: guard the writes that had nowhere left to report to
+- **export**: a Trello export job always answers, even when it is cancelled
+- **i18n**: the board link reads Kanban, and stops wrapping in the card's menu
+- **projects**: the Kanban link joins the card's menu instead of sitting beside it
+- **kanban**: the select's rows reveal their value, and the trigger shows its mark
+- **kanban**: open the chip tooltips immediately instead of after 600 ms
+- **kanban**: a card move no longer raises the Processing overlay
+- **kanban**: stop veiling the whole page when the board loads
+- **import**: refuse an oversized CSV before paying for the upload
+- **a11y**: give each error retry its own accessible name
+- **api**: classify transport failures instead of echoing them in the LLM probes
+
+### Refactor
+
+- **export**: which failure code, answered where the failure lives
+
 ## v0.12.0 (2026-10-06)
 
 ### Feat
