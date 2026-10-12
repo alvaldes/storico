@@ -137,6 +137,14 @@
       "card_3_title": "CSV, JSON, Markdown and Trello",
       "card_3_desc": "Export your tasks as a file, or send them straight to a Trello board."
     },
+    "video": {
+      "badge": "▶ PRODUCT DEMO",
+      "title": "See Storico at work",
+      "subtitle": "Watch how Storico turns a user story into structured Kanban tasks you can edit and export.",
+      "play_label": "Play the demo",
+      "cta_primary": "Get started for free",
+      "cta_authed": "Open your board"
+    },
     "faq": {
       "title": "Frequently asked questions",
       "subtitle": "Everything you need to know about Storico.",

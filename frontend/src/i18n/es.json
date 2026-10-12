@@ -137,6 +137,14 @@
       "card_3_title": "CSV, JSON, Markdown y Trello",
       "card_3_desc": "Exporta tus tareas como archivo, o envíalas directamente a un tablero de Trello."
     },
+    "video": {
+      "badge": "▶ DEMO DEL PRODUCTO",
+      "title": "Mira Storico en acción",
+      "subtitle": "Descubre cómo Storico convierte una historia de usuario en tareas Kanban estructuradas que puedes editar y exportar.",
+      "play_label": "Reproducir la demo",
+      "cta_primary": "Empieza gratis",
+      "cta_authed": "Abre tu tablero"
+    },
     "faq": {
       "title": "Preguntas frecuentes",
       "subtitle": "Todo lo que necesitas saber sobre Storico.",

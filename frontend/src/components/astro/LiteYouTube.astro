@@ -1,0 +1,99 @@
+---
+/**
+ * The `<lite-youtube>` web component from `@justinribeiro/lite-youtube`, wrapped so the
+ * third-party element lives in exactly one file: its attribute names, its unguarded
+ * `customElements.define`, and the link that stands in for it when it never upgrades.
+ *
+ * Until the visitor clicks, the component paints a poster image and a play button and
+ * nothing else — no request goes to youtube.com, so the landing carries no YouTube
+ * iframe, cookie or third-party script on load. The click is what builds the iframe.
+ *
+ * `nocookie` points the embed at youtube-nocookie.com and is the reason the preconnect
+ * the component injects (on the visitor's first hover or focus) goes to that host and
+ * drops youtube.com, google.com and the two doubleclick hosts the non-cookie path warms.
+ *
+ * Accessibility comes from the component, which writes `<videoplay>: <videotitle>` into
+ * the play button's `aria-label`, the poster's `alt` and the iframe's `title`. That is
+ * why `videotitle` is not a translation: it is the video's own title, the same string
+ * YouTube shows, and it does not change with the UI locale. `playlabel` is the half that
+ * does — the verb in front of it.
+ */
+interface Props {
+  /** YouTube video id, the 11 characters after `watch?v=`. */
+  videoid: string;
+  /** The video's real title, as YouTube shows it. Deliberately not translated. */
+  videotitle: string;
+  /** Localised verb prefixed to `videotitle` in the labels above ("Play", "Reproducir"). */
+  playlabel: string;
+  /**
+   * Player parameters, appended to the component's own `start=<videoStartAt>`.
+   *
+   * Defaulted rather than omitted on purpose: with no `params` attribute the component's
+   * getter interpolates the string `null` into the query it builds, so the embed src would
+   * end `&null`. `rel=0` restricts the end screen to the same channel.
+   */
+  params?: string;
+  /**
+   * Poster resolution. The component's own default is `hqdefault`, a 480x360 image, and the
+   * landing hands it a box about 1120px wide — so the default is upscaled ~2.3x and reads
+   * soft even on a 1x display. `maxresdefault` is 1280x720 and 29KB for this video, the
+   * largest poster YouTube publishes for it; the component drops back to `hqdefault` on its
+   * own when the requested quality does not exist.
+   */
+  posterquality?: string;
+  class?: string;
+}
+
+const {
+  videoid,
+  videotitle,
+  playlabel,
+  params = 'rel=0',
+  posterquality = 'maxresdefault',
+  class: className,
+} = Astro.props;
+---
+
+<!-- `block w-full aspect-video` repeats what the component's own shadow CSS sets on
+     `:host`, so the box keeps its 16:9 height in the two states where that CSS does not
+     exist yet: before the module is evaluated, and when it never loads.
+
+     The custom property turns off the 60px dark-to-transparent gradient the component paints
+     across the top of the poster. It is upstream's own switch (v1.6) and it resolves from
+     this element, so nothing outside needs to know about it. Off because the section draws
+     the frame — one border, one radius, like the live demo above — and on a light poster the
+     band reads as an artifact rather than as a player surface. -->
+<lite-youtube
+  videoid={videoid}
+  videotitle={videotitle}
+  videoplay={playlabel}
+  params={params}
+  posterquality={posterquality}
+  nocookie
+  style="--lite-youtube-frame-shadow-visible: no"
+  class={`block w-full aspect-video ${className ?? ''}`}
+>
+  <!-- Unslotted light DOM: the shadow root has no default `<slot>`, so this anchor is
+       rendered only when there is no shadow DOM to render instead — JavaScript disabled, a
+       failed module fetch, or no custom-element support. Without it those visitors get a
+       black rectangle with no way to reach the video. It is a real link either way, which
+       is what keeps the video reachable for anything that reads the markup. -->
+  <a
+    class="flex h-full w-full items-center justify-center bg-(--color-inverse) px-6 text-center text-sm font-medium text-(--color-inverse-text) no-underline hover:underline"
+    href={`https://www.youtube.com/watch?v=${videoid}`}
+  >
+    {playlabel}: {videotitle}
+  </a>
+</lite-youtube>
+
+<script>
+  // The module calls `customElements.define('lite-youtube', LiteYTEmbed)` at its top level
+  // with no `customElements.get` check, and defining an already-taken name throws
+  // NotSupportedError — which would abort the rest of this script. Two ways to get there:
+  // a host that loads the bundle twice, or a re-evaluated module. Astro does not
+  // re-evaluate this module on a view-transition navigation (the import is cached), so the
+  // guard is insurance rather than a fix for an observed failure; it costs one lookup.
+  if (!customElements.get('lite-youtube')) {
+    await import('@justinribeiro/lite-youtube');
+  }
+</script>

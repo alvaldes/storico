@@ -3,6 +3,7 @@ import PublicLayout from '@/layouts/PublicLayout.astro';
 import { getTranslations, localizedPath, type Locale } from '@/i18n/utils';
 import { FaqAccordion } from '@/components/react/FaqAccordion';
 import FeatureSegments from '@/components/astro/FeatureSegments.astro';
+import LiteYouTube from '@/components/astro/LiteYouTube.astro';
 
 import { getSession } from 'auth-astro/server';
 import { config } from '@/lib/config';
@@ -17,6 +18,13 @@ const isLoggedIn = !!session?.user;
 
 const demoSrc = demoEmbedUrl(config.demoUrl, locale);
 const demoOrigin = demoTargetOrigin(config.demoUrl);
+
+// The showcase video, from Storico's own channel. Both strings are untranslated on
+// purpose: the recording is the same in either locale, so `title` is the video's real
+// YouTube title — the string YouTube itself puts in the embed's labels — and not a
+// translation of it. See @/components/astro/LiteYouTube.
+const DEMO_VIDEO_ID = 'VLvg0Lpxmng';
+const DEMO_VIDEO_TITLE = 'Storico — Automate your user stories to Kanban boards with AI';
 
 const featureCards = [
   { title: t.landing.features.card_1_title, description: t.landing.features.card_1_desc, icon: 'zap' as const },
@@ -140,6 +148,54 @@ const faqItems = [
         lead={t.landing.features.subtitle}
         items={featureCards}
       />
+    </section>
+  </div>
+
+  <!-- ════════════════════════════════════════════ -->
+  <!-- DEMO VIDEO                                   -->
+  <!-- ════════════════════════════════════════════ -->
+  <div class="mx-auto max-w-7xl px-4 md:px-8 lg:px-20">
+    <section class="flex flex-col items-center gap-8 py-12 md:gap-10 md:py-[50px]">
+      <div class="flex max-w-2xl flex-col items-center gap-4 text-center">
+        <!-- Section label, same pill as the features band's eyebrow above. -->
+        <span
+          class="flex w-fit items-center rounded-full border border-(--color-primary-200) bg-(--color-primary-50) px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-(--color-primary-600) dark:border-(--color-primary-400) dark:bg-(--color-primary-950) dark:text-(--color-primary-400)"
+        >
+          {t.landing.video.badge}
+        </span>
+        <h2
+          class="text-balance text-2xl font-extrabold tracking-[-0.5px] text-(--color-text) md:text-4xl md:tracking-[-1px]"
+          style="font-family: 'Space Grotesk', sans-serif;"
+        >
+          {t.landing.video.title}
+        </h2>
+        <p class="text-pretty text-sm text-(--color-text-secondary) md:text-base">
+          {t.landing.video.subtitle}
+        </p>
+      </div>
+
+      <!-- One frame, the same border and radius as the live demo above: no second frame
+           around the poster the component draws inside this one. -->
+      <div
+        class="w-full overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-surface)"
+      >
+        <LiteYouTube
+          videoid={DEMO_VIDEO_ID}
+          videotitle={DEMO_VIDEO_TITLE}
+          playlabel={t.landing.video.play_label}
+        />
+      </div>
+
+      <!-- Secondary treatment on purpose. `landing-cta` D1 settled that the hero's gradient
+           button is *the* action on the page, so this one repeats the destination without
+           repeating the emphasis: a visitor who scrolled past the hero still gets the way
+           in, and the page still has one primary action on it. -->
+      <a
+        href={L(isLoggedIn ? '/dashboard' : '/login')}
+        class="inline-flex items-center justify-center rounded-lg border border-(--color-border) bg-(--color-surface) px-5 py-3 text-sm font-semibold text-(--color-text) no-underline transition-colors hover:bg-(--color-surface-secondary)"
+      >
+        {isLoggedIn ? t.landing.video.cta_authed : t.landing.video.cta_primary}
+      </a>
     </section>
   </div>
 
