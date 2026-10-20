@@ -42,7 +42,7 @@ from storico.api.schemas.extraction import (
 from storico.domain.entities import EntityNotFound, Extraction, Workspace, WorkspaceRole
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
-from storico.domain.ports.llm_port import DEFAULT_TEMPERATURE
+from storico.domain.ports.llm_port import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE
 from storico.domain.services.llm_config_readiness import (
     LLM_CONFIG_INCOMPLETE_CODE,
     missing_llm_config_fields,
@@ -245,6 +245,16 @@ async def extract_tasks(
     #    ``LLMConfig`` the adapter runs at, and the value passed to the runner are all
     #    this one resolved value.
     resolved_temperature = body.temperature if body.temperature is not None else DEFAULT_TEMPERATURE
+    # ``max_tokens`` is an *output* budget and the only cap on this path, and it is a
+    # configured value: resolving it here is what stops the runner from pinning its own
+    # number over the workspace's. A row that names none — or carries a non-positive
+    # leftover no provider can use — keeps the default the runner used to pin, so the
+    # budget a caller had is never lost by this resolution.
+    resolved_max_tokens = (
+        ws_config.max_tokens
+        if ws_config is not None and (ws_config.max_tokens or 0) > 0
+        else DEFAULT_MAX_TOKENS
+    )
     pending = Extraction(
         user_story_id=body.user_story_id,
         model_used=model,
@@ -270,6 +280,7 @@ async def extract_tasks(
             workspace_id=workspace.id,
             model=model,
             temperature=resolved_temperature,
+            max_tokens=resolved_max_tokens,
             # The number just minted and returned in this 202 body (D22): a retry
             # reuses it instead of minting another, and the RAG point records
             # which run produced it.

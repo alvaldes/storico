@@ -33,7 +33,7 @@ from storico.domain.entities.exceptions import LLMError, ParseError
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
-from storico.domain.ports.llm_port import DEFAULT_TEMPERATURE
+from storico.domain.ports.llm_port import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE
 from storico.domain.services.extraction_judge_service import LLMJudgeService
 from storico.domain.services.extraction_service import (
     ExtractionService,
@@ -76,6 +76,7 @@ async def run_background_extraction(
     model: str,
     version_number: int,
     temperature: float = DEFAULT_TEMPERATURE,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     validate: bool = False,
     provider: str = "ollama",
     api_key: str | None = None,
@@ -102,6 +103,10 @@ async def run_background_extraction(
         temperature: Generation temperature, already resolved by the caller (the route
             resolves it once against ``DEFAULT_TEMPERATURE``); there is no ``None``
             here, so the declared temperature and the temperature used cannot drift.
+        max_tokens: Output budget, already resolved by the caller the same way (the route
+            resolves the workspace's ``max_tokens`` once against ``DEFAULT_MAX_TOKENS``).
+            The default is that same literal, so the call sites that omit the keyword keep
+            the budget they always had instead of inventing a second number.
         version_number: The version number the route minted and returned in its 202
             body (D22), so a retry reuses the number instead of minting another.
             Required, with no default: the port's ``store_extraction`` records it
@@ -128,6 +133,7 @@ async def run_background_extraction(
                 workspace_id=workspace_id,
                 model=model,
                 temperature=temperature,
+                max_tokens=max_tokens,
                 version_number=version_number,
                 validate=validate,
                 provider=provider,
@@ -294,6 +300,7 @@ async def _run_extraction(
     version_number: int,
     temperature: float,
     validate: bool,
+    max_tokens: int,
     provider: str = "ollama",
     api_key: str | None = None,
     base_url: str | None = None,
@@ -394,7 +401,7 @@ async def _run_extraction(
         llm_config = LLMConfig(
             model=model,
             temperature=temperature,
-            max_tokens=2048,
+            max_tokens=max_tokens,
             timeout=120,
         )
 

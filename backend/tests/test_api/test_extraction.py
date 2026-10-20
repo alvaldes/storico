@@ -640,6 +640,7 @@ async def _seed_llm_config(
     model: str | None = None,
     api_key: str | None = None,
     base_url: str | None = None,
+    max_tokens: int | None = None,
 ) -> None:
     """Persist the workspace's LLM row exactly as the settings form would."""
     from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
@@ -651,6 +652,7 @@ async def _seed_llm_config(
             model=model,
             api_key=api_key,
             base_url=base_url,
+            max_tokens=max_tokens,
         )
     )
 
@@ -3233,3 +3235,176 @@ class TestWorkspaceTemplateOptOutAtTheRecord:
         assert rendered.template_variables["project_context"]["name"] == "Test Project"
         assert rendered.template_variables["negative_examples_omitted"] == 0
         assert rendered.template_variables["negative_examples"] == []
+
+
+@pytest.mark.unit
+class TestConfiguredMaxTokens:
+    """The output budget the workspace declares is the budget the run uses.
+
+    The runner pinned ``max_tokens=2048`` and silently overrode
+    ``workspace_llm_config.max_tokens`` — recorded in the 0.9.0 prompt proposal as
+    "recorded, not fixed". These tests pin the closure from both ends: the stored value
+    reaches the scheduled run, and a row that names none keeps the previous default.
+
+    This is the only cap on the path (there is no input cap), and it is an *output*
+    budget in every adapter, so a run that exhausts it can come back with an empty
+    completion — the value being ignored is the difference between a fixable
+    configuration and a run that cannot answer.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_stored_max_tokens_reaches_the_scheduled_run(
+        self, async_client, db_session: AsyncSession, monkeypatch, seed_workspace
+    ) -> None:
+        """The row's ``max_tokens`` travels to ``run_background_extraction`` as-is."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(
+            db_session,
+            seeded.workspace_id,
+            provider="ollama",
+            model="llama3.2",
+            max_tokens=4096,
+        )
+        scheduled = AsyncMock()
+        monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", scheduled)
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 202, response.text
+        await asyncio.sleep(0)
+        scheduled.assert_called_once()
+        assert scheduled.call_args.kwargs["max_tokens"] == 4096
+
+    @pytest.mark.asyncio
+    async def test_a_config_without_max_tokens_keeps_the_previous_default(
+        self, async_client, db_session: AsyncSession, monkeypatch, seed_workspace
+    ) -> None:
+        """A row that names no budget schedules the 2048 the runner always used."""
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        await _seed_llm_config(db_session, seeded.workspace_id, provider="ollama", model="llama3.2")
+        scheduled = AsyncMock()
+        monkeypatch.setattr("storico.api.routes.extraction.run_background_extraction", scheduled)
+
+        response = await async_client.post(
+            f"/api/v1/workspaces/{seeded.workspace_id}/extract/",
+            json={"user_story_id": str(seeded.story_id)},
+            headers=_auth_headers(str(user.id)),
+        )
+
+        assert response.status_code == 202, response.text
+        await asyncio.sleep(0)
+        assert scheduled.call_args.kwargs["max_tokens"] == 2048
+
+    @pytest.mark.asyncio
+    async def test_a_run_that_never_names_max_tokens_still_runs_at_the_default(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The runner's own default reaches the adapter, never ``None``.
+
+        Mirrors the temperature triangulation: the call sites that omit the keyword must
+        not open a hole in the rule, so the adapter — the only witness of what was really
+        sent — has to see the default.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await SQLAlchemyExtractionRepository(session).create_next_version(
+                Extraction(
+                    user_story_id=seeded.story_id,
+                    model_used="llama3.2",
+                    raw_response="",
+                    provider="ollama",
+                    temperature=0.1,
+                    status=ExtractionStatus.PENDING,
+                    user_story_status=UserStoryStatus.PENDING_EXTRACTION,
+                )
+            )
+
+        seen: list[LLMConfig] = []
+
+        class RecordingLLM(LLMPort):
+            async def generate(
+                self,
+                prompt: str,  # noqa: ARG002
+                config: LLMConfig,
+                system_prompt: str | None = None,  # noqa: ARG002
+            ) -> LLMResponse:
+                seen.append(config)
+                return LLMResponse(
+                    text="1. summary: Seed the schema\ndescription: Create the tables.\n"
+                )
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: RecordingLLM())
+        _make_the_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            version_number=1,
+            max_retries=0,
+        )
+
+        assert seen, "the adapter was never called, so nothing was observed"
+        assert seen[0].max_tokens == 2048
+
+    @pytest.mark.asyncio
+    async def test_the_runner_threads_the_max_tokens_it_was_given(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """An explicit budget reaches the adapter, so the route's value is not dropped."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await SQLAlchemyExtractionRepository(session).create_next_version(
+                Extraction(
+                    user_story_id=seeded.story_id,
+                    model_used="llama3.2",
+                    raw_response="",
+                    provider="ollama",
+                    temperature=0.1,
+                    status=ExtractionStatus.PENDING,
+                    user_story_status=UserStoryStatus.PENDING_EXTRACTION,
+                )
+            )
+
+        seen: list[LLMConfig] = []
+
+        class RecordingLLM(LLMPort):
+            async def generate(
+                self,
+                prompt: str,  # noqa: ARG002
+                config: LLMConfig,
+                system_prompt: str | None = None,  # noqa: ARG002
+            ) -> LLMResponse:
+                seen.append(config)
+                return LLMResponse(
+                    text="1. summary: Seed the schema\ndescription: Create the tables.\n"
+                )
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: RecordingLLM())
+        _make_the_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            version_number=1,
+            max_tokens=4096,
+            max_retries=0,
+        )
+
+        assert seen, "the adapter was never called, so nothing was observed"
+        assert seen[0].max_tokens == 4096

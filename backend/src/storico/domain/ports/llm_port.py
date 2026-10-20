@@ -11,6 +11,11 @@ from dataclasses import dataclass
 # single literal forbids.
 DEFAULT_TEMPERATURE: float = 0.1
 
+# The one literal for the default generation budget, for the same reason: the route
+# resolves the request value against it once, and the runner's own default is this one,
+# so the budget the adapter runs at cannot drift from the budget that was resolved.
+DEFAULT_MAX_TOKENS: int = 2048
+
 
 @dataclass(frozen=True, slots=True)
 class LLMConfig:
@@ -18,7 +23,7 @@ class LLMConfig:
 
     model: str
     temperature: float = DEFAULT_TEMPERATURE
-    max_tokens: int = 2048
+    max_tokens: int = DEFAULT_MAX_TOKENS
     timeout: int = 120
 
 
