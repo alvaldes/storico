@@ -14,16 +14,25 @@ from storico.domain.ports import LLMConfig
 from storico.infrastructure.llm.openai_adapter import OpenAIAdapter
 
 
-def _mock_response(content: str | None, usage: dict | None = None) -> MagicMock:
+def _mock_response(
+    content: str | None,
+    usage: dict | None = None,
+    finish_reason: str | None = "stop",
+    refusal: str | None = None,
+) -> MagicMock:
     """Build a fake chat completion response exposing .choices[0].message.content.
 
     ``usage`` is the dict the SDK's ``response.usage.model_dump()`` would return;
     ``None`` builds a response with no usage object at all, like a provider that
-    omits the container.
+    omits the container. ``finish_reason`` and ``refusal`` are set explicitly because
+    a bare ``MagicMock`` invents truthy attributes for both, and the empty-response
+    diagnosis reads them.
     """
     response = MagicMock()
     response.choices = [MagicMock()]
     response.choices[0].message.content = content
+    response.choices[0].finish_reason = finish_reason
+    response.choices[0].message.refusal = refusal
     if usage is None:
         response.usage = None
     else:
@@ -172,3 +181,109 @@ class TestOpenAIAdapter:
         adapter = OpenAIAdapter(api_key="test-key")
         with pytest.raises(LLMResponseError):
             await adapter.generate("Test prompt", self.config)
+
+
+class TestEmptyResponseDiagnosis:
+    """A 200 with no content is diagnosed from what the provider did report.
+
+    The adapter serves OpenAI *and* every workspace-registered OpenAI-compatible
+    provider (``_build_llm_port`` sends any unknown name here), so the failure has to be
+    readable without knowing which one it was. The provider's own facts —
+    ``finish_reason``, whether a refusal came back, the completion-token count against
+    the budget that was sent — are the difference between "it returned nothing" and a
+    cause the reader can act on.
+    """
+
+    def setup_method(self) -> None:
+        self.config = LLMConfig(model="gpt-3.5-turbo", max_tokens=2048)
+
+    @patch("storico.infrastructure.llm.openai_adapter.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_the_message_names_no_vendor(self, mock_client_cls: MagicMock) -> None:
+        """The shared adapter does not attribute a custom provider's failure to OpenAI."""
+        mock_client_cls.return_value.chat.completions.create = AsyncMock(
+            return_value=_mock_response(None)
+        )
+
+        adapter = OpenAIAdapter(api_key="test-key")
+        with pytest.raises(LLMResponseError) as exc_info:
+            await adapter.generate("Test prompt", self.config)
+
+        assert "OpenAI" not in str(exc_info.value)
+        assert "empty response" in str(exc_info.value)
+
+    @patch("storico.infrastructure.llm.openai_adapter.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_a_budget_exhaustion_names_the_budget_and_the_way_out(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        """``finish_reason: length`` says the output budget ran out and how to raise it."""
+        mock_client_cls.return_value.chat.completions.create = AsyncMock(
+            return_value=_mock_response(
+                None,
+                usage={
+                    "prompt_tokens": 900,
+                    "completion_tokens": 2048,
+                    "total_tokens": 2948,
+                },
+                finish_reason="length",
+            )
+        )
+
+        adapter = OpenAIAdapter(api_key="test-key")
+        with pytest.raises(LLMResponseError) as exc_info:
+            await adapter.generate("Test prompt", self.config)
+
+        message = str(exc_info.value)
+        assert "length" in message
+        assert "2048" in message
+        assert "max tokens" in message.lower()
+
+    @patch("storico.infrastructure.llm.openai_adapter.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_a_refusal_is_reported_as_a_refusal(self, mock_client_cls: MagicMock) -> None:
+        """A refusal returned with no content is not reported as an unexplained emptiness."""
+        mock_client_cls.return_value.chat.completions.create = AsyncMock(
+            return_value=_mock_response(None, refusal="I cannot help with that")
+        )
+
+        adapter = OpenAIAdapter(api_key="test-key")
+        with pytest.raises(LLMResponseError) as exc_info:
+            await adapter.generate("Test prompt", self.config)
+
+        assert "refus" in str(exc_info.value).lower()
+
+    @patch("storico.infrastructure.llm.openai_adapter.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_the_log_carries_the_provider_facts(
+        self, mock_client_cls: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The warning records finish_reason, refusal presence and the budget that was sent.
+
+        The message reaches the user through the extraction row; the log is where an
+        operator reads the numbers. Neither may carry the response body — a provider's
+        text is exactly what this diagnosis is not allowed to publish.
+        """
+        mock_client_cls.return_value.chat.completions.create = AsyncMock(
+            return_value=_mock_response(
+                None,
+                usage={
+                    "prompt_tokens": 900,
+                    "completion_tokens": 2048,
+                    "total_tokens": 2948,
+                },
+                finish_reason="length",
+            )
+        )
+
+        adapter = OpenAIAdapter(api_key="test-key")
+        with caplog.at_level("WARNING", logger="storico.infrastructure.llm.openai_adapter"):
+            with pytest.raises(LLMResponseError):
+                await adapter.generate("Test prompt", self.config)
+
+        record = caplog.records[0]
+        assert record.finish_reason == "length"
+        assert record.completion_tokens == 2048
+        assert record.max_tokens == 2048
+        assert record.refusal_present is False
+        assert record.model == "gpt-3.5-turbo"
