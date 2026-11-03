@@ -1,5 +1,6 @@
 import { api, ApiRequestError } from './api';
 import type { Task, TaskStatus, RawTaskItem } from '@/types/task';
+import type { JudgeResult } from '@/types/extraction';
 import { getAllowedTaskTransitions, isValidTaskTransition } from '@/types/task';
 
 // ── Mapping helpers ──
@@ -163,13 +164,18 @@ export async function updateTask(taskId: string, fields: TaskUpdateFields): Prom
  * The client must poll ``getExtractionStatus()`` until status changes to
  * ``"completed"`` or ``"failed"``.
  *
+ * ``options.runValidation`` is the per-run judge switch (S8/D8): when true the
+ * run asks the LLM-as-a-Judge to score its own output, at the cost of one
+ * extra model call. It defaults to off and is never set by anything but the
+ * caller's explicit choice — there is no workspace-level preference.
+ *
  * Uses the workspace-scoped endpoint so workspace membership is validated
  * server-side. The legacy `/api/v1/extract/` endpoint now returns 410 Gone.
  */
 export async function startExtraction(
   storyId: string,
   workspaceId: string,
-  options?: { model?: string; temperature?: number },
+  options?: { model?: string; temperature?: number; runValidation?: boolean },
 ): Promise<{
   extractionId: string;
   status: string;
@@ -191,7 +197,7 @@ export async function startExtraction(
     user_story_id: storyId,
     model: options?.model ?? null,
     temperature: options?.temperature ?? null,
-    run_validation: false,
+    run_validation: options?.runValidation ?? false,
   });
   return {
     extractionId: raw.extraction_id,
@@ -206,7 +212,9 @@ export async function startExtraction(
  * Returns the current status, error info (if any), and confidence score.
  * When status is ``"completed"``, use ``listTasks(storyId)`` to fetch the
  * generated tasks.
- * Now includes ``user_story_status`` to show the UserStory lifecycle state.
+ * Now includes ``user_story_status`` to show the UserStory lifecycle state,
+ * and ``judgeResult`` — the LLM-as-a-Judge record (S5): ``null`` when the run
+ * was never asked to judge, otherwise the persisted ok/failed record.
  */
 export async function getExtractionStatus(extractionId: string): Promise<{
   id: string;
@@ -216,6 +224,7 @@ export async function getExtractionStatus(extractionId: string): Promise<{
   userStoryStatus: string;
   errorInfo: string | null;
   confidenceScore: number | null;
+  judgeResult: JudgeResult | null;
 }> {
   const raw = await api.get<{
     id: string;
@@ -225,6 +234,7 @@ export async function getExtractionStatus(extractionId: string): Promise<{
     user_story_status: string;
     error_info: string | null;
     confidence_score: number | null;
+    judge_result: JudgeResult | null;
   }>(`/api/v1/extractions/${extractionId}`);
   return {
     id: raw.id,
@@ -234,6 +244,7 @@ export async function getExtractionStatus(extractionId: string): Promise<{
     userStoryStatus: raw.user_story_status,
     errorInfo: raw.error_info,
     confidenceScore: raw.confidence_score,
+    judgeResult: raw.judge_result ?? null,
   };
 }
 

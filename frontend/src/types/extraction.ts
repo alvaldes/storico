@@ -26,7 +26,41 @@ export interface ExtractionResponse {
   prompt_config: Record<string, unknown> | null;
   raw_response: string;
   confidence_score: number | null;
+  judge_result: JudgeResult | null;
   created_at: string;
   completed_at: string | null;
   tasks: ExtractionTask[];
+}
+
+/** One judged criterion, exactly as the backend persisted it. */
+export interface JudgeCriterion {
+  score: number;
+  justification: string | null;
+}
+
+/**
+ * The LLM-as-a-Judge record (`extractions.judge_result`), as the extraction
+ * read carries it (S5/D4). `null` means the run was never asked to judge — the
+ * normal case (D8).
+ *
+ * Rows written before the 1–7 rubric landed carry the OLD shape: five criteria
+ * on 0–10 with the wire name `format` in place of `clarity`, and no `tas`/`ifi`
+ * keys. Those rows are never rescaled or completed by the frontend: the panel
+ * renders what a record has and omits the thesis indices when the record does
+ * not carry them.
+ */
+export interface JudgeResult {
+  state: 'ok' | 'failed';
+  criteria: Record<string, JudgeCriterion>;
+  total_score: number | null;
+  max_total: number | null;
+  approved: boolean | null;
+  /** Absent on pre-rubric rows; `null` on a failed record (no verdict to index).
+   * The frontend reads both the same way — omit the index — but never recomputes it (S8). */
+  tas?: number | null;
+  ifi?: number | null;
+  model?: string | null;
+  model_source?: 'workspace' | 'extraction';
+  error: string | null;
+  error_type: string | null;
 }

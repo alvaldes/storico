@@ -24,8 +24,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.application.prompts.resolve_workspace_prompt import resolve_workspace_prompt
 from storico.domain.entities import Task
@@ -34,15 +38,19 @@ from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
 from storico.domain.ports.llm_port import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE
-from storico.domain.services.extraction_judge_service import LLMJudgeService
+from storico.domain.services.extraction_judge_service import MAX_TOTAL_SCORE, LLMJudgeService
 from storico.domain.services.extraction_service import (
     ExtractionService,
     FewShotConfig,
     ProjectContext,
 )
-from storico.domain.services.llm_config_readiness import normalize_optional
+from storico.domain.services.llm_config_readiness import (
+    missing_llm_config_fields,
+    normalize_optional,
+)
 from storico.domain.services.negative_examples import compose_negative_examples
 from storico.domain.validators.state_machine import validate_user_story_transition
+from storico.infrastructure.crypto import FernetCipher
 from storico.infrastructure.database.base import create_session_factory, get_engine
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
@@ -50,6 +58,7 @@ from storico.infrastructure.database.repositories import (
     SQLAlchemyTaskInvalidationRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserStoryRepository,
+    SQLAlchemyWorkspaceLLMConfigRepository,
 )
 from storico.infrastructure.database.repositories.workspace_prompt_repository import (
     SQLAlchemyWorkspacePromptRepository,
@@ -66,6 +75,11 @@ from storico.infrastructure.llm import (
 from storico.infrastructure.vector import QdrantAdapter, get_embedding_port
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    # Late-imported at runtime inside ``_run_extraction`` to avoid a circular import;
+    # the type checker still needs the real class for the helper's annotation.
+    from storico.config.settings import Settings
 
 # ── Public API ─────────────────────────────────────────────────────
 
@@ -115,7 +129,14 @@ async def run_background_extraction(
             let a direct in-process caller thread ``None`` into the payload key.
             (Reordered ahead of ``temperature`` because a required parameter
             cannot follow one with a default; every caller passes keywords.)
-        validate: Whether to run LLM-as-a-Judge validation.
+        validate: Whether to run LLM-as-a-Judge validation. The judge resolves its own
+            connection first (D9/S10): when the workspace configured any judge field
+            (``judge_model``, ``judge_provider``, ``judge_api_key``, ``judge_base_url``),
+            the judge runs on that configuration and the record says
+            ``model_source: "workspace"`` — reusing the extraction credential only when
+            the resolved provider is the extraction's own; when nothing is configured,
+            the judge runs with the extraction's port and config and the record says
+            ``model_source: "extraction"``.
         provider: Workspace provider name.  ``"ollama"``, ``"gemini"``,
             ``"openai"``, and ``"anthropic"`` have dedicated adapters; any
             other name is a workspace-defined custom provider served by an
@@ -225,6 +246,141 @@ async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
 
 
 # ── Internal extraction logic ─────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class _JudgeConnection:
+    """The fully resolved LLM connection the judge runs on (D9/S10).
+
+    ``source`` is ``"workspace"`` when any judge field is configured (the judge
+    connection is its own, even when the provider ends up equal to the extraction's)
+    and ``"extraction"`` when nothing is configured (the judge rides the extraction's
+    port and config, exactly as before this resolution existed).
+    """
+
+    provider: str
+    model: str
+    api_key: str | None
+    base_url: str | None
+    source: str
+
+    @property
+    def needs_own_port(self) -> bool:
+        """Whether the judge must be served by an adapter of its own.
+
+        Only a separately configured judge needs one; an unconfigured judge reuses
+        the extraction's existing port, so no second adapter is ever built for it.
+        """
+        return self.source == "workspace"
+
+
+async def _resolve_judge_connection(
+    session: AsyncSession,
+    workspace_id: UUID,
+    settings: Settings,
+    *,
+    provider: str,
+    model: str,
+    api_key: str | None,
+    base_url: str | None,
+) -> _JudgeConnection:
+    """Resolve the whole judge connection from the workspace row and the extraction side.
+
+    Reads through the same repository the settings routes write through, so the
+    column mapping and the credential conventions have one owner. The cipher is
+    built the way the dependency factory builds it (``get_cipher``): from the
+    process master key. This adds no new failure mode — the route that resolved
+    the extraction's key already decrypted the same credential successfully, so
+    it cannot be undecryptable here — and a row with no credential never
+    consults the cipher at all.
+
+    The fallback rule is per field (D9/S10): some judge field set makes the judge
+    separately configured (``source="workspace"``); none set returns everything
+    from the extraction side (``source="extraction"``), which is today's behavior
+    unchanged. Within ``source="workspace"``:
+
+    - ``provider = judge_provider or extraction provider`` and
+      ``model = judge_model or extraction model``.
+    - When the resolved provider **equals** the extraction provider, reusing the
+      extraction credential and endpoint is legitimate — it is the same provider,
+      so ``api_key = judge_api_key or extraction api_key`` and
+      ``base_url = judge_base_url or extraction base_url``.
+    - When it **differs** — or when it is the same provider at a **different
+      endpoint**, which is a different host as far as a credential is concerned
+      (a proxy, a regional endpoint, a custom gateway) — the extraction credential
+      and endpoint are never reused: ``api_key = judge_api_key`` and
+      ``base_url = judge_base_url or`` the provider's default (the Ollama host for
+      ``ollama``, otherwise none). This rule is the reason it exists: a key issued
+      for one destination must never be sent to another.
+
+    Readiness is checked by the caller against these resolved values, so an
+    incomplete judge block is a classified judge failure rather than a refused
+    extraction.
+
+    Only called when the judge was requested (D8: nothing turns the judge on
+    implicitly, so nothing pays this read for a switched-off run).
+    """
+    config_repo = SQLAlchemyWorkspaceLLMConfigRepository(
+        session, FernetCipher(settings.encryption_key)
+    )
+    ws_config = await config_repo.get(workspace_id)
+    if ws_config is None:
+        return _JudgeConnection(
+            provider=provider, model=model, api_key=api_key, base_url=base_url, source="extraction"
+        )
+
+    # Same convention as base_url/api_key/judge_model: a value made of spaces is
+    # "not configured", not a value.
+    judge_provider = normalize_optional(ws_config.judge_provider)
+    judge_model = normalize_optional(ws_config.judge_model)
+    judge_api_key = normalize_optional(ws_config.judge_api_key)
+    judge_base_url = normalize_optional(ws_config.judge_base_url)
+
+    if (
+        judge_provider is None
+        and judge_model is None
+        and judge_api_key is None
+        and judge_base_url is None
+    ):
+        # Nothing configured: the extraction's own port and config, byte-identical
+        # to the behavior before the judge block existed.
+        return _JudgeConnection(
+            provider=provider, model=model, api_key=api_key, base_url=base_url, source="extraction"
+        )
+
+    resolved_provider = judge_provider or provider
+    resolved_model = judge_model or model
+    # Provider names are compared case-folded: ``OpenAI`` and ``openai`` are the
+    # same provider, and treating them as two would fail readiness for a spelling.
+    same_provider = resolved_provider.casefold() == provider.casefold()
+    # A judge endpoint that differs from the extraction's is a different host as
+    # far as a credential is concerned, even on the same provider: a proxy, a
+    # regional endpoint or a custom gateway must not receive a key that was
+    # configured for the extraction's endpoint. Naming the same endpoint is not a
+    # change, so reusing the key stays legitimate there.
+    moved_endpoint = judge_base_url is not None and judge_base_url != base_url
+
+    if same_provider and not moved_endpoint:
+        # Same provider and same endpoint: the extraction credential and endpoint are
+        # credentials *for this destination*, so falling back is legitimate.
+        return _JudgeConnection(
+            provider=resolved_provider,
+            model=resolved_model,
+            api_key=judge_api_key or api_key,
+            base_url=judge_base_url or base_url,
+            source="workspace",
+        )
+    # A different provider, or the same provider at a different endpoint: the
+    # extraction credential does not travel. The only implicit value left is the
+    # provider's own default endpoint.
+    return _JudgeConnection(
+        provider=resolved_provider,
+        model=resolved_model,
+        api_key=judge_api_key,
+        base_url=judge_base_url
+        or (settings.ollama_host if resolved_provider == "ollama" else None),
+        source="workspace",
+    )
 
 
 def _build_llm_port(
@@ -482,31 +638,143 @@ async def _run_extraction(
         parsed_tasks = result.tasks
         raw_response = result.raw_response
 
-        # 4. Optionally validate via LLM-as-a-Judge — same system prompt
+        # 4. Optionally validate via LLM-as-a-Judge — same system prompt.
+        #
+        # The judge's outcome is recorded in full (D4/D5): ``state: "ok"`` on a
+        # run that judged, ``state: "failed"`` with ``error``/``error_type`` on one
+        # that was requested and failed — including ``JudgeOutputError``, which
+        # lands here because it is an ``LLMError`` (D2): a classified failure,
+        # never a retried one and never a silent null. A run with ``validate=True``
+        # but no judge service is also a classified failure, so "not requested"
+        # and "requested and could not run" stay distinguishable on the row.
         confidence: float | None = None
-        if validate and extraction_service._judge_service is not None:
-            try:
-                judge_result = await extraction_service._judge_service.validate(
-                    user_story=getattr(story, "raw_text", str(story)),
-                    tasks=[
-                        {"summary": pt.summary, "description": pt.description}
-                        for pt in parsed_tasks
-                    ],
-                    config=llm_config,
-                    system_prompt=system_prompt,
-                )
-                confidence = judge_result.total_score / 50.0
-                if not judge_result.approved and confidence is not None and confidence > 0.5:
-                    confidence = 0.5
-            except LLMError as exc:
-                logger.warning(
-                    "LLM judge validation failed, skipping confidence scoring",
-                    extra={
-                        "extraction_id": str(extraction_id),
+        judge_result: dict | None = None
+        if validate:
+            # D9/S10: the judge resolves its own connection — the workspace may
+            # configure a judge model on the extraction's provider and credential, or
+            # a full judge block on another provider with another credential. When
+            # nothing is configured, the judge rides the extraction's port and config
+            # exactly as before. Both the ok and the failed records carry the
+            # provider, the model and the model's source, so a failed judgement still
+            # names who was asked. The honest values until the workspace read
+            # resolves otherwise: if the lookup itself fails (F2), the record still
+            # names the extraction provider and model instead of nobody.
+            judge_record_base: dict = {
+                "criteria": {},
+                "total_score": None,
+                "max_total": MAX_TOTAL_SCORE,
+                "approved": False,
+                "tas": None,
+                "ifi": None,
+                "provider": provider,
+                "model": model,
+                "model_source": "extraction",
+            }
+            extraction_judge = extraction_service._judge_service
+            if extraction_judge is None:
+                judge_result = {
+                    "state": "failed",
+                    **judge_record_base,
+                    "error": "judge service unavailable",
+                    "error_type": None,
+                }
+            else:
+                try:
+                    from dataclasses import replace
+
+                    judge_conn = await _resolve_judge_connection(
+                        session,
+                        workspace_id,
+                        settings,
+                        provider=provider,
+                        model=model,
+                        api_key=api_key,
+                        base_url=base_url,
+                    )
+                    judge_record_base["provider"] = judge_conn.provider
+                    judge_record_base["model"] = judge_conn.model
+                    judge_record_base["model_source"] = judge_conn.source
+                    if judge_conn.needs_own_port:
+                        # Readiness is the existing rule, applied to the judge's own
+                        # resolved values: an incomplete judge block is a classified
+                        # judge failure, never a refused or failed extraction (the
+                        # extraction has no dependency on the judge).
+                        missing = missing_llm_config_fields(
+                            judge_conn.provider,
+                            model=judge_conn.model,
+                            api_key=judge_conn.api_key,
+                            base_url=judge_conn.base_url,
+                        )
+                        if missing:
+                            raise LLMError(
+                                f"The judge configuration for provider '{judge_conn.provider}' "
+                                f"is incomplete: missing {', '.join(missing)}. "
+                                "Complete it in Workspace Settings."
+                            )
+                        judge_port = _build_llm_port(
+                            provider=judge_conn.provider,
+                            api_key=judge_conn.api_key,
+                            base_url=judge_conn.base_url,
+                            ollama_host=settings.ollama_host,
+                        )
+                        judge_service: LLMJudgeService = LLMJudgeService(
+                            llm_port=judge_port, prompt_manager=prompt_manager
+                        )
+                        # Temperature, budget and timeout are inherited from the
+                        # extraction config via ``replace`` — they are not configured
+                        # for the judge separately; only the connection and the model
+                        # are the judge's own.
+                        judge_config = replace(llm_config, model=judge_conn.model)
+                    else:
+                        judge_service = extraction_judge
+                        judge_config = llm_config
+                    judged = await judge_service.validate(
+                        user_story=getattr(story, "raw_text", str(story)),
+                        tasks=[
+                            {"summary": pt.summary, "description": pt.description}
+                            for pt in parsed_tasks
+                        ],
+                        config=judge_config,
+                        system_prompt=system_prompt,
+                    )
+                    judge_result = {
+                        "state": "ok",
+                        "criteria": judged.criteria,
+                        "total_score": judged.total_score,
+                        "max_total": judged.max_total,
+                        "approved": judged.approved,
+                        "tas": judged.tas,
+                        "ifi": judged.ifi,
+                        "provider": judge_record_base["provider"],
+                        "model": judge_record_base["model"],
+                        "model_source": judge_record_base["model_source"],
+                        "error": None,
+                        "error_type": None,
+                    }
+                    confidence = judged.total_score / judged.max_total
+                    if not judged.approved and confidence is not None and confidence > 0.5:
+                        confidence = 0.5
+                except Exception as exc:
+                    # The whole judge path is classified here — the model lookup
+                    # included (F2): a database or cipher error reaching it used to
+                    # escape into the runner's generic handler, which retried the
+                    # *extraction* with backoff and ended the run ``failed`` with
+                    # ``validate=True`` and no record. A judged run that could not
+                    # judge is a completed run with a failed record instead.
+                    logger.warning(
+                        "LLM judge validation failed, skipping confidence scoring",
+                        extra={
+                            "extraction_id": str(extraction_id),
+                            "error": str(exc),
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+                    judge_result = {
+                        "state": "failed",
+                        **judge_record_base,
                         "error": str(exc),
                         "error_type": type(exc).__name__,
-                    },
-                )
+                    }
 
         # 5. Mark the run completed — one targeted UPDATE that names no snapshot
         # column, so provider, temperature, version_number and prompt_rendered keep
@@ -516,6 +784,7 @@ async def _run_extraction(
             raw_response=raw_response,
             confidence_score=confidence,
             completed_at=datetime.now(UTC),
+            judge_result=judge_result,
         )
 
         # 6. Persist tasks
@@ -545,6 +814,7 @@ async def _run_extraction(
             confidence_score=confidence,
             project_id=story.project_id,
             version_number=version_number,
+            judge_state=judge_result["state"] if judge_result is not None else None,
         )
 
         # 8. Transition UserStory to EXTRACTED (from EXTRACTING)
@@ -611,6 +881,7 @@ async def _store_rag(
     confidence_score: float | None,
     project_id: UUID,
     version_number: int,
+    judge_state: str | None = None,
 ) -> None:
     """Store extraction result in vector store for future RAG searches.
 
@@ -622,6 +893,10 @@ async def _store_rag(
     ``store_extraction`` so the point can be scoped and tied to its run; the port requires
     them, and the runner's ``version_number`` is a required ``int`` with no default, so
     a ``None`` can never reach the payload key through this path.
+
+    ``judge_state`` is the recorded run's ``judge_result.state`` (D6): the point carries no
+    ``prompt_config``, so without this key a ``null`` there could not tell "the judge was
+    never requested" from "it was requested and failed".
     """
     if vector_store is None:
         logger.debug("RAG store skipped: no vector store available")
@@ -640,6 +915,7 @@ async def _store_rag(
             version_number=version_number,
             confidence_score=confidence_score,
             user_story_id=str(getattr(story, "id", "")),
+            judge_state=judge_state,
         )
     except Exception as exc:
         logger.warning(

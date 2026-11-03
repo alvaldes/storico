@@ -167,6 +167,7 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
         raw_response: str,
         confidence_score: float | None,
         completed_at: datetime,
+        judge_result: dict | None = None,
     ) -> None:
         """Mark the extraction completed with one targeted UPDATE.
 
@@ -174,6 +175,12 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
         preserved by convention, but unreachable. The status pair is hardcoded here
         because ``COMPLETED`` and ``EXTRACTED`` move together and no caller may pair
         them differently.
+
+        ``judge_result`` (feature ``llm-judge-instrument``, D4) rides on the same
+        terminal statement: the judge verdict and the confidence it derived must
+        land together or not at all, so a read can never see one without the
+        other. ``None`` — the default every pre-judge call site passes — leaves
+        the column ``NULL``, which is the "never requested" reading (D5).
         """
         stmt = (
             update(ExtractionModel)
@@ -184,6 +191,7 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
                 raw_response=raw_response,
                 confidence_score=confidence_score,
                 completed_at=completed_at,
+                judge_result=judge_result,
             )
         )
         await self._execute_mark(stmt, extraction_id)
@@ -441,6 +449,7 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
             error_info=model.error_info,
             prompt_config=model.prompt_config,
             confidence_score=model.confidence_score,
+            judge_result=model.judge_result,
             id=model.id,
             created_at=model.created_at,
             completed_at=model.completed_at,
@@ -466,6 +475,7 @@ class SQLAlchemyExtractionRepository(ExtractionRepository):
             "raw_response": extraction.raw_response,
             "prompt_config": extraction.prompt_config,
             "confidence_score": extraction.confidence_score,
+            "judge_result": extraction.judge_result,
             "created_at": extraction.created_at,
             "completed_at": extraction.completed_at,
         }

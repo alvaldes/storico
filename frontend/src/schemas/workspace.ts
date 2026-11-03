@@ -100,6 +100,16 @@ export const llmConfigSchema = z.object({
     .optional(),
   baseUrl: z.string().max(LLM_ENDPOINT_MAX_LENGTH).optional(),
   apiKey: z.string().max(LLM_API_KEY_MAX_LENGTH).optional(),
+  // The judge block (D7/D9/S10): the judge's own, independent LLM configuration.
+  // Absent means the judge falls back to the extraction value field by field, and
+  // because this payload is a partial update (an omitted key keeps the stored
+  // value) an explicit empty string is what clears a field — the convention
+  // `judge_model` and `base_url`/`api_key` already follow. Lengths mirror the
+  // backend's columns exactly and are kept in step by the readiness mirror guard.
+  judgeProvider: z.string().max(PROVIDER_NAME_MAX_LENGTH).optional(),
+  judgeModel: z.string().max(LLM_MODEL_MAX_LENGTH).optional(),
+  judgeApiKey: z.string().max(LLM_API_KEY_MAX_LENGTH).optional(),
+  judgeBaseUrl: z.string().max(LLM_ENDPOINT_MAX_LENGTH).optional(),
 });
 
 /**
@@ -136,6 +146,18 @@ export const llmConfigDraftSchema = z
       .max(LLM_ENDPOINT_MAX_LENGTH, { message: 'too_long' })
       .refine(isEndpointOrEmpty, { message: 'invalid_url' }),
     apiKey: z.string().max(LLM_API_KEY_MAX_LENGTH, { message: 'too_long' }),
+    // The judge block. Optional here — an incomplete judge block is a classified
+    // judged failure at run time, never a refused save (D9), so the completeness
+    // rule does not apply to it — but the form always holds and always sends these
+    // four values explicitly: the empty string is what clears a stored one.
+    judgeProvider: z.string().max(PROVIDER_NAME_MAX_LENGTH, { message: 'too_long' }).optional(),
+    judgeModel: z.string().max(LLM_MODEL_MAX_LENGTH, { message: 'too_long' }).optional(),
+    judgeApiKey: z.string().max(LLM_API_KEY_MAX_LENGTH, { message: 'too_long' }).optional(),
+    judgeBaseUrl: z
+      .string()
+      .max(LLM_ENDPOINT_MAX_LENGTH, { message: 'too_long' })
+      .refine(isEndpointOrEmpty, { message: 'invalid_url' })
+      .optional(),
   })
   .superRefine((values, ctx) => {
     // One issue per missing field, on that field's own path, so the form can put the

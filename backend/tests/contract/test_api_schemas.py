@@ -14,6 +14,7 @@ from storico.api.schemas.extraction import (
 )
 from storico.api.schemas.story import UserStoryResponse
 from storico.api.schemas.task import TaskResponse
+from storico.api.schemas.workspace_llm_config import LLMConfigRequest, LLMConfigResponse
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.task import TaskStatus as DomainTaskStatus
 from storico.domain.entities.user_story import UserStoryStatus
@@ -119,6 +120,18 @@ class TestExtractionResponseContract:
         assert "completed_at" in fields
         assert fields["completed_at"].annotation == (datetime | None)
         assert fields["completed_at"].default is None
+
+    def test_includes_a_nullable_judge_result(self):
+        """The judge record (feature ``llm-judge-instrument``, D4/D5) is part of the contract.
+
+        The annotation is what the client's ``judge_result: object | null`` is
+        written against: ``None`` reads "not requested" (D5), and the object's
+        own ``state`` key reads "ok" / "failed".
+        """
+        fields = ExtractionResponse.model_fields
+        assert "judge_result" in fields
+        assert fields["judge_result"].annotation == (dict | None)
+        assert fields["judge_result"].default is None
 
 
 class TestExtractResponseContract:
@@ -264,3 +277,54 @@ class TestNoExtraFieldsForbidden:
         from storico.api.schemas.story import CreateUserStoryRequest
 
         assert CreateUserStoryRequest.model_config.get("extra") == "forbid"
+
+
+class TestLLMConfigJudgeModelContract:
+    """Contract: the workspace LLM config payloads carry ``judge_model`` (D7/S4).
+
+    The field is optional in both directions — a workspace without a judge model
+    is the default state, and the settings form can post a payload that does not
+    mention it (which, per the PUT's partial-update semantics — omitted keeps,
+    explicit empty string clears — leaves the stored value alone unless cleared).
+    """
+
+    def test_request_field_is_optional_with_a_length_cap(self):
+        """``LLMConfigRequest.judge_model`` is an optional string capped at 100."""
+        fields = LLMConfigRequest.model_fields
+        assert "judge_model" in fields
+        assert fields["judge_model"].default is None
+        assert fields["judge_model"].annotation == (str | None)
+        assert fields["judge_model"].metadata[0].max_length == 100
+
+    def test_response_field_is_optional(self):
+        """``LLMConfigResponse.judge_model`` is an optional string."""
+        fields = LLMConfigResponse.model_fields
+        assert "judge_model" in fields
+        assert fields["judge_model"].default is None
+        assert fields["judge_model"].annotation == (str | None)
+
+
+class TestLLMConfigJudgeConnectionContract:
+    """Contract: the payloads carry the judge's own connection (D9/S10).
+
+    All three fields are optional in both directions — an unconfigured judge is the
+    default state — and the request caps each string the way the sibling extraction
+    fields are capped: the provider like ``provider`` (50), the credential like
+    ``api_key`` (500, the plaintext cap; the column stores ciphertext) and the
+    endpoint like ``base_url`` (500).
+    """
+
+    def test_request_fields_are_optional_with_the_sibling_caps(self):
+        fields = LLMConfigRequest.model_fields
+        for name, cap in (("judge_provider", 50), ("judge_api_key", 500), ("judge_base_url", 500)):
+            assert name in fields, name
+            assert fields[name].default is None, name
+            assert fields[name].annotation == (str | None), name
+            assert fields[name].metadata[0].max_length == cap, name
+
+    def test_response_fields_are_optional(self):
+        fields = LLMConfigResponse.model_fields
+        for name in ("judge_provider", "judge_api_key", "judge_base_url"):
+            assert name in fields, name
+            assert fields[name].default is None, name
+            assert fields[name].annotation == (str | None), name

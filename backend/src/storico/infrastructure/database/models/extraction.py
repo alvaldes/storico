@@ -69,6 +69,10 @@ class ExtractionModel(Base):
     prompt_config: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     raw_response: Mapped[str] = mapped_column(Text, nullable=False)
     confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    # The judge record (D4/D5 of feature ``llm-judge-instrument``): JSON, not JSONB —
+    # the unit suite builds its schema on SQLite, same portability choice as
+    # ``prompt_config``. Written once by the terminal UPDATE, never before.
+    judge_result: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # Nullable because a ``pending`` extraction has not finished. The invariant — non-null exactly
     # when ``status`` is terminal — is enforced by the call sites that reach a terminal state, and

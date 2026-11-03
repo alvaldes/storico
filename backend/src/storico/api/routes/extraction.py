@@ -346,6 +346,7 @@ async def extraction_status(
         prompt_config=extraction.prompt_config,
         raw_response=extraction.raw_response,
         confidence_score=extraction.confidence_score,
+        judge_result=extraction.judge_result,
         created_at=extraction.created_at,
         completed_at=extraction.completed_at,
         version_number=extraction.version_number,

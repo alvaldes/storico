@@ -73,7 +73,11 @@ export interface TaskState {
    * with `await` can never throw. The extraction toast in `StoryDetail` reads that
    * entry and is therefore the single authority for the user-facing failure message.
    */
-  extractTasks: (storyId: string, workspaceId: string) => Promise<void>;
+  extractTasks: (
+    storyId: string,
+    workspaceId: string,
+    options?: { runValidation?: boolean },
+  ) => Promise<void>;
   /** Poll extraction status until completion or failure. */
   pollExtraction: (storyId: string, workspaceId: string, extractionId: string) => Promise<void>;
   /**
@@ -190,7 +194,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   // ── Async extraction ──
 
-  extractTasks: async (storyId: string, workspaceId: string) => {
+  extractTasks: async (storyId: string, workspaceId: string, options?: { runValidation?: boolean }) => {
     // The request is tagged with its workspace, so a call that is already stale — a
     // component the user just left — must not even mark the story as pending: that entry
     // would survive the switch with no poll to ever settle it.
@@ -212,7 +216,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }));
 
     try {
-      const result = await api.startExtraction(storyId, workspaceId);
+      // `options` — the per-run judge switch (S8/D8) — is forwarded untouched:
+      // the API layer owns the default (`run_validation: false`), so the store
+      // invents no second copy of it.
+      const result = await api.startExtraction(storyId, workspaceId, options);
 
       // The POST may land after the workspace it belongs to was discarded. Writing the
       // extraction id now would resurrect that departed workspace's entry as `pending` in

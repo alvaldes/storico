@@ -529,6 +529,50 @@ class TestExtractionStatusEndpoint:
         assert data["raw_response"] == "Some response"
 
     @pytest.mark.asyncio
+    async def test_status_returns_the_judge_result(
+        self, async_client, db_session: AsyncSession, seed_workspace
+    ) -> None:
+        """GET returns the persisted judge record as stored (feature ``llm-judge-instrument``, D4).
+
+        The three states of D5 read from one field: this seeds the ``"ok"``
+        state; the null "not requested" state is the default of every other
+        response on this route.
+        """
+        user = await _create_user(db_session)
+        seeded = await seed_workspace(user=user)
+        ws_id = seeded.workspace_id
+        story_id = seeded.story_id
+
+        judge_result = {
+            "state": "failed",
+            "criteria": {},
+            "total_score": None,
+            "max_total": 49,
+            "approved": False,
+            "tas": None,
+            "ifi": None,
+            "model": "llama3.2",
+            "model_source": "extraction",
+            "error": "Judge down",
+            "error_type": "LLMConnectionError",
+        }
+        saved = await seed_extraction(
+            db_session,
+            story_id,
+            model_used="llama3.2",
+            status=ExtractionStatus.COMPLETED,
+            judge_result=judge_result,
+        )
+
+        response = await async_client.get(
+            f"/api/v1/workspaces/{ws_id}/extract/status/{saved.id}",
+            headers=_auth_headers(str(user.id)),
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["judge_result"] == judge_result
+
+    @pytest.mark.asyncio
     async def test_status_is_forbidden_for_another_workspaces_extraction(
         self, async_client, db_session: AsyncSession, seed_workspace
     ) -> None:

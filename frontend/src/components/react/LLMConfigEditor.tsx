@@ -11,6 +11,7 @@ import {
   TriangleAlert,
   Plus,
   Pencil,
+  Gavel,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getLLMConfig, upsertLLMConfig, fetchAvailableModels } from '@/lib/llm-config-api';
@@ -73,6 +74,15 @@ interface DraftIssue {
   code: LLMConfigIssueCode;
 }
 
+/**
+ * The judge provider select's value for "no judge provider of its own".
+ *
+ * An empty string is what the wire means by it, but a select cannot carry an empty
+ * option value, so the spelling is impossible to mistake for a provider name — the
+ * same move `ADD_CUSTOM_PROVIDER_VALUE` makes for the extraction select.
+ */
+const JUDGE_SAME_AS_EXTRACTION = '__same_as_extraction__';
+
 export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   const t = locale === 'es' ? es : en;
   const resolvedTheme = useResolvedTheme();
@@ -85,6 +95,17 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     maxTokens: 2048,
     baseUrl: 'http://localhost:11434',
     apiKey: '',
+  });
+  // The judge block (D9) is a second, independent LLM configuration held apart from
+  // `llmConfig`. Every field falls back independently to the extraction value when
+  // empty, and the empty string is what the form sends to clear: the payload keeps
+  // a stored value when its key is omitted, so all four judge fields always travel
+  // explicitly (the same rule `judgeModel` followed alone under D7).
+  const [judgeConfig, setJudgeConfig] = useState({
+    provider: '',
+    model: '',
+    apiKey: '',
+    baseUrl: '',
   });
   const [llmSaving, setLlmSaving] = useState(false);
   const [llmSaveResult, setLlmSaveResult] = useState<'idle' | 'success' | 'error'>('idle');
@@ -121,6 +142,10 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     maxTokens: llmConfig.maxTokens ?? 2048,
     baseUrl: llmConfig.baseUrl ?? '',
     apiKey: llmConfig.apiKey ?? '',
+    judgeProvider: judgeConfig.provider,
+    judgeModel: judgeConfig.model,
+    judgeApiKey: judgeConfig.apiKey,
+    judgeBaseUrl: judgeConfig.baseUrl,
   };
 
   // Recomputed on every render, never stored: an error disappears the moment the value
@@ -152,6 +177,10 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     model: t.settings?.llm_ollama_model ?? 'Model',
     apiKey: t.settings?.llm_openai_api_key ?? 'API Key',
     baseUrl: t.settings?.llm_base_url ?? 'Base URL',
+    judgeProvider: t.settings?.llm_judge_provider ?? 'Judge provider',
+    judgeModel: t.settings?.llm_judge_model ?? 'Judge model',
+    judgeApiKey: t.settings?.llm_judge_api_key ?? 'Judge API key',
+    judgeBaseUrl: t.settings?.llm_judge_base_url ?? 'Judge Base URL',
   };
   const labelFor = (field: string) => fieldLabels[field] ?? field;
 
@@ -234,6 +263,12 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
           // and an empty value is what tells the backend to use it.
           baseUrl: llm.baseUrl ?? '',
           apiKey: llm.apiKey ?? '',
+        });
+        setJudgeConfig({
+          provider: llm.judgeProvider ?? '',
+          model: llm.judgeModel ?? '',
+          apiKey: llm.judgeApiKey ?? '',
+          baseUrl: llm.judgeBaseUrl ?? '',
         });
       }
       if (promptData) {
@@ -396,7 +431,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     }
 
     // A new provider has no endpoint, key or model yet, and the ones the previous
-    // provider left behind are not its values.
+    // provider left behind are not its values. The judge block is not touched: it is
+    // a second, independent configuration under D9, and registering an extraction
+    // provider says nothing about how the judge should run.
     setLlmConfig((prev) => ({ ...prev, provider: saved.name, model: '', apiKey: '', baseUrl: '' }));
     setAvailableModels([]);
     setModelsError(null);
@@ -442,6 +479,15 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
         // it as a URL made of spaces.
         baseUrl: parsed.data.baseUrl.trim() || undefined,
         apiKey: parsed.data.apiKey || undefined,
+        // The four judge fields always travel explicitly, unlike the siblings above:
+        // the payload keeps a stored value when its key is omitted (D9), so the
+        // explicit empty string is the only way the form can clear one. The judge
+        // endpoint trims like the extraction one, but stays an explicit string so a
+        // blank field clears the stored endpoint instead of keeping it.
+        judgeProvider: parsed.data.judgeProvider,
+        judgeModel: parsed.data.judgeModel,
+        judgeApiKey: parsed.data.judgeApiKey,
+        judgeBaseUrl: (parsed.data.judgeBaseUrl ?? '').trim(),
       });
       setLlmSaveResult('success');
       toast.success(t.settings?.llm_saved ?? 'LLM configuration saved');
@@ -566,6 +612,21 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   const noModelsMessage =
     t.workspace?.llmModelsEmpty ?? 'No models available. Check the provider then refresh.';
 
+  // The one cross-provider combination D9 classifies as incomplete: a judge on a
+  // provider other than the extraction's, without a credential of its own and with
+  // no default-free provider (Ollama needs none). The save still goes through — the
+  // refusal is the backend's, as a judged failure — so this is a warning, not a gate.
+  // A custom provider is complete with an endpoint and no key (its
+  // ``required_fields_for`` asks for model and base URL only), so the warning must
+  // not fire for it: the endpoint check is what keeps this hint aligned with the
+  // backend's readiness rule instead of guessing a stricter one.
+  const judgeNeedsOwnCredential =
+    judgeConfig.provider !== '' &&
+    judgeConfig.provider !== llmConfig.provider &&
+    judgeConfig.provider !== 'ollama' &&
+    judgeConfig.apiKey.trim() === '' &&
+    judgeConfig.baseUrl.trim() === '';
+
   return (
     <div className="space-y-6">
       {/* Two-column grid: LLM Config + Prompt Config */}
@@ -634,7 +695,10 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                         return;
                       }
                       // Switching provider drops the values the previous one owned: a
-                      // model id and an API key are not portable between endpoints.
+                      // model id and an API key are not portable between endpoints. The
+                      // judge block is deliberately untouched here: its provider,
+                      // credential and endpoint are independent under D9, and changing
+                      // how the workspace extracts says nothing about how it judges.
                       setLlmConfig((prev) => ({
                         ...prev,
                         provider: val,
@@ -1063,6 +1127,192 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                 </Field>
               </>
             )}
+
+            {/* ── Judge block (D9/S10) ──
+                A second, independent LLM configuration, separated from the extraction
+                fields above. Every field left empty falls back to the extraction value
+                field by field; a different provider needs its own credential, which the
+                backend refuses to borrow. No probe or test button here: the first judged
+                run is the probe, and a bad judge configuration fails as a judged
+                failure. */}
+            <div className="space-y-4 rounded-lg border border-(--color-border) p-4">
+              <div className="flex items-start gap-2">
+                <Gavel className="mt-0.5 h-4 w-4 shrink-0 text-(--color-text-secondary)" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">
+                    {t.settings?.llm_judge_title ?? 'Judge configuration'}
+                  </p>
+                  {/* The fallback rule and the no-borrowed-credential rule, as rendered
+                      copy — this sentence is the point of the block, so it is never a
+                      tooltip. */}
+                  <p className="text-sm text-(--color-text-secondary)">
+                    {t.settings?.llm_judge_description ??
+                      'Every field left empty uses the extraction configuration. A judge on a different provider requires its own credential: the extraction credential is never sent to another provider.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* A warning, not a gate: saving is allowed, and the first judged run is
+                  what reports an incomplete judge configuration. */}
+              {judgeNeedsOwnCredential && (
+                <div
+                  role="status"
+                  className="flex items-start gap-2 rounded-lg border border-(--color-warning-border) bg-(--color-warning-bg) p-3"
+                >
+                  <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-(--color-warning-text)" />
+                  <p className="text-sm text-(--color-warning-text)">
+                    {t.workspace?.llmJudgeCredentialWarn ??
+                      'The judge will need its own credential: a key for one provider is never sent to another.'}
+                  </p>
+                </div>
+              )}
+
+              {/* Judge provider */}
+              <Field>
+                <FieldLabel htmlFor="llm-judge-provider">
+                  {t.settings?.llm_judge_provider ?? 'Judge provider'}
+                </FieldLabel>
+                <Select
+                  value={judgeConfig.provider === '' ? JUDGE_SAME_AS_EXTRACTION : judgeConfig.provider}
+                  onValueChange={(val) => {
+                    if (val === null) return;
+                    if (val === JUDGE_SAME_AS_EXTRACTION) {
+                      // Clearing the judge provider keeps the judge model on purpose:
+                      // extraction provider + judge model is exactly the D7
+                      // configuration the field exists for, and the value stays
+                      // visible in the field, so nothing is dropped silently.
+                      setJudgeConfig((prev) => ({ ...prev, provider: '' }));
+                      return;
+                    }
+                    // Switching to another provider follows the same invariant the
+                    // extraction provider switch applies: a model id, a credential and
+                    // an endpoint are not portable between providers, so the values the
+                    // previous one owned are dropped. The reset is the visible state of
+                    // the fields themselves, never a silent one.
+                    setJudgeConfig((prev) =>
+                      prev.provider === val
+                        ? prev
+                        : { provider: val, model: '', apiKey: '', baseUrl: '' },
+                    );
+                  }}
+                >
+                  <SelectTrigger id="llm-judge-provider" className="w-full">
+                    <div className="flex items-center gap-2">
+                      {judgeConfig.provider !== '' && (
+                        <ProviderIcon
+                          provider={judgeConfig.provider}
+                          theme={resolvedTheme}
+                          className="h-4 w-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                      )}
+                      <span>
+                        {judgeConfig.provider === ''
+                          ? (t.settings?.llm_judge_provider_same ?? 'Same as extraction')
+                          : providerLabel(judgeConfig.provider)}
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={JUDGE_SAME_AS_EXTRACTION}>
+                      {t.settings?.llm_judge_provider_same ?? 'Same as extraction'}
+                    </SelectItem>
+                    {/* The same provider options the extraction select offers: the
+                        built-ins plus the workspace's registered custom ones. The add
+                        and rename controls belong to the extraction selection, not to
+                        the judge's. */}
+                    <SelectSeparator />
+                    {KNOWN_PROVIDERS.map((provider) => (
+                      <SelectItem key={provider} value={provider}>
+                        <ProviderIcon
+                          provider={provider}
+                          theme={resolvedTheme}
+                          className="mr-2 h-4 w-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                        {providerLabel(provider)}
+                      </SelectItem>
+                    ))}
+                    {customProviderNames.length > 0 && <SelectSeparator />}
+                    {customProviderNames.map((name) => (
+                      <SelectItem key={name} value={name}>
+                        <ProviderIcon
+                          provider={name}
+                          theme={resolvedTheme}
+                          className="mr-2 h-4 w-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FieldDescription>
+                  {t.workspace?.llmJudgeProviderDesc ??
+                    'Leave it on "Same as extraction" to judge with the extraction provider, or pick another provider.'}
+                </FieldDescription>
+                {fieldErrorFor('judgeProvider')}
+              </Field>
+
+              {/* Judge model — free text: no probe path for the judge, and a model id
+                  typed once is exactly what the run sends. */}
+              <Field>
+                <FieldLabel htmlFor="llm-judge-model">
+                  {t.settings?.llm_judge_model ?? 'Judge model'}
+                </FieldLabel>
+                <Input
+                  id="llm-judge-model"
+                  type="text"
+                  value={judgeConfig.model}
+                  onChange={(e) => setJudgeConfig((prev) => ({ ...prev, model: e.target.value }))}
+                />
+                <FieldDescription>
+                  {t.workspace?.llmJudgeModelDesc ??
+                    'The model that judges extractions. Leave empty to use the extraction model.'}
+                </FieldDescription>
+                {fieldErrorFor('judgeModel')}
+              </Field>
+
+              {/* Judge credential — masked like the extraction key, the convention it
+                  already follows: it loads back into the field but never renders in
+                  clear text. */}
+              <Field>
+                <FieldLabel htmlFor="llm-judge-api-key">
+                  {t.settings?.llm_judge_api_key ?? 'Judge API key'}
+                </FieldLabel>
+                <Input
+                  id="llm-judge-api-key"
+                  type="password"
+                  value={judgeConfig.apiKey}
+                  onChange={(e) => setJudgeConfig((prev) => ({ ...prev, apiKey: e.target.value }))}
+                  placeholder="sk-..."
+                />
+                <FieldDescription>
+                  {t.workspace?.llmJudgeApiKeyDesc ??
+                    'The credential the judge uses when it runs on another provider. It is stored with this workspace on the server, like the extraction key.'}
+                </FieldDescription>
+                {fieldErrorFor('judgeApiKey')}
+              </Field>
+
+              {/* Judge endpoint */}
+              <Field>
+                <FieldLabel htmlFor="llm-judge-base-url">
+                  {t.settings?.llm_judge_base_url ?? 'Judge Base URL'}
+                </FieldLabel>
+                <Input
+                  id="llm-judge-base-url"
+                  type="text"
+                  value={judgeConfig.baseUrl}
+                  onChange={(e) => setJudgeConfig((prev) => ({ ...prev, baseUrl: e.target.value }))}
+                  placeholder="https://api.example.com/v1"
+                />
+                <FieldDescription>
+                  {t.workspace?.llmJudgeBaseUrlDesc ??
+                    "Optional. Leave empty to use the provider's default endpoint, or the extraction endpoint when the judge uses the same provider."}
+                </FieldDescription>
+                {fieldErrorFor('judgeBaseUrl')}
+              </Field>
+            </div>
 
             {/* Save Button */}
             <div className="flex items-center gap-3 pt-1">

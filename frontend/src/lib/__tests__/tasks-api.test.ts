@@ -249,19 +249,38 @@ describe('tasks-api', () => {
       const result = await tasksApi.startExtraction(storyId, wid, {
         model: 'llama3.2',
         temperature: 0.1,
+        runValidation: true,
       });
 
       expect(api.post).toHaveBeenCalledWith(`/api/v1/workspaces/${wid}/extract/`, {
         user_story_id: storyId,
         model: 'llama3.2',
         temperature: 0.1,
-        run_validation: false,
+        run_validation: true,
       });
       expect(result).toEqual({
         extractionId: 'ext1',
         status: 'pending',
         modelUsed: 'llama3.2',
         versionNumber: 3,
+      });
+    });
+
+    it('sends run_validation: false when the option explicitly asks for no judge', async () => {
+      vi.mocked(api.post).mockResolvedValue({
+        extraction_id: 'ext3',
+        status: 'pending',
+        model_used: 'llama3.2',
+        version_number: 1,
+      });
+
+      await tasksApi.startExtraction(storyId, wid, { runValidation: false });
+
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/workspaces/${wid}/extract/`, {
+        user_story_id: storyId,
+        model: null,
+        temperature: null,
+        run_validation: false,
       });
     });
 
@@ -274,6 +293,7 @@ describe('tasks-api', () => {
 
       const result = await tasksApi.startExtraction(storyId, wid);
 
+      // Default off (D8/S8): with no option at all the judge is not requested.
       expect(api.post).toHaveBeenCalledWith(`/api/v1/workspaces/${wid}/extract/`, {
         user_story_id: storyId,
         model: null,
@@ -298,6 +318,7 @@ describe('tasks-api', () => {
         status: 'completed',
         error_info: null,
         confidence_score: 0.85,
+        judge_result: null,
       });
 
       const result = await tasksApi.getExtractionStatus(extId);
@@ -310,6 +331,7 @@ describe('tasks-api', () => {
         status: 'completed',
         errorInfo: null,
         confidenceScore: 0.85,
+        judgeResult: null,
       });
     });
 

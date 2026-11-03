@@ -10,6 +10,15 @@ class LLMConfigRequest(BaseModel):
 
     provider: str | None = Field(None, max_length=50)
     model: str | None = Field(None, max_length=100)
+    # The judge block (D7/D9/S10). Optional: absent means the judge falls back to the
+    # extraction value field by field, and because this payload is a partial update
+    # (``extra="forbid"``, every field optional) an omitted key KEEPS the stored
+    # value — clearing it takes an explicit empty string, the same convention
+    # ``base_url`` and ``api_key`` already use.
+    judge_model: str | None = Field(None, max_length=100)
+    judge_provider: str | None = Field(None, max_length=50)
+    judge_api_key: str | None = Field(None, max_length=500)
+    judge_base_url: str | None = Field(None, max_length=500)
     temperature: float | None = None
     max_tokens: int | None = None
     base_url: str | None = Field(None, max_length=500)
@@ -48,6 +57,10 @@ class LLMConfigResponse(BaseModel):
 
     provider: str
     model: str | None = None
+    judge_model: str | None = None
+    judge_provider: str | None = None
+    judge_api_key: str | None = None
+    judge_base_url: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
     base_url: str | None = None

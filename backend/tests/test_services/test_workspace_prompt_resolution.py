@@ -1,6 +1,7 @@
 """Tests for workspace prompt resolution — seed on read, seed on create,
 and pipeline wiring of the workspace-configured prompts."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -162,7 +163,28 @@ class TestPipelineUsesWorkspacePrompt:
         from storico.domain.services.extraction_judge_service import LLMJudgeService
 
         llm_port = AsyncMock()
-        llm_port.generate.return_value = LLMResponse(text='{"approved": true, "total_score": 45}')
+        # A payload that satisfies the JudgeResult contract (all seven criteria);
+        # the subject here is the system-prompt forwarding, not the parse.
+        llm_port.generate.return_value = LLMResponse(
+            text=json.dumps(
+                {
+                    "approved": True,
+                    "total_score": 49,
+                    **{
+                        name: {"score": 7}
+                        for name in (
+                            "coherence",
+                            "completeness",
+                            "feasibility",
+                            "clarity",
+                            "granularity",
+                            "dependencies",
+                            "usefulness",
+                        )
+                    },
+                }
+            )
+        )
         prompt_manager = MagicMock()
         prompt_manager.render_judge_prompt.return_value = "Judge prompt"
         judge = LLMJudgeService(llm_port=llm_port, prompt_manager=prompt_manager)

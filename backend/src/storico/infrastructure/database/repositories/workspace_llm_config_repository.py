@@ -64,6 +64,12 @@ class SQLAlchemyWorkspaceLLMConfigRepository(WorkspaceLLMConfigRepository):
             workspace_id=model.workspace_id,
             provider=model.provider,
             model=model.model,
+            judge_model=model.judge_model,
+            judge_provider=model.judge_provider,
+            # Encrypted here and only here, like ``api_key``: the repository is the
+            # choke point every credential passes through.
+            judge_api_key=self._decrypt(model.judge_api_key),
+            judge_base_url=model.judge_base_url,
             temperature=model.temperature,
             max_tokens=model.max_tokens,
             base_url=model.base_url,
@@ -79,6 +85,10 @@ class SQLAlchemyWorkspaceLLMConfigRepository(WorkspaceLLMConfigRepository):
             "workspace_id": config.workspace_id,
             "provider": config.provider,
             "model": config.model,
+            "judge_model": config.judge_model,
+            "judge_provider": config.judge_provider,
+            "judge_api_key": self._encrypt(config.judge_api_key),
+            "judge_base_url": config.judge_base_url,
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
             "base_url": config.base_url,

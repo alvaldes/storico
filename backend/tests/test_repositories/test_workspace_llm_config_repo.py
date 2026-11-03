@@ -186,6 +186,190 @@ def test_the_column_holds_the_ciphertext_of_the_longest_credential_we_accept() -
     )
 
 
+class TestJudgeModelRoundTrip:
+    """``judge_model`` rides the same entity/column plumbing as every other field (D7).
+
+    The judge's model name is a model name, not a credential: it must never reach the
+    cipher, and an upsert whose entity carries no judge model must store ``NULL`` —
+    the repository writes the whole row from the entity it is handed, so clearing is
+    expressed by leaving the field ``None`` on the entity.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_configured_judge_model_round_trips_and_never_reaches_the_cipher(
+        self, db_session: AsyncSession
+    ) -> None:
+        workspace_id = await _workspace_id(db_session, "JudgeConfigured")
+        spy = _RecordingCipher()
+
+        await _repo(db_session, spy).upsert(
+            WorkspaceLLMConfig(
+                workspace_id=workspace_id,
+                provider="ollama",
+                model="llama3.2",
+                judge_model="qwen2.5-judge",
+            )
+        )
+
+        config = await _repo(db_session).get(workspace_id)
+        assert config is not None
+        assert config.judge_model == "qwen2.5-judge"
+        # A model name is not a secret: the cipher was not consulted for it.
+        assert spy.calls == []
+
+    @pytest.mark.asyncio
+    async def test_an_absent_judge_model_stays_null(self, db_session: AsyncSession) -> None:
+        workspace_id = await _workspace_id(db_session, "JudgeAbsent")
+
+        await _repo(db_session).upsert(
+            WorkspaceLLMConfig(workspace_id=workspace_id, provider="ollama")
+        )
+
+        config = await _repo(db_session).get(workspace_id)
+        assert config is not None
+        assert config.judge_model is None
+
+    @pytest.mark.asyncio
+    async def test_a_judge_model_cleared_on_the_entity_is_cleared_in_the_column(
+        self, db_session: AsyncSession
+    ) -> None:
+        workspace_id = await _workspace_id(db_session, "JudgeCleared")
+        repo = _repo(db_session)
+        await repo.upsert(
+            WorkspaceLLMConfig(
+                workspace_id=workspace_id,
+                provider="ollama",
+                judge_model="qwen2.5-judge",
+            )
+        )
+
+        await repo.upsert(
+            WorkspaceLLMConfig(workspace_id=workspace_id, provider="ollama", judge_model=None)
+        )
+
+        stmt = select(WorkspaceLLMConfigModel.judge_model).where(
+            WorkspaceLLMConfigModel.workspace_id == workspace_id
+        )
+        assert (await db_session.execute(stmt)).scalar_one() is None
+
+
+class TestJudgeConnectionRoundTrip:
+    """The judge's own connection fields (D9/S10) ride the same plumbing.
+
+    ``judge_provider`` and ``judge_base_url`` are plain values; ``judge_api_key`` is a
+    credential and must be encrypted on the way in and decrypted on the way out by the
+    repository and nobody else.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_three_fields_round_trip_with_the_credential_encrypted(
+        self, db_session: AsyncSession
+    ) -> None:
+        workspace_id = await _workspace_id(db_session, "JudgeConnection")
+
+        await _repo(db_session).upsert(
+            WorkspaceLLMConfig(
+                workspace_id=workspace_id,
+                provider="openai",
+                model="gpt-4o-mini",
+                judge_model="claude-judge",
+                judge_provider="anthropic",
+                judge_api_key=_PLAINTEXT,
+                judge_base_url="https://gateway.internal/v1",
+            )
+        )
+
+        # The raw column holds ciphertext, not the credential.
+        stmt = select(WorkspaceLLMConfigModel.judge_api_key).where(
+            WorkspaceLLMConfigModel.workspace_id == workspace_id
+        )
+        stored = (await db_session.execute(stmt)).scalar_one()
+        assert stored is not None
+        assert stored.startswith("v1:")
+        assert _PLAINTEXT not in stored
+
+        config = await _repo(db_session).get(workspace_id)
+        assert config is not None
+        assert config.judge_model == "claude-judge"
+        assert config.judge_provider == "anthropic"
+        assert config.judge_api_key == _PLAINTEXT
+        assert config.judge_base_url == "https://gateway.internal/v1"
+
+    @pytest.mark.asyncio
+    async def test_an_absent_judge_connection_stays_null_and_never_reaches_the_cipher(
+        self, db_session: AsyncSession
+    ) -> None:
+        workspace_id = await _workspace_id(db_session, "JudgeConnectionAbsent")
+        spy = _RecordingCipher()
+
+        await _repo(db_session, spy).upsert(
+            WorkspaceLLMConfig(workspace_id=workspace_id, provider="ollama", model="llama3.2")
+        )
+
+        config = await _repo(db_session, spy).get(workspace_id)
+        assert config is not None
+        assert config.judge_provider is None
+        assert config.judge_api_key is None
+        assert config.judge_base_url is None
+        assert spy.calls == []
+
+    @pytest.mark.asyncio
+    async def test_a_judge_credential_cleared_on_the_entity_is_cleared_in_the_column(
+        self, db_session: AsyncSession
+    ) -> None:
+        workspace_id = await _workspace_id(db_session, "JudgeConnectionCleared")
+        repo = _repo(db_session)
+        await repo.upsert(
+            WorkspaceLLMConfig(
+                workspace_id=workspace_id,
+                provider="openai",
+                judge_provider="openai",
+                judge_api_key=_PLAINTEXT,
+                judge_base_url="https://gateway.internal/v1",
+            )
+        )
+
+        await repo.upsert(
+            WorkspaceLLMConfig(
+                workspace_id=workspace_id,
+                provider="openai",
+                judge_provider=None,
+                judge_api_key=None,
+                judge_base_url=None,
+            )
+        )
+
+        stmt = select(
+            WorkspaceLLMConfigModel.judge_provider,
+            WorkspaceLLMConfigModel.judge_api_key,
+            WorkspaceLLMConfigModel.judge_base_url,
+        ).where(WorkspaceLLMConfigModel.workspace_id == workspace_id)
+        row = (await db_session.execute(stmt)).one()
+        assert row.judge_provider is None
+        assert row.judge_api_key is None
+        assert row.judge_base_url is None
+
+    def test_the_judge_credential_column_holds_the_ciphertext_of_the_longest_credential_we_accept(
+        self,
+    ) -> None:
+        """``judge_api_key`` is the same kind of column as ``api_key``, so the same
+        arithmetic binds it: the request caps the plaintext, the column stores the
+        ciphertext, and the two numbers are asserted against each other.
+        """
+        accepted = LLMConfigRequest.model_fields["judge_api_key"].metadata[0].max_length
+        column_type = WorkspaceLLMConfigModel.__table__.c.judge_api_key.type
+
+        assert isinstance(column_type, String)
+        stored_width = getattr(column_type, "length", None)
+        assert isinstance(accepted, int) and isinstance(stored_width, int)
+        longest = FernetCipher(_MASTER_KEY).encrypt("x" * accepted)
+
+        assert len(longest) <= stored_width, (
+            f"a {accepted}-character credential stores as {len(longest)} characters, "
+            f"which does not fit the declared {stored_width}"
+        )
+
+
 @pytest.mark.asyncio
 async def test_a_keyless_cipher_refuses_to_read_ciphertext_instead_of_returning_nothing(
     db_session: AsyncSession,

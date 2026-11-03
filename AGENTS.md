@@ -198,7 +198,7 @@ La investigación se enmarca en el paradigma de **Design Science Research** (Hev
 
 > Storico is an LLM-powered tool that automates decomposing natural language user stories into structured Kanban tasks, exporting directly to project management tools like Trello.
 >
-> Built on a microservices-based hexagonal architecture with a FastAPI REST API and intuitive web UI, it features configurable connectors for cloud-based and local models via Ollama. Performance is optimized via an in-process per-user cache, asynchronous per-story extraction, and an LLM-as-a-Judge validation mechanism that lives in the engine and that the web app does not currently request — so no judge score reaches the user today (`frontend/src/lib/tasks-api.ts:139`).
+> Built on a microservices-based hexagonal architecture with a FastAPI REST API and intuitive web UI, it features configurable connectors for cloud-based and local models via Ollama. Performance is optimized via an in-process per-user cache, asynchronous per-story extraction, and an LLM-as-a-Judge validation mechanism that is opt-in per run (`run_validation`, off by default) and reachable from the UI since the `llm-judge-instrument` feature (2026-11-03): seven criteria on a 1-7 scale, server-computed TAS/IFI and the full verdict persisted in `extractions.judge_result`, with a separate judge model per workspace (`openspec/specs/llm-as-a-judge/spec.md`).
 >
 > It enables agile teams to reduce planning time, eliminate misinterpretations, and maintain strict traceability from high-level requirements to concrete implementation tasks.
 
@@ -512,7 +512,7 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 | 3   | Editor de prompts           | Personalización de prompts del sistema desde configuración del workspace (solo admins)                                      |
 | 4   | Soporte Ollama               | Conexión con modelos locales vía API de Ollama (LLaMA 3.2, Mistral)                                                          |
 | 5   | Procesamiento asíncrono       | Extracción en segundo plano **por historia**: `asyncio.create_task` en el proceso de la API, respuesta `202 Accepted` y el cliente consulta `GET /extractions/{id}`. No hay endpoint de lote — ver la fila 10 |
-| 6   | Validación LLM-as-a-Judge    | Evaluación automática de calidad (coherencia, granularidad, relevancia). **Implementada en el motor; la app web no la solicita** (`tasks-api.ts:139` manda `run_validation: false`, default `False` en `api/schemas/extraction.py:67`), así que hoy no hay puntuación de juez visible para el usuario. Ver `odd/tasks/docs-truth-closure.md`. |
+| 6   | Validación LLM-as-a-Judge    | Evaluación automática de calidad con la rúbrica del diseño experimental: **siete criterios en escala 1-7** (`coherence`, `completeness`, `feasibility`, `clarity`, `granularity`, `dependencies`, `usefulness`), **alcanzable desde la UI por corrida** — el switch es parte del pedido de extracción, va apagado por defecto y se reinicia en cada apertura —, con TAS/IFI calculadas en el servidor y el veredicto completo persistido en `extractions.judge_result`, más un juez configurable como **conexión aparte** (`workspace_llm_configs.judge_provider` / `judge_model` / `judge_api_key` / `judge_base_url`, migraciones `0034` y `0035`): otro modelo sobre el mismo proveedor, u otro proveedor con otra credencial y otro endpoint, con fallback campo por campo a la extracción y sin reutilizar nunca la credencial de un proveedor en otro. Ver `openspec/specs/llm-as-a-judge/spec.md`. |
 | 7   | Contexto histórico (RAG)    | Consulta extracciones previas en Qdrant para incluir ejemplos similares en el prompt del LLM                                 |
 | 8   | Refinamiento post-extracción | Deduplicación, validación de dependencias, verificación de coherencia                                                        |
 
@@ -673,13 +673,18 @@ Browser → Astro UI → HTTP POST /extract → FastAPI → TaskExtractionUseCas
 └──────────────────────────────────────┘
 ```
 
-> **Matiz medido el 2026-10-06**: la puntuación del juez del paso 6 sólo aparece si el llamador pide la
-> validación, y la app web **nunca la pide** (`frontend/src/lib/tasks-api.ts:139` manda
-> `run_validation: false`; el default del schema es `False` en
-> `backend/src/storico/api/schemas/extraction.py:67`). El motor la implementa —el flujo de arriba es
-> correcto como descripción del motor, pero la puntuación del paso 6 sólo existe si la validación
-> corre— y la UI no la solicita, así que hoy ninguna puntuación llega al usuario. Ver
-> `odd/tasks/docs-truth-closure.md`.
+> **Corrección (2026-11-03)**: el matiz que sigue, fechado el 2026-10-06, se conserva como registro
+> histórico —era cierto hasta `v0.13.0`—. Desde la feature `llm-judge-instrument` (2026-11-03) el
+> switch de validación es un control de la UI por corrida: va apagado por defecto, se reinicia en
+> cada apertura del panel y la puntuación del juez sí llega al usuario en el panel del detalle de
+> la historia. El motor implementa la validación igual que antes y el flujo de arriba sigue siendo
+> correcto como descripción del motor. Ver `openspec/specs/llm-as-a-judge/spec.md` y `docs/api.md`.
+>
+> **Matiz medido el 2026-10-06 (histórico)**: la puntuación del juez del paso 6 sólo aparece si el
+> llamador pide la validación, y en esa fecha la app web no pedía la validación en ninguna de sus
+> llamadas; el motor la implementaba —el flujo de arriba era correcto como descripción del motor,
+> pero la puntuación del paso 6 sólo existía si la validación corría— y la UI no la solicitaba, así
+> que entonces ninguna puntuación llegaba al usuario.
 
 ### Configuración de prompts (de la tesis)
 

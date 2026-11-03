@@ -47,6 +47,15 @@ class ExtractionResponse(BaseModel):
     prompt_config: dict | None = None
     raw_response: str
     confidence_score: float | None = None
+    # The LLM-as-a-Judge record (feature ``llm-judge-instrument``, D4/D5): ``None``
+    # when the judge was never requested; otherwise the persisted ``{"state": ...}``
+    # record, forwarded from the entity as stored. The record is JSON and every
+    # read path returns it as-is, so rows written under the old five-criterion
+    # 0-10 rubric (wire name ``format``) coexist with rows written under the
+    # seven-criterion 1-7 rubric (``clarity``, plus ``tas``/``ifi``): the two are
+    # different instruments and old rows are deliberately never rescaled or
+    # backfilled — mapping one onto the other would invent data.
+    judge_result: dict | None = None
     created_at: datetime
     completed_at: datetime | None = None
     # The three versioning scalars (0028), required on the contract so every
