@@ -501,6 +501,15 @@ Content-Type: application/json
 Responde **`202 Accepted`** de inmediato: la extracción corre en segundo plano y el cliente
 consulta su estado hasta que pasa a `completed` o `failed`.
 
+El flag `run_validation` pide la validación LLM-as-a-Judge de esa corrida. Va en `false` por
+defecto y nada la enciende de forma implícita: es una elección por corrida porque cuesta **una
+llamada LLM extra** por extracción — el juez es otra llamada al proveedor, con el mismo
+system prompt del workspace. Cuando está encendida, el modelo que juzga sale de la
+configuración del workspace (`workspace_llm_configs.judge_model`, campo opcional en
+`PUT /settings/llm`); si el workspace no nombró uno, juzga el mismo modelo de extracción que
+resolvió la corrida. El veredicto se persiste en la extracción y viaja en `judge_result` en
+la respuesta de estado, no en la de arranque.
+
 ```json
 {
   "extraction_id": "uuid",
@@ -537,11 +546,87 @@ GET /api/v1/workspaces/{wsId}/extract/status/{extractionId}
   "prompt_config": { "validate": false, "temperature": null },
   "raw_response": "1. summary: Set up the database schema\ndescription: Create the tables...",
   "confidence_score": null,
+  "judge_result": null,
   "created_at": "2026-07-15T12:00:00Z",
   "completed_at": "2026-07-15T12:00:04Z",
   "tasks": []
 }
 ```
+
+`judge_result` es el veredicto del juez y distingue **tres estados**, no dos. Con
+`run_validation` en `false`, `judge_result` viaja en `null` (como en el ejemplo de arriba):
+validación no pedida. Con la validación pedida, el objeto lleva `state: "ok"` — juzgó — o
+`state: "failed"` — se pidió y falló —. La forma `ok`:
+
+```json
+{
+  "state": "ok",
+  "criteria": {
+    "coherence": { "score": 6, "justification": "..." },
+    "completeness": { "score": 5, "justification": "..." },
+    "feasibility": { "score": 6, "justification": "..." },
+    "clarity": { "score": 4, "justification": "..." },
+    "granularity": { "score": 5, "justification": "..." },
+    "dependencies": { "score": 6, "justification": "..." },
+    "usefulness": { "score": 5, "justification": "..." }
+  },
+  "total_score": 37,
+  "max_total": 49,
+  "approved": true,
+  "tas": 6.0,
+  "ifi": 5.0,
+  "model": "llama3.2",
+  "model_source": "workspace",
+  "error": null,
+  "error_type": null
+}
+```
+
+La rúbrica son **siete criterios en escala 1-7** — `coherence`, `completeness`, `feasibility`,
+`clarity`, `granularity`, `dependencies` y `usefulness` —, cada uno anclado en 1, 4 y 7. El
+servidor calcula `total_score` (la suma, 7-49) y `approved` (`total_score >= ceil(0.7 × 49) =
+35`), y nunca confía en lo que el modelo declare sobre el total o la aprobación. También
+calcula en el servidor los índices `tas = (coherence + feasibility) / 2` e
+`ifi = (clarity + granularity + dependencies) / 3` a partir de los criterios — el frontend los
+muestra tal cual quedaron persistidos y no los recalcula (`frontend/src/components/react/JudgePanel.tsx`)—;
+`completeness` y `usefulness` no alimentan ningún índice. El juez es ciego por construcción: el
+prompt (`single_judge.j2`) recibe la historia y las tareas, no el proveedor ni el modelo. El
+par `model`/`model_source` registra quién juzgó: el `judge_model` del workspace
+(`"model_source": "workspace"`) o, si no hay, el modelo de extracción (`"extraction"`).
+
+La forma `failed` comparte `model`/`model_source` — un fallo también nombra a quien se le
+preguntó — y en lugar del veredicto lleva el motivo:
+
+```json
+{
+  "state": "failed",
+  "criteria": {},
+  "total_score": null,
+  "max_total": 49,
+  "approved": false,
+  "tas": null,
+  "ifi": null,
+  "model": "llama3.2",
+  "model_source": "extraction",
+  "error": "judge criterion 'coherence' is not a usable score: 'six'",
+  "error_type": "JudgeOutputError"
+}
+```
+
+Un fallo del juez **no** cambia el estado de la extracción: la corrida termina `completed` con
+sus tareas, `confidence_score` queda en `null` y sólo `judge_result.state` dice que la
+valoración no ocurrió. Por eso los dos nulos no son lo mismo: `judge_result` en `null` con
+`prompt_config.validate` en `false` es una corrida a la que nadie le pidió juzgar;
+`judge_result.state: "failed"` es una corrida a la que se le pidió y el juez no pudo responder.
+Un payload inutilizable del juez — una puntuación no coercible o no finita, un criterio
+ausente, una entrada que no es objeto — es un fallo clasificado
+(`JudgeOutputError`, subclase de `LLMError`) que se registra una vez y **no** se reintenta
+como error transitorio.
+
+Los registros anteriores al cambio de rúbrica — cinco criterios en escala 0-10, con el nombre
+en el cable `format` donde hoy va `clarity` — viajan tal como quedaron escritos: no se
+reescalan ni se rellenan, porque fueron medidos con otra rúbrica, y la UI los muestra sin
+TAS/IFI, índices definidos sólo sobre la rúbrica de siete.
 
 `completed_at` registra cuándo terminó la extracción: viaja con la hora real cuando el
 `status` es `completed` o `failed`, y en `null` mientras siga en `pending`. Las extracciones
