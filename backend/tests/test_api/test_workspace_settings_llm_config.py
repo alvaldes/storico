@@ -14,11 +14,13 @@ from collections.abc import Iterator
 
 import pytest
 from cryptography.fernet import Fernet
+from sqlalchemy import select
 
 from storico.api.routes.workspace_settings import resolve_llm_config
 from storico.config.settings import Settings, _reset_settings_cache
 from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
 from storico.infrastructure.crypto import FernetCipher
+from storico.infrastructure.database.models import WorkspaceLLMConfigModel
 from storico.infrastructure.database.repositories import (
     SQLAlchemyWorkspaceLLMConfigRepository,
 )
@@ -444,6 +446,174 @@ class TestJudgeModelSetting:
         stored = await _repo(db_session).get(seeded.workspace_id)
         assert stored is not None
         assert stored.judge_model is None
+
+
+class TestJudgeConnectionSetting:
+    """The judge's own connection (D9/S10) rides the same payload and conventions.
+
+    ``judge_provider``, ``judge_api_key`` and ``judge_base_url`` follow the exact
+    convention ``judge_model`` already uses: an omitted key keeps the stored value,
+    an empty string clears it, and a blank is stored as absent. ``judge_api_key`` is
+    a credential: the route saves it through the repository, so the column holds
+    ciphertext and the admin reads the plaintext back.
+    """
+
+    async def _put(self, client, workspace_id, payload: dict):
+        """Send a config update and return the response."""
+        return await client.put(f"/api/v1/workspaces/{workspace_id}/settings/llm", json=payload)
+
+    async def _get(self, client, workspace_id):
+        """Read the resolved config back."""
+        return await client.get(f"/api/v1/workspaces/{workspace_id}/settings/llm")
+
+    @pytest.mark.asyncio
+    async def test_the_three_fields_round_trip_and_the_credential_is_stored_encrypted(
+        self, authed_client, db_session, seed_workspace
+    ) -> None:
+        seeded = await seed_workspace(stories=0)
+
+        saved = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "judge_provider": "anthropic",
+                "judge_api_key": "sk-judge-round-trip",
+                "judge_base_url": "https://gateway.internal/v1",
+            },
+        )
+        assert saved.status_code == 200
+        body = saved.json()
+        assert body["judge_provider"] == "anthropic"
+        assert body["judge_api_key"] == "sk-judge-round-trip"
+        assert body["judge_base_url"] == "https://gateway.internal/v1"
+
+        stmt = select(WorkspaceLLMConfigModel.judge_api_key).where(
+            WorkspaceLLMConfigModel.workspace_id == seeded.workspace_id
+        )
+        stored = (await db_session.execute(stmt)).scalar_one()
+        assert stored is not None
+        assert stored.startswith("v1:")
+        assert "sk-judge-round-trip" not in stored
+
+        response = await self._get(authed_client, seeded.workspace_id)
+
+        assert response.status_code == 200
+        assert response.json()["judge_provider"] == "anthropic"
+        assert response.json()["judge_api_key"] == "sk-judge-round-trip"
+        assert response.json()["judge_base_url"] == "https://gateway.internal/v1"
+
+    @pytest.mark.asyncio
+    async def test_a_put_that_omits_the_judge_fields_keeps_them(
+        self, authed_client, seed_workspace
+    ) -> None:
+        """Same merge convention as every other field of this payload."""
+        seeded = await seed_workspace(stories=0)
+
+        first = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "judge_provider": "anthropic",
+                "judge_api_key": "sk-kept",
+                "judge_base_url": "https://gateway.internal/v1",
+            },
+        )
+        assert first.status_code == 200
+
+        second = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {"provider": "openai", "model": "gpt-4o-mini"},
+        )
+        assert second.status_code == 200
+
+        response = await self._get(authed_client, seeded.workspace_id)
+
+        assert response.json()["judge_provider"] == "anthropic"
+        assert response.json()["judge_api_key"] == "sk-kept"
+        assert response.json()["judge_base_url"] == "https://gateway.internal/v1"
+
+    @pytest.mark.asyncio
+    async def test_an_empty_judge_field_clears_it(self, authed_client, seed_workspace) -> None:
+        """An empty string is how the form says "no judge connection of its own"."""
+        seeded = await seed_workspace(stories=0)
+
+        first = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "judge_provider": "anthropic",
+                "judge_api_key": "sk-clear-me",
+                "judge_base_url": "https://gateway.internal/v1",
+            },
+        )
+        assert first.status_code == 200
+
+        cleared = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "judge_provider": "",
+                "judge_api_key": "",
+                "judge_base_url": "",
+            },
+        )
+        assert cleared.status_code == 200
+
+        response = await self._get(authed_client, seeded.workspace_id)
+
+        assert response.json()["judge_provider"] is None
+        assert response.json()["judge_api_key"] is None
+        assert response.json()["judge_base_url"] is None
+
+    @pytest.mark.asyncio
+    async def test_a_blank_judge_field_is_stored_as_absent(
+        self, authed_client, db_session, seed_workspace
+    ) -> None:
+        """Same convention as ``base_url``/``api_key``: spaces are "not configured"."""
+        seeded = await seed_workspace(stories=0)
+
+        response = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "judge_base_url": "   ",
+            },
+        )
+
+        assert response.status_code == 200
+        stored = await _repo(db_session).get(seeded.workspace_id)
+        assert stored is not None
+        assert stored.judge_base_url is None
+
+    @pytest.mark.asyncio
+    async def test_a_judge_credential_over_the_cap_is_refused(
+        self, authed_client, seed_workspace
+    ) -> None:
+        """The request schema caps the plaintext credential at 500 characters."""
+        seeded = await seed_workspace(stories=0)
+
+        response = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "judge_api_key": "x" * 501,
+            },
+        )
+
+        assert response.status_code == 422
 
 
 class TestCredentialEncryptionThroughTheRoute:

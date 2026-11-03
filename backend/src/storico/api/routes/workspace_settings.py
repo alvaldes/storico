@@ -126,6 +126,9 @@ async def resolve_llm_config(
             provider="ollama",
             model=None,
             judge_model=None,
+            judge_provider=None,
+            judge_api_key=None,
+            judge_base_url=None,
             temperature=0.1,
             max_tokens=2048,
             base_url=settings.ollama_host,
@@ -137,6 +140,14 @@ async def resolve_llm_config(
         # of spaces is "not configured", and the form must not read a model named
         # whitespace back as if the workspace had chosen one.
         judge_model=normalize_optional(ws_config.judge_model),
+        judge_provider=normalize_optional(ws_config.judge_provider),
+        judge_api_key=normalize_optional(ws_config.judge_api_key),
+        # No implicit endpoint here, unlike the extraction ``base_url`` below: the
+        # judge's provider default (Ollama's host included) is resolved where the
+        # judge connection is actually built (the runner), because which host is
+        # "the default" depends on the judge's own resolved provider, not on the
+        # workspace's extraction provider the form loads against.
+        judge_base_url=normalize_optional(ws_config.judge_base_url),
         temperature=ws_config.temperature if ws_config.temperature is not None else 0.1,
         max_tokens=ws_config.max_tokens or 2048,
         # Normalized on the way out: a stored value made of spaces is "not configured",
@@ -241,11 +252,12 @@ async def upsert_llm_config(
 ) -> LLMConfigResponse:
     """Upsert workspace LLM configuration.
 
-    Only the fields provided in the request body are updated. `judge_model` follows the
-    same convention as `base_url` and `api_key`: an omitted key keeps the stored value,
-    and an empty string (the form's way of saying "no separate judge") clears it to
-    `None`. Treating an omitted key as a clear would be a second convention in one
-    payload, and the existing contract test pins the first one.
+    Only the fields provided in the request body are updated. The judge block
+    (`judge_model`, `judge_provider`, `judge_api_key` and `judge_base_url`) follows
+    the same convention as `base_url` and `api_key`: an omitted key keeps the stored
+    value, and an empty string (the form's way of saying "no separate judge") clears
+    it to `None`. Treating an omitted key as a clear would be a second convention in
+    one payload, and the existing contract test pins the first one.
 
     Returns the resolved config after the update. Admin only.
     """
@@ -270,6 +282,15 @@ async def upsert_llm_config(
         judge_model=normalize_optional(body.judge_model)
         if body.judge_model is not None
         else (existing.judge_model if existing else None),
+        judge_provider=normalize_optional(body.judge_provider)
+        if body.judge_provider is not None
+        else (existing.judge_provider if existing else None),
+        judge_api_key=normalize_optional(body.judge_api_key)
+        if body.judge_api_key is not None
+        else (normalize_optional(existing.judge_api_key) if existing else None),
+        judge_base_url=normalize_optional(body.judge_base_url)
+        if body.judge_base_url is not None
+        else (normalize_optional(existing.judge_base_url) if existing else None),
         temperature=body.temperature
         if body.temperature is not None
         else (existing.temperature if existing else None),

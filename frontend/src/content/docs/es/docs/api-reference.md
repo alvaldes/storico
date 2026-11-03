@@ -1238,11 +1238,12 @@ Upsert Llm Config
 
 Upsert workspace LLM configuration.
 
-Only the fields provided in the request body are updated. `judge_model` follows the
-same convention as `base_url` and `api_key`: an omitted key keeps the stored value,
-and an empty string (the form's way of saying "no separate judge") clears it to
-`None`. Treating an omitted key as a clear would be a second convention in one
-payload, and the existing contract test pins the first one.
+Only the fields provided in the request body are updated. The judge block
+(`judge_model`, `judge_provider`, `judge_api_key` and `judge_base_url`) follows
+the same convention as `base_url` and `api_key`: an omitted key keeps the stored
+value, and an empty string (the form's way of saying "no separate judge") clears
+it to `None`. Treating an omitted key as a clear would be a second convention in
+one payload, and the existing contract test pins the first one.
 
 Returns the resolved config after the update. Admin only.
 
@@ -1259,6 +1260,9 @@ Returns the resolved config after the update. Admin only.
 | `provider` | `string | null` | no |
 | `model` | `string | null` | no |
 | `judge_model` | `string | null` | no |
+| `judge_provider` | `string | null` | no |
+| `judge_api_key` | `string | null` | no |
+| `judge_base_url` | `string | null` | no |
 | `temperature` | `number | null` | no |
 | `max_tokens` | `integer | null` | no |
 | `base_url` | `string | null` | no |

@@ -26,6 +26,14 @@ class WorkspaceLLMConfigModel(Base):
     # The judge's own model name (D7). Nullable: absent means "judge with the
     # extraction model". Not a credential, so no cipher involvement anywhere.
     judge_model: Mapped[str | None] = mapped_column(String(100), nullable=True, default=None)
+    # The judge's own connection (D9/S10). Each falls back independently to the
+    # extraction value. ``judge_api_key`` is a credential and shares ``api_key``'s
+    # width: the column stores Fernet ciphertext of a plaintext the request schema
+    # caps at 500 characters, and it is encrypted and decrypted only by the
+    # repository, exactly like ``api_key``.
+    judge_provider: Mapped[str | None] = mapped_column(String(50), nullable=True, default=None)
+    judge_api_key: Mapped[str | None] = mapped_column(String(1000), nullable=True, default=None)
+    judge_base_url: Mapped[str | None] = mapped_column(String(500), nullable=True, default=None)
     temperature: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True, default=None)
