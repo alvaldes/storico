@@ -42,6 +42,7 @@ from storico.domain.services.extraction_service import (
 )
 from storico.domain.services.llm_config_readiness import normalize_optional
 from storico.domain.services.negative_examples import compose_negative_examples
+from storico.domain.validators.state_machine import validate_user_story_transition
 from storico.infrastructure.database.base import create_session_factory, get_engine
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
@@ -332,9 +333,11 @@ async def _run_extraction(
             await _mark_failed(extraction_repo, story_repo, extraction_id, "User story not found")
             return
 
-        # 2. Transition UserStory to EXTRACTING (from PENDING_EXTRACTION)
-        # Only transition if currently in PENDING_EXTRACTION (idempotent for retries)
-        if story.status == UserStoryStatus.PENDING_EXTRACTION:
+        # 2. Transition UserStory to EXTRACTING, from PENDING_EXTRACTION (first run) or
+        # FAILED_EXTRACTION (a retry). Without the retry case a story that failed once
+        # stayed failed after a later run succeeded, because step 8 only promotes
+        # from EXTRACTING. EXTRACTED is left alone: the state machine keeps it.
+        if validate_user_story_transition(story.status, UserStoryStatus.EXTRACTING):
             from dataclasses import replace
 
             updated_story = replace(

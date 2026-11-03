@@ -676,3 +676,99 @@ class TestRunnerPersistencePath:
         assert completed is not None
         assert completed.status == ExtractionStatus.COMPLETED
         assert completed.completed_at is not None
+
+
+class TestStoryStatusAcrossReruns:
+    """The story status follows a re-run, without lying about the current version."""
+
+    async def _run_with_story_in(
+        self,
+        status: object,
+        llm: LLMPort,
+        test_engine: AsyncEngine,
+        monkeypatch: pytest.MonkeyPatch,
+        seed_workspace,
+    ) -> object:
+        from dataclasses import replace
+
+        from storico.infrastructure.database.repositories import SQLAlchemyUserStoryRepository
+
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            repo = SQLAlchemyUserStoryRepository(session)
+            story = await repo.find_by_id(seeded.story_id)
+            await repo.save(replace(story, status=status))
+            await session.commit()
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: llm)
+        _make_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            version_number=2,
+            max_retries=0,
+        )
+
+        async with factory() as session:
+            story = await SQLAlchemyUserStoryRepository(session).find_by_id(seeded.story_id)
+            extraction = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+        return story.status, extraction.status
+
+    @pytest.mark.asyncio
+    async def test_a_successful_retry_of_a_failed_story_marks_it_extracted(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        from storico.domain.entities.user_story import UserStoryStatus
+
+        story_status, run_status = await self._run_with_story_in(
+            UserStoryStatus.FAILED_EXTRACTION,
+            _AnsweringLLM(),
+            test_engine,
+            monkeypatch,
+            seed_workspace,
+        )
+
+        assert run_status == ExtractionStatus.COMPLETED
+        assert story_status == UserStoryStatus.EXTRACTED
+
+    @pytest.mark.asyncio
+    async def test_a_failing_retry_of_a_failed_story_leaves_it_failed(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        from storico.domain.entities.user_story import UserStoryStatus
+
+        story_status, run_status = await self._run_with_story_in(
+            UserStoryStatus.FAILED_EXTRACTION,
+            _UnreachableLLM(),
+            test_engine,
+            monkeypatch,
+            seed_workspace,
+        )
+
+        assert run_status == ExtractionStatus.FAILED
+        assert story_status == UserStoryStatus.FAILED_EXTRACTION
+
+    @pytest.mark.asyncio
+    async def test_a_failing_rerun_of_an_extracted_story_keeps_it_extracted(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The current version is still the last completed run; the badge must not lie."""
+        from storico.domain.entities.user_story import UserStoryStatus
+
+        story_status, run_status = await self._run_with_story_in(
+            UserStoryStatus.EXTRACTED,
+            _UnreachableLLM(),
+            test_engine,
+            monkeypatch,
+            seed_workspace,
+        )
+
+        assert run_status == ExtractionStatus.FAILED
+        assert story_status == UserStoryStatus.EXTRACTED

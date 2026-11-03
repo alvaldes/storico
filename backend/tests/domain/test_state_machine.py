@@ -37,12 +37,10 @@ class TestUserStoryStateMachine:
             if next_status != UserStoryStatus.EXTRACTED:
                 assert not validate_user_story_transition(UserStoryStatus.EXTRACTED, next_status)
 
-    def test_failed_extraction_is_terminal(self) -> None:
+    def test_failed_extraction_only_moves_to_a_retry(self) -> None:
         for next_status in UserStoryStatus:
-            if next_status != UserStoryStatus.FAILED_EXTRACTION:
-                assert not validate_user_story_transition(
-                    UserStoryStatus.FAILED_EXTRACTION, next_status
-                )
+            allowed = validate_user_story_transition(UserStoryStatus.FAILED_EXTRACTION, next_status)
+            assert allowed == (next_status == UserStoryStatus.EXTRACTING)
 
     def test_no_backward_transitions(self) -> None:
         assert not validate_user_story_transition(
@@ -52,7 +50,7 @@ class TestUserStoryStateMachine:
             UserStoryStatus.EXTRACTED, UserStoryStatus.EXTRACTING
         )
         assert not validate_user_story_transition(
-            UserStoryStatus.FAILED_EXTRACTION, UserStoryStatus.EXTRACTING
+            UserStoryStatus.FAILED_EXTRACTION, UserStoryStatus.PENDING_EXTRACTION
         )
 
     def test_get_allowed_transitions_returns_correct_sets(self) -> None:
@@ -64,7 +62,9 @@ class TestUserStoryStateMachine:
             UserStoryStatus.FAILED_EXTRACTION,
         }
         assert get_allowed_user_story_transitions(UserStoryStatus.EXTRACTED) == set()
-        assert get_allowed_user_story_transitions(UserStoryStatus.FAILED_EXTRACTION) == set()
+        assert get_allowed_user_story_transitions(UserStoryStatus.FAILED_EXTRACTION) == {
+            UserStoryStatus.EXTRACTING
+        }
 
     def test_all_user_story_statuses_have_entry_in_transitions_dict(self) -> None:
         for status in UserStoryStatus:
