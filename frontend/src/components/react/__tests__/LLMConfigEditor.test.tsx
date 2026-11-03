@@ -1287,10 +1287,13 @@ describe('LLMConfigEditor save gate', () => {
         maxTokens: 2048,
         baseUrl: 'http://localhost:11434',
         apiKey: undefined,
-        // Always sent, even empty: the payload keeps the stored value when the key
-        // is omitted, so the explicit empty string is what stores "judge with the
-        // extraction model".
+        // The four judge fields always travel explicitly (D9): the payload keeps
+        // the stored value when a key is omitted, so the explicit empty string is
+        // what stores "the judge falls back to the extraction configuration".
+        judgeProvider: '',
         judgeModel: '',
+        judgeApiKey: '',
+        judgeBaseUrl: '',
       }),
     );
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -1454,5 +1457,236 @@ describe('LLMConfigEditor judge model', () => {
 
     expect(await screen.findByText('This value is too long.')).toBeInTheDocument();
     expect(upsertLLMConfig).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The judge block (D9/S10): a second, independent LLM configuration below the
+ * extraction one.
+ *
+ * The owner's requirement (S10, verbatim in the ODD task) is that the judge may run
+ * on the extraction's provider and credential with another model, *or* on another
+ * provider with another credential and another model — both must be coverable from
+ * this form. The refusal of an incomplete cross-provider block is the backend's (it
+ * surfaces as a judged failure), so the form accepts it and only warns inline.
+ */
+describe('LLMConfigEditor judge block', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    vi.mocked(listCustomProviders).mockResolvedValue([]);
+    vi.mocked(getLLMConfig).mockResolvedValue({
+      provider: 'ollama',
+      model: 'llama3.2',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: 'http://localhost:11434',
+      apiKey: '',
+    });
+    vi.mocked(getPrompts).mockResolvedValue({});
+    vi.mocked(fetchAvailableModels).mockResolvedValue([]);
+    vi.mocked(upsertLLMConfig).mockResolvedValue({
+      provider: 'ollama',
+      model: 'llama3.2',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: 'http://localhost:11434',
+      apiKey: '',
+    });
+    vi.mocked(upsertPrompts).mockResolvedValue({});
+  });
+
+  /** Render the editor with a stored judge block the caller chooses. */
+  async function renderWithJudgeBlock(judge: Partial<WorkspaceLLMConfig> = {}) {
+    vi.mocked(getLLMConfig).mockResolvedValue({
+      provider: 'ollama',
+      model: 'llama3.2',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: 'http://localhost:11434',
+      apiKey: '',
+      ...judge,
+    });
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    return screen.findByLabelText('Judge model');
+  }
+
+  it('loads the saved judge values into their fields', async () => {
+    await renderWithJudgeBlock({
+      judgeProvider: 'openai',
+      judgeModel: 'gpt-4o-mini',
+      judgeApiKey: 'sk-judge',
+      judgeBaseUrl: 'https://api.openai.com/v1',
+    });
+
+    expect(screen.getByLabelText('Judge model')).toHaveValue('gpt-4o-mini');
+    expect(screen.getByLabelText('Judge API key')).toHaveValue('sk-judge');
+    expect(screen.getByLabelText('Judge Base URL')).toHaveValue('https://api.openai.com/v1');
+    // The saved provider is named in the collapsed select, not silently dropped.
+    expect(screen.getByLabelText('Judge provider')).toHaveTextContent('OpenAI');
+  });
+
+  it('shows "Same as extraction" and empty fields when nothing is configured', async () => {
+    await renderWithJudgeBlock();
+
+    expect(screen.getByLabelText('Judge provider')).toHaveTextContent('Same as extraction');
+    expect(screen.getByLabelText('Judge model')).toHaveValue('');
+    expect(screen.getByLabelText('Judge API key')).toHaveValue('');
+    expect(screen.getByLabelText('Judge Base URL')).toHaveValue('');
+  });
+
+  it('states the fallback rule and the no-borrowed-credential rule as visible copy', async () => {
+    await renderWithJudgeBlock();
+
+    // The whole point of the block: empty means "use the extraction configuration",
+    // and another provider needs its own credential. It must be rendered text, not
+    // a tooltip.
+    expect(
+      await screen.findByText(
+        'Every field left empty uses the extraction configuration. A judge on a different provider requires its own credential: the extraction credential is never sent to another provider.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('sends all four judge fields when saving, including the empty ones', async () => {
+    const user = userEvent.setup();
+    const input = await renderWithJudgeBlock();
+
+    await user.type(input, 'mistral-7b');
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    // The payload keeps a stored value when its key is omitted, so the form always
+    // sends the four judge fields explicitly: only the empty string clears one.
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({
+          judgeProvider: '',
+          judgeModel: 'mistral-7b',
+          judgeApiKey: '',
+          judgeBaseUrl: '',
+        }),
+      ),
+    );
+  });
+
+  it('accepts a judge block on another provider with no judge credential', async () => {
+    const user = userEvent.setup();
+    await renderWithJudgeBlock();
+
+    await user.click(screen.getByLabelText('Judge provider'));
+    await user.click(await screen.findByRole('option', { name: 'OpenAI' }));
+
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    // D9: the refusal of a cross-provider block without its own key is the
+    // backend's — it surfaces as a judged failure, not a refused extraction. The
+    // form must not block the save; the inline warning is the only reaction.
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({
+          judgeProvider: 'openai',
+          judgeApiKey: '',
+        }),
+      ),
+    );
+  });
+
+  it('warns inline that a cross-provider judge needs its own credential', async () => {
+    const user = userEvent.setup();
+    await renderWithJudgeBlock();
+
+    await user.click(screen.getByLabelText('Judge provider'));
+    await user.click(await screen.findByRole('option', { name: 'OpenAI' }));
+
+    expect(
+      await screen.findByText(
+        'The judge will need its own credential: a key for one provider is never sent to another.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the judge values when the extraction provider changes', async () => {
+    const user = userEvent.setup();
+    await renderWithJudgeBlock({
+      judgeProvider: 'openai',
+      judgeModel: 'gpt-4o-mini',
+      judgeApiKey: 'sk-judge',
+      judgeBaseUrl: 'https://api.openai.com/v1',
+    });
+
+    // The judge is a second, independent configuration (D9): switching the
+    // extraction provider no longer resets the judge's own fields.
+    await user.click(screen.getByLabelText('Provider'));
+    await user.click(await screen.findByRole('option', { name: 'Anthropic' }));
+
+    expect(screen.getByLabelText('Judge model')).toHaveValue('gpt-4o-mini');
+    expect(screen.getByLabelText('Judge API key')).toHaveValue('sk-judge');
+    expect(screen.getByLabelText('Judge Base URL')).toHaveValue('https://api.openai.com/v1');
+  });
+
+  it('clears the judge credentials, endpoint and model when the judge provider changes', async () => {
+    const user = userEvent.setup();
+    await renderWithJudgeBlock({
+      judgeProvider: 'openai',
+      judgeModel: 'gpt-4o-mini',
+      judgeApiKey: 'sk-judge',
+      judgeBaseUrl: 'https://api.openai.com/v1',
+    });
+
+    await user.click(screen.getByLabelText('Judge provider'));
+    await user.click(await screen.findByRole('option', { name: 'Anthropic' }));
+
+    // The same invariant the extraction provider switch follows: a model id, a
+    // credential and an endpoint are not portable between providers.
+    await waitFor(() => expect(screen.getByLabelText('Judge model')).toHaveValue(''));
+    expect(screen.getByLabelText('Judge API key')).toHaveValue('');
+    expect(screen.getByLabelText('Judge Base URL')).toHaveValue('');
+  });
+
+  it('keeps the judge model when the judge provider is cleared back to the extraction', async () => {
+    const user = userEvent.setup();
+    await renderWithJudgeBlock({
+      judgeProvider: 'openai',
+      judgeModel: 'gpt-4o-mini',
+      judgeApiKey: 'sk-judge',
+      judgeBaseUrl: 'https://api.openai.com/v1',
+    });
+
+    await user.click(screen.getByLabelText('Judge provider'));
+    await user.click(await screen.findByRole('option', { name: 'Same as extraction' }));
+
+    // Clearing the judge provider must not clear the judge model: extraction
+    // provider + judge model is exactly the D7 configuration the field exists for,
+    // and the value stays visible in the field, so nothing is dropped silently.
+    await waitFor(() =>
+      expect(screen.getByLabelText('Judge provider')).toHaveTextContent('Same as extraction'),
+    );
+    expect(screen.getByLabelText('Judge model')).toHaveValue('gpt-4o-mini');
+  });
+
+  it('sends an explicit empty string when a judge field is cleared', async () => {
+    const user = userEvent.setup();
+    const input = await renderWithJudgeBlock({ judgeModel: 'gpt-4o-mini' });
+    await waitFor(() => expect(input).toHaveValue('gpt-4o-mini'));
+
+    await user.clear(input);
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ judgeModel: '' }),
+      ),
+    );
+  });
+
+  it('masks the judge credential like the extraction one', async () => {
+    await renderWithJudgeBlock({ judgeApiKey: 'sk-judge' });
+
+    // Same convention as the extraction key: the saved value loads back into the
+    // field, but it never renders in clear text.
+    expect(screen.getByLabelText('Judge API key')).toHaveAttribute('type', 'password');
   });
 });

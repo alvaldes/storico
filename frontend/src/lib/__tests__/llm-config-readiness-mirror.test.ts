@@ -138,7 +138,10 @@ describe('hand-kept LLM config mirrors', () => {
       expect([...new Set(declaredLengths.map((entry) => entry.field))].sort()).toEqual([
         'api_key',
         'base_url',
+        'judge_api_key',
+        'judge_base_url',
         'judge_model',
+        'judge_provider',
         'model',
         'provider',
       ]);
@@ -148,6 +151,12 @@ describe('hand-kept LLM config mirrors', () => {
       ['provider', PROVIDER_NAME_MAX_LENGTH],
       ['model', LLM_MODEL_MAX_LENGTH],
       ['judge_model', LLM_MODEL_MAX_LENGTH],
+      // The judge block (D9): the provider reuses the provider vocabulary's constant,
+      // the credential and the endpoint reuse the extraction ones — the backend
+      // declares the same column widths for both roles.
+      ['judge_provider', PROVIDER_NAME_MAX_LENGTH],
+      ['judge_api_key', LLM_API_KEY_MAX_LENGTH],
+      ['judge_base_url', LLM_ENDPOINT_MAX_LENGTH],
       ['base_url', LLM_ENDPOINT_MAX_LENGTH],
       ['api_key', LLM_API_KEY_MAX_LENGTH],
     ])('matches every backend maximum for %s', (field, frontendValue) => {

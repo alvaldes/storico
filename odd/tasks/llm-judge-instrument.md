@@ -100,7 +100,8 @@ Chained PRs, three slices, base `main` @ `b36258d`, branch `feat/llm-judge-instr
 | 2 | T2 + T3 — judge model + rubric | ~600 authored lines | `158f3c3` + `c39361e` |
 | 3 | T4 — UI, plus the settings field the mirror guard forced | ~700 authored lines (frontend + its tests) | this slice |
 | 4 | T5 — docs and specs | docs only | `5409040` |
-| 5 | T6 — review findings | ~180 authored lines | this slice |
+| 5 | T6 — review findings | ~180 authored lines | `25b1dde` |
+| 6 | T7 + T8 — the judge as a second LLM configuration (S10) | ~1,000 authored lines (backend + migrations + settings form) | `8d9e5af` + this slice |
 
 PR 1 is deliberately not split further, and the reason is structural rather than stylistic: the RAG payload
 keyword and the judge block live in the same file (`extraction_task.py`), so a split by file leaves an
@@ -163,8 +164,8 @@ docs that describe it, and every behavior change ships with its test.
 | T3 | Rubric 1-7: prompt rewrite, parser, TAS/IFI persisted, confidence derived from the rubric maximum | S1-S3 | inline | `c39361e` |
 | T4 | UI: per-run switch + judge panel with the seven items and TAS/IFI, both locales — extended with the settings field (L4) | S8 | inline | this slice |
 | T5 | Docs and specs: `openspec/specs/llm-as-a-judge/`, `docs/api.md`, `AGENTS.md` row 6 | S9 | inline | `5409040` |
-| T7 | Judge as a second LLM configuration: `judge_provider` / `judge_api_key` / `judge_base_url` + migration `0035`, independent fallback, no credential crossover, readiness as a judged failure, `provider` in the verdict | S10, S4 | inline | — |
-| T8 | UI: the judge block in the settings form (provider, model, credential, endpoint) with the "empty = same as extraction" rule | S10 | inline | — |
+| T7 | Judge as a second LLM configuration: `judge_provider` / `judge_api_key` / `judge_base_url` + migration `0035`, independent fallback, no credential crossover, readiness as a judged failure, `provider` in the verdict | S10, S4 | inline | `8d9e5af` |
+| T8 | UI: the judge block in the settings form (provider, model, credential, endpoint) with the "empty = same as extraction" rule | S10 | inline | this slice |
 | T6 | Review findings: the `tsc` blocker, the judge-model lookup outside the judge's error handling, legacy `format` order, stale "full replace" prose, docstring markup in the published page, the undocumented fourth reading | S5-S7, S9 | inline | this commit |
 
 ## Log

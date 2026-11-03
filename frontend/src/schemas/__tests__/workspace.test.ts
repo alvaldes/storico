@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   LLM_API_KEY_MAX_LENGTH,
+  LLM_ENDPOINT_MAX_LENGTH,
   LLM_MAX_TOKENS_RANGE,
   LLM_MODEL_MAX_LENGTH,
   LLM_TEMPERATURE_RANGE,
@@ -176,6 +177,58 @@ describe('llmConfigSchema - the PUT payload contract', () => {
     expect(result.success).toBe(false);
   });
 
+  it('accepts the four judge fields of the second configuration (D9)', () => {
+    // S10/D9: the judge is its own LLM configuration. All four fields travel on the
+    // same payload, next to the extraction's.
+    const result = llmConfigSchema.safeParse({
+      provider: 'ollama',
+      judgeProvider: 'openai',
+      judgeModel: 'gpt-4o-mini',
+      judgeApiKey: 'sk-judge',
+      judgeBaseUrl: 'https://api.openai.com/v1',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts the empty judge fields the form sends to clear them', () => {
+    // The payload keeps a stored value when its key is omitted, so the explicit empty
+    // string is the only way a caller can clear a judge field — same convention as
+    // `judge_model` (D7) and `base_url`/`api_key` before it.
+    const result = llmConfigSchema.safeParse({
+      provider: 'ollama',
+      judgeProvider: '',
+      judgeApiKey: '',
+      judgeBaseUrl: '',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a judge provider over the stored length', () => {
+    const result = llmConfigSchema.safeParse({
+      judgeProvider: 'a'.repeat(PROVIDER_NAME_MAX_LENGTH + 1),
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a judge api key over the stored length', () => {
+    const result = llmConfigSchema.safeParse({
+      judgeApiKey: 'k'.repeat(LLM_API_KEY_MAX_LENGTH + 1),
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a judge base url over the stored length', () => {
+    const result = llmConfigSchema.safeParse({
+      judgeBaseUrl: 'h'.repeat(LLM_ENDPOINT_MAX_LENGTH + 1),
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('rejects a temperature outside the control range', () => {
     expect(llmConfigSchema.safeParse({ temperature: LLM_TEMPERATURE_RANGE.max + 1 }).success).toBe(
       false,
@@ -322,6 +375,70 @@ describe('llmConfigDraftSchema - what the settings form must satisfy to save', (
     // The form always holds a judge-model value, and the empty one is legal: it is
     // how "judge with the extraction model" is expressed and saved.
     const result = llmConfigDraftSchema.safeParse({ ...completeDraft, judgeModel: '' });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('reports an overlong judge provider with its own code', () => {
+    const result = llmConfigDraftSchema.safeParse({
+      ...completeDraft,
+      judgeProvider: 'a'.repeat(PROVIDER_NAME_MAX_LENGTH + 1),
+    });
+
+    expect(messagesFor(result, 'judgeProvider')).toEqual(['too_long']);
+  });
+
+  it('reports an overlong judge api key with its own code', () => {
+    const result = llmConfigDraftSchema.safeParse({
+      ...completeDraft,
+      judgeApiKey: 'k'.repeat(LLM_API_KEY_MAX_LENGTH + 1),
+    });
+
+    expect(messagesFor(result, 'judgeApiKey')).toEqual(['too_long']);
+  });
+
+  it('reports an overlong judge base url with its own code', () => {
+    // A URL-shaped value, so only the length rule fires: the URL rule has its own case.
+    const result = llmConfigDraftSchema.safeParse({
+      ...completeDraft,
+      judgeBaseUrl: `https://${'a'.repeat(LLM_ENDPOINT_MAX_LENGTH)}`,
+    });
+
+    expect(messagesFor(result, 'judgeBaseUrl')).toEqual(['too_long']);
+  });
+
+  it('reports a judge endpoint that is not an absolute http(s) URL', () => {
+    const result = llmConfigDraftSchema.safeParse({
+      ...completeDraft,
+      judgeBaseUrl: 'localhost:11434',
+    });
+
+    expect(messagesFor(result, 'judgeBaseUrl')).toEqual(['invalid_url']);
+  });
+
+  it('accepts a complete draft with a fully configured judge block', () => {
+    const result = llmConfigDraftSchema.safeParse({
+      ...completeDraft,
+      judgeProvider: 'openai',
+      judgeModel: 'gpt-4o-mini',
+      judgeApiKey: 'sk-judge',
+      judgeBaseUrl: 'https://api.openai.com/v1',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a judge block on another provider with no judge credential', () => {
+    // D9: an incomplete judge block is a classified judged failure, not a refused
+    // extraction — the completeness rule applies to the extraction configuration
+    // only, so the form must let this save. The backend decides at run time.
+    const result = llmConfigDraftSchema.safeParse({
+      ...completeDraft,
+      judgeProvider: 'openai',
+      judgeModel: '',
+      judgeApiKey: '',
+      judgeBaseUrl: '',
+    });
 
     expect(result.success).toBe(true);
   });
