@@ -153,6 +153,28 @@ describe('llmConfigSchema - the PUT payload contract', () => {
     expect(result.success).toBe(false);
   });
 
+  it('accepts an absent judge model, the key a caller that never judges omits', () => {
+    const result = llmConfigSchema.safeParse({ provider: 'ollama' });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts an empty judge model, which is what clearing the field sends', () => {
+    // The judge field is full-replace (D7): an empty string stored means "judge with
+    // the extraction model", so the empty value has to survive the payload contract.
+    const result = llmConfigSchema.safeParse({ provider: 'ollama', judgeModel: '' });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a judge model over the stored length', () => {
+    const result = llmConfigSchema.safeParse({
+      judgeModel: 'a'.repeat(LLM_MODEL_MAX_LENGTH + 1),
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('rejects a temperature outside the control range', () => {
     expect(llmConfigSchema.safeParse({ temperature: LLM_TEMPERATURE_RANGE.max + 1 }).success).toBe(
       false,
@@ -284,6 +306,23 @@ describe('llmConfigDraftSchema - what the settings form must satisfy to save', (
     });
 
     expect(messagesFor(result, 'model')).toEqual(['too_long']);
+  });
+
+  it('reports an overlong judge model with its own code', () => {
+    const result = llmConfigDraftSchema.safeParse({
+      ...completeDraft,
+      judgeModel: 'a'.repeat(LLM_MODEL_MAX_LENGTH + 1),
+    });
+
+    expect(messagesFor(result, 'judgeModel')).toEqual(['too_long']);
+  });
+
+  it('accepts the empty judge model the field holds when nothing is set', () => {
+    // The form always holds a judge-model value, and the empty one is legal: it is
+    // how "judge with the extraction model" is expressed and saved.
+    const result = llmConfigDraftSchema.safeParse({ ...completeDraft, judgeModel: '' });
+
+    expect(result.success).toBe(true);
   });
 
   it('reports a temperature outside the control range with its own code', () => {

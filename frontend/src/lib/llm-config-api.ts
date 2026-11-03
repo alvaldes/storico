@@ -25,9 +25,19 @@ export interface ModelProbe {
 }
 
 /** Get the LLM config for a workspace (admin only). Falls back to global defaults. */
-export async function getLLMConfig(wsId: string): Promise<WorkspaceLLMConfig> {
+export async function getLLMConfig(wsId: string): Promise<WorkspaceLLMConfigWithJudge> {
   const raw = await api.get<Record<string, unknown>>(`/api/v1/workspaces/${wsId}/settings/llm`);
-  return toCamelCase<WorkspaceLLMConfig>(raw);
+  return toCamelCase<WorkspaceLLMConfigWithJudge>(raw);
+}
+
+/**
+ * The stored LLM config as the settings endpoints return it: the workspace config
+ * shape plus the judge model (D7). `judge_model` only exists on this row — it is not
+ * part of the probe or the readiness answer — so it is declared here rather than on
+ * the shared type every other caller reads.
+ */
+export interface WorkspaceLLMConfigWithJudge extends WorkspaceLLMConfig {
+  judgeModel?: string | null;
 }
 
 /**
@@ -88,10 +98,10 @@ export async function getLLMConfigStatus(wsId: string): Promise<LLMConfigStatus>
 export async function upsertLLMConfig(
   wsId: string,
   config: LLMConfigParams,
-): Promise<WorkspaceLLMConfig> {
+): Promise<WorkspaceLLMConfigWithJudge> {
   const raw = await api.put<Record<string, unknown>>(
     `/api/v1/workspaces/${wsId}/settings/llm`,
     toSnakeCase(config),
   );
-  return toCamelCase<WorkspaceLLMConfig>(raw);
+  return toCamelCase<WorkspaceLLMConfigWithJudge>(raw);
 }

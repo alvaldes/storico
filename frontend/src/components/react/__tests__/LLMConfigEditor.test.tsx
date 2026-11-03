@@ -1287,6 +1287,9 @@ describe('LLMConfigEditor save gate', () => {
         maxTokens: 2048,
         baseUrl: 'http://localhost:11434',
         apiKey: undefined,
+        // Always sent, even empty: the judge field is full-replace, so the empty
+        // value is what keeps "judge with the extraction model" stored.
+        judgeModel: '',
       }),
     );
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -1333,5 +1336,122 @@ describe('LLMConfigEditor save gate', () => {
       WORKSPACE_ID,
       expect.objectContaining({ baseUrl: '   ' }),
     );
+  });
+});
+
+/**
+ * The judge model (D7).
+ *
+ * The judge runs on a model the workspace names apart from the extraction model, so
+ * the field has to round-trip: a saved model loads, a typed model is sent, and — the
+ * rule the other fields do not share — clearing it sends the empty string, because
+ * the judge field is full-replace and a dropped key would leave the old value standing.
+ */
+describe('LLMConfigEditor judge model', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    vi.mocked(listCustomProviders).mockResolvedValue([]);
+    vi.mocked(getLLMConfig).mockResolvedValue({
+      provider: 'ollama',
+      model: 'llama3.2',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: 'http://localhost:11434',
+      apiKey: '',
+    });
+    vi.mocked(getPrompts).mockResolvedValue({});
+    vi.mocked(fetchAvailableModels).mockResolvedValue([]);
+    vi.mocked(upsertLLMConfig).mockResolvedValue({
+      provider: 'ollama',
+      model: 'llama3.2',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: 'http://localhost:11434',
+      apiKey: '',
+    });
+    vi.mocked(upsertPrompts).mockResolvedValue({});
+  });
+
+  /** Render the editor with a stored judge model the caller chooses. */
+  async function renderWithJudge(judgeModel?: string | null) {
+    vi.mocked(getLLMConfig).mockResolvedValue({
+      provider: 'ollama',
+      model: 'llama3.2',
+      temperature: 0.1,
+      maxTokens: 2048,
+      baseUrl: 'http://localhost:11434',
+      apiKey: '',
+      judgeModel,
+    });
+    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
+    return screen.findByLabelText('Judge model');
+  }
+
+  it('loads the saved judge model into its field', async () => {
+    expect(await renderWithJudge('mistral-7b')).toHaveValue('mistral-7b');
+  });
+
+  it('stays empty when no judge model is saved', async () => {
+    expect(await renderWithJudge(null)).toHaveValue('');
+  });
+
+  it('says what the field is for and what empty means', async () => {
+    await renderWithJudge(null);
+
+    expect(
+      await screen.findByText(
+        'The model that judges extractions. Leave empty to use the extraction model.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('sends the judge model it holds when saving', async () => {
+    const user = userEvent.setup();
+    const input = await renderWithJudge(null);
+
+    await user.type(input, 'mistral-7b');
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ judgeModel: 'mistral-7b' }),
+      ),
+    );
+  });
+
+  it('sends an empty string when the judge model is cleared, never a dropped key', async () => {
+    const user = userEvent.setup();
+    const input = await renderWithJudge('mistral-7b');
+    await waitFor(() => expect(input).toHaveValue('mistral-7b'));
+
+    await user.clear(input);
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    // The judge field is full-replace (D7): only the explicit empty string clears the
+    // stored judge model, so the save must not map `''` to an omitted key the way the
+    // sibling fields do.
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ judgeModel: '' }),
+      ),
+    );
+    expect(upsertLLMConfig).not.toHaveBeenCalledWith(
+      WORKSPACE_ID,
+      expect.objectContaining({ judgeModel: 'mistral-7b' }),
+    );
+  });
+
+  it('refuses an overlong judge model with the siblings\u2019 message and no save', async () => {
+    const user = userEvent.setup();
+    const input = await renderWithJudge(null);
+
+    await user.type(input, 'a'.repeat(101));
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    expect(await screen.findByText('This value is too long.')).toBeInTheDocument();
+    expect(upsertLLMConfig).not.toHaveBeenCalled();
   });
 });

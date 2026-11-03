@@ -86,6 +86,11 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     baseUrl: 'http://localhost:11434',
     apiKey: '',
   });
+  // The judge model (D7) is held apart from `llmConfig` because the shared config type
+  // describes the fields every caller reads; this one only the settings row carries.
+  // The empty string means "judge with the extraction model" — and is sent as `''`,
+  // never dropped, because an absent key must not stand in for a cleared one.
+  const [judgeModel, setJudgeModel] = useState('');
   const [llmSaving, setLlmSaving] = useState(false);
   const [llmSaveResult, setLlmSaveResult] = useState<'idle' | 'success' | 'error'>('idle');
 
@@ -121,6 +126,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     maxTokens: llmConfig.maxTokens ?? 2048,
     baseUrl: llmConfig.baseUrl ?? '',
     apiKey: llmConfig.apiKey ?? '',
+    judgeModel,
   };
 
   // Recomputed on every render, never stored: an error disappears the moment the value
@@ -235,6 +241,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
           baseUrl: llm.baseUrl ?? '',
           apiKey: llm.apiKey ?? '',
         });
+        setJudgeModel(llm.judgeModel ?? '');
       }
       if (promptData) {
         setPrompts({
@@ -398,6 +405,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     // A new provider has no endpoint, key or model yet, and the ones the previous
     // provider left behind are not its values.
     setLlmConfig((prev) => ({ ...prev, provider: saved.name, model: '', apiKey: '', baseUrl: '' }));
+    setJudgeModel('');
     setAvailableModels([]);
     setModelsError(null);
     setCustomModelsProbed(false);
@@ -442,6 +450,10 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
         // it as a URL made of spaces.
         baseUrl: parsed.data.baseUrl.trim() || undefined,
         apiKey: parsed.data.apiKey || undefined,
+        // Always sent, unlike the siblings above: the judge field is full-replace
+        // (D7), so the empty string is what clears a stored judge model and dropping
+        // the key would leave the old value standing.
+        judgeModel: parsed.data.judgeModel,
       });
       setLlmSaveResult('success');
       toast.success(t.settings?.llm_saved ?? 'LLM configuration saved');
@@ -642,6 +654,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                         apiKey: '',
                         baseUrl: val === 'ollama' ? 'http://localhost:11434' : '',
                       }));
+                      setJudgeModel('');
                     }}
                   >
                     <SelectTrigger id="llm-provider" className="w-full">
@@ -915,6 +928,26 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                 )}
               </FieldDescription>
               {fieldErrorFor('model')}
+            </Field>
+
+            {/* Judge model (D7): free text beside the extraction model it sits next to.
+                It is the same provider and credential, only a different role, so it
+                lives in this card rather than in a section of its own. */}
+            <Field>
+              <FieldLabel htmlFor="llm-judge-model">
+                {t.settings?.llm_judge_model ?? 'Judge model'}
+              </FieldLabel>
+              <Input
+                id="llm-judge-model"
+                type="text"
+                value={judgeModel}
+                onChange={(e) => setJudgeModel(e.target.value)}
+              />
+              <FieldDescription>
+                {t.workspace?.llmJudgeModelDesc ??
+                  'The model that judges extractions. Leave empty to use the extraction model.'}
+              </FieldDescription>
+              {fieldErrorFor('judgeModel')}
             </Field>
 
             {/* Temperature */}

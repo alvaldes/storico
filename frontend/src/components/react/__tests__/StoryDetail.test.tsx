@@ -17,6 +17,7 @@ import type { Project } from '@/types/project';
 import type { Task } from '@/types/task';
 import type { UserStory } from '@/types/story';
 import type { StoryVersion } from '@/types/story';
+import type { JudgeResult } from '@/types/extraction';
 import type { Workspace } from '@/types/workspace';
 
 // The store consumes these; the component's mount effects must settle without a backend.
@@ -155,6 +156,10 @@ function resetStores() {
     loading: false,
     saving: false,
     fetchStory: vi.fn().mockResolvedValue(undefined),
+    // The real store actions (fetchVersions, fetchStory) stay mounted, so the
+    // version-history slice must be cleared here: a version list leaked from a
+    // previous test would silently select a version and fire the judge read.
+    versionsByStory: {},
   });
   useWorkspaceStore.setState({
     workspaces: [],
@@ -183,6 +188,19 @@ function resetStores() {
     configured: true,
     provider: 'ollama',
     missing: [],
+  });
+  // The judge read (S8): the page fetches the displayed version's extraction
+  // status, which carries `judge_result`. Default to "did not judge", the
+  // normal case, so every pre-existing test keeps its panel-free page.
+  vi.mocked(tasksApi.getExtractionStatus).mockResolvedValue({
+    id: 'ext-1',
+    userStoryId: STORY_ID,
+    modelUsed: 'llama3.2',
+    status: 'completed',
+    userStoryStatus: 'extracted',
+    errorInfo: null,
+    confidenceScore: null,
+    judgeResult: null,
   });
 }
 
@@ -494,7 +512,9 @@ describe('StoryDetail — version selector and version-aware actions', () => {
     await user.click(within(dialog).getByRole('button', { name: t.stories.detail_extract }));
 
     expect(extractTasksSpy).toHaveBeenCalledTimes(1);
-    expect(extractTasksSpy).toHaveBeenCalledWith(STORY_ID, 'ws-1');
+    // Default off (D8): accepting the confirmation without touching the judge
+    // switch starts a plain run.
+    expect(extractTasksSpy).toHaveBeenCalledWith(STORY_ID, 'ws-1', { runValidation: false });
   });
 
   it('short-circuits with a localized prompt and no request when no workspace is selected', async () => {
@@ -701,6 +721,172 @@ describe('StoryDetail — version selector and version-aware actions', () => {
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText(t.stories.delete_confirm_versions_unknown)).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: t.common.delete })).toBeEnabled();
+  });
+});
+
+/* ── Per-run judge switch and judge panel (S8) ── */
+
+const judgeOkRecord: JudgeResult = {
+  state: 'ok',
+  criteria: {
+    coherence: { score: 5, justification: 'All tasks belong to the story.' },
+    completeness: { score: 6, justification: null },
+    feasibility: { score: 4, justification: 'One task needs a fix.' },
+    clarity: { score: 6, justification: null },
+    granularity: { score: 5, justification: null },
+    dependencies: { score: 7, justification: null },
+    usefulness: { score: 7, justification: null },
+  },
+  total_score: 40,
+  max_total: 49,
+  approved: true,
+  tas: 4.5,
+  ifi: 6,
+  model: 'qwen2.5:7b',
+  model_source: 'workspace',
+  error: null,
+  error_type: null,
+};
+
+const judgeFailedRecord: JudgeResult = {
+  state: 'failed',
+  criteria: {},
+  total_score: null,
+  max_total: 49,
+  approved: false,
+  tas: null,
+  ifi: null,
+  model: 'qwen2.5:7b',
+  model_source: 'workspace',
+  error: 'the judge model returned an unusable rubric',
+  error_type: 'JudgeOutputError',
+};
+
+describe('StoryDetail — per-run judge switch and judge panel (S8)', () => {
+  let extractTasksSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStores();
+    extractTasksSpy = vi.fn().mockResolvedValue(undefined);
+    useTaskStore.setState({ extractTasks: extractTasksSpy as never });
+  });
+
+  async function openExtractDialog() {
+    const user = userEvent.setup();
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+    await user.click(await screen.findByRole('button', { name: t.stories.detail_extract }));
+    return { user, dialog: await screen.findByRole('alertdialog') };
+  }
+
+  it('offers the judge switch off by default, and a plain acceptance starts a plain run', async () => {
+    const { user, dialog } = await openExtractDialog();
+
+    const judgeSwitch = within(dialog).getByRole('switch', {
+      name: t.stories.judge_switch_label,
+    });
+    expect(judgeSwitch).not.toBeChecked();
+
+    await user.click(within(dialog).getByRole('button', { name: t.stories.detail_extract }));
+
+    expect(extractTasksSpy).toHaveBeenCalledWith(STORY_ID, 'ws-1', { runValidation: false });
+  });
+
+  it('sends the switch state through to the store when the judge is requested', async () => {
+    const { user, dialog } = await openExtractDialog();
+
+    await user.click(within(dialog).getByRole('switch', { name: t.stories.judge_switch_label }));
+    expect(
+      within(dialog).getByRole('switch', { name: t.stories.judge_switch_label }),
+    ).toBeChecked();
+
+    await user.click(within(dialog).getByRole('button', { name: t.stories.detail_extract }));
+
+    expect(extractTasksSpy).toHaveBeenCalledWith(STORY_ID, 'ws-1', { runValidation: true });
+  });
+
+  it('resets the switch to off for the next run — the choice is per run, not sticky', async () => {
+    const first = await openExtractDialog();
+    await userEvent.setup().click(
+      within(first.dialog).getByRole('switch', { name: t.stories.judge_switch_label }),
+    );
+    await first.user.click(
+      within(first.dialog).getByRole('button', { name: t.stories.detail_extract }),
+    );
+    expect(extractTasksSpy).toHaveBeenCalledWith(STORY_ID, 'ws-1', { runValidation: true });
+
+    // Reopening the confirmation starts a NEW run: the switch is off again.
+    const second = await openExtractDialog();
+    expect(
+      within(second.dialog).getByRole('switch', { name: t.stories.judge_switch_label }),
+    ).not.toBeChecked();
+  });
+
+  it('shows the judge panel for the displayed version when the record exists', async () => {
+    vi.mocked(listVersions).mockResolvedValue([
+      makeVersion({ id: 'ext-1', versionNumber: 1, isCurrent: true }),
+    ]);
+    vi.mocked(tasksApi.getExtractionStatus).mockResolvedValue({
+      id: 'ext-1',
+      userStoryId: STORY_ID,
+      modelUsed: 'llama3.2',
+      status: 'completed',
+      userStoryStatus: 'extracted',
+      errorInfo: null,
+      confidenceScore: null,
+      judgeResult: judgeOkRecord,
+    });
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    expect(await screen.findByText(t.judgePanel.title)).toBeInTheDocument();
+    expect(screen.getByText(t.judgePanel.criterion_coherence)).toBeInTheDocument();
+    expect(screen.getByText('TAS 4.5')).toBeInTheDocument();
+  });
+
+  it('shows the judge failure instead of an empty panel when the judge was requested and failed', async () => {
+    vi.mocked(listVersions).mockResolvedValue([
+      makeVersion({ id: 'ext-1', versionNumber: 1, isCurrent: true }),
+    ]);
+    vi.mocked(tasksApi.getExtractionStatus).mockResolvedValue({
+      id: 'ext-1',
+      userStoryId: STORY_ID,
+      modelUsed: 'llama3.2',
+      status: 'completed',
+      userStoryStatus: 'extracted',
+      errorInfo: null,
+      confidenceScore: null,
+      judgeResult: judgeFailedRecord,
+    });
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    expect(await screen.findByText(t.judgePanel.failed_title)).toBeInTheDocument();
+    expect(
+      screen.getByText(t.judgePanel.failed_desc.replace('{error}', judgeFailedRecord.error!)),
+    ).toBeInTheDocument();
+  });
+
+  it('renders no judge panel at all when the run did not judge (null record)', async () => {
+    vi.mocked(listVersions).mockResolvedValue([
+      makeVersion({ id: 'ext-1', versionNumber: 1, isCurrent: true }),
+    ]);
+    // resetStores already defaults the status read to `judgeResult: null`.
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    await screen.findByRole('combobox', { name: t.versionSelector.label });
+    expect(screen.queryByText(t.judgePanel.title)).not.toBeInTheDocument();
+    expect(screen.queryByText(t.judgePanel.failed_title)).not.toBeInTheDocument();
+  });
+
+  it('renders no judge panel when the story has no version history to read', async () => {
+    // No versions → no extraction id to address, so the panel can never exist.
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    await screen.findByRole('button', { name: t.stories.detail_extract });
+    expect(screen.queryByText(t.judgePanel.title)).not.toBeInTheDocument();
+    expect(tasksApi.getExtractionStatus).not.toHaveBeenCalled();
   });
 });
 

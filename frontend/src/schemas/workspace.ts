@@ -100,6 +100,8 @@ export const llmConfigSchema = z.object({
     .optional(),
   baseUrl: z.string().max(LLM_ENDPOINT_MAX_LENGTH).optional(),
   apiKey: z.string().max(LLM_API_KEY_MAX_LENGTH).optional(),
+  // Same column width the extraction model uses (D7): one 100-wide limit, one constant.
+  judgeModel: z.string().max(LLM_MODEL_MAX_LENGTH).optional(),
 });
 
 /**
@@ -136,6 +138,9 @@ export const llmConfigDraftSchema = z
       .max(LLM_ENDPOINT_MAX_LENGTH, { message: 'too_long' })
       .refine(isEndpointOrEmpty, { message: 'invalid_url' }),
     apiKey: z.string().max(LLM_API_KEY_MAX_LENGTH, { message: 'too_long' }),
+    // Optional here, but the form always holds it and always sends it: an empty value
+    // is what clears a stored judge model (D7), and dropping the key would not.
+    judgeModel: z.string().max(LLM_MODEL_MAX_LENGTH, { message: 'too_long' }).optional(),
   })
   .superRefine((values, ctx) => {
     // One issue per missing field, on that field's own path, so the form can put the

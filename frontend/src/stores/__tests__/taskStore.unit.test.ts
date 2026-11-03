@@ -292,6 +292,7 @@ describe('taskStore — stale workspace continuations', () => {
       userStoryStatus: 'extracted',
       errorInfo: null,
       confidenceScore: null,
+      judgeResult: null,
     });
     await poll;
     // Drain the projects fetch the switch triggered, so no promise leaks into the next test.
@@ -374,6 +375,7 @@ describe('taskStore — stale workspace continuations', () => {
       userStoryStatus: 'extracted',
       errorInfo: null,
       confidenceScore: null,
+      judgeResult: null,
     });
     await poll;
     // Drain the projects fetch the switch triggered, so no promise leaks into the next test.
@@ -397,6 +399,7 @@ describe('taskStore — stale workspace continuations', () => {
       userStoryStatus: 'extracted',
       errorInfo: null,
       confidenceScore: null,
+      judgeResult: null,
     });
     vi.mocked(api.listTasksByWorkspace).mockResolvedValue([task]);
     vi.mocked(storiesApi.getStory).mockResolvedValue(story);
@@ -440,6 +443,7 @@ describe('taskStore — stale workspace continuations', () => {
       userStoryStatus: 'extracted',
       errorInfo: null,
       confidenceScore: null,
+      judgeResult: null,
     });
     vi.mocked(api.listTasksByWorkspace).mockResolvedValue([task]);
     vi.mocked(storiesApi.getStory).mockResolvedValue(story);
@@ -527,6 +531,7 @@ const failedStatus = {
   userStoryStatus: 'extracted',
   errorInfo: 'boom',
   confidenceScore: null,
+  judgeResult: null,
 };
 
 describe('taskStore — extraction started in a workspace that was discarded', () => {
@@ -807,6 +812,26 @@ describe('taskStore — the extraction lifecycle refreshes the version history',
     expect(useTaskStore.getState().extractions['story-2'].versionNumber).toBeNull();
   });
 
+  it('forwards the per-run judge switch to the API request (S8)', async () => {
+    vi.mocked(api.startExtraction).mockRejectedValue(new ApiRequestError(500, 'Server Error', 'boom'));
+
+    await useTaskStore.getState().extractTasks('story-judge', 'ws-a', { runValidation: true });
+
+    expect(api.startExtraction).toHaveBeenCalledWith('story-judge', 'ws-a', {
+      runValidation: true,
+    });
+  });
+
+  it('leaves the judge unrequested when no switch state is passed (default off, D8)', async () => {
+    vi.mocked(api.startExtraction).mockRejectedValue(new ApiRequestError(500, 'Server Error', 'boom'));
+
+    await useTaskStore.getState().extractTasks('story-plain', 'ws-a');
+
+    // Exactly the two-argument call: no option, so the API layer's own default
+    // (`run_validation: false`) governs and the store invents nothing.
+    expect(vi.mocked(api.startExtraction).mock.calls[0]).toEqual(['story-plain', 'ws-a', undefined]);
+  });
+
   it('refreshes the history and keeps the minted number when the run settles completed', async () => {
     useTaskStore.setState({
       extractions: {
@@ -828,6 +853,7 @@ describe('taskStore — the extraction lifecycle refreshes the version history',
       userStoryStatus: 'extracted',
       errorInfo: null,
       confidenceScore: null,
+      judgeResult: null,
     });
 
     await useTaskStore.getState().pollExtraction('story-2', 'ws-a', 'ext-9');
@@ -861,6 +887,7 @@ describe('taskStore — the extraction lifecycle refreshes the version history',
       userStoryStatus: 'failed_extraction',
       errorInfo: 'model unreachable',
       confidenceScore: null,
+      judgeResult: null,
     });
 
     await useTaskStore.getState().pollExtraction('story-2', 'ws-a', 'ext-9');

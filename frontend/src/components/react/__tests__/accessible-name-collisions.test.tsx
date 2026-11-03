@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StoryForm } from '@/components/react/StoryForm';
 import { TaskEditor } from '@/components/react/TaskEditor';
@@ -312,6 +312,22 @@ describe('StoryDetail — the extraction-error retry never borrows the header co
 
     // The failed state renders the header retry AND the error card.
     await screen.findByRole('alert');
+
+    expectNoSharedAccessibleButtonName();
+  });
+
+  it('no two buttons share an accessible name while the extract confirmation holds the judge switch (S8)', async () => {
+    const user = userEvent.setup();
+
+    render(<StoryDetail locale="en" storyId="story-1" />);
+    await user.click(await screen.findByRole('button', { name: t.stories.detail_extract }));
+    const dialog = await screen.findByRole('alertdialog');
+
+    // The new control is on the page, labeled, and coexists with the dialog's
+    // cancel and accept buttons without borrowing any of their names.
+    expect(
+      within(dialog).getByRole('switch', { name: t.stories.judge_switch_label }),
+    ).toBeInTheDocument();
 
     expectNoSharedAccessibleButtonName();
   });

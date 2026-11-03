@@ -11,9 +11,10 @@ class LLMConfigRequest(BaseModel):
     provider: str | None = Field(None, max_length=50)
     model: str | None = Field(None, max_length=100)
     # The model the workspace's judge runs with (D7). Optional: absent means the
-    # judge falls back to the extraction model. Note the PUT semantics — this is
-    # a full-replace field, so an omitted ``judge_model`` CLEARS the stored one
-    # (documented on the route, not merged like the fields below).
+    # judge falls back to the extraction model, and because this payload is a
+    # partial update (``extra="forbid"``, every field optional) an omitted key
+    # KEEPS the stored value — clearing it takes an explicit empty string, the
+    # same convention ``base_url`` and ``api_key`` already use.
     judge_model: str | None = Field(None, max_length=100)
     temperature: float | None = None
     max_tokens: int | None = None

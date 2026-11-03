@@ -138,6 +138,7 @@ describe('hand-kept LLM config mirrors', () => {
       expect([...new Set(declaredLengths.map((entry) => entry.field))].sort()).toEqual([
         'api_key',
         'base_url',
+        'judge_model',
         'model',
         'provider',
       ]);
@@ -146,6 +147,7 @@ describe('hand-kept LLM config mirrors', () => {
     it.each([
       ['provider', PROVIDER_NAME_MAX_LENGTH],
       ['model', LLM_MODEL_MAX_LENGTH],
+      ['judge_model', LLM_MODEL_MAX_LENGTH],
       ['base_url', LLM_ENDPOINT_MAX_LENGTH],
       ['api_key', LLM_API_KEY_MAX_LENGTH],
     ])('matches every backend maximum for %s', (field, frontendValue) => {

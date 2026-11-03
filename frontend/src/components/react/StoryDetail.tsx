@@ -21,16 +21,20 @@ import { useTaskStore } from '@/stores/taskStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getProject } from '@/lib/projects-api';
+import { getExtractionStatus } from '@/lib/tasks-api';
 import { getLLMConfigStatus, type LLMConfigStatus } from '@/lib/llm-config-api';
 import { listInvalidations, listStoryInvalidations } from '@/lib/versioning-api';
 import { canManageVersions } from '@/lib/workspace-role';
 import type { StoryVersion } from '@/types/story';
 import type { TaskInvalidation } from '@/types/task';
+import type { JudgeResult } from '@/types/extraction';
 import { StoryForm } from '@/components/react/StoryForm';
 import { TaskEditor } from '@/components/react/TaskEditor';
 import { VersionSelector } from '@/components/react/VersionSelector';
+import { JudgePanel } from '@/components/react/JudgePanel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -86,11 +90,9 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   // the read in flight; the editor renders only once it has settled, so its
   // checkbox/reason initializers see the final value.
   const [activeMark, setActiveMark] = useState<TaskInvalidation | null | 'loading'>(null);
-  // The story's version history, read into the store so the delete dialog's
-  // version count and the selector share one read. `null` is "the read has not
-  // answered (or failed)": the selector stays hidden and the page falls back
-  // to its pre-versioning behavior instead of blocking on a hiccup.
-  const versions = versionsByStory[storyId] ?? null;
+  // The version the selector displays. The history itself is read into the
+  // store once per story and read back near the derived state below, so the
+  // delete dialog's version count and the selector share one read.
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   // The tasks the story-scoped marks read answered as actively marked, by id.
   // It is the card flag's only source, so marking a task needs no re-read: the
@@ -101,6 +103,14 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   // Whether the extract confirmation is open. The confirmation is where the
   // version facts are named; the store's request only starts on accept.
   const [extractConfirming, setExtractConfirming] = useState(false);
+  // The per-run judge switch (S8/D8): off by default, reset every time the
+  // confirmation opens, and read only on accept. A deliberate choice per run —
+  // there is no workspace-level preference for it.
+  const [judgeEnabled, setJudgeEnabled] = useState(false);
+  // The displayed version's judge record (S8). `null` also covers "not answered
+  // yet" and "read failed": the panel stays hidden either way, the same posture
+  // the versions read has.
+  const [judgeResult, setJudgeResult] = useState<JudgeResult | null>(null);
   const [parentProject, setParentProject] = useState<{ id: string; name: string } | null>(null);
   const [resolvingProject, setResolvingProject] = useState(false);
   // Track previous extraction status to detect failure transitions during polling
@@ -114,6 +124,11 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   const story = stories.find((s) => s.id === storyId);
   const storyTasks = tasks[storyId] ?? [];
   const extraction = extractions[storyId];
+  // The displayed version — the same version the tasks read is scoped to — is
+  // also whose judge record the panel shows. Declared here because the judge
+  // read below needs it before the version-aware block computes the rest.
+  const versions = versionsByStory[storyId] ?? null;
+  const selectedVersion = versions?.find((v) => v.id === selectedVersionId) ?? null;
 
   useEffect(() => {
     fetchStory(storyId).then(() => setInitialLoad(false));
@@ -181,6 +196,29 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
     const match = versions.find((v) => v.versionNumber === minted);
     if (match) setSelectedVersionId(match.id);
   }, [versions, extraction?.versionNumber]);
+
+  // The displayed version's judge record (S8): the extraction status read is the
+  // one route that carries `judge_result`, and the displayed version's own id is
+  // the extraction it belongs to. A pending run has no verdict yet, so it is not
+  // read; when the run settles, the version row refreshes and this effect re-runs.
+  // A failed read leaves the panel hidden rather than blocking the page.
+  useEffect(() => {
+    if (!selectedVersionId || selectedVersion?.status === 'pending') {
+      setJudgeResult(null);
+      return;
+    }
+    let active = true;
+    getExtractionStatus(selectedVersionId)
+      .then((status) => {
+        if (active) setJudgeResult(status.judgeResult);
+      })
+      .catch(() => {
+        if (active) setJudgeResult(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedVersionId, selectedVersion?.status]);
 
   // Reset extraction state on unmount
   useEffect(() => {
@@ -306,7 +344,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
     }
   };
 
-  const handleExtract = async () => {
+  const handleExtract = async (options?: { runValidation?: boolean }) => {
     if (!workspaceId) {
       // Same localized prompt the click handler gives: the handler is also the
       // confirmation's accept path, and neither may issue a request blind.
@@ -316,22 +354,24 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
     // `extractTasks` swallows its own errors: it records the failure into
     // `extractions[storyId]`, so awaiting it here can never reject and the
     // toast effect above owns the failure message.
-    await extractTasks(storyId, workspaceId);
+    await extractTasks(storyId, workspaceId, options);
   };
 
   // Click on "Extract": with a workspace, open the confirmation that names the
-  // version facts; without one, the localized prompt and no request at all.
+  // version facts; without one, the localized prompt and no request at all. Each
+  // opening is a NEW run, so the judge switch starts off again.
   const handleExtractClick = () => {
     if (!workspaceId) {
       toast.error(t.stories.select_workspace_required);
       return;
     }
+    setJudgeEnabled(false);
     setExtractConfirming(true);
   };
 
   const handleExtractConfirm = () => {
     setExtractConfirming(false);
-    void handleExtract();
+    void handleExtract({ runValidation: judgeEnabled });
   };
 
   // ── Extract button rendering ──
@@ -406,7 +446,6 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
   // controls as a courtesy; the server's 403 and its localized copy remain the
   // authority if a refusal ever reaches the client.
   const canManage = canManageVersions(currentWorkspace, currentUserId);
-  const selectedVersion = versions?.find((v) => v.id === selectedVersionId) ?? null;
   const currentVersion = versions?.find((v) => v.isCurrent) ?? null;
   const nextVersionNumber =
     (versions?.reduce((max, v) => Math.max(max, v.versionNumber ?? 0), 0) ?? 0) + 1;
@@ -575,6 +614,11 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
         />
       )}
 
+      {/* Judge panel — the displayed version's judge record (S8). Hidden
+          entirely when the run did not judge: that is the normal case, and the
+          page must not pretend a verdict exists. */}
+      <JudgePanel result={judgeResult} locale={locale} />
+
       {/* Tasks section */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -729,7 +773,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
                   status={extraction?.error?.status}
                   errorCode={extraction?.error?.errorCode}
                   retryLabel={t.common.retry}
-                  onRetry={handleExtract}
+                  onRetry={() => handleExtract()}
                   locale={locale}
                 />
               </>
@@ -806,6 +850,21 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
                   )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {/* The per-run judge switch (S8): the request is the only place the
+              choice lives, so it sits where the run is started. Off by default. */}
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">
+                {t.stories.judge_switch_label}
+              </p>
+              <p className="text-xs text-muted-foreground">{t.stories.judge_switch_hint}</p>
+            </div>
+            <Switch
+              checked={judgeEnabled}
+              onCheckedChange={(checked) => setJudgeEnabled(checked)}
+              aria-label={t.stories.judge_switch_label}
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
             <AlertDialogAction onClick={handleExtractConfirm}>

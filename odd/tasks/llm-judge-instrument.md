@@ -67,8 +67,9 @@ Chained PRs, three slices, base `main` @ `b36258d`, branch `feat/llm-judge-instr
 | PR | Tasks | Size | Slice boundary |
 | --- | --- | --- | --- |
 | 1 | T1 — contract + persistence | **1,090 authored lines** (≈430 code, ≈600 tests, migration `0033`): over the ~400 budget | `d0cbc85`, measured after the commit |
-| 2 | T2 + T3 — judge model + rubric | ~400 expected | new commit |
-| 3 | T4 + T5 — UI + docs | ~500 expected | new commit |
+| 2 | T2 + T3 — judge model + rubric | ~600 authored lines | `158f3c3` + `c39361e` |
+| 3 | T4 — UI, plus the settings field the mirror guard forced | ~700 authored lines (frontend + its tests) | this slice |
+| 4 | T5 — docs and specs | docs only | next slice |
 
 PR 1 is deliberately not split further, and the reason is structural rather than stylistic: the RAG payload
 keyword and the judge block live in the same file (`extraction_task.py`), so a split by file leaves an
@@ -120,10 +121,10 @@ docs that describe it, and every behavior change ships with its test.
 
 | ID | Task | Spec | Route | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Judge output contract: `JudgeOutputError`, rubric-aware `JudgeResult`, `judge_result` column + migration `0033`, terminal write, API exposure, Qdrant `judge_state` | S5-S7 | inline | — |
-| T2 | Judge model separation: `judge_model` setting, migration `0034`, resolution + `model`/`model_source` in the record | S4 | inline | — |
-| T3 | Rubric 1-7: prompt rewrite, parser, TAS/IFI persisted, confidence derived from the rubric maximum | S1-S3 | inline | — |
-| T4 | UI: per-run switch + judge panel with the seven items and TAS/IFI, both locales | S8 | inline | — |
+| T1 | Judge output contract: `JudgeOutputError`, rubric-aware `JudgeResult`, `judge_result` column + migration `0033`, terminal write, API exposure, Qdrant `judge_state` | S5-S7 | inline | `d0cbc85` |
+| T2 | Judge model separation: `judge_model` setting, migration `0034`, resolution + `model`/`model_source` in the record | S4 | inline | `158f3c3` |
+| T3 | Rubric 1-7: prompt rewrite, parser, TAS/IFI persisted, confidence derived from the rubric maximum | S1-S3 | inline | `c39361e` |
+| T4 | UI: per-run switch + judge panel with the seven items and TAS/IFI, both locales — extended with the settings field (L4) | S8 | inline | this slice |
 | T5 | Docs and specs: `openspec/specs/llm-as-a-judge/`, `docs/api.md`, `AGENTS.md` row 6 | S9 | inline | — |
 
 ## Log
@@ -135,3 +136,17 @@ Pero primero un análisis completo, actualizando también la documentación en S
 mantener este baúl actualizado"
 
 L2 — the owner's answer to the scope question, verbatim: "Juez completo: cortes 1→3 y después UI".
+
+L3 — measured correction of the parent's own instruction: the delegation for T2 said the PUT was a full
+replace and that an omitted `judge_model` clears it. That is false for this payload — `LLMConfigRequest`
+is a partial update (`extra="forbid"`, every field optional) and the existing contract test pins
+"an omitted field leaves the stored value alone". The route and the schema comment were corrected to
+the payload's real convention: omitted keeps, an explicit empty string clears. The comment that
+carried the wrong wording is corrected in the same slice as this entry.
+
+L4 — scope extension recorded by the parent during T4: the `judge_model` field was added to the
+settings form (`LLMConfigEditor.tsx`) and to the client mirror. Two reasons, both measured: the
+`llm-config-readiness-mirror` guard fails on purpose for any new bounded backend field, so the frontend
+either mirrors it or records it as unknown; and a setting that could only be written with curl left the
+judge unusable for the experiments it exists for. The field keeps the payload's convention by always
+sending the value explicitly, so clearing works.
