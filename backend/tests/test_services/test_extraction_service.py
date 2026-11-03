@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 import storico.infrastructure.tasks.extraction_task as extraction_task
 from storico.domain.entities import LLMConnectionError, ParseError
+from storico.domain.entities.exceptions import JudgeOutputError
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.ports import (
     ExtractionExample,
@@ -25,6 +26,7 @@ from storico.domain.ports import (
     VectorStorePort,
 )
 from storico.domain.ports.llm_port import LLMResponse
+from storico.domain.services.extraction_judge_service import JudgeResult
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
 from storico.infrastructure.database.repositories import SQLAlchemyExtractionRepository
 from tests._helpers import seed_extraction, simple_context
@@ -431,17 +433,46 @@ class _FailingParser:
 
 
 class _ApprovingJudge:
-    """Judge fake scoring 45/50, approved."""
+    """Judge fake scoring 45/50, approved — via the real ``JudgeResult`` contract.
 
-    async def validate(self, **kwargs: object) -> SimpleNamespace:  # noqa: ARG002
-        return SimpleNamespace(approved=True, total_score=45, criteria={})
+    The runner computes ``confidence = total_score / max_total`` and persists the
+    whole ``judge_result`` record, so the fake must return a real ``JudgeResult``
+    (built through ``from_model_output``), not a loose ``SimpleNamespace``.
+    """
+
+    async def validate(self, **kwargs: object) -> JudgeResult:  # noqa: ARG002
+        return JudgeResult.from_model_output(
+            {
+                "coherence": {"score": 9, "justification": "all tasks belong"},
+                "completeness": {"score": 9, "justification": "nothing missing"},
+                "feasibility": {"score": 9, "justification": "all realizable"},
+                "format": {"score": 9, "justification": "clear"},
+                "granularity": {"score": 9, "justification": "right size"},
+            }
+        )
 
 
 class _BrokenJudge:
-    """Judge fake whose validation call fails."""
+    """Judge fake whose validation call fails with a transient-shaped error."""
 
     async def validate(self, **kwargs: object) -> SimpleNamespace:  # noqa: ARG002
         raise LLMConnectionError("Judge down")
+
+
+class _UnusableOutputJudge:
+    """Judge fake whose answer fails the ``JudgeResult`` contract (D2).
+
+    Raises ``JudgeOutputError`` — the error an unusable judge payload produces
+    — and counts its calls, so the test can prove the runner classifies the
+    failure instead of retrying it.
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def validate(self, **kwargs: object) -> JudgeResult:  # noqa: ARG002
+        self.calls += 1
+        raise JudgeOutputError("judge criterion 'coherence' is not a usable score: 'high'")
 
 
 class _RecordingVectorStore(VectorStorePort):
@@ -609,6 +640,58 @@ class TestRunnerPersistencePath:
         assert completed is not None
         assert completed.status == ExtractionStatus.COMPLETED
         assert completed.confidence_score == pytest.approx(45 / 50.0)
+        # The full judge record is persisted on the same terminal write (D4):
+        # state ok, the per-criterion scores with their justifications, the
+        # computed total, and which model judged (T1: the extraction model).
+        record = completed.judge_result
+        assert record is not None
+        assert record["state"] == "ok"
+        assert record["total_score"] == 45
+        assert record["max_total"] == 50
+        assert record["approved"] is True
+        assert record["criteria"]["coherence"] == {
+            "score": 9,
+            "justification": "all tasks belong",
+        }
+        assert record["model"] == "llama3.2"
+        assert record["model_source"] == "extraction"
+        assert record["error"] is None
+        assert record["error_type"] is None
+
+    @pytest.mark.asyncio
+    async def test_the_rag_point_carries_the_judge_state(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The Qdrant payload carries ``judge_state`` so "not requested" stays unambiguous.
+
+        A ``null`` on a point that never carried ``prompt_config`` could not tell
+        the two apart (D6); the point itself now says what the judge did.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+
+        store = _RecordingVectorStore()
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        monkeypatch.setattr(extraction_task, "LLMJudgeService", lambda **_: _ApprovingJudge())
+        monkeypatch.setattr(extraction_task, "get_embedding_port", lambda _settings: object())
+        monkeypatch.setattr(extraction_task, "QdrantAdapter", lambda **_: store)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            version_number=1,
+            validate=True,
+            max_retries=0,
+        )
+
+        assert len(store.stored) == 1
+        assert store.stored[0]["judge_state"] == "ok"
 
     @pytest.mark.asyncio
     async def test_judge_failure_does_not_break_the_run(
@@ -643,6 +726,166 @@ class TestRunnerPersistencePath:
         assert completed.status == ExtractionStatus.COMPLETED
         # Confidence is None because the judge failed, but the run still succeeds.
         assert completed.confidence_score is None
+        # The failure is recorded on the row: "requested and failed" is
+        # distinguishable from "never requested" (D5).
+        record = completed.judge_result
+        assert record is not None
+        assert record["state"] == "failed"
+        assert record["error"] == "Judge down"
+        assert record["error_type"] == "LLMConnectionError"
+        assert record["model"] == "llama3.2"
+        assert record["model_source"] == "extraction"
+        assert record["approved"] is False
+
+    @pytest.mark.asyncio
+    async def test_an_unusable_judge_payload_is_a_classified_failure_not_a_retried_one(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A ``JudgeOutputError`` is caught as an ``LLMError``: no retry, a failed record.
+
+        Before the contract existed, the deterministic type errors of the judge
+        parser escaped into the generic ``except Exception`` of the runner and
+        were retried with exponential backoff as if they were a network cut.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+
+        judge = _UnusableOutputJudge()
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        monkeypatch.setattr(extraction_task, "LLMJudgeService", lambda **_: judge)
+        _make_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            version_number=1,
+            validate=True,
+            max_retries=2,
+        )
+
+        # Classified, not retried: exactly one judge attempt even though the
+        # runner had two retries budgeted.
+        assert judge.calls == 1
+
+        async with factory() as session:
+            completed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+
+        assert completed is not None
+        assert completed.status == ExtractionStatus.COMPLETED
+        assert completed.confidence_score is None
+        record = completed.judge_result
+        assert record is not None
+        assert record["state"] == "failed"
+        assert "coherence" in record["error"]
+        assert record["error_type"] == "JudgeOutputError"
+
+    @pytest.mark.asyncio
+    async def test_validate_without_a_judge_service_records_a_failed_record(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """``validate=True`` with no judge service leaves a failed record, not a null.
+
+        "Not requested" and "requested and could not run" must stay
+        distinguishable on the row (D5), so the missing service is a classified
+        failure with its own message.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        monkeypatch.setattr(extraction_task, "LLMJudgeService", lambda **_: None)
+        _make_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            version_number=1,
+            validate=True,
+            max_retries=0,
+        )
+
+        async with factory() as session:
+            completed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+
+        assert completed is not None
+        assert completed.status == ExtractionStatus.COMPLETED
+        assert completed.confidence_score is None
+        record = completed.judge_result
+        assert record is not None
+        assert record["state"] == "failed"
+        assert record["error"] == "judge service unavailable"
+
+    @pytest.mark.asyncio
+    async def test_a_run_without_validation_leaves_judge_result_null(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A switched-off run writes no judge record: "not requested" is ``NULL`` (D5)."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        _make_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            version_number=1,
+            max_retries=0,
+        )
+
+        async with factory() as session:
+            completed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+
+        assert completed is not None
+        assert completed.status == ExtractionStatus.COMPLETED
+        assert completed.judge_result is None
+
+    @pytest.mark.asyncio
+    async def test_a_run_without_validation_leaves_the_rag_judge_state_null(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """The Qdrant point of a switched-off run carries ``judge_state=None``."""
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+
+        store = _RecordingVectorStore()
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        monkeypatch.setattr(extraction_task, "get_embedding_port", lambda _settings: object())
+        monkeypatch.setattr(extraction_task, "QdrantAdapter", lambda **_: store)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            version_number=1,
+            max_retries=0,
+        )
+
+        assert len(store.stored) == 1
+        assert store.stored[0]["judge_state"] is None
 
     @pytest.mark.asyncio
     async def test_vector_store_failure_does_not_break_the_run(

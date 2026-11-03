@@ -34,6 +34,11 @@ class Extraction:
     error_info: str | None = field(default=None)
     prompt_config: dict | None = None
     confidence_score: float | None = None
+    # The LLM-as-a-Judge record (feature ``llm-judge-instrument``, D4/D5):
+    # ``None`` when the judge was never requested; ``{"state": "ok"|"failed", ...}``
+    # when it was. Written once, in the same terminal UPDATE as
+    # ``confidence_score``.
+    judge_result: dict | None = None
     id: UUID = field(default_factory=uuid7)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     # Non-null exactly when the status is terminal. Stamped by the terminal-path call sites rather

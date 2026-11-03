@@ -120,6 +120,18 @@ class TestExtractionResponseContract:
         assert fields["completed_at"].annotation == (datetime | None)
         assert fields["completed_at"].default is None
 
+    def test_includes_a_nullable_judge_result(self):
+        """The judge record (feature ``llm-judge-instrument``, D4/D5) is part of the contract.
+
+        The annotation is what the client's ``judge_result: object | null`` is
+        written against: ``None`` reads "not requested" (D5), and the object's
+        own ``state`` key reads "ok" / "failed".
+        """
+        fields = ExtractionResponse.model_fields
+        assert "judge_result" in fields
+        assert fields["judge_result"].annotation == (dict | None)
+        assert fields["judge_result"].default is None
+
 
 class TestExtractResponseContract:
     """Contract: POST /workspaces/{id}/extract 202 response."""

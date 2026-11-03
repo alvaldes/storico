@@ -255,12 +255,16 @@ class QdrantAdapter(VectorStorePort):
         version_number: int,
         confidence_score: float | None = None,
         user_story_id: str = "",
+        judge_state: str | None = None,
     ) -> bool:
         """Store an extraction with its embedding for future RAG searches.
 
         ``workspace_id`` is written into the point payload so the point is
         discoverable by workspace-scoped searches, alongside ``project_id`` and
-        ``version_number`` (the route-minted run number, D22). A point is born
+        ``version_number`` (the route-minted run number, D22), and
+        ``judge_state`` — the run's recorded ``judge_result.state`` (D6 of
+        feature ``llm-judge-instrument``), so the point itself distinguishes a
+        judge that was never requested from one that failed. A point is born
         valid: ``has_invalid_tasks`` is written ``False`` here — a task cannot
         be marked before it exists, and the point is stored after its run's
         tasks — and only ``set_has_invalid_tasks`` flips it later.
@@ -323,6 +327,7 @@ class QdrantAdapter(VectorStorePort):
                             "has_invalid_tasks": False,
                             "confidence_score": confidence_score,
                             "user_story_id": user_story_id,
+                            "judge_state": judge_state,
                             "created_at": datetime.now(UTC).isoformat(),
                         },
                     )

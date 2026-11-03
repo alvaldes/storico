@@ -951,3 +951,63 @@ async def test_version_numbers_with_empty_input_answers_empty_without_a_statemen
 
     assert numbers == {}
     assert statements == [], statements
+
+
+# --- Judge result (llm-judge-instrument T1): the terminal write and its round-trip ---
+
+
+@pytest.mark.asyncio
+async def test_mark_completed_writes_judge_result_and_find_by_id_round_trips_it(
+    db_session: AsyncSession, story_id: UUID
+) -> None:
+    """The judge record travels to the row in the same terminal UPDATE and back.
+
+    D4 of feature ``llm-judge-instrument``: the record is written once, in the
+    same statement as ``confidence_score``, so a read can never see a confidence
+    without its verdict or the reverse.
+    """
+    repo = SQLAlchemyExtractionRepository(db_session)
+    created = await repo.create_next_version(_versioned(story_id, "m1"))
+
+    judge_result = {
+        "state": "ok",
+        "criteria": {"coherence": {"score": 9, "justification": "all tasks belong"}},
+        "total_score": 45,
+        "max_total": 50,
+        "approved": True,
+        "model": "llama3.2",
+        "model_source": "extraction",
+        "error": None,
+        "error_type": None,
+    }
+    await repo.mark_completed(
+        created.id,
+        raw_response="r",
+        confidence_score=0.9,
+        completed_at=datetime.now(UTC),
+        judge_result=judge_result,
+    )
+
+    loaded = await repo.find_by_id(created.id)
+
+    assert loaded is not None
+    assert loaded.judge_result == judge_result
+    assert loaded.confidence_score == 0.9
+
+
+@pytest.mark.asyncio
+async def test_mark_completed_without_a_judge_record_leaves_the_column_null(
+    db_session: AsyncSession, story_id: UUID
+) -> None:
+    """The new keyword defaults to ``None``: pre-existing call sites write ``NULL``."""
+    repo = SQLAlchemyExtractionRepository(db_session)
+    created = await repo.create_next_version(_versioned(story_id, "m1"))
+
+    await repo.mark_completed(
+        created.id, raw_response="r", confidence_score=0.9, completed_at=datetime.now(UTC)
+    )
+
+    loaded = await repo.find_by_id(created.id)
+
+    assert loaded is not None
+    assert loaded.judge_result is None

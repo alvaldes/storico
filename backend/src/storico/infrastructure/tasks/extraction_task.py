@@ -34,7 +34,7 @@ from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import LLMConfig, LLMPort, VectorStorePort
 from storico.domain.ports.llm_port import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE
-from storico.domain.services.extraction_judge_service import LLMJudgeService
+from storico.domain.services.extraction_judge_service import MAX_TOTAL_SCORE, LLMJudgeService
 from storico.domain.services.extraction_service import (
     ExtractionService,
     FewShotConfig,
@@ -479,31 +479,73 @@ async def _run_extraction(
         parsed_tasks = result.tasks
         raw_response = result.raw_response
 
-        # 4. Optionally validate via LLM-as-a-Judge — same system prompt
+        # 4. Optionally validate via LLM-as-a-Judge — same system prompt.
+        #
+        # The judge's outcome is recorded in full (D4/D5): ``state: "ok"`` on a
+        # run that judged, ``state: "failed"`` with ``error``/``error_type`` on one
+        # that was requested and failed — including ``JudgeOutputError``, which
+        # lands here because it is an ``LLMError`` (D2): a classified failure,
+        # never a retried one and never a silent null. A run with ``validate=True``
+        # but no judge service is also a classified failure, so "not requested"
+        # and "requested and could not run" stay distinguishable on the row.
         confidence: float | None = None
-        if validate and extraction_service._judge_service is not None:
-            try:
-                judge_result = await extraction_service._judge_service.validate(
-                    user_story=getattr(story, "raw_text", str(story)),
-                    tasks=[
-                        {"summary": pt.summary, "description": pt.description}
-                        for pt in parsed_tasks
-                    ],
-                    config=llm_config,
-                    system_prompt=system_prompt,
-                )
-                confidence = judge_result.total_score / 50.0
-                if not judge_result.approved and confidence is not None and confidence > 0.5:
-                    confidence = 0.5
-            except LLMError as exc:
-                logger.warning(
-                    "LLM judge validation failed, skipping confidence scoring",
-                    extra={
-                        "extraction_id": str(extraction_id),
+        judge_result: dict | None = None
+        if validate:
+            judge_record_base: dict = {
+                "criteria": {},
+                "total_score": None,
+                "max_total": MAX_TOTAL_SCORE,
+                "approved": False,
+                "model": model,
+                "model_source": "extraction",
+            }
+            if extraction_service._judge_service is None:
+                judge_result = {
+                    "state": "failed",
+                    **judge_record_base,
+                    "error": "judge service unavailable",
+                    "error_type": None,
+                }
+            else:
+                try:
+                    judged = await extraction_service._judge_service.validate(
+                        user_story=getattr(story, "raw_text", str(story)),
+                        tasks=[
+                            {"summary": pt.summary, "description": pt.description}
+                            for pt in parsed_tasks
+                        ],
+                        config=llm_config,
+                        system_prompt=system_prompt,
+                    )
+                    judge_result = {
+                        "state": "ok",
+                        "criteria": judged.criteria,
+                        "total_score": judged.total_score,
+                        "max_total": judged.max_total,
+                        "approved": judged.approved,
+                        "model": model,
+                        "model_source": "extraction",
+                        "error": None,
+                        "error_type": None,
+                    }
+                    confidence = judged.total_score / judged.max_total
+                    if not judged.approved and confidence is not None and confidence > 0.5:
+                        confidence = 0.5
+                except LLMError as exc:
+                    logger.warning(
+                        "LLM judge validation failed, skipping confidence scoring",
+                        extra={
+                            "extraction_id": str(extraction_id),
+                            "error": str(exc),
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+                    judge_result = {
+                        "state": "failed",
+                        **judge_record_base,
                         "error": str(exc),
                         "error_type": type(exc).__name__,
-                    },
-                )
+                    }
 
         # 5. Mark the run completed — one targeted UPDATE that names no snapshot
         # column, so provider, temperature, version_number and prompt_rendered keep
@@ -513,6 +555,7 @@ async def _run_extraction(
             raw_response=raw_response,
             confidence_score=confidence,
             completed_at=datetime.now(UTC),
+            judge_result=judge_result,
         )
 
         # 6. Persist tasks
@@ -542,6 +585,7 @@ async def _run_extraction(
             confidence_score=confidence,
             project_id=story.project_id,
             version_number=version_number,
+            judge_state=judge_result["state"] if judge_result is not None else None,
         )
 
         # 8. Transition UserStory to EXTRACTED (from EXTRACTING)
@@ -608,6 +652,7 @@ async def _store_rag(
     confidence_score: float | None,
     project_id: UUID,
     version_number: int,
+    judge_state: str | None = None,
 ) -> None:
     """Store extraction result in vector store for future RAG searches.
 
@@ -619,6 +664,10 @@ async def _store_rag(
     ``store_extraction`` so the point can be scoped and tied to its run; the port requires
     them, and the runner's ``version_number`` is a required ``int`` with no default, so
     a ``None`` can never reach the payload key through this path.
+
+    ``judge_state`` is the recorded run's ``judge_result.state`` (D6): the point carries no
+    ``prompt_config``, so without this key a ``null`` there could not tell "the judge was
+    never requested" from "it was requested and failed".
     """
     if vector_store is None:
         logger.debug("RAG store skipped: no vector store available")
@@ -637,6 +686,7 @@ async def _store_rag(
             version_number=version_number,
             confidence_score=confidence_score,
             user_story_id=str(getattr(story, "id", "")),
+            judge_state=judge_state,
         )
     except Exception as exc:
         logger.warning(

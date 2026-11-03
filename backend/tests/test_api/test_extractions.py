@@ -11,6 +11,7 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.domain.entities import UserStory
+from storico.domain.entities.extraction import ExtractionStatus
 from storico.infrastructure.database.repositories import SQLAlchemyUserStoryRepository
 from tests._helpers import seed_extraction
 
@@ -299,6 +300,56 @@ class TestGetExtraction:
         assert data["prompt_config"] == {"temperature": 0.1}
         assert data["raw_response"] == "1. summary: Task A\ndescription: Desc A"
         assert "created_at" in data
+
+    async def test_get_extraction_returns_the_judge_result(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """The persisted judge record (feature ``llm-judge-instrument``, D4) travels to the response.
+
+        The record is forwarded as stored — the client reads the three states
+        (D5) from ``state``: absent, ``"ok"``, ``"failed"``.
+        """
+        story_id = (await seed_workspace()).story_id
+        judge_result = {
+            "state": "ok",
+            "criteria": {"coherence": {"score": 9, "justification": "all tasks belong"}},
+            "total_score": 45,
+            "max_total": 50,
+            "approved": True,
+            "model": "mistral",
+            "model_source": "extraction",
+            "error": None,
+            "error_type": None,
+        }
+        saved = await seed_extraction(
+            db_session,
+            story_id,
+            model_used="mistral",
+            raw_response="1. summary: Task A\ndescription: Desc A",
+            status=ExtractionStatus.COMPLETED,
+            confidence_score=0.9,
+            judge_result=judge_result,
+        )
+
+        response = await authed_client.get(f"/api/v1/extractions/{saved.id}")
+        assert response.status_code == 200
+        assert response.json()["judge_result"] == judge_result
+
+    async def test_get_extraction_returns_a_null_judge_result_when_not_requested(
+        self, authed_client, db_session: AsyncSession, seed_workspace
+    ):
+        """A run without validation exposes ``judge_result: null`` — "not requested"."""
+        story_id = (await seed_workspace()).story_id
+        saved = await seed_extraction(
+            db_session,
+            story_id,
+            model_used="mistral",
+            status=ExtractionStatus.COMPLETED,
+        )
+
+        response = await authed_client.get(f"/api/v1/extractions/{saved.id}")
+        assert response.status_code == 200
+        assert response.json()["judge_result"] is None
 
     async def test_get_extraction_not_found(self, authed_client):
         """GET with a non-existent UUID returns 404."""

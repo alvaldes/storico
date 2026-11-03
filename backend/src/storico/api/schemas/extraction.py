@@ -47,6 +47,10 @@ class ExtractionResponse(BaseModel):
     prompt_config: dict | None = None
     raw_response: str
     confidence_score: float | None = None
+    # The LLM-as-a-Judge record (feature ``llm-judge-instrument``, D4/D5): ``None``
+    # when the judge was never requested; otherwise the persisted ``{"state": ...}``
+    # record, forwarded from the entity as stored.
+    judge_result: dict | None = None
     created_at: datetime
     completed_at: datetime | None = None
     # The three versioning scalars (0028), required on the contract so every

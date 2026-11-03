@@ -76,6 +76,7 @@ class VectorStorePort(ABC):
         version_number: int,
         confidence_score: float | None = None,
         user_story_id: str = "",
+        judge_state: str | None = None,
     ) -> bool:
         """Store an extraction with its embedding for future RAG searches.
 
@@ -85,6 +86,12 @@ class VectorStorePort(ABC):
         ``version_number`` ties the point to the run that produced it — the
         number the route minted and returned in its 202 body, so a retry reuses
         it instead of minting another (D22).
+
+        ``judge_state`` (D6 of feature ``llm-judge-instrument``) is the run's
+        recorded ``judge_result.state`` — ``"ok"``, ``"failed"`` or ``None`` when
+        the judge was never requested. The point carries no ``prompt_config``, so
+        without this key a ``null`` could not distinguish "not requested" from
+        "requested and failed"; the point states it itself.
 
         Returns:
             ``True`` when the point was accepted by the vector store, ``False``

@@ -68,6 +68,19 @@ class LLMError(Exception):
         return self.message
 
 
+class JudgeOutputError(LLMError):
+    """Raised when the judge LLM's output cannot be turned into a usable result.
+
+    Deliberately an ``LLMError``, not a bare ``ValueError``/``TypeError``: the
+    runner's ``except LLMError`` at the judge call site catches it, so an
+    unusable judge payload is a **classified failure** (``judge_result.state ==
+    "failed"``) instead of escaping into the generic ``except Exception`` of
+    ``run_background_extraction`` and being retried with exponential backoff as
+    if it were a network cut. Its message names the offending field and value —
+    that message is what the persisted record carries.
+    """
+
+
 class LLMConnectionError(LLMError):
     """Raised when the LLM service cannot be reached."""
 
