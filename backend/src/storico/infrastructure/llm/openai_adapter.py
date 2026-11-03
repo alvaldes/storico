@@ -54,6 +54,45 @@ def _empty_response_message(finish_reason: str | None, refusal: str | None, max_
     return "The provider returned an empty response"
 
 
+def _versioned_base(base_url: str | None) -> str | None:
+    """Return the ``/v1`` spelling of a base URL that lacks it, else ``None``.
+
+    Mirrors ``fetch_openai_compatible_models``: servers disagree on whether the
+    configured base already carries ``/v1``, and the model listing probes both
+    spellings. Extraction must resolve the same base the same way, or a model the
+    listing found is reported missing when only the route was. No base means the
+    SDK default (OpenAI itself), which already ends in ``/v1``.
+    """
+    if not base_url:
+        return None
+    stripped = base_url.rstrip("/")
+    if stripped.endswith("/v1"):
+        return None
+    return f"{stripped}/v1"
+
+
+def _names_the_model(error: OpenAINotFoundError, model: str) -> bool:
+    """Tell a missing model from a missing route on a 404.
+
+    A model 404 from an OpenAI-compatible server names the model in its message
+    or carries ``code: model_not_found``; a 404 for a path the server does not
+    serve names neither.
+    """
+    body = error.body
+    if isinstance(body, dict):
+        inner = body.get("error") if isinstance(body.get("error"), dict) else body
+        if inner.get("code") == "model_not_found":
+            return True
+    return model in str(error)
+
+
+def _request_url(error: OpenAINotFoundError) -> str:
+    try:
+        return str(error.request.url)
+    except AttributeError:
+        return "the configured endpoint"
+
+
 class OpenAIAdapter(LLMPort):
     """Adapter that sends prompts to OpenAI models via the openai SDK.
 
@@ -77,6 +116,10 @@ class OpenAIAdapter(LLMPort):
                 a new client is created with the given api_key and base_url.
         """
         self._client = client or AsyncOpenAI(api_key=api_key, base_url=base_url or None)
+        self._api_key = api_key
+        # The ``/v1`` spelling to fall back to once, on a route 404. An injected client
+        # has a base this adapter does not own, so it gets no fallback.
+        self._fallback_base = None if client is not None else _versioned_base(base_url)
 
     async def generate(
         self,
@@ -126,11 +169,7 @@ class OpenAIAdapter(LLMPort):
             )
             raise LLMConnectionError(f"OpenAI API connection failed: {e}") from e
         except OpenAINotFoundError as e:
-            logger.error(
-                "OpenAI model not found",
-                extra={"model": config.model, "error": str(e)},
-            )
-            raise LLMModelNotFoundError(config.model) from e
+            response = await self._retry_under_v1_or_raise(e, kwargs, config)
         except BaseOpenAIError as e:
             logger.error(
                 "OpenAI API error",
@@ -142,6 +181,55 @@ class OpenAIAdapter(LLMPort):
             )
             raise LLMResponseError(f"OpenAI API error: {e}") from e
 
+        return self._to_response(response, config)
+
+    async def _retry_under_v1_or_raise(
+        self, error: OpenAINotFoundError, kwargs: dict[str, Any], config: LLMConfig
+    ) -> Any:
+        """Retry a 404 once under the ``/v1`` base, then classify what is left.
+
+        A success keeps the ``/v1`` client for every later call, so the bare base
+        costs one extra request per adapter, not per call.
+        """
+        if self._fallback_base is not None:
+            versioned = AsyncOpenAI(api_key=self._api_key, base_url=self._fallback_base)
+            self._fallback_base = None
+            try:
+                response = await versioned.chat.completions.create(**kwargs)
+            except OpenAINotFoundError as retry_error:
+                error = retry_error
+            except OpenAIAPIConnectionError as retry_error:
+                raise LLMConnectionError(
+                    f"OpenAI API connection failed: {retry_error}"
+                ) from retry_error
+            except BaseOpenAIError as retry_error:
+                raise LLMResponseError(f"OpenAI API error: {retry_error}") from retry_error
+            else:
+                logger.info(
+                    "Resolved the provider base URL under /v1",
+                    extra={"model": config.model},
+                )
+                self._client = versioned
+                return response
+
+        if _names_the_model(error, config.model):
+            logger.error(
+                "OpenAI model not found",
+                extra={"model": config.model, "error": str(error)},
+            )
+            raise LLMModelNotFoundError(config.model) from error
+
+        url = _request_url(error)
+        logger.error(
+            "The provider endpoint was not found",
+            extra={"model": config.model, "url": url},
+        )
+        raise LLMConnectionError(
+            f"Endpoint not found at {url} (HTTP 404). Check the provider Base URL in "
+            "Workspace Settings."
+        ) from error
+
+    def _to_response(self, response: Any, config: LLMConfig) -> LLMResponse:
         raw_usage = getattr(response, "usage", None)
         usage = raw_usage.model_dump() if raw_usage is not None else None
 

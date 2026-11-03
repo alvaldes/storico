@@ -287,3 +287,135 @@ class TestEmptyResponseDiagnosis:
         assert record.max_tokens == 2048
         assert record.refusal_present is False
         assert record.model == "gpt-3.5-turbo"
+
+
+def _route_not_found_error(url: str) -> NotFoundError:
+    """A 404 for a path the server does not serve: no model is named anywhere."""
+    request = MagicMock()
+    request.url = url
+    return NotFoundError(
+        "Error code: 404 - Not Found",
+        response=MagicMock(status_code=404, headers={}, request=request),
+        body={"detail": "Not Found"},
+    )
+
+
+class TestOpenAICompatibleBaseUrl:
+    """A base URL without ``/v1`` resolves the way the model listing resolves it."""
+
+    def setup_method(self) -> None:
+        self.config = LLMConfig(model="deepseek-v4.1-flash-free")
+
+    @patch("storico.infrastructure.llm.openai_adapter.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_a_route_404_retries_once_under_v1_and_keeps_that_base(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        bare = MagicMock()
+        bare.chat.completions.create = AsyncMock(
+            side_effect=_route_not_found_error("https://direct.example.io/chat/completions")
+        )
+        versioned = MagicMock()
+        versioned.chat.completions.create = AsyncMock(return_value=_mock_response("1. summary: A"))
+        mock_client_cls.side_effect = [bare, versioned]
+
+        adapter = OpenAIAdapter(api_key="k", base_url="https://direct.example.io/")
+        first = await adapter.generate("p", self.config)
+        second = await adapter.generate("p", self.config)
+
+        assert first.text == "1. summary: A"
+        assert second.text == "1. summary: A"
+        assert mock_client_cls.call_args_list[1].kwargs == {
+            "api_key": "k",
+            "base_url": "https://direct.example.io/v1",
+        }
+        # The bare base was tried once; every later call goes straight to /v1.
+        assert bare.chat.completions.create.await_count == 1
+        assert versioned.chat.completions.create.await_count == 2
+
+    @patch("storico.infrastructure.llm.openai_adapter.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_a_route_404_on_both_bases_names_the_endpoint_not_the_model(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        bare = MagicMock()
+        bare.chat.completions.create = AsyncMock(
+            side_effect=_route_not_found_error("https://gw.example.io/chat/completions")
+        )
+        versioned = MagicMock()
+        versioned.chat.completions.create = AsyncMock(
+            side_effect=_route_not_found_error("https://gw.example.io/v1/chat/completions")
+        )
+        mock_client_cls.side_effect = [bare, versioned]
+
+        adapter = OpenAIAdapter(api_key="k", base_url="https://gw.example.io")
+        with pytest.raises(LLMConnectionError) as exc_info:
+            await adapter.generate("p", self.config)
+
+        message = str(exc_info.value)
+        assert "https://gw.example.io/v1/chat/completions" in message
+        assert "Base URL" in message
+        assert "deepseek-v4.1-flash-free" not in message
+
+    @patch("storico.infrastructure.llm.openai_adapter.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_a_model_404_still_reports_the_model(self, mock_client_cls: MagicMock) -> None:
+        bare = MagicMock()
+        bare.chat.completions.create = AsyncMock(
+            side_effect=_not_found_error("The model `deepseek-v4.1-flash-free` does not exist")
+        )
+        versioned = MagicMock()
+        versioned.chat.completions.create = AsyncMock(
+            side_effect=_not_found_error("The model `deepseek-v4.1-flash-free` does not exist")
+        )
+        mock_client_cls.side_effect = [bare, versioned]
+
+        adapter = OpenAIAdapter(api_key="k", base_url="https://gw.example.io")
+        with pytest.raises(LLMModelNotFoundError) as exc_info:
+            await adapter.generate("p", self.config)
+        assert exc_info.value.model == "deepseek-v4.1-flash-free"
+
+    @patch("storico.infrastructure.llm.openai_adapter.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_a_base_that_already_ends_in_v1_is_not_retried(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        mock_client_cls.return_value.chat.completions.create = AsyncMock(
+            side_effect=_route_not_found_error("https://gw.example.io/v1/chat/completions")
+        )
+
+        adapter = OpenAIAdapter(api_key="k", base_url="https://gw.example.io/v1")
+        with pytest.raises(LLMConnectionError):
+            await adapter.generate("p", self.config)
+        assert mock_client_cls.call_count == 1
+
+    @patch("storico.infrastructure.llm.openai_adapter.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_openai_without_a_base_url_is_not_retried(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        mock_client_cls.return_value.chat.completions.create = AsyncMock(
+            side_effect=_not_found_error("gpt-x")
+        )
+
+        adapter = OpenAIAdapter(api_key="k")
+        with pytest.raises(LLMModelNotFoundError):
+            await adapter.generate("p", LLMConfig(model="gpt-x"))
+        assert mock_client_cls.call_count == 1
+
+    @patch("storico.infrastructure.llm.openai_adapter.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_a_failing_v1_retry_is_wrapped_like_any_other_call(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        bare = MagicMock()
+        bare.chat.completions.create = AsyncMock(
+            side_effect=_route_not_found_error("https://gw.example.io/chat/completions")
+        )
+        versioned = MagicMock()
+        versioned.chat.completions.create = AsyncMock(side_effect=OpenAIError("boom"))
+        mock_client_cls.side_effect = [bare, versioned]
+
+        adapter = OpenAIAdapter(api_key="k", base_url="https://gw.example.io")
+        with pytest.raises(LLMResponseError):
+            await adapter.generate("p", self.config)
