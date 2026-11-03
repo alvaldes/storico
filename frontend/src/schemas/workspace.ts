@@ -138,8 +138,9 @@ export const llmConfigDraftSchema = z
       .max(LLM_ENDPOINT_MAX_LENGTH, { message: 'too_long' })
       .refine(isEndpointOrEmpty, { message: 'invalid_url' }),
     apiKey: z.string().max(LLM_API_KEY_MAX_LENGTH, { message: 'too_long' }),
-    // Optional here, but the form always holds it and always sends it: an empty value
-    // is what clears a stored judge model (D7), and dropping the key would not.
+    // Optional here, but the form always holds it and always sends it: the payload
+    // keeps the stored value when the key is omitted, so the explicit empty string
+    // is what clears a stored judge model (D7).
     judgeModel: z.string().max(LLM_MODEL_MAX_LENGTH, { message: 'too_long' }).optional(),
   })
   .superRefine((values, ctx) => {

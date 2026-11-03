@@ -542,16 +542,6 @@ async def _run_extraction(
             # probe, no second credential, no cross-provider path (non-goal of D7).
             # Both the ok and the failed records carry the model and its source, so
             # a failed judgement still names who was asked.
-            judge_model = await _resolve_judge_model(session, workspace_id, settings)
-            if judge_model:
-                from dataclasses import replace
-
-                judge_config = replace(llm_config, model=judge_model)
-                judged_model, judged_source = judge_model, "workspace"
-            else:
-                judge_config = llm_config
-                judged_model, judged_source = model, "extraction"
-
             judge_record_base: dict = {
                 "criteria": {},
                 "total_score": None,
@@ -559,8 +549,11 @@ async def _run_extraction(
                 "approved": False,
                 "tas": None,
                 "ifi": None,
-                "model": judged_model,
-                "model_source": judged_source,
+                # The honest values until the workspace read resolves otherwise:
+                # if the lookup itself fails (F2), the record still names the
+                # extraction model and its source instead of nobody.
+                "model": model,
+                "model_source": "extraction",
             }
             if extraction_service._judge_service is None:
                 judge_result = {
@@ -571,6 +564,15 @@ async def _run_extraction(
                 }
             else:
                 try:
+                    judge_model = await _resolve_judge_model(session, workspace_id, settings)
+                    if judge_model:
+                        from dataclasses import replace
+
+                        judge_config = replace(llm_config, model=judge_model)
+                        judge_record_base["model"] = judge_model
+                        judge_record_base["model_source"] = "workspace"
+                    else:
+                        judge_config = llm_config
                     judged = await extraction_service._judge_service.validate(
                         user_story=getattr(story, "raw_text", str(story)),
                         tasks=[
@@ -588,15 +590,21 @@ async def _run_extraction(
                         "approved": judged.approved,
                         "tas": judged.tas,
                         "ifi": judged.ifi,
-                        "model": judged_model,
-                        "model_source": judged_source,
+                        "model": judge_record_base["model"],
+                        "model_source": judge_record_base["model_source"],
                         "error": None,
                         "error_type": None,
                     }
                     confidence = judged.total_score / judged.max_total
                     if not judged.approved and confidence is not None and confidence > 0.5:
                         confidence = 0.5
-                except LLMError as exc:
+                except Exception as exc:
+                    # The whole judge path is classified here — the model lookup
+                    # included (F2): a database or cipher error reaching it used to
+                    # escape into the runner's generic handler, which retried the
+                    # *extraction* with backoff and ended the run ``failed`` with
+                    # ``validate=True`` and no record. A judged run that could not
+                    # judge is a completed run with a failed record instead.
                     logger.warning(
                         "LLM judge validation failed, skipping confidence scoring",
                         extra={

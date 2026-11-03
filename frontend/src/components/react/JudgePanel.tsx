@@ -20,17 +20,19 @@ import type { JudgeResult } from '@/types/extraction';
  * - `null` — the run did not judge, the normal case (D8): nothing at all.
  */
 
-/** Wire order of the criteria. `format` is the retired wire name for clarity on
- * pre-rubric rows; it sorts last so a legacy record still reads in a stable order. */
+/** Wire order of the criteria, in the rubric's canonical sequence (F3). `format` is
+ * the retired wire name of the fourth position on pre-rubric rows, so it renders in
+ * that fourth slot — between feasibility and granularity — and unknown keys still
+ * come after the known ones. */
 const CRITERION_ORDER = [
   'coherence',
   'completeness',
   'feasibility',
+  'format',
   'clarity',
   'granularity',
   'dependencies',
   'usefulness',
-  'format',
 ] as const;
 
 type CriterionName = (typeof CRITERION_ORDER)[number];

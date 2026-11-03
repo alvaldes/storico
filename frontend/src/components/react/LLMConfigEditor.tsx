@@ -89,7 +89,8 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   // The judge model (D7) is held apart from `llmConfig` because the shared config type
   // describes the fields every caller reads; this one only the settings row carries.
   // The empty string means "judge with the extraction model" — and is sent as `''`,
-  // never dropped, because an absent key must not stand in for a cleared one.
+  // never dropped: the payload keeps the stored value when the key is omitted, so
+  // only the explicit empty string clears it.
   const [judgeModel, setJudgeModel] = useState('');
   const [llmSaving, setLlmSaving] = useState(false);
   const [llmSaveResult, setLlmSaveResult] = useState<'idle' | 'success' | 'error'>('idle');
@@ -450,9 +451,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
         // it as a URL made of spaces.
         baseUrl: parsed.data.baseUrl.trim() || undefined,
         apiKey: parsed.data.apiKey || undefined,
-        // Always sent, unlike the siblings above: the judge field is full-replace
-        // (D7), so the empty string is what clears a stored judge model and dropping
-        // the key would leave the old value standing.
+        // Always sent, unlike the siblings above: the payload keeps the stored value
+        // when the key is omitted (D7), so the explicit empty string is what clears
+        // a stored judge model.
         judgeModel: parsed.data.judgeModel,
       });
       setLlmSaveResult('success');

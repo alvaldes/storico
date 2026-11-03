@@ -1,8 +1,11 @@
 # ODD Feature: llm-judge-instrument
 
-> **Status**: in progress. The LLM-as-a-Judge exists, runs, and is unusable as an instrument: it
-> judges with the generating model, scores a rubric the experimental design abandoned, and drops
-> every per-criterion value it computes.
+> **Status**: implemented on `feat/llm-judge-instrument` (5 commits + the review-findings commit),
+> verified by an independent read-only review, **not merged**. The LLM-as-a-Judge was unusable as an
+> instrument: it judged with the generating model, scored a rubric the experimental design abandoned,
+> and dropped every per-criterion value it computed. It now validates its own output, persists the
+> verdict in three states, can run on a separate model, and scores the seven-criterion 1-7 rubric
+> with TAS/IFI computed by the server.
 > **Created**: 2026-11-03 (owner request on that date)
 > **Workflow**: Organic Driven Development (ODD)
 > **Branch**: `feat/llm-judge-instrument`, off `main` @ `b36258d`.
@@ -60,6 +63,29 @@ unusable for the thesis, for four separate reasons:
 - **The blind-evaluation mode** for experts (E2 is judged in an external form) and the study session
   with its clock.
 
+## Verification
+
+Independent read-only review over the whole branch (`gentle-ai-verify`, 2026-11-03), claim by claim.
+Ten claims held on behavior — three states, a failed judge never failing the run, the arithmetic, the
+clamp matrix, the model swap, prompt blindness, legacy rows, the two additive migrations, the settings
+semantics, and no silent contract break — and one **blocker** plus five advisories came out of it. All
+six are closed in T6, each with the test that would have caught it:
+
+| # | Finding | Closed by |
+| --- | --- | --- |
+| F1 | `tsc --noEmit` red: `tas`/`ifi` typed as numbers while failed records carry `null` and legacy rows omit them | Types say `number \| null`; the fixtures are `satisfies` assertions, so `tsc` is the pin (exit 0 measured) |
+| F2 | A judge-model lookup that raised escaped the judge's error handling and failed the whole extraction | Lookup moved inside the `try`; a raising lookup leaves a completed run with a classified failure (new test observed RED then GREEN) |
+| F3 | A legacy record rendered its retired `format` criterion last | Rendered in the fourth position; the label order is pinned |
+| F4 | Six comments still described `judge_model` as full-replace | Reworded; behavior untouched |
+| F5 | The route docstring's doubled backticks leaked into the published API page | Single backticks, pages regenerated, `test_api_reference` green |
+| F6 | A run asked to judge whose own extraction failed leaves `judge_result` null — a fourth reading nobody had written down | Named in the spec and in `docs/api.md`, with the rule that analysis filters on `status`, never on `validate` alone |
+
+Measured at the tip: backend **1559 passed, 45 skipped**, `ruff check`/`format` clean, `tsc --noEmit`
+exit 0, frontend **980 passed**, `eslint` clean. The 45 skips are the Docker-gated migration-chain and
+testcontainers suites plus the live Ollama/Qdrant opt-ins — the same set as before this feature, which
+means **`0033` and `0034` have never been executed against a real Postgres in this environment**; CI's
+chain test is their first execution. That is the one piece of proof this environment cannot produce.
+
 ## Delivery
 
 Chained PRs, three slices, base `main` @ `b36258d`, branch `feat/llm-judge-instrument`:
@@ -69,7 +95,8 @@ Chained PRs, three slices, base `main` @ `b36258d`, branch `feat/llm-judge-instr
 | 1 | T1 — contract + persistence | **1,090 authored lines** (≈430 code, ≈600 tests, migration `0033`): over the ~400 budget | `d0cbc85`, measured after the commit |
 | 2 | T2 + T3 — judge model + rubric | ~600 authored lines | `158f3c3` + `c39361e` |
 | 3 | T4 — UI, plus the settings field the mirror guard forced | ~700 authored lines (frontend + its tests) | this slice |
-| 4 | T5 — docs and specs | docs only | next slice |
+| 4 | T5 — docs and specs | docs only | `5409040` |
+| 5 | T6 — review findings | ~180 authored lines | this slice |
 
 PR 1 is deliberately not split further, and the reason is structural rather than stylistic: the RAG payload
 keyword and the judge block live in the same file (`extraction_task.py`), so a split by file leaves an
@@ -125,7 +152,8 @@ docs that describe it, and every behavior change ships with its test.
 | T2 | Judge model separation: `judge_model` setting, migration `0034`, resolution + `model`/`model_source` in the record | S4 | inline | `158f3c3` |
 | T3 | Rubric 1-7: prompt rewrite, parser, TAS/IFI persisted, confidence derived from the rubric maximum | S1-S3 | inline | `c39361e` |
 | T4 | UI: per-run switch + judge panel with the seven items and TAS/IFI, both locales — extended with the settings field (L4) | S8 | inline | this slice |
-| T5 | Docs and specs: `openspec/specs/llm-as-a-judge/`, `docs/api.md`, `AGENTS.md` row 6 | S9 | inline | — |
+| T5 | Docs and specs: `openspec/specs/llm-as-a-judge/`, `docs/api.md`, `AGENTS.md` row 6 | S9 | inline | `5409040` |
+| T6 | Review findings: the `tsc` blocker, the judge-model lookup outside the judge's error handling, legacy `format` order, stale "full replace" prose, docstring markup in the published page, the undocumented fourth reading | S5-S7, S9 | inline | this commit |
 
 ## Log
 
@@ -143,6 +171,12 @@ is a partial update (`extra="forbid"`, every field optional) and the existing co
 "an omitted field leaves the stored value alone". The route and the schema comment were corrected to
 the payload's real convention: omitted keeps, an explicit empty string clears. The comment that
 carried the wrong wording is corrected in the same slice as this entry.
+
+L5 — the independent verification found one blocker and five advisories; all six are closed in T6 with
+the evidence in `## Verification`. The blocker was the frontend type gate: the client typed `tas`/`ifi`
+as numbers, the failed record carries `null`, and the fixtures that pin the wire shape were the ones
+`tsc` refused — the failed and legacy shapes were the untested axis, exactly where the record type had
+been written from the ok shape alone.
 
 L4 — scope extension recorded by the parent during T4: the `judge_model` field was added to the
 settings form (`LLMConfigEditor.tsx`) and to the client mirror. Two reasons, both measured: the

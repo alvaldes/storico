@@ -24,7 +24,10 @@ import type { JudgeResult } from '@/types/extraction';
 
 const t = getTranslations('en');
 
-const okRecord: JudgeResult = {
+// `satisfies` pins the wire shape at compile time: the ok record proves the type
+// admits concrete indices, the failed record proves it admits `tas: null` /
+// `ifi: null` — what the backend persists on every failed record (F1).
+const okRecord = {
   state: 'ok',
   criteria: {
     coherence: { score: 5, justification: 'All tasks belong to the story.' },
@@ -44,9 +47,9 @@ const okRecord: JudgeResult = {
   model_source: 'workspace',
   error: null,
   error_type: null,
-};
+} satisfies JudgeResult;
 
-const failedRecord: JudgeResult = {
+const failedRecord = {
   state: 'failed',
   criteria: {},
   total_score: null,
@@ -58,7 +61,7 @@ const failedRecord: JudgeResult = {
   model_source: 'workspace',
   error: 'model returned an unusable rubric',
   error_type: 'JudgeOutputError',
-};
+} satisfies JudgeResult;
 
 /** Pre-rubric row (written before T3): five criteria on 0–10, `format`, no TAS/IFI. */
 const legacyRecord = {
@@ -138,6 +141,20 @@ describe('JudgePanel', () => {
     // the panel — the frontend must not derive them.
     expect(screen.queryByText(/TAS/)).not.toBeInTheDocument();
     expect(screen.queryByText(/IFI/)).not.toBeInTheDocument();
+
+    // The retired `format` renders in the rubric's fourth position — the slot
+    // `clarity` occupies post-rubric — between feasibility and granularity,
+    // and the unknown keys would come after the known ones (F3).
+    const labels = screen
+      .getAllByRole('listitem')
+      .map((li) => li.querySelector('span')?.textContent);
+    expect(labels).toEqual([
+      t.judgePanel.criterion_coherence,
+      t.judgePanel.criterion_completeness,
+      t.judgePanel.criterion_feasibility,
+      t.judgePanel.criterion_format,
+      t.judgePanel.criterion_granularity,
+    ]);
   });
 
   it('renders nothing at all for a null record — the run did not judge', () => {

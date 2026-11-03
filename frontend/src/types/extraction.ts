@@ -55,9 +55,10 @@ export interface JudgeResult {
   total_score: number | null;
   max_total: number | null;
   approved: boolean | null;
-  /** Absent on pre-rubric rows. Never recomputed in the frontend (S8). */
-  tas?: number;
-  ifi?: number;
+  /** Absent on pre-rubric rows; `null` on a failed record (no verdict to index).
+   * The frontend reads both the same way — omit the index — but never recomputes it (S8). */
+  tas?: number | null;
+  ifi?: number | null;
   model?: string | null;
   model_source?: 'workspace' | 'extraction';
   error: string | null;

@@ -160,8 +160,9 @@ describe('llmConfigSchema - the PUT payload contract', () => {
   });
 
   it('accepts an empty judge model, which is what clearing the field sends', () => {
-    // The judge field is full-replace (D7): an empty string stored means "judge with
-    // the extraction model", so the empty value has to survive the payload contract.
+    // An empty string stored means "judge with the extraction model" (D7), and an
+    // omitted key keeps the stored value — so the empty value has to survive the
+    // payload contract.
     const result = llmConfigSchema.safeParse({ provider: 'ollama', judgeModel: '' });
 
     expect(result.success).toBe(true);

@@ -618,7 +618,12 @@ sus tareas, `confidence_score` queda en `null` y sólo `judge_result.state` dice
 valoración no ocurrió. Por eso los dos nulos no son lo mismo: `judge_result` en `null` con
 `prompt_config.validate` en `false` es una corrida a la que nadie le pidió juzgar;
 `judge_result.state: "failed"` es una corrida a la que se le pidió y el juez no pudo responder.
-Un payload inutilizable del juez — una puntuación no coercible o no finita, un criterio
+Hay una cuarta lectura, y `judge_result` no dice nada de ella: una corrida a la que se le pidió
+juzgar (`prompt_config.validate` en `true`) pero cuya propia extracción falló nunca llega al juez,
+así que también deja `judge_result` en `null`. Los tres estados sólo tienen sentido cuando la
+corrida misma alcanzó un estado terminal: un análisis que filtre por `validate` en vez de por el
+`status` de la corrida leería este caso como "el juez corrió y falló en silencio", que no es lo que
+pasó. Un payload inutilizable del juez — una puntuación no coercible o no finita, un criterio
 ausente, una entrada que no es objeto — es un fallo clasificado
 (`JudgeOutputError`, subclase de `LLMError`) que se registra una vez y **no** se reintenta
 como error transitorio.

@@ -937,6 +937,60 @@ class TestRunnerPersistencePath:
         assert record["approved"] is False
 
     @pytest.mark.asyncio
+    async def test_a_raising_judge_model_lookup_is_a_classified_judge_failure(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A config lookup that raises cannot fail the run (F2).
+
+        ``_resolve_judge_model`` runs on the judge path, so a database or cipher
+        error reaching it must be classified exactly like a judge call failure:
+        the run completes with ``confidence_score`` null and a failed judge
+        record, never retried as if the extraction itself had failed. The record
+        still names who was asked — the honest values when the model could not
+        be resolved are the extraction model and ``"extraction"``.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+
+        async def _raising_lookup(session: object, workspace_id: object, settings: object) -> str:
+            raise RuntimeError("config store unavailable")
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        monkeypatch.setattr(extraction_task, "LLMJudgeService", lambda **_: _ApprovingJudge())
+        monkeypatch.setattr(extraction_task, "_resolve_judge_model", _raising_lookup)
+        _make_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            version_number=1,
+            validate=True,
+            max_retries=2,
+        )
+
+        async with factory() as session:
+            completed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+
+        assert completed is not None
+        # The lookup failure is a judge-path failure: the run itself completes.
+        assert completed.status == ExtractionStatus.COMPLETED
+        assert completed.confidence_score is None
+        record = completed.judge_result
+        assert record is not None
+        assert record["state"] == "failed"
+        assert record["error"] == "config store unavailable"
+        assert record["error_type"] == "RuntimeError"
+        # The honest values when no judge model could be resolved.
+        assert record["model"] == "llama3.2"
+        assert record["model_source"] == "extraction"
+
+    @pytest.mark.asyncio
     async def test_an_unusable_judge_payload_is_a_classified_failure_not_a_retried_one(
         self, test_engine: AsyncEngine, monkeypatch, seed_workspace
     ) -> None:

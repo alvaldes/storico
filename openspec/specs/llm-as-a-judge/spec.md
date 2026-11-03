@@ -133,7 +133,12 @@ with `prompt_config.validate == false` is **not requested**; `state: "ok"` is
 failed**, carrying `error` and `error_type` beside `model`/`model_source`. A
 failed judgement MUST NOT change the run's own status: the run is `completed`
 with whatever tasks it produced, and only the judge record says the judgement
-did not happen.
+did not happen. A FOURTH reading exists and is not a state of its own: a run
+asked to judge (`prompt_config.validate == true`) whose own extraction failed
+never reaches the judge, so it also carries `judge_result` null. `judge_result`
+says nothing about a run that never completed — the three states are only
+meaningful when the run itself reached a terminal status — and an analysis
+MUST filter on the run's `status`, never on `prompt_config.validate` alone.
 
 #### Scenario: Not requested is distinguishable from failed
 
@@ -151,6 +156,16 @@ did not happen.
 - **THEN** the run's `status` is `completed` and its tasks persist normally
 - **AND** `judge_result.state` is `"failed"` with `error` and `error_type`,
   and `confidence_score` stays null
+
+#### Scenario: A failed run that was asked to judge also carries a null verdict
+
+- **GIVEN** a run started with `run_validation` on whose extraction itself
+  failed before reaching the judge
+- **WHEN** its row is read
+- **THEN** `judge_result` is null even though `prompt_config.validate` is true
+- **AND** a reader that filters on `validate` instead of the run's `status`
+  would mistake this for "the judge ran and failed silently", which is not
+  what happened
 
 ### Requirement: Judge Output Validation
 

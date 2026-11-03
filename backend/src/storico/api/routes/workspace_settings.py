@@ -241,10 +241,10 @@ async def upsert_llm_config(
 ) -> LLMConfigResponse:
     """Upsert workspace LLM configuration.
 
-    Only the fields provided in the request body are updated. ``judge_model`` follows the
-    same convention as ``base_url`` and ``api_key``: an omitted key keeps the stored value,
+    Only the fields provided in the request body are updated. `judge_model` follows the
+    same convention as `base_url` and `api_key`: an omitted key keeps the stored value,
     and an empty string (the form's way of saying "no separate judge") clears it to
-    ``None``. Treating an omitted key as a clear would be a second convention in one
+    `None`. Treating an omitted key as a clear would be a second convention in one
     payload, and the existing contract test pins the first one.
 
     Returns the resolved config after the update. Admin only.

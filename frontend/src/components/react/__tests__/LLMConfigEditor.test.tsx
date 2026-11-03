@@ -1287,8 +1287,9 @@ describe('LLMConfigEditor save gate', () => {
         maxTokens: 2048,
         baseUrl: 'http://localhost:11434',
         apiKey: undefined,
-        // Always sent, even empty: the judge field is full-replace, so the empty
-        // value is what keeps "judge with the extraction model" stored.
+        // Always sent, even empty: the payload keeps the stored value when the key
+        // is omitted, so the explicit empty string is what stores "judge with the
+        // extraction model".
         judgeModel: '',
       }),
     );
@@ -1344,8 +1345,8 @@ describe('LLMConfigEditor save gate', () => {
  *
  * The judge runs on a model the workspace names apart from the extraction model, so
  * the field has to round-trip: a saved model loads, a typed model is sent, and — the
- * rule the other fields do not share — clearing it sends the empty string, because
- * the judge field is full-replace and a dropped key would leave the old value standing.
+ * rule the other fields do not share — clearing it sends the explicit empty string,
+ * because the payload keeps the stored value when the key is omitted.
  */
 describe('LLMConfigEditor judge model', () => {
   beforeEach(() => {
@@ -1429,9 +1430,9 @@ describe('LLMConfigEditor judge model', () => {
     await user.clear(input);
     await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
 
-    // The judge field is full-replace (D7): only the explicit empty string clears the
-    // stored judge model, so the save must not map `''` to an omitted key the way the
-    // sibling fields do.
+    // The payload keeps the stored judge model when the key is omitted (D7): only
+    // the explicit empty string clears it, so the save must not map `''` to an
+    // omitted key the way the sibling fields do.
     await waitFor(() =>
       expect(upsertLLMConfig).toHaveBeenCalledWith(
         WORKSPACE_ID,
