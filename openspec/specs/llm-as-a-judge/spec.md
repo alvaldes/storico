@@ -96,31 +96,51 @@ score its own or another model's work differently for knowing it.
 - **THEN** it contains the story text and the parsed tasks
 - **AND** it contains neither the provider name nor the model name
 
-### Requirement: The Judge Model
+### Requirement: The Judge Connection
 
-`workspace_llm_configs.judge_model` (migration `0034`) names the model that
-judges the workspace's runs, nullable and on the same provider and credential
-as the workspace's extraction configuration. When it is set, the judge runs
-with that model — the only thing that changes is the model name — and when it
-is not, the judge falls back to the extraction model the run resolved. The
-persisted verdict MUST record which model judged: `judge_result.model` and
-`judge_result.model_source` (`workspace` or `extraction`), on both the ok and
-the failed records, so a failed judgement still names who was asked.
+The judge is a second, independent LLM configuration. `workspace_llm_configs`
+carries `judge_provider` (50), `judge_model` (100), `judge_api_key` (500) and
+`judge_base_url` (500) — migration `0034` adds the model, `0035` the other three
+— all nullable and all falling back **independently** to the workspace's
+extraction configuration. The workspace counts as having a separate judge when
+any of the four is set. The persisted verdict MUST record the connection it used:
+`judge_result.provider`, `judge_result.model` and `judge_result.model_source`
+(`"workspace"` for any separately configured judge, `"extraction"` only when none
+of the four is set), on both the ok and the failed records, so a failed judgement
+still names who was asked.
 
-#### Scenario: A configured judge model is used and recorded
+`judge_api_key` is encrypted by the workspace configuration repository — the only
+place a credential is encrypted on the way in and decrypted on the way out.
 
-- **GIVEN** a workspace with `judge_model` set and `run_validation` on
+#### Scenario: Another model on the extraction provider and credential
+
+- **GIVEN** a workspace with `judge_model` set and no other judge field
 - **WHEN** the run judges
-- **THEN** the judge LLM call uses the configured judge model on the workspace's
-  provider and credential
-- **AND** the verdict carries `model` = the judge model and `model_source` = `"workspace"`
+- **THEN** the judge call uses that model on the extraction provider, credential and endpoint
+- **AND** the verdict carries `model_source` = `"workspace"` and the provider that was used
 
-#### Scenario: Without a judge model the extraction model judges
+#### Scenario: Another provider, another credential and another model
 
-- **GIVEN** a workspace with `judge_model` null and `run_validation` on
+- **GIVEN** a workspace with `judge_provider`, `judge_api_key`, `judge_base_url` and `judge_model` set
 - **WHEN** the run judges
-- **THEN** the judge LLM call uses the same model and config the extraction used
-- **AND** the verdict carries `model_source` = `"extraction"` with that model
+- **THEN** the judge call is built for that provider with that credential and that endpoint
+- **AND** the extraction port is not used for judging
+- **AND** the verdict records the judge provider, the judge model and `model_source` = `"workspace"`
+
+#### Scenario: A credential never crosses providers
+
+- **GIVEN** a workspace whose extraction provider is A and whose `judge_provider` is B, with no `judge_api_key`
+- **WHEN** a run with `run_validation` on completes
+- **THEN** no request is made to B with A's credential
+- **AND** the judge does not run and the verdict is `state: "failed"` naming the missing field and the provider
+- **AND** the extraction itself completes normally
+
+#### Scenario: Nothing configured falls back entirely
+
+- **GIVEN** a workspace with none of the four judge fields set and `run_validation` on
+- **WHEN** the run judges
+- **THEN** the judge uses the same provider, credential, endpoint and model the extraction used
+- **AND** the verdict carries `model_source` = `"extraction"`
 
 ### Requirement: The Record and Its Three States
 

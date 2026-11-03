@@ -504,11 +504,15 @@ consulta su estado hasta que pasa a `completed` o `failed`.
 El flag `run_validation` pide la validación LLM-as-a-Judge de esa corrida. Va en `false` por
 defecto y nada la enciende de forma implícita: es una elección por corrida porque cuesta **una
 llamada LLM extra** por extracción — el juez es otra llamada al proveedor, con el mismo
-system prompt del workspace. Cuando está encendida, el modelo que juzga sale de la
-configuración del workspace (`workspace_llm_configs.judge_model`, campo opcional en
-`PUT /settings/llm`); si el workspace no nombró uno, juzga el mismo modelo de extracción que
-resolvió la corrida. El veredicto se persiste en la extracción y viaja en `judge_result` en
-la respuesta de estado, no en la de arranque.
+system prompt del workspace. Cuando está encendida, **el juez es una conexión aparte**: el
+workspace puede nombrarle otro modelo sobre su mismo proveedor y credencial, o darle
+proveedor, credencial y endpoint propios (`workspace_llm_configs.judge_provider` /
+`judge_model` / `judge_api_key` / `judge_base_url`, las cuatro opcionales en
+`PUT /settings/llm`). Cada campo vacío cae al de la extracción, y **la credencial de un
+proveedor nunca se envía a otro**: si el proveedor del juez difiere y no tiene credencial
+propia, el juez no corre y el veredicto queda `failed` diciendo qué falta — la extracción
+termina normalmente, porque no depende del juez. El veredicto se persiste en la extracción y
+viaja en `judge_result` en la respuesta de estado, no en la de arranque.
 
 ```json
 {
@@ -591,8 +595,9 @@ calcula en el servidor los índices `tas = (coherence + feasibility) / 2` e
 muestra tal cual quedaron persistidos y no los recalcula (`frontend/src/components/react/JudgePanel.tsx`)—;
 `completeness` y `usefulness` no alimentan ningún índice. El juez es ciego por construcción: el
 prompt (`single_judge.j2`) recibe la historia y las tareas, no el proveedor ni el modelo. El
-par `model`/`model_source` registra quién juzgó: el `judge_model` del workspace
-(`"model_source": "workspace"`) o, si no hay, el modelo de extracción (`"extraction"`).
+trío `provider`/`model`/`model_source` registra con qué conexión juzgó: proveedor y modelo
+resueltos, y `"model_source": "workspace"` cuando el workspace configuró cualquier campo del
+juez, `"extraction"` sólo cuando no configuró ninguno.
 
 La forma `failed` comparte `model`/`model_source` — un fallo también nombra a quien se le
 preguntó — y en lugar del veredicto lleva el motivo:
