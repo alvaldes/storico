@@ -971,10 +971,12 @@ async def test_mark_completed_writes_judge_result_and_find_by_id_round_trips_it(
 
     judge_result = {
         "state": "ok",
-        "criteria": {"coherence": {"score": 9, "justification": "all tasks belong"}},
+        "criteria": {"coherence": {"score": 6, "justification": "all tasks belong"}},
         "total_score": 45,
-        "max_total": 50,
+        "max_total": 49,
         "approved": True,
+        "tas": 6.5,
+        "ifi": 6.0,
         "model": "llama3.2",
         "model_source": "extraction",
         "error": None,

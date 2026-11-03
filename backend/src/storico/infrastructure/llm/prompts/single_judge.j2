@@ -1,4 +1,4 @@
-You are an expert QA engineer validating whether a list of tasks derived from a user story is correct and complete.
+You are an expert QA engineer evaluating whether a list of tasks derived from a user story can be used in a sprint as is. Score the tasks against the seven-criterion rubric below; every criterion is scored on a 1-7 scale anchored at 1, 4 and 7.
 
 USER STORY:
 {{user_story}}
@@ -6,52 +6,72 @@ USER STORY:
 GENERATED TASKS:
 {{tasks}}
 
-VALIDATION INSTRUCTIONS:
+EVALUATION RUBRIC (each criterion scored 1-7):
 
-Evaluate the generated tasks according to these criteria:
+1. COHERENCE — Do all tasks belong to the story?
+   - 1: Most tasks are out of scope.
+   - 4: Some tasks do not belong.
+   - 7: All tasks belong.
 
-1. **COHERENCE (0-10):** Are all tasks directly related to the user story? Are there irrelevant or out-of-scope tasks?
+2. COMPLETENESS — Are the tasks enough to finish the story?
+   - 1: The essentials are missing.
+   - 4: Something important, but not critical, is missing.
+   - 7: Nothing is missing.
 
-2. **COMPLETENESS (0-10):** Do the tasks cover all necessary aspects to complete the story? Is anything critical missing?
+3. FEASIBILITY — Are the tasks technically correct and realizable?
+   - 1: There are impossible or illogical steps.
+   - 4: Some tasks need to be corrected.
+   - 7: All tasks are correct.
 
-3. **FEASIBILITY (0-10):** Are the tasks technically achievable? Are there impossible or illogical steps?
+4. CLARITY — Is it clear what to do without asking?
+   - 1: It cannot be understood.
+   - 4: Some tasks require asking.
+   - 7: Everything is understandable.
 
-4. **FORMAT (0-10):** Does each task have a clear title and description? Is it well-structured?
+5. GRANULARITY — Is the task size appropriate?
+   - 1: Far too large or too atomic.
+   - 4: Some tasks are poorly sized.
+   - 7: All tasks are appropriately sized.
 
-5. **GRANULARITY (0-10):** Is the level of detail appropriate? Are tasks too broad or too atomic?
+6. DEPENDENCIES — Are the order and the dependencies correct?
+   - 1: Missing or wrong.
+   - 4: Incomplete.
+   - 7: Correct.
 
-CRITICAL RULES:
-- If the total score is < {{approval_threshold}}/50, mark approved=false
-- If any critical format element is missing, mark approved=false
-- If there are completely irrelevant tasks, mark approved=false
-- Be strict but fair: do not reject for minor details
+7. USEFULNESS — Would you use these tasks in a sprint as is?
+   - 1: No.
+   - 4: Only with major changes.
+   - 7: As is.
 
-RESPOND ONLY WITH VALID JSON (no markdown, no explanations):
+RESPOND ONLY WITH VALID JSON (no markdown, no explanations), with exactly one entry per criterion:
 
 {
   "coherence": {
-    "score": 0-10,
+    "score": 1-7,
     "justification": "text"
   },
   "completeness": {
-    "score": 0-10,
-    "justification": "text",
-    "missing_tasks": []
-  },
-  "feasibility": {
-    "score": 0-10,
+    "score": 1-7,
     "justification": "text"
   },
-  "format": {
-    "score": 0-10,
+  "feasibility": {
+    "score": 1-7,
+    "justification": "text"
+  },
+  "clarity": {
+    "score": 1-7,
     "justification": "text"
   },
   "granularity": {
-    "score": 0-10,
+    "score": 1-7,
     "justification": "text"
   },
-  "total_score": 0-50,
-  "approved": true/false,
-  "critical_issues": [],
-  "recommendations": []
+  "dependencies": {
+    "score": 1-7,
+    "justification": "text"
+  },
+  "usefulness": {
+    "score": 1-7,
+    "justification": "text"
+  }
 }

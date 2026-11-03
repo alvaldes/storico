@@ -126,14 +126,17 @@ class PromptManager:
         self,
         user_story: str,
         tasks: list[dict[str, object]],
-        approval_threshold: int = 35,
     ) -> str:
         """Render the judge prompt for evaluating generated tasks.
+
+        The prompt receives the story and the tasks and nothing else (S7): no
+        provider, no model name. The total score and the verdict are computed
+        in code from the rubric (D3), so the template is not asked for them and
+        carries no approval threshold.
 
         Args:
             user_story: The original user story text.
             tasks: List of task dicts with ``summary`` and ``description`` keys.
-            approval_threshold: Minimum total score for approval (default 35).
 
         Returns:
             Rendered judge prompt string.
@@ -145,5 +148,4 @@ class PromptManager:
             "single_judge.j2",
             user_story=user_story,
             tasks=tasks,
-            approval_threshold=approval_threshold,
         )

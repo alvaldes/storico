@@ -163,21 +163,23 @@ class TestPipelineUsesWorkspacePrompt:
         from storico.domain.services.extraction_judge_service import LLMJudgeService
 
         llm_port = AsyncMock()
-        # A payload that satisfies the JudgeResult contract (all five criteria);
+        # A payload that satisfies the JudgeResult contract (all seven criteria);
         # the subject here is the system-prompt forwarding, not the parse.
         llm_port.generate.return_value = LLMResponse(
             text=json.dumps(
                 {
                     "approved": True,
-                    "total_score": 45,
+                    "total_score": 49,
                     **{
-                        name: {"score": 9}
+                        name: {"score": 7}
                         for name in (
                             "coherence",
                             "completeness",
                             "feasibility",
-                            "format",
+                            "clarity",
                             "granularity",
+                            "dependencies",
+                            "usefulness",
                         )
                     },
                 }

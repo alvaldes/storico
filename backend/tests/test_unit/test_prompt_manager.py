@@ -87,7 +87,7 @@ class TestPromptManager:
     # ── Judge prompt ────────────────────────────────────────────────
 
     def test_render_judge_prompt(self) -> None:
-        """Renders judge prompt with story and tasks."""
+        """Renders judge prompt with story and tasks, and the seven 1-7 criteria."""
         tasks = [{"summary": "Task 1", "description": "Desc 1"}]
         result = self.manager.render_judge_prompt(
             user_story="As a user, I want X",
@@ -95,7 +95,40 @@ class TestPromptManager:
         )
         assert "As a user, I want X" in result
         assert "Task 1" in result
-        assert "total_score" in result
+        for name in (
+            "coherence",
+            "completeness",
+            "feasibility",
+            "clarity",
+            "granularity",
+            "dependencies",
+            "usefulness",
+        ):
+            assert name in result
+        assert "1-7" in result
+        # The total and the verdict are computed in code (D3): the prompt no
+        # longer asks the model for them, nor for the approval threshold.
+        assert "total_score" not in result
+        assert "approved" not in result
+
+    def test_render_judge_prompt_is_blind_to_the_provider_and_model(self) -> None:
+        """The judge prompt names no provider, model or host (S7 blindness).
+
+        The prompt receives the story and the tasks and nothing else: the judge
+        must not know which system produced the tasks it is scoring.
+        """
+        tasks = [{"summary": "Task 1", "description": "Desc 1"}]
+        result = self.manager.render_judge_prompt(
+            user_story="As a user, I want X",
+            tasks=tasks,
+        ).lower()
+        assert "provider" not in result
+        assert "ollama" not in result
+        assert "gemini" not in result
+        assert "openai" not in result
+        assert "anthropic" not in result
+        assert "you are model" not in result
+        assert "model name" not in result
 
     def test_render_judge_prompt_multiple_tasks(self) -> None:
         """Multiple tasks are all included in the judge prompt."""
@@ -110,16 +143,6 @@ class TestPromptManager:
         )
         for t in tasks:
             assert t["summary"] in result
-
-    def test_render_judge_prompt_custom_threshold(self) -> None:
-        """Custom approval_threshold appears in rendered judge prompt."""
-        tasks = [{"summary": "T", "description": "D"}]
-        result = self.manager.render_judge_prompt(
-            user_story="Story",
-            tasks=tasks,
-            approval_threshold=40,
-        )
-        assert "40" in result
 
     # ── Unknown template ────────────────────────────────────────────
 

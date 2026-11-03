@@ -312,10 +312,12 @@ class TestGetExtraction:
         story_id = (await seed_workspace()).story_id
         judge_result = {
             "state": "ok",
-            "criteria": {"coherence": {"score": 9, "justification": "all tasks belong"}},
+            "criteria": {"coherence": {"score": 6, "justification": "all tasks belong"}},
             "total_score": 45,
-            "max_total": 50,
+            "max_total": 49,
             "approved": True,
+            "tas": 6.5,
+            "ifi": 6.0,
             "model": "mistral",
             "model_source": "extraction",
             "error": None,

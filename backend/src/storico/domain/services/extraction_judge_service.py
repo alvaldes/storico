@@ -1,4 +1,9 @@
-"""LLMJudgeService — LLM-as-a-Judge validation for generated tasks."""
+"""LLMJudgeService — LLM-as-a-Judge validation for generated tasks.
+
+The rubric is the experimental design's (S1 of feature ``llm-judge-instrument``):
+seven criteria scored 1-7 each. The old wire name ``format`` is now ``clarity`` —
+the design renamed the dimension, it is not a new one.
+"""
 
 from __future__ import annotations
 
@@ -12,26 +17,29 @@ from storico.infrastructure.llm.prompt_manager import PromptManager
 
 logger = logging.getLogger(__name__)
 
-# The rubric in use today: five criteria scored 0-10 each (T3 of feature
-# ``llm-judge-instrument`` moves this to the 1-7 design rubric; until then these
-# constants are the single description of what the prompt asks for and what
-# ``JudgeResult`` validates against).
+# The rubric fixed by the experimental design (S1): seven criteria, 1-7 each.
+# These constants are the single description of what the prompt asks for and
+# what ``JudgeResult`` validates against. ``format`` was renamed to ``clarity``
+# by the design; the other five names carry over, and ``dependencies`` and
+# ``usefulness`` are new.
 JUDGE_CRITERIA: tuple[str, ...] = (
     "coherence",
     "completeness",
     "feasibility",
-    "format",
+    "clarity",
     "granularity",
+    "dependencies",
+    "usefulness",
 )
-MAX_TOTAL_SCORE: int = len(JUDGE_CRITERIA) * 10  # 50
-APPROVAL_RATIO: float = 0.7
+MAX_TOTAL_SCORE: int = len(JUDGE_CRITERIA) * 7  # 49
+APPROVAL_RATIO: float = 0.7  # ceil(0.7 × 49) = 35, the same cut as the 0-10 rubric
 
-_MIN_SCORE = 0
-_MAX_SCORE = 10
+_MIN_SCORE = 1
+_MAX_SCORE = 7
 
 
 def _coerce_score(name: str, value: object) -> float:
-    """Coerce one criterion score into a number and clamp it into [0, 10].
+    """Coerce one criterion score into a number and clamp it into [1, 7].
 
     The clamp is S6 of the feature: the score is always a defined value inside
     the rubric's own range, whatever the model claims. Anything that cannot be
@@ -77,8 +85,32 @@ class JudgeResult:
         self.approved = approved
         self.total_score = total_score
         self.max_total = max_total
-        # Per criterion: ``{"score": <coerced number in [0, 10]>, "justification": <str|None>}``.
+        # Per criterion: ``{"score": <coerced number in [1, 7]>, "justification": <str|None>}``.
         self.criteria = criteria
+
+    @property
+    def tas(self) -> float:
+        """Technical Accuracy Score (S2): the mean of coherence and feasibility."""
+        return (self.criteria["coherence"]["score"] + self.criteria["feasibility"]["score"]) / 2
+
+    @property
+    def ifi(self) -> float:
+        """Implementation Feasibility Index (S2): the mean of clarity, granularity and dependencies."""
+        return (
+            self.criteria["clarity"]["score"]
+            + self.criteria["granularity"]["score"]
+            + self.criteria["dependencies"]["score"]
+        ) / 3
+
+    @property
+    def completeness(self) -> float:
+        """The completeness score: one of the two dimensions that is no index (S2)."""
+        return self.criteria["completeness"]["score"]
+
+    @property
+    def usefulness(self) -> float:
+        """The usefulness score: the other dimension that is no index (S2)."""
+        return self.criteria["usefulness"]["score"]
 
     @classmethod
     def from_model_output(cls, data: dict) -> JudgeResult:
@@ -121,8 +153,9 @@ class LLMJudgeService:
     """LLM-as-a-Judge validation service.
 
     Uses a secondary LLM call to evaluate the quality of generated tasks
-    against the original user story. Evaluates coherence, completeness,
-    feasibility, format, and granularity.
+    against the original user story, with the design rubric (S1): coherence,
+    completeness, feasibility, clarity, granularity, dependencies and global
+    usefulness, each scored 1-7.
     """
 
     def __init__(

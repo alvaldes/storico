@@ -557,6 +557,8 @@ async def _run_extraction(
                 "total_score": None,
                 "max_total": MAX_TOTAL_SCORE,
                 "approved": False,
+                "tas": None,
+                "ifi": None,
                 "model": judged_model,
                 "model_source": judged_source,
             }
@@ -584,6 +586,8 @@ async def _run_extraction(
                         "total_score": judged.total_score,
                         "max_total": judged.max_total,
                         "approved": judged.approved,
+                        "tas": judged.tas,
+                        "ifi": judged.ifi,
                         "model": judged_model,
                         "model_source": judged_source,
                         "error": None,

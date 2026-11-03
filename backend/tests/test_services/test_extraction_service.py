@@ -439,7 +439,7 @@ class _FailingParser:
 
 
 class _ApprovingJudge:
-    """Judge fake scoring 45/50, approved — via the real ``JudgeResult`` contract.
+    """Judge fake scoring 49/49, approved — via the real ``JudgeResult`` contract.
 
     The runner computes ``confidence = total_score / max_total`` and persists the
     whole ``judge_result`` record, so the fake must return a real ``JudgeResult``
@@ -449,11 +449,13 @@ class _ApprovingJudge:
     async def validate(self, **kwargs: object) -> JudgeResult:  # noqa: ARG002
         return JudgeResult.from_model_output(
             {
-                "coherence": {"score": 9, "justification": "all tasks belong"},
-                "completeness": {"score": 9, "justification": "nothing missing"},
-                "feasibility": {"score": 9, "justification": "all realizable"},
-                "format": {"score": 9, "justification": "clear"},
-                "granularity": {"score": 9, "justification": "right size"},
+                "coherence": {"score": 7, "justification": "all tasks belong"},
+                "completeness": {"score": 7, "justification": "nothing missing"},
+                "feasibility": {"score": 7, "justification": "all realizable"},
+                "clarity": {"score": 7, "justification": "clear"},
+                "granularity": {"score": 7, "justification": "right size"},
+                "dependencies": {"score": 7, "justification": "correct order"},
+                "usefulness": {"score": 7, "justification": "sprint-ready"},
             }
         )
 
@@ -473,11 +475,13 @@ class _RecordingJudge:
         self.configs.append(kwargs["config"])
         return JudgeResult.from_model_output(
             {
-                "coherence": {"score": 9, "justification": "all tasks belong"},
-                "completeness": {"score": 9, "justification": "nothing missing"},
-                "feasibility": {"score": 9, "justification": "all realizable"},
-                "format": {"score": 9, "justification": "clear"},
-                "granularity": {"score": 9, "justification": "right size"},
+                "coherence": {"score": 7, "justification": "all tasks belong"},
+                "completeness": {"score": 7, "justification": "nothing missing"},
+                "feasibility": {"score": 7, "justification": "all realizable"},
+                "clarity": {"score": 7, "justification": "clear"},
+                "granularity": {"score": 7, "justification": "right size"},
+                "dependencies": {"score": 7, "justification": "correct order"},
+                "usefulness": {"score": 7, "justification": "sprint-ready"},
             }
         )
 
@@ -691,20 +695,23 @@ class TestRunnerPersistencePath:
 
         assert completed is not None
         assert completed.status == ExtractionStatus.COMPLETED
-        assert completed.confidence_score == pytest.approx(45 / 50.0)
+        assert completed.confidence_score == pytest.approx(49 / 49.0)
         # The full judge record is persisted on the same terminal write (D4):
         # state ok, the per-criterion scores with their justifications, the
-        # computed total, and which model judged (T1: the extraction model).
+        # computed total, the derived indices (T3), and which model judged
+        # (T1: the extraction model).
         record = completed.judge_result
         assert record is not None
         assert record["state"] == "ok"
-        assert record["total_score"] == 45
-        assert record["max_total"] == 50
+        assert record["total_score"] == 49
+        assert record["max_total"] == 49
         assert record["approved"] is True
         assert record["criteria"]["coherence"] == {
-            "score": 9,
+            "score": 7,
             "justification": "all tasks belong",
         }
+        assert record["tas"] == pytest.approx(7.0)
+        assert record["ifi"] == pytest.approx(7.0)
         assert record["model"] == "llama3.2"
         assert record["model_source"] == "extraction"
         assert record["error"] is None
