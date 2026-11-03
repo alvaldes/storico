@@ -303,6 +303,8 @@
     "import_description": "Upload a CSV file to add several user stories at once. Nothing is saved until the whole file is valid.",
     "import_file_label": "CSV file",
     "import_file_hint": "One story per line, or the columns actor, feature, benefit.",
+    "import_drop_hint": "Drag and drop a CSV file here, or",
+    "import_file_not_csv": "Only .csv files can be imported.",
     "import_submit": "Import",
     "import_running": "Importing...",
     "import_done": "Done",

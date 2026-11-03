@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ImportStoriesDialog, describeImportReason } from '@/components/react/ImportStoriesDialog';
 import { useStoryStore } from '@/stores/storyStore';
@@ -155,7 +155,8 @@ describe('ImportStoriesDialog', () => {
       () =>
         new Promise((resolve) =>
           setTimeout(
-            () => resolve({ created: 1, skipped: 0, totalRows: 1, duplicates: [], storyIds: ['s1'] }),
+            () =>
+              resolve({ created: 1, skipped: 0, totalRows: 1, duplicates: [], storyIds: ['s1'] }),
             0,
           ),
         ),
@@ -543,9 +544,9 @@ describe('describeImportReason', () => {
     expect(
       describeImportReason(en, { reason: 'too_long', field: 'actor', length: 150, max: 100 }),
     ).toBe('actor is too long (150 characters, maximum 100)');
-    expect(describeImportReason(en, { reason: 'field_count_mismatch', observed: 4, expected: 3 })).toBe(
-      'this line has 4 values but the file declares 3',
-    );
+    expect(
+      describeImportReason(en, { reason: 'field_count_mismatch', observed: 4, expected: 3 }),
+    ).toBe('this line has 4 values but the file declares 3');
     expect(describeImportReason(en, { reason: 'duplicate_in_file', firstLine: 7 })).toBe(
       'repeats line 7',
     );
@@ -562,5 +563,115 @@ describe('describeImportReason', () => {
 
   it('falls back to import_reason_unknown for an unrecognised code', () => {
     expect(describeImportReason(en, { reason: 'some_future_code' })).toBe('unexpected problem');
+  });
+});
+
+describe('ImportStoriesDialog drag and drop', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    importStories = vi.fn();
+    useStoryStore.setState({
+      importStories: importStories as unknown as ReturnType<
+        typeof useStoryStore.getState
+      >['importStories'],
+    });
+  });
+
+  const dropZone = () => screen.getByTestId('import-drop-zone');
+  const dataTransfer = (files: File[]) => ({ files, types: ['Files'] });
+
+  it('accepts a dropped .csv file and submits it like a picked one', async () => {
+    const user = userEvent.setup();
+    const file = makeFile();
+    importStories.mockResolvedValue({
+      created: 1,
+      skipped: 0,
+      totalRows: 1,
+      duplicates: [],
+      storyIds: ['s1'],
+    });
+
+    renderDialog();
+    fireEvent.drop(dropZone(), { dataTransfer: dataTransfer([file]) });
+
+    expect(screen.getByText('stories.csv')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() =>
+      expect(importStories).toHaveBeenCalledWith({
+        workspaceId: 'ws-a',
+        projectId: 'project-a',
+        file,
+      }),
+    );
+  });
+
+  it('highlights the drop zone while a file is dragged over it and clears it on leave', () => {
+    renderDialog();
+    const zone = dropZone();
+    expect(zone).not.toHaveAttribute('data-dragging');
+
+    fireEvent.dragEnter(zone, { dataTransfer: dataTransfer([makeFile()]) });
+    expect(zone).toHaveAttribute('data-dragging', 'true');
+
+    fireEvent.dragLeave(zone, { dataTransfer: dataTransfer([makeFile()]) });
+    expect(zone).not.toHaveAttribute('data-dragging');
+  });
+
+  it('refuses a dropped file that is not a CSV and keeps submit disabled', () => {
+    renderDialog();
+    const pdf = new File(['%PDF'], 'notes.pdf', { type: 'application/pdf' });
+
+    fireEvent.drop(dropZone(), { dataTransfer: dataTransfer([pdf]) });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(en.stories.import_file_not_csv);
+    expect(screen.queryByText('notes.pdf')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
+    expect(importStories).not.toHaveBeenCalled();
+  });
+
+  it('accepts a dropped .csv whose browser-reported type is empty', () => {
+    renderDialog();
+    const file = new File(['actor,feature,benefit'], 'stories.CSV', { type: '' });
+
+    fireEvent.drop(dropZone(), { dataTransfer: dataTransfer([file]) });
+
+    expect(screen.getByText('stories.CSV')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('refuses a dropped file over the 2 MB cap with the same sentence the picker uses', () => {
+    renderDialog();
+    const big = new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'big.csv', { type: 'text/csv' });
+
+    fireEvent.drop(dropZone(), { dataTransfer: dataTransfer([big]) });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      en.stories.import_file_too_large.replace('{max}', '2 MB'),
+    );
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
+  });
+
+  it('ignores drops while an import is running', async () => {
+    const user = userEvent.setup();
+    importStories.mockReturnValue(new Promise(() => {}));
+    renderDialog();
+    await user.upload(screen.getByLabelText('CSV file') as HTMLInputElement, makeFile('first.csv'));
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+
+    fireEvent.drop(dropZone(), { dataTransfer: dataTransfer([makeFile('second.csv')]) });
+
+    expect(screen.getByText('first.csv')).toBeInTheDocument();
+    expect(screen.queryByText('second.csv')).not.toBeInTheDocument();
+  });
+
+  it('keeps the file picker working next to the drop zone', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await user.upload(
+      screen.getByLabelText('CSV file') as HTMLInputElement,
+      makeFile('picked.csv'),
+    );
+    expect(screen.getByText('picked.csv')).toBeInTheDocument();
+    expect(within(dropZone()).getByText(en.stories.import_drop_hint)).toBeInTheDocument();
   });
 });

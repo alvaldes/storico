@@ -6,14 +6,16 @@ from storico.domain.entities.task import TaskStatus
 from storico.domain.entities.user_story import UserStoryStatus
 
 # UserStoryStatus valid transitions
-# PENDING_EXTRACTION -> EXTRACTING (only forward)
+# PENDING_EXTRACTION -> EXTRACTING (first run)
 # EXTRACTING -> EXTRACTED (success) or FAILED_EXTRACTION (failure)
-# EXTRACTED and FAILED_EXTRACTION are terminal (no outgoing transitions)
+# FAILED_EXTRACTION -> EXTRACTING (a retry: its outcome decides the status again)
+# EXTRACTED is terminal: a later run, successful or not, leaves it EXTRACTED,
+# because the current version is still the last run that completed.
 VALID_USER_STORY_TRANSITIONS: dict[UserStoryStatus, set[UserStoryStatus]] = {
     UserStoryStatus.PENDING_EXTRACTION: {UserStoryStatus.EXTRACTING},
     UserStoryStatus.EXTRACTING: {UserStoryStatus.EXTRACTED, UserStoryStatus.FAILED_EXTRACTION},
     UserStoryStatus.EXTRACTED: set(),
-    UserStoryStatus.FAILED_EXTRACTION: set(),
+    UserStoryStatus.FAILED_EXTRACTION: {UserStoryStatus.EXTRACTING},
 }
 
 

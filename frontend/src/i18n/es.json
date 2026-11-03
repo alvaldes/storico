@@ -303,6 +303,8 @@
     "import_description": "Sube un archivo CSV para agregar varias historias de usuario a la vez. No se guarda nada hasta que todo el archivo sea válido.",
     "import_file_label": "Archivo CSV",
     "import_file_hint": "Una historia por línea, o las columnas actor, feature, benefit.",
+    "import_drop_hint": "Arrastra y suelta un archivo CSV aquí, o",
+    "import_file_not_csv": "Solo se pueden importar archivos .csv.",
     "import_submit": "Importar",
     "import_running": "Importando...",
     "import_done": "Listo",

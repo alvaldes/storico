@@ -57,17 +57,11 @@ class TestScenarioS01HappyPathExtraction:
             if next_status != UserStoryStatus.EXTRACTED:
                 assert not validate_user_story_transition(UserStoryStatus.EXTRACTED, next_status)
 
-    def test_user_story_failed_extraction_is_terminal(self):
-        """FAILED_EXTRACTION has no outgoing transitions."""
+    def test_user_story_failed_extraction_only_moves_to_a_retry(self):
+        """FAILED_EXTRACTION can only go back to EXTRACTING, for a retry."""
         for next_status in UserStoryStatus:
-            if next_status != UserStoryStatus.FAILED_EXTRACTION:
-                assert not validate_user_story_transition(
-                    UserStoryStatus.FAILED_EXTRACTION, next_status
-                )
-
-
-class TestScenarioS02FailurePath:
-    """S-02: Failure Path — LLM Timeout / Error"""
+            allowed = validate_user_story_transition(UserStoryStatus.FAILED_EXTRACTION, next_status)
+            assert allowed == (next_status == UserStoryStatus.EXTRACTING)
 
     def test_extraction_failed_status_mapping(self):
         """Extraction FAILED maps to UserStory FAILED_EXTRACTION."""
@@ -285,7 +279,7 @@ class TestStateMachineCompleteness:
             UserStoryStatus.EXTRACTED, UserStoryStatus.EXTRACTING
         )
         assert not validate_user_story_transition(
-            UserStoryStatus.FAILED_EXTRACTION, UserStoryStatus.EXTRACTING
+            UserStoryStatus.FAILED_EXTRACTION, UserStoryStatus.PENDING_EXTRACTION
         )
 
     def test_task_done_is_terminal(self):

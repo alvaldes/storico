@@ -7,6 +7,7 @@ from uuid import UUID
 from storico.domain.entities import EntityNotFound, UserStory
 from storico.domain.entities.user_story import UserStoryStatus
 from storico.domain.ports import UserStoryRepository
+from storico.domain.validators.state_machine import validate_user_story_transition
 
 
 class UserStoryStateService:
@@ -21,7 +22,7 @@ class UserStoryStateService:
         if story is None:
             raise EntityNotFound("UserStory", str(story_id))
 
-        if story.status != UserStoryStatus.PENDING_EXTRACTION:
+        if not validate_user_story_transition(story.status, UserStoryStatus.EXTRACTING):
             raise InvalidUserStoryTransition(
                 current_state=story.status,
                 attempted_state=UserStoryStatus.EXTRACTING,

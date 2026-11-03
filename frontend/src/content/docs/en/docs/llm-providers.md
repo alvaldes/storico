@@ -13,6 +13,8 @@ Storico has **four first-class providers** — Ollama, OpenAI, Anthropic and Gem
 | Gemini | required | `/models`, keeping only the models that advertise `generateContent` | `https://generativelanguage.googleapis.com/v1beta` |
 | Custom | optional | `/models`, then `/v1/models` if the first is empty | none — a custom provider needs its Base URL |
 
+A Base URL does not need to end in `/v1`. Extraction and the connection test resolve it the same way the model list does: when the endpoint answers `404` for the path itself, the call is retried once under `{Base URL}/v1`, and that spelling is kept for the rest of the run. A `404` that survives both spellings is reported as **Endpoint not found at {url}**, pointing at the Base URL; only a `404` that names the model is reported as a missing model.
+
 ## The configuration fields
 
 A workspace holds one LLM configuration. These are its fields, with the lengths the API enforces:

@@ -13,6 +13,8 @@ Storico tiene **cuatro proveedores de primera clase** —Ollama, OpenAI, Anthrop
 | Gemini | obligatoria | `/models`, conservando solo los modelos que anuncian `generateContent` | `https://generativelanguage.googleapis.com/v1beta` |
 | Personalizado | opcional | `/models` y, si la primera queda vacía, `/v1/models` | ninguno: un proveedor personalizado necesita su Base URL |
 
+La Base URL no necesita terminar en `/v1`. La extracción y la prueba de conexión la resuelven igual que la lista de modelos: cuando el endpoint responde `404` por la ruta misma, la llamada se reintenta una vez con `{Base URL}/v1`, y esa forma se conserva durante el resto de la corrida. Un `404` que persiste con las dos formas se informa como **Endpoint not found at {url}**, apuntando a la Base URL; solo un `404` que nombra el modelo se informa como un modelo inexistente.
+
 ## Los campos de configuración
 
 Un espacio de trabajo guarda una única configuración de LLM. Estos son sus campos, con las longitudes que aplica la API:
