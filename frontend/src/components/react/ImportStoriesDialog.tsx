@@ -15,11 +15,8 @@ import { ErrorDisplay } from '@/components/react/ErrorDisplay';
 import { ApiRequestError } from '@/lib/api';
 import { IMPORT_MAX_FILE_BYTES, readImportFailure } from '@/lib/stories-api';
 import { useStoryStore } from '@/stores/storyStore';
-import type {
-  StoryImportDuplicate,
-  StoryImportFailure,
-  StoryImportReport,
-} from '@/types/story';
+import { cn } from '@/lib/utils';
+import type { StoryImportDuplicate, StoryImportFailure, StoryImportReport } from '@/types/story';
 
 /** Anything a row-level error or a skipped duplicate carries to explain itself. */
 export interface ImportReasonItem {
@@ -135,8 +132,13 @@ export function ImportStoriesDialog({
   const [report, setReport] = useState<StoryImportReport | null>(null);
   const [failure, setFailure] = useState<StoryImportFailure | null>(null);
   const [submitError, setSubmitError] = useState<ApiRequestError | null>(null);
+  const [notCsv, setNotCsv] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  // dragenter/dragleave also fire when the pointer crosses the zone's own
+  // children; count the depth so the highlight only clears on a real exit.
+  const dragDepthRef = useRef(0);
 
   /*
    * Monotonic run token, following the pattern of storyStore.ts: only the run
@@ -164,9 +166,92 @@ export function ImportStoriesDialog({
       setReport(null);
       setFailure(null);
       setSubmitError(null);
+      setNotCsv(false);
+      setDragging(false);
+      dragDepthRef.current = 0;
       if (inputRef.current) inputRef.current.value = '';
     }
   }, [open]);
+
+  /**
+   * Single entry point for a candidate file, shared by the picker and the drop
+   * zone so both apply the same size pre-check and clear the same stale state.
+   */
+  const acceptFile = (selected: File | null) => {
+    setReport(null);
+    setSubmitError(null);
+    setNotCsv(false);
+    if (selected && selected.size > IMPORT_MAX_FILE_BYTES) {
+      // UX pre-check mirroring the backend's cap: refuse the file before any
+      // request leaves the browser, instead of paying for a full upload only
+      // to read the backend's 413 back. Rendered through the same file-level
+      // failure state (and the same `stories.import_file_too_large` sentence)
+      // the backend 413 uses; the backend keeps its own check. The file is not
+      // accepted, so the disabled-submit guard also keeps the refused file out
+      // of any request, and the input is cleared so re-selecting the same file
+      // re-fires the picker's change handler.
+      setFile(null);
+      setFailure({
+        kind: 'file',
+        errorCode: 'IMPORT_FILE_TOO_LARGE',
+        max: IMPORT_MAX_FILE_BYTES,
+      });
+      if (inputRef.current) inputRef.current.value = '';
+    } else {
+      setFailure(null);
+      setFile(selected);
+    }
+  };
+
+  /*
+   * The input's `accept` filter only applies to the picker; a drop bypasses
+   * it, so a dropped file is checked here. Browsers often report an empty MIME
+   * type for .csv, so the extension decides when the type is missing.
+   */
+  const isCsv = (candidate: File) =>
+    candidate.name.toLowerCase().endsWith('.csv') || candidate.type === 'text/csv';
+
+  const hasFiles = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer?.types ?? []).includes('Files');
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    if (running || !hasFiles(e)) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragging(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (running || !hasFiles(e)) return;
+    // Required for the element to be a valid drop target.
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDragLeave = () => {
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragging(false);
+    if (running) return;
+    const dropped = e.dataTransfer?.files?.[0] ?? null;
+    if (!dropped) return;
+    // A dropped file replaces whatever the picker held.
+    if (inputRef.current) inputRef.current.value = '';
+    if (!isCsv(dropped)) {
+      setReport(null);
+      setSubmitError(null);
+      setFailure(null);
+      setFile(null);
+      setNotCsv(true);
+      return;
+    }
+    acceptFile(dropped);
+  };
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -212,8 +297,7 @@ export function ImportStoriesDialog({
     }
   };
 
-  const lineLabel = (line: number) =>
-    t.stories.import_error_line.replace('{line}', String(line));
+  const lineLabel = (line: number) => t.stories.import_error_line.replace('{line}', String(line));
 
   const renderDuplicate = (item: StoryImportDuplicate, index: number) => (
     <li key={`${item.line}-${item.reason}-${index}`} className="text-sm">
@@ -243,65 +327,59 @@ export function ImportStoriesDialog({
               accept=".csv,text/csv"
               className="sr-only"
               disabled={running}
-              onChange={(e) => {
-                const selected = e.target.files?.[0] ?? null;
-                setReport(null);
-                setSubmitError(null);
-                if (selected && selected.size > IMPORT_MAX_FILE_BYTES) {
-                  // UX pre-check mirroring the backend's cap: refuse the file
-                  // before any request leaves the browser, instead of paying
-                  // for a full upload only to read the backend's 413 back.
-                  // Rendered through the same file-level failure state (and
-                  // the same `stories.import_file_too_large` sentence) the
-                  // backend 413 uses; the backend keeps its own check. The
-                  // file is not accepted, so the disabled-submit guard below
-                  // also keeps the refused file out of any request, and the
-                  // input is cleared so re-selecting the same file re-fires
-                  // this handler.
-                  setFile(null);
-                  setFailure({
-                    kind: 'file',
-                    errorCode: 'IMPORT_FILE_TOO_LARGE',
-                    max: IMPORT_MAX_FILE_BYTES,
-                  });
-                  if (inputRef.current) inputRef.current.value = '';
-                } else {
-                  setFailure(null);
-                  setFile(selected);
-                }
-              }}
+              onChange={(e) => acceptFile(e.target.files?.[0] ?? null)}
             />
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => inputRef.current?.click()}
-                disabled={running}
-              >
-                <FileUp className="h-4 w-4" />
-                {t.stories.import_file_label}
-              </Button>
-              {file && (
-                <>
-                  <span className="max-w-48 truncate text-sm text-foreground" title={file.name}>
-                    {file.name}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={t.common.clear}
-                    onClick={() => {
-                      setFile(null);
-                      if (inputRef.current) inputRef.current.value = '';
-                    }}
-                    disabled={running}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </>
+            <div
+              data-testid="import-drop-zone"
+              data-dragging={dragging ? 'true' : undefined}
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={cn(
+                'flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border px-4 py-6 text-center transition-colors',
+                dragging && 'border-primary bg-primary/5',
+                running && 'opacity-60',
               )}
+            >
+              <p className="text-sm text-muted-foreground">{t.stories.import_drop_hint}</p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => inputRef.current?.click()}
+                  disabled={running}
+                >
+                  <FileUp className="h-4 w-4" />
+                  {t.stories.import_file_label}
+                </Button>
+                {file && (
+                  <>
+                    <span className="max-w-48 truncate text-sm text-foreground" title={file.name}>
+                      {file.name}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t.common.clear}
+                      onClick={() => {
+                        setFile(null);
+                        if (inputRef.current) inputRef.current.value = '';
+                      }}
+                      disabled={running}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
+            {notCsv && (
+              <p role="alert" className="text-sm text-destructive">
+                {t.stories.import_file_not_csv}
+              </p>
+            )}
             <FieldDescription>{t.stories.import_file_hint}</FieldDescription>
           </Field>
 
@@ -349,7 +427,9 @@ export function ImportStoriesDialog({
           {/* ── ROW-LEVEL FAILURE: nothing was saved ── */}
           {failure && failure.kind === 'rows' && (
             <div className="space-y-2" role="alert">
-              <p className="text-sm font-medium text-destructive">{t.stories.import_errors_title}</p>
+              <p className="text-sm font-medium text-destructive">
+                {t.stories.import_errors_title}
+              </p>
               <p className="text-sm text-muted-foreground">{t.stories.import_errors_hint}</p>
               {/* The backend allows 1000 rows and can report on many of them:
                   scroll the report, never push the footer off screen. */}
@@ -379,10 +459,7 @@ export function ImportStoriesDialog({
           {failure && failure.kind === 'file' && (
             <p role="alert" className="text-sm text-destructive">
               {failure.errorCode === 'IMPORT_FILE_TOO_LARGE'
-                ? t.stories.import_file_too_large.replace(
-                    '{max}',
-                    formatFileSize(failure.max ?? 0),
-                  )
+                ? t.stories.import_file_too_large.replace('{max}', formatFileSize(failure.max ?? 0))
                 : t.stories.import_file_rejected.replace(
                     '{reason}',
                     describeImportReason(t, { reason: failure.reason ?? '' }),

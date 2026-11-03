@@ -3,7 +3,7 @@ title: Importación de historias desde CSV
 description: Las dos formas de CSV que Storico acepta, los límites que aplica, los duplicados que omite y cada motivo por el que rechaza un archivo.
 ---
 
-Importar es una forma de **crear historias de usuario** desde un archivo en lugar de escribirlas una por una. No es extracción: crea las historias, y cada una todavía debe extraerse por su cuenta después. El punto de entrada es **Importar CSV** en la página de historias, que pide un proyecto y un archivo; la importación añade las historias a ese proyecto.
+Importar es una forma de **crear historias de usuario** desde un archivo en lugar de escribirlas una por una. No es extracción: crea las historias, y cada una todavía debe extraerse por su cuenta después. El punto de entrada es **Importar CSV** en la página de historias, que pide un proyecto y un archivo — puedes elegirlo con el botón de archivo o arrastrarlo y soltarlo sobre el diálogo; la importación añade las historias a ese proyecto.
 
 Vale repetir un límite, porque los nombres se parecen: esto es **creación de historias**, no `POST /batch`. Storico no tiene endpoint de extracción por lotes y cada extracción es una historia.
 

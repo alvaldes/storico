@@ -3,7 +3,7 @@ title: Story import from CSV
 description: The two CSV shapes Storico accepts, the limits it enforces, the duplicates it skips, and every reason a file is refused.
 ---
 
-Importing is a way to **create user stories** from a file instead of typing them one by one. It is not extraction: it creates the stories, and each one still has to be extracted on its own afterwards. The entry point is **Import CSV** on the stories page, which asks for a project and a file; the import adds the stories to that project.
+Importing is a way to **create user stories** from a file instead of typing them one by one. It is not extraction: it creates the stories, and each one still has to be extracted on its own afterwards. The entry point is **Import CSV** on the stories page, which asks for a project and a file — pick it with the file button or drag and drop it onto the dialog; the import adds the stories to that project.
 
 Restating one boundary, because the names look alike: this is **story creation**, not `POST /batch`. Storico has no batch *extraction* endpoint and each extraction is one story.
 
