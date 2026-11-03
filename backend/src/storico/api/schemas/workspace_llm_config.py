@@ -10,6 +10,11 @@ class LLMConfigRequest(BaseModel):
 
     provider: str | None = Field(None, max_length=50)
     model: str | None = Field(None, max_length=100)
+    # The model the workspace's judge runs with (D7). Optional: absent means the
+    # judge falls back to the extraction model. Note the PUT semantics — this is
+    # a full-replace field, so an omitted ``judge_model`` CLEARS the stored one
+    # (documented on the route, not merged like the fields below).
+    judge_model: str | None = Field(None, max_length=100)
     temperature: float | None = None
     max_tokens: int | None = None
     base_url: str | None = Field(None, max_length=500)
@@ -48,6 +53,7 @@ class LLMConfigResponse(BaseModel):
 
     provider: str
     model: str | None = None
+    judge_model: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
     base_url: str | None = None

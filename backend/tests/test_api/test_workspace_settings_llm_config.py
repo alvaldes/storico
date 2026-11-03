@@ -342,6 +342,110 @@ class TestBlankValuesReadAsAbsent:
         assert resolved.base_url == "https://api.deepseek.com/v1"
 
 
+class TestJudgeModelSetting:
+    """``judge_model`` — the model the workspace's judge runs with (D7/S4).
+
+    The field belongs to the same payload the settings form posts, and it follows the
+    payload's existing convention (the one ``base_url`` and ``api_key`` already use): an
+    omitted key keeps the stored value, and an empty string clears it.
+    """
+
+    async def _put(self, client, workspace_id, payload: dict):
+        """Send a config update and return the response."""
+        return await client.put(f"/api/v1/workspaces/{workspace_id}/settings/llm", json=payload)
+
+    async def _get(self, client, workspace_id):
+        """Read the resolved config back."""
+        return await client.get(f"/api/v1/workspaces/{workspace_id}/settings/llm")
+
+    @pytest.mark.asyncio
+    async def test_a_saved_judge_model_is_returned_on_get(
+        self, authed_client, db_session, seed_workspace
+    ) -> None:
+        seeded = await seed_workspace(stories=0)
+
+        saved = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {"provider": "ollama", "model": "llama3.2", "judge_model": "qwen2.5-judge"},
+        )
+        assert saved.status_code == 200
+        assert saved.json()["judge_model"] == "qwen2.5-judge"
+
+        response = await self._get(authed_client, seeded.workspace_id)
+
+        assert response.status_code == 200
+        assert response.json()["judge_model"] == "qwen2.5-judge"
+
+    @pytest.mark.asyncio
+    async def test_a_put_that_omits_judge_model_keeps_it(
+        self, authed_client, db_session, seed_workspace
+    ) -> None:
+        """Same merge convention as every other field of this payload."""
+        seeded = await seed_workspace(stories=0)
+
+        first = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {"provider": "ollama", "model": "llama3.2", "judge_model": "qwen2.5-judge"},
+        )
+        assert first.status_code == 200
+
+        second = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {"provider": "ollama", "model": "llama3.2"},
+        )
+        assert second.status_code == 200
+
+        response = await self._get(authed_client, seeded.workspace_id)
+
+        assert response.json()["judge_model"] == "qwen2.5-judge"
+
+    @pytest.mark.asyncio
+    async def test_an_empty_judge_model_clears_it(
+        self, authed_client, db_session, seed_workspace
+    ) -> None:
+        """An empty string is how the form says "no separate judge"."""
+        seeded = await seed_workspace(stories=0)
+
+        first = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {"provider": "ollama", "model": "llama3.2", "judge_model": "qwen2.5-judge"},
+        )
+        assert first.status_code == 200
+
+        cleared = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {"provider": "ollama", "model": "llama3.2", "judge_model": ""},
+        )
+        assert cleared.status_code == 200
+
+        response = await self._get(authed_client, seeded.workspace_id)
+
+        assert response.json()["judge_model"] is None
+
+    @pytest.mark.asyncio
+    async def test_a_blank_judge_model_is_stored_as_absent(
+        self, authed_client, db_session, seed_workspace
+    ) -> None:
+        """Same convention as ``base_url``/``api_key``: spaces are "not configured"."""
+        seeded = await seed_workspace(stories=0)
+
+        response = await self._put(
+            authed_client,
+            seeded.workspace_id,
+            {"provider": "ollama", "model": "llama3.2", "judge_model": "   "},
+        )
+
+        assert response.status_code == 200
+        stored = await _repo(db_session).get(seeded.workspace_id)
+        assert stored is not None
+        assert stored.judge_model is None
+
+
 class TestCredentialEncryptionThroughTheRoute:
     """The settings route is where an admin's key becomes a stored secret, and back."""
 

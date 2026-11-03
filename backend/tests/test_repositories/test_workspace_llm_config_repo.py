@@ -186,6 +186,73 @@ def test_the_column_holds_the_ciphertext_of_the_longest_credential_we_accept() -
     )
 
 
+class TestJudgeModelRoundTrip:
+    """``judge_model`` rides the same entity/column plumbing as every other field (D7).
+
+    The judge's model name is a model name, not a credential: it must never reach the
+    cipher, and an upsert whose entity carries no judge model must store ``NULL`` —
+    the repository writes the whole row from the entity it is handed, so clearing is
+    expressed by leaving the field ``None`` on the entity.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_configured_judge_model_round_trips_and_never_reaches_the_cipher(
+        self, db_session: AsyncSession
+    ) -> None:
+        workspace_id = await _workspace_id(db_session, "JudgeConfigured")
+        spy = _RecordingCipher()
+
+        await _repo(db_session, spy).upsert(
+            WorkspaceLLMConfig(
+                workspace_id=workspace_id,
+                provider="ollama",
+                model="llama3.2",
+                judge_model="qwen2.5-judge",
+            )
+        )
+
+        config = await _repo(db_session).get(workspace_id)
+        assert config is not None
+        assert config.judge_model == "qwen2.5-judge"
+        # A model name is not a secret: the cipher was not consulted for it.
+        assert spy.calls == []
+
+    @pytest.mark.asyncio
+    async def test_an_absent_judge_model_stays_null(self, db_session: AsyncSession) -> None:
+        workspace_id = await _workspace_id(db_session, "JudgeAbsent")
+
+        await _repo(db_session).upsert(
+            WorkspaceLLMConfig(workspace_id=workspace_id, provider="ollama")
+        )
+
+        config = await _repo(db_session).get(workspace_id)
+        assert config is not None
+        assert config.judge_model is None
+
+    @pytest.mark.asyncio
+    async def test_a_judge_model_cleared_on_the_entity_is_cleared_in_the_column(
+        self, db_session: AsyncSession
+    ) -> None:
+        workspace_id = await _workspace_id(db_session, "JudgeCleared")
+        repo = _repo(db_session)
+        await repo.upsert(
+            WorkspaceLLMConfig(
+                workspace_id=workspace_id,
+                provider="ollama",
+                judge_model="qwen2.5-judge",
+            )
+        )
+
+        await repo.upsert(
+            WorkspaceLLMConfig(workspace_id=workspace_id, provider="ollama", judge_model=None)
+        )
+
+        stmt = select(WorkspaceLLMConfigModel.judge_model).where(
+            WorkspaceLLMConfigModel.workspace_id == workspace_id
+        )
+        assert (await db_session.execute(stmt)).scalar_one() is None
+
+
 @pytest.mark.asyncio
 async def test_a_keyless_cipher_refuses_to_read_ciphertext_instead_of_returning_nothing(
     db_session: AsyncSession,

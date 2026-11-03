@@ -14,6 +14,7 @@ from storico.api.schemas.extraction import (
 )
 from storico.api.schemas.story import UserStoryResponse
 from storico.api.schemas.task import TaskResponse
+from storico.api.schemas.workspace_llm_config import LLMConfigRequest, LLMConfigResponse
 from storico.domain.entities.extraction import ExtractionStatus
 from storico.domain.entities.task import TaskStatus as DomainTaskStatus
 from storico.domain.entities.user_story import UserStoryStatus
@@ -276,3 +277,27 @@ class TestNoExtraFieldsForbidden:
         from storico.api.schemas.story import CreateUserStoryRequest
 
         assert CreateUserStoryRequest.model_config.get("extra") == "forbid"
+
+
+class TestLLMConfigJudgeModelContract:
+    """Contract: the workspace LLM config payloads carry ``judge_model`` (D7/S4).
+
+    The field is optional in both directions — a workspace without a judge model
+    is the default state, and the settings form can post a payload that does not
+    mention it (which, per the PUT's full-replace semantics, clears it).
+    """
+
+    def test_request_field_is_optional_with_a_length_cap(self):
+        """``LLMConfigRequest.judge_model`` is an optional string capped at 100."""
+        fields = LLMConfigRequest.model_fields
+        assert "judge_model" in fields
+        assert fields["judge_model"].default is None
+        assert fields["judge_model"].annotation == (str | None)
+        assert fields["judge_model"].metadata[0].max_length == 100
+
+    def test_response_field_is_optional(self):
+        """``LLMConfigResponse.judge_model`` is an optional string."""
+        fields = LLMConfigResponse.model_fields
+        assert "judge_model" in fields
+        assert fields["judge_model"].default is None
+        assert fields["judge_model"].annotation == (str | None)

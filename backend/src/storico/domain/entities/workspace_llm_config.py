@@ -24,6 +24,11 @@ class WorkspaceLLMConfig:
     workspace_id: UUID
     provider: str = "ollama"
     model: str | None = None
+    # The model the workspace's LLM-as-a-Judge runs with (D7): same provider,
+    # credential, temperature, budget and endpoint as the extraction config — only
+    # the model name is swapped. ``None`` means the judge runs with the extraction
+    # model, which is today's (biased) default and stays the fallback.
+    judge_model: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
     base_url: str | None = None

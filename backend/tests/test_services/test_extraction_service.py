@@ -12,12 +12,14 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 import storico.infrastructure.tasks.extraction_task as extraction_task
 from storico.domain.entities import LLMConnectionError, ParseError
 from storico.domain.entities.exceptions import JudgeOutputError
 from storico.domain.entities.extraction import ExtractionStatus
+from storico.domain.entities.workspace_llm_config import WorkspaceLLMConfig
 from storico.domain.ports import (
     ExtractionExample,
     LLMConfig,
@@ -25,10 +27,14 @@ from storico.domain.ports import (
     ParsedTask,
     VectorStorePort,
 )
-from storico.domain.ports.llm_port import LLMResponse
+from storico.domain.ports.llm_port import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, LLMResponse
 from storico.domain.services.extraction_judge_service import JudgeResult
 from storico.domain.services.extraction_service import ExtractionService, FewShotConfig
-from storico.infrastructure.database.repositories import SQLAlchemyExtractionRepository
+from storico.infrastructure.crypto import FernetCipher
+from storico.infrastructure.database.repositories import (
+    SQLAlchemyExtractionRepository,
+    SQLAlchemyWorkspaceLLMConfigRepository,
+)
 from tests._helpers import seed_extraction, simple_context
 
 
@@ -452,6 +458,30 @@ class _ApprovingJudge:
         )
 
 
+class _RecordingJudge:
+    """Judge fake that records the ``LLMConfig`` it was called with, then approves.
+
+    D7's assertion lives on the config the judge is *handed*, not only on the
+    record the run writes: the point of the setting is that the judge call runs
+    with the workspace's judge model.
+    """
+
+    def __init__(self) -> None:
+        self.configs: list[LLMConfig] = []
+
+    async def validate(self, **kwargs: object) -> JudgeResult:
+        self.configs.append(kwargs["config"])
+        return JudgeResult.from_model_output(
+            {
+                "coherence": {"score": 9, "justification": "all tasks belong"},
+                "completeness": {"score": 9, "justification": "nothing missing"},
+                "feasibility": {"score": 9, "justification": "all realizable"},
+                "format": {"score": 9, "justification": "clear"},
+                "granularity": {"score": 9, "justification": "right size"},
+            }
+        )
+
+
 class _BrokenJudge:
     """Judge fake whose validation call fails with a transient-shaped error."""
 
@@ -515,6 +545,28 @@ class _RecordingVectorStore(VectorStorePort):
         # exercises ``delete_by_story`` lives where the deletion behaviour is
         # tested (tests/test_api/test_stories.py).
         return None
+
+
+async def _seed_judge_model(
+    engine: AsyncEngine, workspace_id: UUID, judge_model: str | None
+) -> None:
+    """Persist a workspace LLM config row carrying ``judge_model`` (or none).
+
+    Written with the real repository and its own master key, so the row reads back
+    exactly as production would serve it. The row deliberately carries no credential:
+    the runner's read of the judge model must not depend on the process master key.
+    """
+    master_key = Fernet.generate_key().decode("ascii")
+    factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        await SQLAlchemyWorkspaceLLMConfigRepository(session, FernetCipher(master_key)).upsert(
+            WorkspaceLLMConfig(
+                workspace_id=workspace_id,
+                provider="ollama",
+                model="llama3.2",
+                judge_model=judge_model,
+            )
+        )
 
 
 def _make_vector_store_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -657,6 +709,146 @@ class TestRunnerPersistencePath:
         assert record["model_source"] == "extraction"
         assert record["error"] is None
         assert record["error_type"] is None
+
+    @pytest.mark.asyncio
+    async def test_a_configured_judge_model_is_what_the_judge_runs_with(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """With ``judge_model`` configured, the judge runs with it (D7/S4).
+
+        Observed twice: on the config the judge is actually called with — same
+        temperature, budget and timeout as the extraction config, only the model
+        swapped — and on the persisted record, which names the judge model and
+        its ``workspace`` source. No provider probe, no second credential: the
+        provider and endpoint stay the extraction config's own.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+        await _seed_judge_model(test_engine, seeded.workspace_id, "qwen2.5-judge")
+
+        judge = _RecordingJudge()
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        monkeypatch.setattr(extraction_task, "LLMJudgeService", lambda **_: judge)
+        _make_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            version_number=1,
+            validate=True,
+            max_retries=0,
+        )
+
+        # The judge was called once, with the judge model and the extraction
+        # config's other knobs untouched.
+        assert len(judge.configs) == 1
+        assert judge.configs[0].model == "qwen2.5-judge"
+        assert judge.configs[0].temperature == DEFAULT_TEMPERATURE
+        assert judge.configs[0].max_tokens == DEFAULT_MAX_TOKENS
+        assert judge.configs[0].timeout == 120
+
+        async with factory() as session:
+            completed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+
+        assert completed is not None
+        record = completed.judge_result
+        assert record is not None
+        assert record["state"] == "ok"
+        assert record["model"] == "qwen2.5-judge"
+        assert record["model_source"] == "workspace"
+
+    @pytest.mark.asyncio
+    async def test_the_failed_record_also_names_the_judge_model(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A judge that failed still records who judged: model and source travel.
+
+        "Requested and failed" (D5) must name the model that was *asked*, so the
+        agreement analysis can see which judge produced the failed attempt.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+        await _seed_judge_model(test_engine, seeded.workspace_id, "qwen2.5-judge")
+
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        monkeypatch.setattr(extraction_task, "LLMJudgeService", lambda **_: _BrokenJudge())
+        _make_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            version_number=1,
+            validate=True,
+            max_retries=0,
+        )
+
+        async with factory() as session:
+            completed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+
+        assert completed is not None
+        record = completed.judge_result
+        assert record is not None
+        assert record["state"] == "failed"
+        assert record["error"] == "Judge down"
+        assert record["model"] == "qwen2.5-judge"
+        assert record["model_source"] == "workspace"
+
+    @pytest.mark.asyncio
+    async def test_a_blank_stored_judge_model_is_not_a_model_name(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A stored judge model made of spaces is "not configured", not a model.
+
+        Same convention as ``base_url``/``api_key``: the runner normalizes the
+        stored value, so a legacy blank falls back to the extraction model and
+        the record says so, instead of asking a provider for a model named
+        ``"   "``.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+
+        async with factory() as session:
+            pending = await seed_extraction(session, seeded.story_id, model_used="llama3.2")
+        await _seed_judge_model(test_engine, seeded.workspace_id, "   ")
+
+        judge = _RecordingJudge()
+        monkeypatch.setattr(extraction_task, "get_engine", lambda: test_engine)
+        monkeypatch.setattr(extraction_task, "OllamaAdapter", lambda **_: _AnsweringLLM())
+        monkeypatch.setattr(extraction_task, "LLMJudgeService", lambda **_: judge)
+        _make_vector_store_unavailable(monkeypatch)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="llama3.2",
+            version_number=1,
+            validate=True,
+            max_retries=0,
+        )
+
+        assert judge.configs[0].model == "llama3.2"
+
+        async with factory() as session:
+            completed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+
+        assert completed is not None
+        record = completed.judge_result
+        assert record is not None
+        assert record["model"] == "llama3.2"
+        assert record["model_source"] == "extraction"
 
     @pytest.mark.asyncio
     async def test_the_rag_point_carries_the_judge_state(

@@ -23,6 +23,9 @@ class WorkspaceLLMConfigModel(Base):
     )
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     model: Mapped[str | None] = mapped_column(String(100), nullable=True, default=None)
+    # The judge's own model name (D7). Nullable: absent means "judge with the
+    # extraction model". Not a credential, so no cipher involvement anywhere.
+    judge_model: Mapped[str | None] = mapped_column(String(100), nullable=True, default=None)
     temperature: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True, default=None)

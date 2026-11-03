@@ -60,6 +60,22 @@ unusable for the thesis, for four separate reasons:
 - **The blind-evaluation mode** for experts (E2 is judged in an external form) and the study session
   with its clock.
 
+## Delivery
+
+Chained PRs, three slices, base `main` @ `b36258d`, branch `feat/llm-judge-instrument`:
+
+| PR | Tasks | Size | Slice boundary |
+| --- | --- | --- | --- |
+| 1 | T1 — contract + persistence | **1,090 authored lines** (≈430 code, ≈600 tests, migration `0033`): over the ~400 budget | `d0cbc85`, measured after the commit |
+| 2 | T2 + T3 — judge model + rubric | ~400 expected | new commit |
+| 3 | T4 + T5 — UI + docs | ~500 expected | new commit |
+
+PR 1 is deliberately not split further, and the reason is structural rather than stylistic: the RAG payload
+keyword and the judge block live in the same file (`extraction_task.py`), so a split by file leaves an
+intermediate commit that raises `TypeError` at runtime, and a split by hunk keeps both halves green only by
+duplicating the test scaffolding that the split is supposed to make reviewable. Reviewer focus for PR 1 is
+narrow: the judge block in `extraction_task.py`, the coercion in `JudgeResult`, and `0033`.
+
 ## Specs
 
 S1 — The rubric, verbatim from the 2026-10-17 design, one rubric for experts and judge, 1-7 anchored

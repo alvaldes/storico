@@ -25,7 +25,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from storico.application.prompts.resolve_workspace_prompt import resolve_workspace_prompt
 from storico.domain.entities import Task
@@ -42,6 +45,7 @@ from storico.domain.services.extraction_service import (
 )
 from storico.domain.services.llm_config_readiness import normalize_optional
 from storico.domain.services.negative_examples import compose_negative_examples
+from storico.infrastructure.crypto import FernetCipher
 from storico.infrastructure.database.base import create_session_factory, get_engine
 from storico.infrastructure.database.repositories import (
     SQLAlchemyExtractionRepository,
@@ -49,6 +53,7 @@ from storico.infrastructure.database.repositories import (
     SQLAlchemyTaskInvalidationRepository,
     SQLAlchemyTaskRepository,
     SQLAlchemyUserStoryRepository,
+    SQLAlchemyWorkspaceLLMConfigRepository,
 )
 from storico.infrastructure.database.repositories.workspace_prompt_repository import (
     SQLAlchemyWorkspacePromptRepository,
@@ -65,6 +70,11 @@ from storico.infrastructure.llm import (
 from storico.infrastructure.vector import QdrantAdapter, get_embedding_port
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    # Late-imported at runtime inside ``_run_extraction`` to avoid a circular import;
+    # the type checker still needs the real class for the helper's annotation.
+    from storico.config.settings import Settings
 
 # ── Public API ─────────────────────────────────────────────────────
 
@@ -114,7 +124,12 @@ async def run_background_extraction(
             let a direct in-process caller thread ``None`` into the payload key.
             (Reordered ahead of ``temperature`` because a required parameter
             cannot follow one with a default; every caller passes keywords.)
-        validate: Whether to run LLM-as-a-Judge validation.
+        validate: Whether to run LLM-as-a-Judge validation. When the workspace has a
+            ``judge_model`` configured, the judge runs with that model (D7) — same
+            provider, credential, temperature, budget and endpoint as the extraction
+            config, only the model name swapped — and the persisted record names it
+            with ``model_source: "workspace"``; without one, the judge runs with
+            ``model`` and the record says ``model_source: "extraction"``.
         provider: Workspace provider name.  ``"ollama"``, ``"gemini"``,
             ``"openai"``, and ``"anthropic"`` have dedicated adapters; any
             other name is a workspace-defined custom provider served by an
@@ -224,6 +239,35 @@ async def recover_stuck_extractions(max_age_minutes: int = 5) -> None:
 
 
 # ── Internal extraction logic ─────────────────────────────────────
+
+
+async def _resolve_judge_model(
+    session: AsyncSession,
+    workspace_id: UUID,
+    settings: Settings,
+) -> str | None:
+    """Read the workspace's configured judge model, or ``None`` when there is none.
+
+    Reads through the same repository the settings routes write through, so the
+    column mapping and the credential conventions have one owner. The cipher is
+    built the way the dependency factory builds it (``get_cipher``): from the
+    process master key. This adds no new failure mode — the route that resolved
+    the extraction's key already decrypted the same credential successfully, so
+    it cannot be undecryptable here — and a row with no credential never
+    consults the cipher at all.
+
+    Only called when the judge was requested (D8: nothing turns the judge on
+    implicitly, so nothing pays this read for a switched-off run).
+    """
+    config_repo = SQLAlchemyWorkspaceLLMConfigRepository(
+        session, FernetCipher(settings.encryption_key)
+    )
+    ws_config = await config_repo.get(workspace_id)
+    if ws_config is None:
+        return None
+    # Same convention as base_url/api_key: a value made of spaces is "not
+    # configured", not a model name.
+    return normalize_optional(ws_config.judge_model)
 
 
 def _build_llm_port(
@@ -491,13 +535,30 @@ async def _run_extraction(
         confidence: float | None = None
         judge_result: dict | None = None
         if validate:
+            # D7/S4: the judge must not silently be one of the compared models. When
+            # the workspace configured a judge model, the judge runs with it — the
+            # ONLY thing that changes is the model name: same provider, credential,
+            # temperature, budget and endpoint as the extraction config. No provider
+            # probe, no second credential, no cross-provider path (non-goal of D7).
+            # Both the ok and the failed records carry the model and its source, so
+            # a failed judgement still names who was asked.
+            judge_model = await _resolve_judge_model(session, workspace_id, settings)
+            if judge_model:
+                from dataclasses import replace
+
+                judge_config = replace(llm_config, model=judge_model)
+                judged_model, judged_source = judge_model, "workspace"
+            else:
+                judge_config = llm_config
+                judged_model, judged_source = model, "extraction"
+
             judge_record_base: dict = {
                 "criteria": {},
                 "total_score": None,
                 "max_total": MAX_TOTAL_SCORE,
                 "approved": False,
-                "model": model,
-                "model_source": "extraction",
+                "model": judged_model,
+                "model_source": judged_source,
             }
             if extraction_service._judge_service is None:
                 judge_result = {
@@ -514,7 +575,7 @@ async def _run_extraction(
                             {"summary": pt.summary, "description": pt.description}
                             for pt in parsed_tasks
                         ],
-                        config=llm_config,
+                        config=judge_config,
                         system_prompt=system_prompt,
                     )
                     judge_result = {
@@ -523,8 +584,8 @@ async def _run_extraction(
                         "total_score": judged.total_score,
                         "max_total": judged.max_total,
                         "approved": judged.approved,
-                        "model": model,
-                        "model_source": "extraction",
+                        "model": judged_model,
+                        "model_source": judged_source,
                         "error": None,
                         "error_type": None,
                     }
