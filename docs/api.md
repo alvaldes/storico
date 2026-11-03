@@ -579,7 +579,8 @@ validación no pedida. Con la validación pedida, el objeto lleva `state: "ok"` 
   "approved": true,
   "tas": 6.0,
   "ifi": 5.0,
-  "model": "llama3.2",
+  "provider": "openai",
+  "model": "gpt-4o-mini",
   "model_source": "workspace",
   "error": null,
   "error_type": null
@@ -599,8 +600,8 @@ trío `provider`/`model`/`model_source` registra con qué conexión juzgó: prov
 resueltos, y `"model_source": "workspace"` cuando el workspace configuró cualquier campo del
 juez, `"extraction"` sólo cuando no configuró ninguno.
 
-La forma `failed` comparte `model`/`model_source` — un fallo también nombra a quien se le
-preguntó — y en lugar del veredicto lleva el motivo:
+La forma `failed` comparte `provider`/`model`/`model_source` — un fallo también nombra a quién se
+le preguntó — y en lugar del veredicto lleva el motivo:
 
 ```json
 {
@@ -611,6 +612,7 @@ preguntó — y en lugar del veredicto lleva el motivo:
   "approved": false,
   "tas": null,
   "ifi": null,
+  "provider": "ollama",
   "model": "llama3.2",
   "model_source": "extraction",
   "error": "judge criterion 'coherence' is not a usable score: 'six'",

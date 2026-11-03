@@ -1370,6 +1370,57 @@ class TestJudgeConnection:
         assert record["model_source"] == "workspace"
 
     @pytest.mark.asyncio
+    async def test_same_provider_at_another_endpoint_does_not_carry_the_extraction_key(
+        self, test_engine: AsyncEngine, monkeypatch, seed_workspace
+    ) -> None:
+        """A moved endpoint is a different host for a credential, even on one provider.
+
+        The extraction runs on ``openai`` with its own key and endpoint; the judge
+        names the same provider at a proxy and no judge key of its own. Reusing the
+        extraction key would send a credential to a host it was not configured for,
+        so the judge refuses to run and the run completes with a classified failure.
+        """
+        factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+        seeded = await seed_workspace(member=False)
+        pending = await self._seed_pending(factory, seeded)
+        await _seed_judge_config(
+            test_engine,
+            seeded.workspace_id,
+            judge_base_url="https://proxy.test/v1",
+        )
+
+        build_calls, judge_services = self._wire(monkeypatch, test_engine)
+
+        await extraction_task.run_background_extraction(
+            extraction_id=pending.id,
+            story_id=seeded.story_id,
+            workspace_id=seeded.workspace_id,
+            model="gpt-4o",
+            version_number=1,
+            validate=True,
+            provider="openai",
+            api_key="sk-extraction",
+            base_url="https://api.openai.com/v1",
+            max_retries=0,
+        )
+
+        # One port (the extraction's) and one judge service (the extraction's own):
+        # nothing was ever built for the proxy, so no credential could travel there.
+        assert len(build_calls) == 1
+        assert len(judge_services) == 1
+        extraction_port = build_calls[0][2]
+        assert extraction_port.calls == 1
+
+        async with factory() as session:
+            completed = await SQLAlchemyExtractionRepository(session).find_by_id(pending.id)
+
+        record = completed.judge_result
+        assert record is not None
+        assert record["state"] == "failed"
+        assert "api_key" in record["error"]
+        assert completed.confidence_score is None
+
+    @pytest.mark.asyncio
     async def test_same_provider_without_a_judge_credential_reuses_the_extraction_credential(
         self, test_engine: AsyncEngine, monkeypatch, seed_workspace
     ) -> None:

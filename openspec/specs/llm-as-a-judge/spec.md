@@ -112,6 +112,13 @@ still names who was asked.
 `judge_api_key` is encrypted by the workspace configuration repository — the only
 place a credential is encrypted on the way in and decrypted on the way out.
 
+The extraction credential and endpoint are reused only for the same destination:
+the same provider **and** the same endpoint. A different provider, or the same
+provider at a different endpoint (a proxy, a regional host, a custom gateway), is
+a different destination and needs `judge_api_key`; when it is missing the judged
+run fails as a classified judge failure rather than borrowing the extraction
+credential. Provider names compare case-folded.
+
 #### Scenario: Another model on the extraction provider and credential
 
 - **GIVEN** a workspace with `judge_model` set and no other judge field
@@ -127,13 +134,21 @@ place a credential is encrypted on the way in and decrypted on the way out.
 - **AND** the extraction port is not used for judging
 - **AND** the verdict records the judge provider, the judge model and `model_source` = `"workspace"`
 
-#### Scenario: A credential never crosses providers
+#### Scenario: A credential never crosses destinations
 
 - **GIVEN** a workspace whose extraction provider is A and whose `judge_provider` is B, with no `judge_api_key`
 - **WHEN** a run with `run_validation` on completes
 - **THEN** no request is made to B with A's credential
 - **AND** the judge does not run and the verdict is `state: "failed"` naming the missing field and the provider
 - **AND** the extraction itself completes normally
+
+#### Scenario: The same provider at another endpoint is another destination
+
+- **GIVEN** a workspace whose extraction provider is A at endpoint E1, and whose `judge_base_url` is E2 with no `judge_api_key`
+- **WHEN** a run with `run_validation` on completes
+- **THEN** no request is made to E2 with the credential configured for E1
+- **AND** the verdict is `state: "failed"` naming the missing credential
+- **AND** naming the same endpoint E1 as `judge_base_url` reuses the extraction credential
 
 #### Scenario: Nothing configured falls back entirely
 

@@ -616,11 +616,16 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   // provider other than the extraction's, without a credential of its own and with
   // no default-free provider (Ollama needs none). The save still goes through — the
   // refusal is the backend's, as a judged failure — so this is a warning, not a gate.
+  // A custom provider is complete with an endpoint and no key (its
+  // ``required_fields_for`` asks for model and base URL only), so the warning must
+  // not fire for it: the endpoint check is what keeps this hint aligned with the
+  // backend's readiness rule instead of guessing a stricter one.
   const judgeNeedsOwnCredential =
     judgeConfig.provider !== '' &&
     judgeConfig.provider !== llmConfig.provider &&
     judgeConfig.provider !== 'ollama' &&
-    judgeConfig.apiKey.trim() === '';
+    judgeConfig.apiKey.trim() === '' &&
+    judgeConfig.baseUrl.trim() === '';
 
   return (
     <div className="space-y-6">

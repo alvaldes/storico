@@ -304,11 +304,13 @@ async def _resolve_judge_connection(
       extraction credential and endpoint is legitimate — it is the same provider,
       so ``api_key = judge_api_key or extraction api_key`` and
       ``base_url = judge_base_url or extraction base_url``.
-    - When it **differs**, the extraction credential and endpoint are never
-      reused: ``api_key = judge_api_key`` and
+    - When it **differs** — or when it is the same provider at a **different
+      endpoint**, which is a different host as far as a credential is concerned
+      (a proxy, a regional endpoint, a custom gateway) — the extraction credential
+      and endpoint are never reused: ``api_key = judge_api_key`` and
       ``base_url = judge_base_url or`` the provider's default (the Ollama host for
       ``ollama``, otherwise none). This rule is the reason it exists: a key issued
-      for one provider must never be sent to another provider's endpoint.
+      for one destination must never be sent to another.
 
     Readiness is checked by the caller against these resolved values, so an
     incomplete judge block is a classified judge failure rather than a refused
@@ -347,9 +349,19 @@ async def _resolve_judge_connection(
 
     resolved_provider = judge_provider or provider
     resolved_model = judge_model or model
-    if resolved_provider == provider:
-        # Same provider: falling back to the extraction credential and endpoint is
-        # legitimate — they are credentials *for this provider*.
+    # Provider names are compared case-folded: ``OpenAI`` and ``openai`` are the
+    # same provider, and treating them as two would fail readiness for a spelling.
+    same_provider = resolved_provider.casefold() == provider.casefold()
+    # A judge endpoint that differs from the extraction's is a different host as
+    # far as a credential is concerned, even on the same provider: a proxy, a
+    # regional endpoint or a custom gateway must not receive a key that was
+    # configured for the extraction's endpoint. Naming the same endpoint is not a
+    # change, so reusing the key stays legitimate there.
+    moved_endpoint = judge_base_url is not None and judge_base_url != base_url
+
+    if same_provider and not moved_endpoint:
+        # Same provider and same endpoint: the extraction credential and endpoint are
+        # credentials *for this destination*, so falling back is legitimate.
         return _JudgeConnection(
             provider=resolved_provider,
             model=resolved_model,
@@ -357,9 +369,9 @@ async def _resolve_judge_connection(
             base_url=judge_base_url or base_url,
             source="workspace",
         )
-    # A different provider: the extraction credential and endpoint must not travel —
-    # a key issued for one provider must never be sent to another. The only implicit
-    # value left is the provider's own default endpoint.
+    # A different provider, or the same provider at a different endpoint: the
+    # extraction credential does not travel. The only implicit value left is the
+    # provider's own default endpoint.
     return _JudgeConnection(
         provider=resolved_provider,
         model=resolved_model,
