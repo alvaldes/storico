@@ -1,7 +1,11 @@
 # ODD Feature: llm-judge-instrument
 
-> **Status**: implemented on `feat/llm-judge-instrument` (5 commits + the review-findings commit),
-> verified by an independent read-only review, **not merged**. The LLM-as-a-Judge was unusable as an
+> **Status**: **merged and deployed** — PR #66 → `main` @ `4f7b192`, deploy `run 41739013530` applied
+> `0033`-`0035` to production and `/api/v1/health` reports `ok` with `schema: ok`; `alembic_version`
+> is `0035` in Neon and the Vercel frontend is live on the same commit. Before the merge the three
+> revisions ran for the first time against a real Postgres in **dev (Supabase, populated)**: `0032 →
+> 0035` with the existing credential byte-identical afterwards. Verified by an independent read-only
+> review over two passes (18 claims held, one blocker and eight advisories, all closed). The LLM-as-a-Judge was unusable as an
 > instrument: it judged with the generating model, scored a rubric the experimental design abandoned,
 > and dropped every per-criterion value it computed. It now validates its own output, persists the
 > verdict in three states, can run on a separate model, and scores the seven-criterion 1-7 rubric
