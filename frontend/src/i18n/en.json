@@ -432,7 +432,19 @@
     "criterion_granularity": "Granularity",
     "criterion_dependencies": "Dependencies",
     "criterion_usefulness": "Global usefulness",
-    "criterion_format": "Format"
+    "criterion_format": "Format",
+    "help_trigger": "About {label}",
+    "help_criterion_coherence": "Do all tasks belong to the story? 1 = most of them are out of scope, 4 = some do not belong, 7 = all belong.",
+    "help_criterion_completeness": "Are the tasks enough to finish the story? 1 = the essentials are missing, 4 = something important but not critical is missing, 7 = nothing is missing.",
+    "help_criterion_feasibility": "Are the tasks technically correct and realizable? 1 = there are impossible or illogical steps, 4 = some tasks need correcting, 7 = all are correct.",
+    "help_criterion_clarity": "Is it clear what to do without asking? 1 = it cannot be understood, 4 = some tasks force a question, 7 = everything is understandable.",
+    "help_criterion_granularity": "Is the size of each task appropriate? 1 = far too large or too atomic, 4 = some tasks are poorly sized, 7 = all are appropriately sized.",
+    "help_criterion_dependencies": "Are the order and the dependencies correct? 1 = missing or wrong, 4 = incomplete, 7 = correct.",
+    "help_criterion_usefulness": "Would you use these tasks in a sprint as they are? 1 = no, 4 = only with major changes, 7 = as they are.",
+    "help_criterion_format": "Retired criterion from the 0-10 rubric that came before this one. It scored how closely the tasks followed the requested output format; those records are shown as written, without rescaling to 1-7.",
+    "help_approved": "Approved when the total reaches the threshold of 70% of the maximum, which is 35 out of 49 on this rubric; below that it reads not approved. The server computes the total and the approval from the seven criteria, and discards whatever total the judge claimed.",
+    "help_tas": "Technical Accuracy Score: the mean of coherence and feasibility, (coherence + feasibility) / 2, on the same 1-7 scale. The server computes it from the criteria, never from the judge's text.",
+    "help_ifi": "Implementation Feasibility Index: the mean of clarity, granularity and dependencies, (clarity + granularity + dependencies) / 3, also computed on the server. It answers whether the tasks can be built and worked on; TAS answers whether they are technically right."
   },
   "exportPage": {
     "title": "Export tasks",

@@ -65,7 +65,10 @@ from the model: `tas = (coherence + feasibility) / 2` and
 `ifi = (clarity + granularity + dependencies) / 3`. `completeness` and
 `usefulness` stand alone — completeness is the human counterpart of the
 automatic TCR, and no index consumes it. The frontend MUST render the
-persisted `tas`/`ifi` values and MUST NOT recompute them.
+persisted `tas`/`ifi` values and MUST NOT recompute them. Both indices are
+means of integer criteria, so the panel renders them fixed to one decimal
+(`4.666666666666667` reads `4.7`, `7` reads `7.0`) rather than echoing the
+float's full precision; the criteria scores and the total render verbatim.
 
 #### Scenario: The indices come from the criteria
 
@@ -81,6 +84,34 @@ persisted `tas`/`ifi` values and MUST NOT recompute them.
 - **WHEN** the indices are computed
 - **THEN** neither `tas` nor `ifi` consumes `completeness` or `usefulness`
 - **AND** both criteria still appear with their scores in `judge_result.criteria`
+
+### Requirement: The Panel Explains Its Own Numbers
+
+Every number the panel shows carries its rule within reach: each criterion, the
+approval stamp, TAS and IFI MUST have an explanation control beside them, and
+the control MUST be a named, focusable element — a mouse hover cannot be the
+only way to read it. A criterion's copy MUST state what the criterion asks and
+its 1/4/7 anchors, and it MUST come from the rubric the judge was given
+(`single_judge.j2`), not from a second, later paraphrase. The approval copy
+MUST state the threshold (`total_score >= ceil(0.7 × max_total)`, 35 of 49) and
+that the server computes the total and the approval from the criteria, discarding
+the total the model claimed. TAS and IFI each state their formula and the
+criteria they consume. A failed record explains nothing it does not show: no
+criteria, no indices, no stamp means no controls.
+
+#### Scenario: A reader can decode every number without leaving the panel
+
+- **GIVEN** a judged run rendered in the story detail panel
+- **WHEN** the reader focuses or hovers the control beside a criterion
+- **THEN** the panel shows that criterion's question and its 1/4/7 anchors
+- **AND** the same control carries an accessible name naming the criterion, so it
+  is reachable by keyboard and by a screen reader
+
+#### Scenario: A failed record explains nothing it does not show
+
+- **GIVEN** a run whose `judge_result.state` is `"failed"`
+- **WHEN** the panel renders
+- **THEN** it shows the failure and its error and renders no explanation controls
 
 ### Requirement: The Judge Is Blind
 

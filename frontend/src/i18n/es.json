@@ -432,7 +432,19 @@
     "criterion_granularity": "Granularidad",
     "criterion_dependencies": "Dependencias",
     "criterion_usefulness": "Utilidad global",
-    "criterion_format": "Formato"
+    "criterion_format": "Formato",
+    "help_trigger": "Acerca de {label}",
+    "help_criterion_coherence": "¿Todas las tareas pertenecen a la historia? 1 = la mayoría queda fuera de alcance, 4 = algunas no pertenecen, 7 = todas pertenecen.",
+    "help_criterion_completeness": "¿Alcanzan las tareas para terminar la historia? 1 = falta lo esencial, 4 = falta algo importante pero no crítico, 7 = no falta nada.",
+    "help_criterion_feasibility": "¿Las tareas son técnicamente correctas y realizables? 1 = hay pasos imposibles o ilógicos, 4 = algunas tareas necesitan corrección, 7 = todas son correctas.",
+    "help_criterion_clarity": "¿Se entiende qué hacer sin preguntar? 1 = no se puede entender, 4 = algunas tareas obligan a preguntar, 7 = todo es comprensible.",
+    "help_criterion_granularity": "¿El tamaño de cada tarea es el adecuado? 1 = demasiado grandes o demasiado atómicas, 4 = algunas están mal dimensionadas, 7 = todas tienen un tamaño adecuado.",
+    "help_criterion_dependencies": "¿El orden y las dependencias son correctos? 1 = faltan o están mal, 4 = están incompletos, 7 = son correctos.",
+    "help_criterion_usefulness": "¿Usarías estas tareas en un sprint tal como están? 1 = no, 4 = solo con cambios importantes, 7 = tal como están.",
+    "help_criterion_format": "Criterio retirado de la rúbrica 0-10 anterior a esta. Medía cuánto respetaban las tareas el formato de salida solicitado; esos registros se muestran tal como se guardaron, sin reescalar a 1-7.",
+    "help_approved": "Se aprueba cuando la puntuación total alcanza el umbral del 70 % del máximo, que en esta rúbrica son 35 de 49; por debajo aparece como no aprobada. El servidor calcula el total y la aprobación a partir de los siete criterios y descarta el total que declare el juez.",
+    "help_tas": "Technical Accuracy Score (precisión técnica): la media de coherencia y factibilidad, (coherencia + factibilidad) / 2, en la misma escala 1-7. La calcula el servidor a partir de los criterios, nunca el texto del juez.",
+    "help_ifi": "Implementation Feasibility Index (factibilidad de implementación): la media de claridad, granularidad y dependencias, (claridad + granularidad + dependencias) / 3, también calculada en el servidor. Responde si las tareas se pueden construir y trabajar; la TAS responde si están técnicamente bien."
   },
   "exportPage": {
     "title": "Exportar tareas",
