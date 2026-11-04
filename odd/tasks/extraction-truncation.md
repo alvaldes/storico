@@ -40,10 +40,10 @@ ends `completed`.
 
 | ID | Task | Spec | Route | Commit |
 |----|------|------|-------|--------|
-| T1 | Detection in every adapter, each against its own SDK signal | S4 | worker | — |
-| T2 | Deterministic classification: `failed`, zero tasks, `error_info` naming the budget | S1, S2, S3 | worker | — |
-| T3 | Tests: truncated-with-content per adapter, run-level failure, and a short-but-complete answer staying `completed` | S1, S3, S5 | worker | — |
-| T4 | Confirm the reason surfaces in the existing UI; change copy only if it would not | S2, S5 | parent | — |
+| T1 | Detection in every adapter, each against its own SDK signal | S4 | worker | `61c1cad` |
+| T2 | Deterministic classification: `failed`, zero tasks, `error_info` naming the budget | S1, S2, S3 | worker | `61c1cad` |
+| T3 | Tests: truncated-with-content per adapter, run-level failure, and a short-but-complete answer staying `completed` | S1, S3, S5 | worker | `61c1cad` |
+| T4 | Confirm the reason surfaces in the existing UI; change copy only if it would not | S2, S5 | parent | `61c1cad` |
 
 ## Log
 
@@ -62,3 +62,10 @@ por tiempo: arregla la única vía real de perder tareas, que es la truncación 
 `finish_reason: length` únicamente cuando el contenido vino **vacío**
 (`openai_adapter.py:46,257`). Consecuencia: hoy una respuesta cortada con 3 de 6 tareas se persiste como
 corrida `completed`.
+
+**L4** — Implementado y verificado el 2026-11-03 en `61c1cad`. Las señales de OpenAI, Anthropic y Gemini se
+comprobaron contra los tipos del SDK instalado en el entorno `storico`; la de Ollama **no** se pudo observar
+en esta máquina (no hay SDK y el servicio no responde), así que se implementó contra el contrato documentado
+del cuerpo no-streaming, leída con `isinstance`/`.get` para que un cuerpo sin motivo nunca se clasifique como
+truncación — falla abierto, no inventa. Ojo al leer la UI: una respuesta que se cortó justo en el borde de una
+tarea también se clasifica como fallida, a propósito (S1).
