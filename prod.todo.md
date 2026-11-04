@@ -31,6 +31,46 @@ Prerrequisitos que, si faltan, rompen algo en silencio o fallan recién en produ
 | El deploy corre las migraciones | ✅ | `alembic upgrade head` corre en la **ventana de mantenimiento** del deploy —entre el `docker stop` y el `docker run`, sin ningún release vivo—; hay downtime aceptado y un fallo deja la API abajo a propósito. Ver `odd/tasks/deploy-migration-window.md` y `docs/deployment.md`. |
 | Suite de integración contra Postgres real | ✅ | Corre en CI en cada push contra Postgres real vía `testcontainers>=4.15.0` (run `35546955633`: 703 passed). Ver `odd/tasks/ci-postgres-integration-test.md` y `odd/tasks/prod-checklist-honesty.md`. |
 
+## Release `v0.14.0` (2026-11-03, por orden explícita del owner: "cuando termine ya podemos hacer make bump")
+
+Corrido por `make bump` —la única vía de `AGENTS.md` §0— después de que los dos commits previos quedaran
+verificados en producción. Las guardas se midieron **antes** del bump: árbol sin cambios trackeados
+(`git status --porcelain --untracked-files=no` vacío; la guarda de `Makefile:64` ignora los sin trackear),
+`main` en `289f77b` a la par de `origin/main`, tag baseline `v0.13.0` con **los tres manifests diciendo
+`0.13.0`** (regla 6), y desde ese tag tres `feat` sin `!` ni `BREAKING CHANGE` → increment `MINOR`.
+`cz bump --dry-run` anticipó `0.13.0 → 0.14.0` y el bump real coincidió: commit `4ba432a`, tag `v0.14.0`,
+27 commits, los tres manifests en `0.14.0`.
+
+**Lo que este release corrige además, y es lo más importante de la fila: `v0.14.0` es el primer bump que
+publica la feature del juez.** El tag `v0.13.0` quedó en `1b14105` (*"bump: version 0.12.0 → 0.13.0"*),
+**antes** de que se mergeara el PR #66 (`4f7b192`) — comprobado con `git merge-base --is-ancestor 4f7b192
+v0.13.0`, que dice que NO. O sea que la feature entera (`llm-judge-instrument`, migraciones `0033`–`0035`
+incluidas) estuvo desplegada y viva en producción **sin número de versión propio**: `/api/v1/health`
+informaba `0.13.0` mientras el código servido era posterior a ese tag. El `CHANGELOG.md` de `v0.14.0` es el
+primero que nombra `feat(judge)` y `feat(settings)`. Vale como lección de proceso: **un merge a `main` que
+cambia comportamiento en producción no se refleja en la versión hasta que alguien corre `make bump`**, y
+entre el `v0.13.0` y este release pasaron la feature del juez y la reestructuración de Configuración
+(PR #68).
+
+Qué lleva, en orden de llegada: la feature del juez completa (PR #66, `feat(judge)`/`fix(judge)`), el
+registro del deploy del juez (PR #67, `docs(judge)`), la reestructuración de Configuración (PR #68,
+`feat(settings)`: extracción y juez lado a lado, tabs con estado seleccionado, cuatro áreas), el panel del
+juez legible (`5f45139`, `feat(frontend)`: TAS/IFI a un decimal y un `(i)` con la regla detrás de cada
+criterio, del sello de aprobación y de los dos índices) y la copy honesta de la espera (`289f77b`,
+`fix(frontend)`: se retiró el "hasta un minuto", porque ningún deadline lo respalda — ver la fila nueva de
+la sección de producto).
+
+**Sin migraciones.** El repo llegaba a `0035` y producción ya la tenía aplicada, así que el
+`alembic upgrade head` de la ventana de mantenimiento fue no-op y el downtime se redujo al rebuild más el
+reinicio del contenedor: `/api/v1/health` ya reportaba `version: 0.14.0` a los ~10 s de arrancar el
+workflow. Evidencia: deploy `41762482270` → `success`; `/api/v1/health` → `ok`, `version: 0.14.0`, base y
+esquema `ok`; `/api/v1/health/ready` → `200`; CI `41762482291` → `success`; deployment de Vercel para
+`4ba432a` → `READY`, target `production`, alias `storico.vercel.app`.
+
+Sigue abierto, y este release no lo toca: la copy de marca promete velocidad (`app.tagline` "en segundos",
+`landing.features.card_1_desc` "al instante") y la espera de una extracción no tiene deadline en el
+servidor.
+
 ## Release `v0.9.0` (2026-09-30, por orden explícita del owner: "haz el make bump")
 
 Corrido por `make bump` — la única vía que fija `AGENTS.md` §0; el tag no se tocó a mano. Las guardas se
@@ -123,6 +163,7 @@ público dejó de prometer el `201`.
 | Copy pública que le toca cambiar al versionado de extracción (`0.9.0`) | 🟡 **Parcialmente cumplida: la mitad ya existe, y esta fila decía que nada existía** | Reescrita el 2026-10-06 contra el código. De las tres intenciones anotadas el 2026-09-27 (`odd/tasks/task-control-copy-truth.md`), **dos se implementaron y una sigue a medias.** (a) *Eliminar una tarea se convierte en marcarla inválida*: **implementado**, y como **marca**, no como estado — `task_invalidations` vía `POST /api/v1/tasks/{task_id}/invalidations` (`routes/tasks.py:487`), con el borrado de tarea individual retirado y devolviendo `410` (D12, `:423`); `TASK_STATUSES` sigue con cinco estados y sin inválido (`frontend/src/types/task.ts:5`), que es el diseño y no un atraso. (b) *El export selecciona una versión*: **a medias** — `export_tasks` ya exporta sólo la versión vigente de cada historia, la corrida `completed` de número más alto (`routes/export.py:86-89`), pero no hay elección del usuario: el único parámetro es `format`. (c) *El `title` y la `description` del LLM dejan de ser editables*: **implementado**. La matriz de campos D5/D21 está en el código de punta a punta: `UpdateTaskRequest` (`backend/src/storico/api/schemas/task.py:11-27`) sólo acepta `status`, `labels` y `dependencies`, y con `extra="forbid"` (`:21`) rechaza `title`, `description` y `priority` con 422 durante la validación del cuerpo — fijado por `test_removed_fields_refuse_on_frozen_and_current` (`backend/tests/test_api/test_tasks.py:954`, parametrizado sobre los tres campos y afirmado sobre una tarea congelada y una vigente) —, y la UI los dibuja como texto de solo lectura (`frontend/src/components/react/TaskEditor.tsx:376-389`). **La clave `pages.docs.step_6` ya no existe**: la borró la tarea 3 de `starlight-docs` al retirar `frontend/src/pages/[locale]/docs.astro`; esa copy es hoy el paso 6 de `frontend/src/content/docs/{en,es}/docs/quickstart.md` ("Review and export — edit tasks as needed and export to JSON or Markdown"). Las otras dos claves siguen vivas y siguen siendo superficie pública deployada. **Nota 2026-10-07:** el cierre de las filas 49 y 50 de D-a-5 no cambia el estado de esta fila, que sigue honesta tal como está: (a) hecha; (b) sigue a medias — el export exporta sólo la versión vigente desde (b) WU3, pero no hay elección de versión para el usuario: el único parámetro de la ruta sigue siendo `format`; (c) el `title`/`description` del LLM **ya no es editable**: la matriz D5/D21 está implementada (véase arriba; corrección de esta misma nota, que decía lo contrario). Lo que sí cambió y conviene saber al leer esta fila: la feature completa (slices (a), (b) y (c)) está fusionada y desplegada — `v0.10.0` llevó (b) el 2026-10-02 y `v0.11.0` llevó (c) el 2026-10-03 — y producción corre `v0.12.0` (verificado el 2026-10-07). |
 | Conector Trello | ✅ | **Implementado** (2026-10-08, rama `feat/trello-export`; registro y decisiones D1–D8 en `odd/tasks/trello-export.md`). Credenciales por workspace cifradas con Fernet (migración `0030`, `workspace_trello_configs`), job asíncrono persistido (migración `0031`, `trello_exports`), `POST /api/v1/workspaces/{id}/export/trello` → `202` + `GET .../export/trello/{export_id}` (`api/routes/export.py`), adaptador `infrastructure/export/trello_adapter.py` sobre `py-trello>=0.20.1`, sweep de arranque (`infrastructure/tasks/trello_export_task.py`) y superficie en el navegador (`frontend/src/lib/trello-api.ts`, `TrelloCredentialsForm.tsx`, `ExportPanel.tsx`). Cada exportación crea un tablero nuevo (D3): no hay tablero designado ni sincronización bidireccional, y no hay OAuth — el admin pega clave y token. El valor de formato `trello` de la exportación de archivos sigue retirado (`json`/`markdown`): el conector va por sus propios endpoints. |
 | Conectores Jira / GitHub Projects / Azure DevOps | 🔲 | V2/V3. |
+| La espera de una extracción no tiene deadline del lado del servidor | 🔲 **Abierto, medido el 2026-11-03** | La copy ya dejó de prometer un minuto (`289f77b`), pero el hueco real sigue: `run_background_extraction` (`backend/src/storico/infrastructure/tasks/extraction_task.py:87`) no envuelve la llamada al modelo en ningún `asyncio.wait_for`, así que una conexión que se cuelga deja la corrida en `pending` **para siempre** — el loop de reintentos nunca se dispara porque nada levanta excepción. El `timeout: int = 120` del puerto (`domain/ports/llm_port.py:27`) lo honra **un solo** adapter (`infrastructure/llm/ollama_adapter.py:74`); Gemini, OpenAI y Anthropic toman los defaults de su SDK. Y el `504 → 'timeout'` que la UI sabe mostrar (`frontend/src/stores/taskStore.ts:143`, con la copy `stories.extractionTimeout`) apunta a un código que el backend **no devuelve en ninguna ruta**: hoy es una clasificación inalcanzable. Cerrarlo pide tres decisiones, no una: alcance del plazo (por llamada o por corrida —una corrida validada hace dos llamadas: extracción y juez), el número (medido, no elegido, porque un plazo corto convierte una corrida lenta pero válida en un fallo), y si se expone por workspace. Recién entonces la copy puede volver a nombrar una duración. |
 | Adaptador de OpenAI con tests de construcción positiva | ✅ | El adaptador existe y la extracción lo construye por dos ramas: `openai` y proveedor personalizado (`backend/src/storico/infrastructure/tasks/extraction_task.py`). El test de construcción es `backend/tests/test_unit/test_llm_port_selection.py::TestKnownCloudProviders::test_openai_with_key_forwards_base_url`, que verifica el tipo del adaptador y que el `base_url` configurado llega a él. |
 | `TaskEditor` mostraba errores de validación en inglés sin traducir | ✅ | Cerrado el 2026-09-27 en `ca33e76`: mensajes compuestos con claves ya traducidas (`taskEditor.invalid_transition`, `kanban.columns[status]`) más una clave nueva (`taskEditor.title_required`), y dos tests con dientes. Ver `odd/tasks/task-control-copy-truth.md`. |
 | El banner de error del `TaskEditor` mostraba inglés construido por código | ✅ | Cerrado el 2026-09-27 en `130b0dd`: `taskEditor.error_save` —ya traducida y sin consumidor— pasa a ser el titular; el detalle del servidor sigue reachable en el panel expandible. Ver `odd/tasks/task-control-copy-truth.md`. |
