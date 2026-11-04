@@ -11,6 +11,7 @@ from httpx import AsyncClient, ConnectError, Timeout, TimeoutException
 from storico.domain.entities import LLMConnectionError, LLMModelNotFoundError, LLMResponseError
 from storico.domain.ports import LLMConfig, LLMPort
 from storico.domain.ports.llm_port import LLMResponse
+from storico.infrastructure.llm.truncation import truncated_response_message
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,31 @@ class OllamaAdapter(LLMPort):
                     f"Ollama returned status {response.status_code}: {response.text}"
                 )
 
-            return self._parse_response(response.json())
+            data = response.json()
+            # S4 (extraction-truncation): the transport is plain JSON over httpx —
+            # no SDK types the body — so the signal is the top-level
+            # ``done_reason`` field the non-streaming ``/api/chat`` body carries
+            # (the payload sets ``stream: False`` for exactly one JSON object).
+            # The raise is an ``LLMResponseError`` — an ``LLMError`` — so the
+            # runner takes the deterministic failure path without retrying (S3).
+            # Read with ``.get`` on a JSON object: a body that names no reason
+            # is never treated as truncation, and a non-object body falls
+            # through to ``_parse_response``'s own classification instead of
+            # escaping as an ``AttributeError``.
+            if isinstance(data, dict) and data.get("done_reason") == "length":
+                logger.warning(
+                    "Ollama stopped the answer at the output budget",
+                    extra={
+                        "model": config.model,
+                        "done_reason": data.get("done_reason"),
+                        "max_tokens": config.max_tokens,
+                        "eval_count": data.get("eval_count"),
+                    },
+                )
+                raise LLMResponseError(
+                    truncated_response_message("done_reason: length", config.max_tokens)
+                )
+            return self._parse_response(data)
 
         logger.error(
             "All Ollama connection attempts exhausted",

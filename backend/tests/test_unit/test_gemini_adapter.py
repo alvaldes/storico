@@ -8,6 +8,7 @@ happen. Verifies that Gemini sends the shared system prompt via the
 from unittest.mock import MagicMock, patch
 
 import pytest
+from google.genai import types as genai_types
 
 from storico.domain.entities import LLMConnectionError, LLMResponseError
 from storico.domain.ports import LLMConfig
@@ -148,3 +149,64 @@ class TestGeminiAdapter:
         adapter = GeminiAdapter(api_key="test-key")
         with pytest.raises(LLMResponseError):
             await adapter.generate("Test prompt", self.config)
+
+
+# ── Truncation with non-empty content (S4, extraction-truncation) ──
+
+
+def _candidate(finish_reason: object) -> MagicMock:
+    """Fake ``response.candidates[0]`` carrying one ``FinishReason`` value."""
+    candidate = MagicMock()
+    candidate.finish_reason = finish_reason
+    return candidate
+
+
+class TestTruncationDetection:
+    """A non-empty answer cut by the output budget is a classified failure.
+
+    The installed SDK types the signal as ``Candidate.finish_reason:
+    Optional[FinishReason]`` with ``FinishReason.MAX_TOKENS`` (``google/genai/types.py``),
+    so a first candidate stopped for ``MAX_TOKENS`` with text in hand is the
+    observable truncation report.
+    """
+
+    def setup_method(self) -> None:
+        self.config = LLMConfig(model="gemini-2.0-flash", max_tokens=2048)
+
+    @patch("storico.infrastructure.llm.gemini_adapter.genai.Client")
+    @pytest.mark.asyncio
+    async def test_a_truncated_answer_with_content_is_a_failure_not_a_partial_result(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        """``finish_reason: MAX_TOKENS`` with text raises; it is never a partial result."""
+        mock_response = MagicMock()
+        mock_response.text = "1. summary: Task one\ndescription: Do it"
+        mock_response.candidates = [_candidate(genai_types.FinishReason.MAX_TOKENS)]
+        mock_response.usage_metadata = None
+        mock_client_cls.return_value.models.generate_content.return_value = mock_response
+
+        adapter = GeminiAdapter(api_key="test-key")
+        with pytest.raises(LLMResponseError) as exc_info:
+            await adapter.generate("Test prompt", self.config)
+
+        message = str(exc_info.value)
+        assert "MAX_TOKENS" in message
+        assert "max_tokens: 2048" in message
+        assert "max tokens" in message.lower()
+
+    @patch("storico.infrastructure.llm.gemini_adapter.genai.Client")
+    @pytest.mark.asyncio
+    async def test_a_stop_finish_reason_with_content_still_returns_the_answer(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        """A legitimately finished answer keeps flowing through unchanged."""
+        mock_response = MagicMock()
+        mock_response.text = "1. summary: Task one\ndescription: Do it"
+        mock_response.candidates = [_candidate(genai_types.FinishReason.STOP)]
+        mock_response.usage_metadata = None
+        mock_client_cls.return_value.models.generate_content.return_value = mock_response
+
+        adapter = GeminiAdapter(api_key="test-key")
+        result = await adapter.generate("Test prompt", self.config)
+
+        assert "Task one" in result.text

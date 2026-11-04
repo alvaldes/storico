@@ -13,6 +13,7 @@ from anthropic import NotFoundError as AnthropicNotFoundError
 from storico.domain.entities import LLMConnectionError, LLMModelNotFoundError, LLMResponseError
 from storico.domain.ports import LLMConfig, LLMPort
 from storico.domain.ports.llm_port import LLMResponse
+from storico.infrastructure.llm.truncation import truncated_response_message
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,29 @@ class AnthropicAdapter(LLMPort):
                 extra={"model": config.model},
             )
             raise LLMResponseError("Anthropic returned an empty response")
+
+        # S4 (extraction-truncation): the budget can also cut an answer that has
+        # already written something. The installed SDK types the signal as
+        # ``Message.stop_reason: Optional[StopReason]`` with ``StopReason:
+        # TypeAlias = Literal["end_turn", "max_tokens", "stop_sequence",
+        # "tool_use", "pause_turn", "refusal",
+        # "model_context_window_exceeded"]`` (``anthropic/types/message.py`` and
+        # ``anthropic/types/stop_reason.py``), so ``max_tokens`` with text
+        # blocks in hand is the provider's own truncation report. Raised as an
+        # ``LLMResponseError`` — an ``LLMError`` — so the runner takes the
+        # deterministic failure path without retrying (S3).
+        if response.stop_reason == "max_tokens":
+            logger.warning(
+                "Anthropic stopped the answer at the output budget",
+                extra={
+                    "model": config.model,
+                    "stop_reason": response.stop_reason,
+                    "max_tokens": config.max_tokens,
+                },
+            )
+            raise LLMResponseError(
+                truncated_response_message("stop_reason: max_tokens", config.max_tokens)
+            )
 
         raw_usage = getattr(response, "usage", None)
         usage = raw_usage.model_dump() if raw_usage is not None else None

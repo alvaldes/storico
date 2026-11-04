@@ -13,6 +13,7 @@ from openai import OpenAIError as BaseOpenAIError
 from storico.domain.entities import LLMConnectionError, LLMModelNotFoundError, LLMResponseError
 from storico.domain.ports import LLMConfig, LLMPort
 from storico.domain.ports.llm_port import LLMResponse
+from storico.infrastructure.llm.truncation import truncated_response_message
 
 logger = logging.getLogger(__name__)
 
@@ -257,4 +258,29 @@ class OpenAIAdapter(LLMPort):
                 _empty_response_message(finish_reason, refusal, config.max_tokens)
             )
 
-        return LLMResponse(text=response.choices[0].message.content, usage=usage)
+        # S4 (extraction-truncation): the budget can also cut an answer that has
+        # already written something — three of six tasks arriving as a completed
+        # run was the hole this closes. The installed SDK types the signal as
+        # ``Choice.finish_reason: Literal["stop", "length", "tool_calls",
+        # "content_filter", "function_call"]`` on the first choice
+        # (``openai/types/chat/chat_completion.py``), so ``length`` with content
+        # in hand is the provider's own truncation report. Raised as an
+        # ``LLMResponseError`` — an ``LLMError`` — so the runner takes the
+        # deterministic failure path without retrying (S3).
+        choice = response.choices[0]
+        content_finish_reason = getattr(choice, "finish_reason", None)
+        if content_finish_reason == "length":
+            logger.warning(
+                "The provider stopped the answer at the output budget",
+                extra={
+                    "model": config.model,
+                    "finish_reason": content_finish_reason,
+                    "max_tokens": config.max_tokens,
+                    "completion_tokens": (usage or {}).get("completion_tokens"),
+                },
+            )
+            raise LLMResponseError(
+                truncated_response_message("finish_reason: length", config.max_tokens)
+            )
+
+        return LLMResponse(text=choice.message.content, usage=usage)

@@ -287,3 +287,49 @@ class TestOllamaAdapter:
         with pytest.raises(LLMModelNotFoundError):
             await adapter.generate("Test prompt", self.config)
         assert mock_client.post.call_count == 1
+
+    # ── Truncation with non-empty content (S4, extraction-truncation) ──
+
+    @pytest.mark.asyncio
+    async def test_a_truncated_answer_with_content_is_a_failure_not_a_partial_result(self) -> None:
+        """``done_reason: length`` with content raises; it is never a partial result.
+
+        The adapter's transport is plain JSON over httpx — no SDK types the
+        body — so the signal is the ``done_reason`` top-level field the
+        non-streaming ``/api/chat`` body carries.
+        """
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "message": {"content": "1. summary: Task one\ndescription: Do it"},
+            "done_reason": "length",
+        }
+        mock_client.post.return_value = mock_response
+
+        adapter = OllamaAdapter(base_url=self.base_url, client=mock_client)
+        with pytest.raises(LLMResponseError) as exc_info:
+            await adapter.generate("Test prompt", self.config)
+
+        message = str(exc_info.value)
+        assert "length" in message
+        assert "max_tokens: 2048" in message
+        assert "max tokens" in message.lower()
+        assert mock_client.post.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_a_stop_done_reason_with_content_still_returns_the_answer(self) -> None:
+        """A legitimately finished answer keeps flowing through unchanged."""
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "message": {"content": "1. summary: Task one\ndescription: Do it"},
+            "done_reason": "stop",
+        }
+        mock_client.post.return_value = mock_response
+
+        adapter = OllamaAdapter(base_url=self.base_url, client=mock_client)
+        result = await adapter.generate("Test prompt", self.config)
+
+        assert "Task one" in result.text

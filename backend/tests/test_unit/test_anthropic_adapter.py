@@ -15,18 +15,24 @@ from storico.domain.ports import LLMConfig
 from storico.infrastructure.llm.anthropic_adapter import AnthropicAdapter
 
 
-def _mock_response(text: str | None, usage: dict | None = None) -> MagicMock:
+def _mock_response(
+    text: str | None,
+    usage: dict | None = None,
+    stop_reason: str | None = "end_turn",
+) -> MagicMock:
     """Build a fake messages response exposing a single text content block.
 
     ``usage`` is the dict the SDK's ``response.usage.model_dump()`` would return;
     ``None`` builds a response with no usage object at all, like a provider that
-    omits the container.
+    omits the container. ``stop_reason`` is set explicitly because a bare
+    ``MagicMock`` invents a truthy attribute, and the truncation check reads it.
     """
     response = MagicMock()
     block = MagicMock()
     block.type = "text"
     block.text = text
     response.content = [block] if text is not None else []
+    response.stop_reason = stop_reason
     if usage is None:
         response.usage = None
     else:
@@ -170,3 +176,60 @@ class TestAnthropicAdapter:
         adapter = AnthropicAdapter(api_key="test-key")
         with pytest.raises(LLMResponseError):
             await adapter.generate("Test prompt", self.config)
+
+
+# ── Truncation with non-empty content (S4, extraction-truncation) ──
+
+
+class TestTruncationDetection:
+    """A non-empty answer cut by the output budget is a classified failure.
+
+    The installed SDK types the signal as ``Message.stop_reason:
+    Optional[StopReason]`` with ``StopReason: TypeAlias = Literal["end_turn",
+    "max_tokens", ...]`` (``anthropic/types/message.py`` and
+    ``anthropic/types/stop_reason.py``), so ``max_tokens`` with text blocks in
+    hand is the observable truncation report.
+    """
+
+    def setup_method(self) -> None:
+        self.config = LLMConfig(model="claude-3-haiku-20240307", max_tokens=2048)
+
+    @patch("storico.infrastructure.llm.anthropic_adapter.AsyncAnthropic")
+    @pytest.mark.asyncio
+    async def test_a_truncated_answer_with_content_is_a_failure_not_a_partial_result(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        """``stop_reason: max_tokens`` with text raises; it is never a partial result."""
+        mock_client_cls.return_value.messages.create = AsyncMock(
+            return_value=_mock_response(
+                "1. summary: Task one\ndescription: Do it",
+                stop_reason="max_tokens",
+            )
+        )
+
+        adapter = AnthropicAdapter(api_key="test-key")
+        with pytest.raises(LLMResponseError) as exc_info:
+            await adapter.generate("Test prompt", self.config)
+
+        message = str(exc_info.value)
+        assert "max_tokens" in message
+        assert "max_tokens: 2048" in message
+        assert "max tokens" in message.lower()
+
+    @patch("storico.infrastructure.llm.anthropic_adapter.AsyncAnthropic")
+    @pytest.mark.asyncio
+    async def test_an_end_turn_stop_reason_with_content_still_returns_the_answer(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        """A legitimately finished answer keeps flowing through unchanged."""
+        mock_client_cls.return_value.messages.create = AsyncMock(
+            return_value=_mock_response(
+                "1. summary: Task one\ndescription: Do it",
+                stop_reason="end_turn",
+            )
+        )
+
+        adapter = AnthropicAdapter(api_key="test-key")
+        result = await adapter.generate("Test prompt", self.config)
+
+        assert "Task one" in result.text

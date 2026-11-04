@@ -419,3 +419,61 @@ class TestOpenAICompatibleBaseUrl:
         adapter = OpenAIAdapter(api_key="k", base_url="https://gw.example.io")
         with pytest.raises(LLMResponseError):
             await adapter.generate("p", self.config)
+
+
+# ── Truncation with non-empty content (S4, extraction-truncation) ──
+
+
+class TestTruncationDetection:
+    """A non-empty answer cut by the output budget is a classified failure.
+
+    The empty-content path already inspected ``finish_reason``; the hole was the
+    answer the budget cut *after* it had written something: three of six tasks
+    came back as a ``completed`` run. The installed SDK types the signal as
+    ``Choice.finish_reason: Literal["stop", "length", "tool_calls",
+    "content_filter", "function_call"]`` (``openai/types/chat/chat_completion.py``),
+    so ``length`` with content in hand is the observable truncation report.
+    """
+
+    def setup_method(self) -> None:
+        self.config = LLMConfig(model="gpt-3.5-turbo", max_tokens=2048)
+
+    @patch("storico.infrastructure.llm.openai_adapter.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_a_truncated_answer_with_content_is_a_failure_not_a_partial_result(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        """``finish_reason: length`` with content raises; it is never a partial result."""
+        mock_client_cls.return_value.chat.completions.create = AsyncMock(
+            return_value=_mock_response(
+                "1. summary: Task one\ndescription: Do it",
+                finish_reason="length",
+            )
+        )
+
+        adapter = OpenAIAdapter(api_key="test-key")
+        with pytest.raises(LLMResponseError) as exc_info:
+            await adapter.generate("Test prompt", self.config)
+
+        message = str(exc_info.value)
+        assert "length" in message
+        assert "max_tokens: 2048" in message
+        assert "max tokens" in message.lower()
+
+    @patch("storico.infrastructure.llm.openai_adapter.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_a_stop_finish_reason_with_content_still_returns_the_answer(
+        self, mock_client_cls: MagicMock
+    ) -> None:
+        """A legitimately finished answer keeps flowing through unchanged."""
+        mock_client_cls.return_value.chat.completions.create = AsyncMock(
+            return_value=_mock_response(
+                "1. summary: Task one\ndescription: Do it",
+                finish_reason="stop",
+            )
+        )
+
+        adapter = OpenAIAdapter(api_key="test-key")
+        result = await adapter.generate("Test prompt", self.config)
+
+        assert "Task one" in result.text

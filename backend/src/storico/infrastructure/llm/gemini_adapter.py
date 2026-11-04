@@ -11,6 +11,7 @@ from google.genai import types as genai_types
 from storico.domain.entities import LLMConnectionError, LLMResponseError
 from storico.domain.ports import LLMConfig, LLMPort
 from storico.domain.ports.llm_port import LLMResponse
+from storico.infrastructure.llm.truncation import truncated_response_message
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,31 @@ class GeminiAdapter(LLMPort):
                 extra={"model": config.model},
             )
             raise LLMResponseError("Gemini returned an empty response")
+
+        # S4 (extraction-truncation): the budget can also cut an answer that has
+        # already written something. The installed SDK types the signal as
+        # ``Candidate.finish_reason: Optional[FinishReason]`` with
+        # ``FinishReason.MAX_TOKENS`` (``google/genai/types.py``), read from the
+        # first candidate — the same candidate ``response.text`` reads. Raised
+        # as an ``LLMResponseError`` — an ``LLMError`` — so the runner takes the
+        # deterministic failure path without retrying (S3).
+        candidates = getattr(response, "candidates", None) or []
+        first_candidate = candidates[0] if candidates else None
+        finish_reason = (
+            getattr(first_candidate, "finish_reason", None) if first_candidate is not None else None
+        )
+        if finish_reason == genai_types.FinishReason.MAX_TOKENS:
+            logger.warning(
+                "Gemini stopped the answer at the output budget",
+                extra={
+                    "model": config.model,
+                    "finish_reason": str(finish_reason),
+                    "max_tokens": config.max_tokens,
+                },
+            )
+            raise LLMResponseError(
+                truncated_response_message("finish_reason: MAX_TOKENS", config.max_tokens)
+            )
 
         raw_usage = getattr(response, "usage_metadata", None)
         usage = raw_usage.model_dump() if raw_usage is not None else None
