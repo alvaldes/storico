@@ -1,3 +1,30 @@
+## v0.14.0 (2026-11-03)
+
+### Feat
+
+- **frontend**: explain every judge number and stop leaking float precision
+- **settings**: put the extraction and the judge side by side
+- **settings**: organise the workspace settings in four areas
+- **stories**: accept a dropped CSV file in the import dialog
+- **settings**: configure the judge as its own connection
+- **judge**: let the judge run on another provider and credential
+- **judge**: switch the judge on per run and show what it said
+- **judge**: score the rubric the experimental design fixed
+- **judge**: let the workspace name a separate judge model
+- **judge**: validate the judge's output and persist its verdict
+
+### Fix
+
+- **frontend**: stop promising a duration no extraction deadline enforces
+- **settings**: give the tabs a selected state and the form a readable width
+- **extraction**: mark a failed story extracted when a retry succeeds
+- **llm**: resolve an OpenAI-compatible base URL under /v1 like the model list
+- **judge**: never carry a credential to an endpoint it was not configured for
+- **judge**: close the six findings the review raised
+- **landing**: show the channel trailer as the demo video
+- **llm**: name the cause when a provider returns no content
+- **extraction**: honor the workspace max_tokens in the run
+
 ## v0.13.0 (2026-10-12)
 
 ### Feat
