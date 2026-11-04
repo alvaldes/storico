@@ -1,3 +1,9 @@
+## v0.14.1 (2026-11-04)
+
+### Fix
+
+- **extraction**: fail a run whose answer the output budget cut
+
 ## v0.14.0 (2026-11-03)
 
 ### Feat
