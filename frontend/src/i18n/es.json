@@ -289,7 +289,7 @@
     "extraction_complete": "Extraído",
     "extraction_retry": "Reintentar la extracción",
     "extraction_tasks_in_progress": "Extrayendo tareas...",
-    "extraction_takes_up_to_minute": "Esto puede tardar hasta un minuto",
+    "extraction_in_progress_hint": "Esto puede tardar un rato; depende del modelo",
     "create_duplicate_error": "Ya existe una historia de usuario con el mismo actor, funcionalidad y beneficio en este proyecto",
     "sort_created_desc": "Recientes primero",
     "sort_created_asc": "Antiguas primero",

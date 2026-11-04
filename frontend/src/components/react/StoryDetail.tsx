@@ -467,7 +467,7 @@ export function StoryDetail({ locale = 'en', storyId }: StoryDetailProps) {
       <Loader2 className="mb-3 h-8 w-8 text-muted-foreground animate-spin" />
       <p className="text-sm text-muted-foreground">{t.stories.extraction_tasks_in_progress}</p>
       <p className="text-xs text-muted-foreground mt-1 opacity-60">
-        {t.stories.extraction_takes_up_to_minute}
+        {t.stories.extraction_in_progress_hint}
       </p>
     </div>
   );

@@ -443,6 +443,32 @@ describe('StoryDetail — version selector and version-aware actions', () => {
     expect(screen.queryByText(t.versionSelector.no_output_title)).not.toBeInTheDocument();
   });
 
+  it('never promises how long a run will take — nothing enforces a duration', async () => {
+    setExtraction({
+      extractionId: 'ext-2',
+      status: 'pending',
+      userStoryStatus: 'extracting',
+      error: null,
+      errorCode: null,
+      versionNumber: 2,
+    });
+    vi.mocked(listVersions).mockResolvedValue([
+      makeVersion({ id: 'ext-2', versionNumber: 2, status: 'pending', hasOutput: false }),
+    ]);
+    useTaskStore.setState({ tasks: { [STORY_ID]: [] } });
+
+    render(<StoryDetail locale={LOCALE} storyId={STORY_ID} />);
+
+    // The wait hint says the wait depends on the model and names no duration.
+    // This is the rule, not a coincidence of wording: no extraction-level
+    // deadline exists (only the Ollama adapter sets a client timeout), so any
+    // number here would be a promise the server cannot keep. A digit in this
+    // hint fails the test.
+    const hint = await screen.findByText(t.stories.extraction_in_progress_hint);
+    expect(hint).toBeInTheDocument();
+    expect(hint.textContent).not.toMatch(/\d/);
+  });
+
   it('lists every version with exactly the current one marked', async () => {
     vi.mocked(listVersions).mockResolvedValue([
       makeVersion({ id: 'ext-3', versionNumber: 3, status: 'failed', hasOutput: false, errorInfo: 'Ollama unreachable' }),
