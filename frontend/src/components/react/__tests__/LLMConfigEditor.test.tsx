@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 
 import { LLMConfigEditor } from '@/components/react/LLMConfigEditor';
 import { getLLMConfig, upsertLLMConfig, fetchAvailableModels } from '@/lib/llm-config-api';
-import { getPrompts, upsertPrompts } from '@/lib/prompts-api';
 import {
   createCustomProvider,
   listCustomProviders,
@@ -18,11 +17,6 @@ vi.mock('@/lib/llm-config-api', () => ({
   getLLMConfig: vi.fn(),
   upsertLLMConfig: vi.fn(),
   fetchAvailableModels: vi.fn(),
-}));
-
-vi.mock('@/lib/prompts-api', () => ({
-  getPrompts: vi.fn(),
-  upsertPrompts: vi.fn(),
 }));
 
 // Defaults to an empty registry: most tests here are about the known-provider path,
@@ -41,132 +35,17 @@ vi.mock('sonner', () => ({
 }));
 
 const WORKSPACE_ID = 'ws-1';
-const SWITCH_NAME = 'Automatic few-shot examples';
 
 /**
- * `FewShotConfigEditor` reports a generic `{ enabled, limit, threshold }` payload
- * while the persisted row speaks `fewShot*`. These tests pin the round-trip across
- * that boundary: the switch has to read back the value it just wrote, and the save
- * payload has to carry the new value rather than the loaded one.
- *
- * Testing the child alone cannot catch a mapping regression — its own unit tests
- * assert the payload it emits, which was never wrong.
+ * The judge fields of the base fixture: the judge on the same model as the extraction,
+ * which is the mode the radio group lands on when nothing is configured.
  */
-describe('LLMConfigEditor few-shot wiring', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    vi.mocked(getLLMConfig).mockResolvedValue({
-      provider: 'ollama',
-      model: 'llama3.2',
-      temperature: 0.1,
-      maxTokens: 2048,
-      baseUrl: 'http://localhost:11434',
-      apiKey: '',
-    });
-    vi.mocked(getPrompts).mockResolvedValue({
-      systemPrompt: 'You are an expert software development lead.',
-      instructionTemplate: 'Break this user story into smaller development tasks.',
-      fewShotEnabled: true,
-      fewShotLimit: 3,
-      fewShotThreshold: 0.85,
-    });
-    vi.mocked(fetchAvailableModels).mockResolvedValue([]);
-    vi.mocked(upsertLLMConfig).mockResolvedValue({
-      provider: 'ollama',
-      model: 'llama3.2',
-      temperature: 0.1,
-      maxTokens: 2048,
-      baseUrl: 'http://localhost:11434',
-      apiKey: '',
-    });
-    vi.mocked(upsertPrompts).mockResolvedValue({});
-  });
-
-  async function renderEditor() {
-    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
-    // The editor renders a loading placeholder until both requests settle.
-    return screen.findByRole('switch', { name: SWITCH_NAME });
-  }
-
-  it('reads back the value it wrote when the enabled switch is toggled off', async () => {
-    const user = userEvent.setup();
-    const control = await renderEditor();
-    expect(control).toHaveAttribute('aria-checked', 'true');
-
-    await user.click(control);
-
-    await waitFor(() =>
-      expect(screen.getByRole('switch', { name: SWITCH_NAME })).toHaveAttribute(
-        'aria-checked',
-        'false',
-      ),
-    );
-  });
-
-  it('toggles back on from off', async () => {
-    const user = userEvent.setup();
-    const control = await renderEditor();
-
-    await user.click(control);
-    await waitFor(() =>
-      expect(screen.getByRole('switch', { name: SWITCH_NAME })).toHaveAttribute(
-        'aria-checked',
-        'false',
-      ),
-    );
-
-    await user.click(screen.getByRole('switch', { name: SWITCH_NAME }));
-
-    await waitFor(() =>
-      expect(screen.getByRole('switch', { name: SWITCH_NAME })).toHaveAttribute(
-        'aria-checked',
-        'true',
-      ),
-    );
-  });
-
-  it('saves the toggled value, not the loaded one', async () => {
-    const user = userEvent.setup();
-    const control = await renderEditor();
-
-    await user.click(control);
-    await waitFor(() =>
-      expect(screen.getByRole('switch', { name: SWITCH_NAME })).toHaveAttribute(
-        'aria-checked',
-        'false',
-      ),
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Save Prompt Configuration' }));
-
-    await waitFor(() =>
-      expect(upsertPrompts).toHaveBeenCalledWith(
-        WORKSPACE_ID,
-        expect.objectContaining({ fewShotEnabled: false }),
-      ),
-    );
-  });
-
-  it('disables the limit and threshold controls while few-shot is off', async () => {
-    const user = userEvent.setup();
-    const control = await renderEditor();
-
-    await user.click(control);
-
-    // The slider's label names the group wrapper; the range input it controls is
-    // only reachable with `hidden: true` because jsdom cannot lay out the thumb.
-    await waitFor(() =>
-      expect(
-        within(screen.getByRole('group', { name: 'Max examples' })).getByRole('slider', {
-          hidden: true,
-        }),
-      ).toBeDisabled(),
-    );
-    // Both inputs are gated on the same flag, so they must agree with the switch.
-    expect(control).toHaveAttribute('aria-checked', 'false');
-  });
-});
+const EMPTY_JUDGE = {
+  judgeProvider: undefined,
+  judgeModel: undefined,
+  judgeApiKey: undefined,
+  judgeBaseUrl: undefined,
+} as const;
 
 describe('LLMConfigEditor model field', () => {
   beforeEach(() => {
@@ -180,13 +59,6 @@ describe('LLMConfigEditor model field', () => {
       baseUrl: '',
       apiKey: 'AIza-test',
     });
-    vi.mocked(getPrompts).mockResolvedValue({
-      systemPrompt: 'You are an expert software development lead.',
-      instructionTemplate: 'Break this user story into smaller development tasks.',
-      fewShotEnabled: true,
-      fewShotLimit: 3,
-      fewShotThreshold: 0.85,
-    });
     vi.mocked(fetchAvailableModels).mockResolvedValue([
       { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
       { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
@@ -199,7 +71,6 @@ describe('LLMConfigEditor model field', () => {
       baseUrl: '',
       apiKey: 'AIza-test',
     });
-    vi.mocked(upsertPrompts).mockResolvedValue({});
   });
 
   it('shows the saved model id and a placeholder that names no model', async () => {
@@ -543,13 +414,6 @@ describe('LLMConfigEditor custom provider', () => {
       baseUrl: 'https://api.deepseek.com/v1',
       apiKey: 'sk-deepseek',
     });
-    vi.mocked(getPrompts).mockResolvedValue({
-      systemPrompt: 'You are an expert software development lead.',
-      instructionTemplate: 'Break this user story into smaller development tasks.',
-      fewShotEnabled: true,
-      fewShotLimit: 3,
-      fewShotThreshold: 0.85,
-    });
     vi.mocked(fetchAvailableModels).mockResolvedValue(CUSTOM_MODELS);
     vi.mocked(upsertLLMConfig).mockResolvedValue({
       provider: 'deepseek',
@@ -559,7 +423,6 @@ describe('LLMConfigEditor custom provider', () => {
       baseUrl: 'https://api.deepseek.com/v1',
       apiKey: 'sk-deepseek',
     });
-    vi.mocked(upsertPrompts).mockResolvedValue({});
   });
 
   /**
@@ -1066,7 +929,6 @@ describe('LLMConfigEditor known provider', () => {
       baseUrl: '',
       apiKey: 'AIza-test',
     });
-    vi.mocked(getPrompts).mockResolvedValue({});
     vi.mocked(fetchAvailableModels).mockResolvedValue([]);
     vi.mocked(upsertLLMConfig).mockResolvedValue({
       provider: 'gemini',
@@ -1076,7 +938,6 @@ describe('LLMConfigEditor known provider', () => {
       baseUrl: '',
       apiKey: 'AIza-test',
     });
-    vi.mocked(upsertPrompts).mockResolvedValue({});
   });
 
   it('offers no rename action', async () => {
@@ -1150,15 +1011,7 @@ describe('LLMConfigEditor save gate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    vi.mocked(getPrompts).mockResolvedValue({
-      systemPrompt: 'You are an expert software development lead.',
-      instructionTemplate: 'Break this user story into smaller development tasks.',
-      fewShotEnabled: true,
-      fewShotLimit: 3,
-      fewShotThreshold: 0.85,
-    });
     vi.mocked(fetchAvailableModels).mockResolvedValue([]);
-    vi.mocked(upsertPrompts).mockResolvedValue({});
     vi.mocked(upsertLLMConfig).mockResolvedValue({
       provider: 'ollama',
       model: 'llama3.2',
@@ -1344,133 +1197,22 @@ describe('LLMConfigEditor save gate', () => {
 });
 
 /**
- * The judge model (D7).
- *
- * The judge runs on a model the workspace names apart from the extraction model, so
- * the field has to round-trip: a saved model loads, a typed model is sent, and — the
- * rule the other fields do not share — clearing it sends the explicit empty string,
- * because the payload keeps the stored value when the key is omitted.
- */
-describe('LLMConfigEditor judge model', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    vi.mocked(listCustomProviders).mockResolvedValue([]);
-    vi.mocked(getLLMConfig).mockResolvedValue({
-      provider: 'ollama',
-      model: 'llama3.2',
-      temperature: 0.1,
-      maxTokens: 2048,
-      baseUrl: 'http://localhost:11434',
-      apiKey: '',
-    });
-    vi.mocked(getPrompts).mockResolvedValue({});
-    vi.mocked(fetchAvailableModels).mockResolvedValue([]);
-    vi.mocked(upsertLLMConfig).mockResolvedValue({
-      provider: 'ollama',
-      model: 'llama3.2',
-      temperature: 0.1,
-      maxTokens: 2048,
-      baseUrl: 'http://localhost:11434',
-      apiKey: '',
-    });
-    vi.mocked(upsertPrompts).mockResolvedValue({});
-  });
-
-  /** Render the editor with a stored judge model the caller chooses. */
-  async function renderWithJudge(judgeModel?: string | null) {
-    vi.mocked(getLLMConfig).mockResolvedValue({
-      provider: 'ollama',
-      model: 'llama3.2',
-      temperature: 0.1,
-      maxTokens: 2048,
-      baseUrl: 'http://localhost:11434',
-      apiKey: '',
-      judgeModel,
-    });
-    render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
-    return screen.findByLabelText('Judge model');
-  }
-
-  it('loads the saved judge model into its field', async () => {
-    expect(await renderWithJudge('mistral-7b')).toHaveValue('mistral-7b');
-  });
-
-  it('stays empty when no judge model is saved', async () => {
-    expect(await renderWithJudge(null)).toHaveValue('');
-  });
-
-  it('says what the field is for and what empty means', async () => {
-    await renderWithJudge(null);
-
-    expect(
-      await screen.findByText(
-        'The model that judges extractions. Leave empty to use the extraction model.',
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it('sends the judge model it holds when saving', async () => {
-    const user = userEvent.setup();
-    const input = await renderWithJudge(null);
-
-    await user.type(input, 'mistral-7b');
-    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
-
-    await waitFor(() =>
-      expect(upsertLLMConfig).toHaveBeenCalledWith(
-        WORKSPACE_ID,
-        expect.objectContaining({ judgeModel: 'mistral-7b' }),
-      ),
-    );
-  });
-
-  it('sends an empty string when the judge model is cleared, never a dropped key', async () => {
-    const user = userEvent.setup();
-    const input = await renderWithJudge('mistral-7b');
-    await waitFor(() => expect(input).toHaveValue('mistral-7b'));
-
-    await user.clear(input);
-    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
-
-    // The payload keeps the stored judge model when the key is omitted (D7): only
-    // the explicit empty string clears it, so the save must not map `''` to an
-    // omitted key the way the sibling fields do.
-    await waitFor(() =>
-      expect(upsertLLMConfig).toHaveBeenCalledWith(
-        WORKSPACE_ID,
-        expect.objectContaining({ judgeModel: '' }),
-      ),
-    );
-    expect(upsertLLMConfig).not.toHaveBeenCalledWith(
-      WORKSPACE_ID,
-      expect.objectContaining({ judgeModel: 'mistral-7b' }),
-    );
-  });
-
-  it('refuses an overlong judge model with the siblings\u2019 message and no save', async () => {
-    const user = userEvent.setup();
-    const input = await renderWithJudge(null);
-
-    await user.type(input, 'a'.repeat(101));
-    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
-
-    expect(await screen.findByText('This value is too long.')).toBeInTheDocument();
-    expect(upsertLLMConfig).not.toHaveBeenCalled();
-  });
-});
-
 /**
- * The judge block (D9/S10): a second, independent LLM configuration below the
- * extraction one.
+ * The judge as three explicit modes (S11).
  *
- * The owner's requirement (S10, verbatim in the ODD task) is that the judge may run
- * on the extraction's provider and credential with another model, *or* on another
- * provider with another credential and another model — both must be coverable from
- * this form. The refusal of an incomplete cross-provider block is the backend's (it
- * surfaces as a judged failure), so the form accepts it and only warns inline.
+ * Instead of four peer fields whose emptiness silently meant "same as extraction",
+ * the judge now states one of three relationships through a radio group: same model
+ * (default), another model of this provider, or another provider with its own
+ * credential. The mode maps onto the same four persisted fields D9 introduced —
+ * same model sends all four empty, another model sends `judge_model` only, another
+ * provider sends all four — and the save still always travels explicitly, because
+ * the payload keeps a stored value when its key is omitted.
  */
-describe('LLMConfigEditor judge block', () => {
+describe('LLMConfigEditor judge modes', () => {
+  const SAME = 'Same model as extraction';
+  const OTHER_MODEL = 'Another model of this provider';
+  const OTHER_PROVIDER = 'Another provider with its own credential';
+
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -1482,8 +1224,8 @@ describe('LLMConfigEditor judge block', () => {
       maxTokens: 2048,
       baseUrl: 'http://localhost:11434',
       apiKey: '',
+      ...EMPTY_JUDGE,
     });
-    vi.mocked(getPrompts).mockResolvedValue({});
     vi.mocked(fetchAvailableModels).mockResolvedValue([]);
     vi.mocked(upsertLLMConfig).mockResolvedValue({
       provider: 'ollama',
@@ -1493,11 +1235,10 @@ describe('LLMConfigEditor judge block', () => {
       baseUrl: 'http://localhost:11434',
       apiKey: '',
     });
-    vi.mocked(upsertPrompts).mockResolvedValue({});
   });
 
   /** Render the editor with a stored judge block the caller chooses. */
-  async function renderWithJudgeBlock(judge: Partial<WorkspaceLLMConfig> = {}) {
+  async function renderWithJudge(judge: Partial<WorkspaceLLMConfig> = {}) {
     vi.mocked(getLLMConfig).mockResolvedValue({
       provider: 'ollama',
       model: 'llama3.2',
@@ -1508,55 +1249,68 @@ describe('LLMConfigEditor judge block', () => {
       ...judge,
     });
     render(<LLMConfigEditor locale="en" workspaceId={WORKSPACE_ID} />);
-    return screen.findByLabelText('Judge model');
+    // The radio group is the block's entry point; waiting for it settles the load.
+    return screen.findByRole('radiogroup', { name: 'Judge configuration' });
   }
 
-  it('loads the saved judge values into their fields', async () => {
-    await renderWithJudgeBlock({
+  const modeRadio = (name: string) => screen.getByRole('radio', { name });
+
+  it('defaults to the same model, with no judge fields revealed', async () => {
+    await renderWithJudge();
+
+    expect(modeRadio(SAME)).toBeChecked();
+    expect(modeRadio(OTHER_MODEL)).not.toBeChecked();
+    expect(modeRadio(OTHER_PROVIDER)).not.toBeChecked();
+    expect(screen.queryByLabelText('Judge model')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Judge provider')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Judge API key')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Judge Base URL')).not.toBeInTheDocument();
+  });
+
+  it('lands in "another model" when the row holds a judge model alone', async () => {
+    await renderWithJudge({ judgeModel: 'mistral-7b' });
+
+    expect(modeRadio(OTHER_MODEL)).toBeChecked();
+    expect(modeRadio(SAME)).not.toBeChecked();
+    // The mode reveals exactly the field it needs: the model fed by the extraction
+    // provider's list, not the provider, credential or endpoint fields.
+    expect(screen.getByLabelText('Judge model')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Judge provider')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Judge API key')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Judge Base URL')).not.toBeInTheDocument();
+  });
+
+  it('lands in "another provider" when the row holds a judge provider', async () => {
+    await renderWithJudge({
       judgeProvider: 'openai',
       judgeModel: 'gpt-4o-mini',
       judgeApiKey: 'sk-judge',
       judgeBaseUrl: 'https://api.openai.com/v1',
     });
 
+    expect(modeRadio(OTHER_PROVIDER)).toBeChecked();
+    // The saved provider is named in the collapsed select, not silently dropped.
+    expect(screen.getByLabelText('Judge provider')).toHaveTextContent('OpenAI');
     expect(screen.getByLabelText('Judge model')).toHaveValue('gpt-4o-mini');
     expect(screen.getByLabelText('Judge API key')).toHaveValue('sk-judge');
     expect(screen.getByLabelText('Judge Base URL')).toHaveValue('https://api.openai.com/v1');
-    // The saved provider is named in the collapsed select, not silently dropped.
-    expect(screen.getByLabelText('Judge provider')).toHaveTextContent('OpenAI');
   });
 
-  it('shows "Same as extraction" and empty fields when nothing is configured', async () => {
-    await renderWithJudgeBlock();
-
-    expect(screen.getByLabelText('Judge provider')).toHaveTextContent('Same as extraction');
-    expect(screen.getByLabelText('Judge model')).toHaveValue('');
-    expect(screen.getByLabelText('Judge API key')).toHaveValue('');
-    expect(screen.getByLabelText('Judge Base URL')).toHaveValue('');
-  });
-
-  it('states the fallback rule and the no-borrowed-credential rule as visible copy', async () => {
-    await renderWithJudgeBlock();
-
-    // The whole point of the block: empty means "use the extraction configuration",
-    // and another provider needs its own credential. It must be rendered text, not
-    // a tooltip.
-    expect(
-      await screen.findByText(
-        'Every field left empty uses the extraction configuration. A judge on a different provider requires its own credential: the extraction credential is never sent to another provider.',
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it('sends all four judge fields when saving, including the empty ones', async () => {
+  it('selecting "another model" reveals the model select and saves judge_model only', async () => {
     const user = userEvent.setup();
-    const input = await renderWithJudgeBlock();
+    vi.mocked(fetchAvailableModels).mockResolvedValue([
+      { id: 'mistral-7b', name: 'Mistral 7B' },
+    ]);
+    await renderWithJudge();
 
-    await user.type(input, 'mistral-7b');
+    await user.click(modeRadio(OTHER_MODEL));
+    await user.click(await screen.findByLabelText('Judge model'));
+    await user.click(await screen.findByRole('option', { name: 'Mistral 7B' }));
+
     await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
 
-    // The payload keeps a stored value when its key is omitted, so the form always
-    // sends the four judge fields explicitly: only the empty string clears one.
+    // The mode maps onto the persisted fields: judge_model travels, and the other
+    // three go explicitly empty so a stored value is cleared rather than kept.
     await waitFor(() =>
       expect(upsertLLMConfig).toHaveBeenCalledWith(
         WORKSPACE_ID,
@@ -1570,46 +1324,110 @@ describe('LLMConfigEditor judge block', () => {
     );
   });
 
-  it('accepts a judge block on another provider with no judge credential', async () => {
+  it('saves the judge model it loaded when the field is untouched', async () => {
     const user = userEvent.setup();
-    await renderWithJudgeBlock();
-
-    await user.click(screen.getByLabelText('Judge provider'));
-    await user.click(await screen.findByRole('option', { name: 'OpenAI' }));
+    await renderWithJudge({ judgeModel: 'mistral-7b' });
 
     await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
 
-    // D9: the refusal of a cross-provider block without its own key is the
-    // backend's — it surfaces as a judged failure, not a refused extraction. The
-    // form must not block the save; the inline warning is the only reaction.
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ judgeModel: 'mistral-7b' }),
+      ),
+    );
+  });
+
+  it('selecting "another provider" reveals the four fields and saves all four', async () => {
+    const user = userEvent.setup();
+    await renderWithJudge();
+
+    await user.click(modeRadio(OTHER_PROVIDER));
+
+    expect(screen.getByLabelText('Judge provider')).toBeInTheDocument();
+    expect(screen.getByLabelText('Judge model')).toBeInTheDocument();
+    expect(screen.getByLabelText('Judge API key')).toBeInTheDocument();
+    expect(screen.getByLabelText('Judge Base URL')).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Judge provider'));
+    await user.click(await screen.findByRole('option', { name: 'OpenAI' }));
+    await user.type(screen.getByLabelText('Judge model'), 'gpt-4o-mini');
+    await user.type(screen.getByLabelText('Judge API key'), 'sk-judge');
+    await user.type(screen.getByLabelText('Judge Base URL'), 'https://api.openai.com/v1');
+
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
     await waitFor(() =>
       expect(upsertLLMConfig).toHaveBeenCalledWith(
         WORKSPACE_ID,
         expect.objectContaining({
           judgeProvider: 'openai',
-          judgeApiKey: '',
+          judgeModel: 'gpt-4o-mini',
+          judgeApiKey: 'sk-judge',
+          judgeBaseUrl: 'https://api.openai.com/v1',
         }),
       ),
     );
   });
 
-  it('warns inline that a cross-provider judge needs its own credential', async () => {
+  it('switching back to "same model" clears the four judge fields on save', async () => {
     const user = userEvent.setup();
-    await renderWithJudgeBlock();
+    await renderWithJudge({
+      judgeProvider: 'openai',
+      judgeModel: 'gpt-4o-mini',
+      judgeApiKey: 'sk-judge',
+      judgeBaseUrl: 'https://api.openai.com/v1',
+    });
 
-    await user.click(screen.getByLabelText('Judge provider'));
-    await user.click(await screen.findByRole('option', { name: 'OpenAI' }));
+    await user.click(modeRadio(SAME));
+    // The revealed fields leave the page with the mode: nothing of the other
+    // provider's configuration stays visible to be saved by accident.
+    expect(screen.queryByLabelText('Judge model')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Judge API key')).not.toBeInTheDocument();
 
-    expect(
-      await screen.findByText(
-        'The judge will need its own credential: a key for one provider is never sent to another.',
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    // The explicit empty strings are what clear the stored row (D9): an omitted key
+    // would keep it, so all four travel.
+    await waitFor(() =>
+      expect(upsertLLMConfig).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({
+          judgeProvider: '',
+          judgeModel: '',
+          judgeApiKey: '',
+          judgeBaseUrl: '',
+        }),
       ),
-    ).toBeInTheDocument();
+    );
+  });
+
+  it('refuses to save "another model" without a model', async () => {
+    const user = userEvent.setup();
+    await renderWithJudge();
+
+    await user.click(modeRadio(OTHER_MODEL));
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    expect(upsertLLMConfig).not.toHaveBeenCalled();
+    expect(await screen.findByText('This field is required.')).toBeInTheDocument();
+  });
+
+  it('refuses to save "another provider" without its provider and model', async () => {
+    const user = userEvent.setup();
+    await renderWithJudge();
+
+    await user.click(modeRadio(OTHER_PROVIDER));
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    expect(upsertLLMConfig).not.toHaveBeenCalled();
+    // One red message per gap the mode names.
+    expect(await screen.findAllByText('This field is required.')).toHaveLength(2);
   });
 
   it('keeps the judge values when the extraction provider changes', async () => {
     const user = userEvent.setup();
-    await renderWithJudgeBlock({
+    await renderWithJudge({
       judgeProvider: 'openai',
       judgeModel: 'gpt-4o-mini',
       judgeApiKey: 'sk-judge',
@@ -1628,7 +1446,7 @@ describe('LLMConfigEditor judge block', () => {
 
   it('clears the judge credentials, endpoint and model when the judge provider changes', async () => {
     const user = userEvent.setup();
-    await renderWithJudgeBlock({
+    await renderWithJudge({
       judgeProvider: 'openai',
       judgeModel: 'gpt-4o-mini',
       judgeApiKey: 'sk-judge',
@@ -1645,45 +1463,66 @@ describe('LLMConfigEditor judge block', () => {
     expect(screen.getByLabelText('Judge Base URL')).toHaveValue('');
   });
 
-  it('keeps the judge model when the judge provider is cleared back to the extraction', async () => {
+  it('accepts a judge on another provider with no judge credential, with a warning', async () => {
     const user = userEvent.setup();
-    await renderWithJudgeBlock({
-      judgeProvider: 'openai',
-      judgeModel: 'gpt-4o-mini',
-      judgeApiKey: 'sk-judge',
-      judgeBaseUrl: 'https://api.openai.com/v1',
-    });
+    await renderWithJudge();
 
+    await user.click(modeRadio(OTHER_PROVIDER));
     await user.click(screen.getByLabelText('Judge provider'));
-    await user.click(await screen.findByRole('option', { name: 'Same as extraction' }));
+    await user.click(await screen.findByRole('option', { name: 'OpenAI' }));
+    await user.type(screen.getByLabelText('Judge model'), 'gpt-4o-mini');
 
-    // Clearing the judge provider must not clear the judge model: extraction
-    // provider + judge model is exactly the D7 configuration the field exists for,
-    // and the value stays visible in the field, so nothing is dropped silently.
-    await waitFor(() =>
-      expect(screen.getByLabelText('Judge provider')).toHaveTextContent('Same as extraction'),
-    );
-    expect(screen.getByLabelText('Judge model')).toHaveValue('gpt-4o-mini');
-  });
+    expect(
+      await screen.findByText(
+        'The judge will need its own credential: a key for one provider is never sent to another.',
+      ),
+    ).toBeInTheDocument();
 
-  it('sends an explicit empty string when a judge field is cleared', async () => {
-    const user = userEvent.setup();
-    const input = await renderWithJudgeBlock({ judgeModel: 'gpt-4o-mini' });
-    await waitFor(() => expect(input).toHaveValue('gpt-4o-mini'));
-
-    await user.clear(input);
     await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
 
+    // D9: the refusal of a cross-provider block without its own key is the
+    // backend's — it surfaces as a judged failure, not a refused extraction. The
+    // form must not block the save; the inline warning is the only reaction.
     await waitFor(() =>
       expect(upsertLLMConfig).toHaveBeenCalledWith(
         WORKSPACE_ID,
-        expect.objectContaining({ judgeModel: '' }),
+        expect.objectContaining({
+          judgeProvider: 'openai',
+          judgeApiKey: '',
+        }),
       ),
     );
   });
 
+  it('refuses an overlong judge model with the siblings\u2019 message and no save', async () => {
+    const user = userEvent.setup();
+    await renderWithJudge();
+
+    await user.click(modeRadio(OTHER_PROVIDER));
+    await user.click(screen.getByLabelText('Judge provider'));
+    await user.click(await screen.findByRole('option', { name: 'OpenAI' }));
+    await user.type(screen.getByLabelText('Judge model'), 'a'.repeat(101));
+    await user.click(screen.getByRole('button', { name: 'Save LLM Configuration' }));
+
+    expect(await screen.findByText('This value is too long.')).toBeInTheDocument();
+    expect(upsertLLMConfig).not.toHaveBeenCalled();
+  });
+
+  it('states how the modes relate to the extraction as visible copy', async () => {
+    await renderWithJudge();
+
+    // The block's framing sentence: the radio labels are the point, and this line
+    // says what they choose between. Rendered text, not a tooltip.
+    expect(
+      await screen.findByText('How the judge relates to the extraction configuration:'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Same model as extraction')).toBeInTheDocument();
+    expect(screen.getByText('Another model of this provider')).toBeInTheDocument();
+    expect(screen.getByText('Another provider with its own credential')).toBeInTheDocument();
+  });
+
   it('masks the judge credential like the extraction one', async () => {
-    await renderWithJudgeBlock({ judgeApiKey: 'sk-judge' });
+    await renderWithJudge({ judgeProvider: 'openai', judgeApiKey: 'sk-judge' });
 
     // Same convention as the extraction key: the saved value loads back into the
     // field, but it never renders in clear text.

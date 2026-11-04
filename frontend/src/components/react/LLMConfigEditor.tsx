@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useResolvedTheme } from '@/stores/uiStore';
 import {
   Bot,
-  FileText,
   Check,
   X,
   LoaderCircle,
@@ -16,7 +15,6 @@ import {
 import { toast } from 'sonner';
 import { getLLMConfig, upsertLLMConfig, fetchAvailableModels } from '@/lib/llm-config-api';
 import type { AvailableModel, ModelProbe } from '@/lib/llm-config-api';
-import { getPrompts, upsertPrompts } from '@/lib/prompts-api';
 import { Button } from '@/components/ui/button';
 import {
   Combobox,
@@ -37,7 +35,6 @@ import {
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
-import { Textarea } from '@/components/ui/textarea';
 import { Field, FieldLabel, FieldDescription, FieldError } from '@/components/ui/field';
 import {
   Select,
@@ -46,8 +43,8 @@ import {
   SelectSeparator,
   SelectTrigger,
 } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ProviderIcon } from '@/components/ui/provider-icon';
-import { FewShotConfigEditor } from '@/components/react/FewShotConfigEditor';
 import { CustomProviderDialog } from '@/components/react/CustomProviderDialog';
 import { listCustomProviders } from '@/lib/custom-providers-api';
 import {
@@ -57,7 +54,7 @@ import {
 import { llmConfigDraftSchema } from '@/schemas/workspace';
 import type { LLMConfigIssueCode } from '@/schemas/workspace';
 import { ADD_CUSTOM_PROVIDER_VALUE, KNOWN_PROVIDERS, isKnownProvider } from '@/lib/llm-providers';
-import type { CustomProvider, WorkspaceLLMConfig, WorkspacePrompt } from '@/types/workspace';
+import type { CustomProvider, WorkspaceLLMConfig } from '@/types/workspace';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 
@@ -75,13 +72,32 @@ interface DraftIssue {
 }
 
 /**
- * The judge provider select's value for "no judge provider of its own".
+ * The three relationships the judge can state (S11, owner's choices 2026-11-03).
  *
- * An empty string is what the wire means by it, but a select cannot carry an empty
- * option value, so the spelling is impossible to mistake for a provider name — the
- * same move `ADD_CUSTOM_PROVIDER_VALUE` makes for the extraction select.
+ * The radio labels are the point of the block: instead of four peer fields whose
+ * emptiness silently meant "same as extraction", the judge now says outright which of
+ * the three configurations it runs on, and the reveal shows exactly the fields that
+ * mode needs.
  */
-const JUDGE_SAME_AS_EXTRACTION = '__same_as_extraction__';
+type JudgeMode = 'same' | 'other-model' | 'other-provider';
+
+/**
+ * Which mode a stored row loads into.
+ *
+ * The four judge fields keep their meaning from D9: `judge_provider` set means the
+ * judge runs on its own provider; otherwise any other set field means "another model
+ * of the extraction provider"; all four empty is the default — the same model.
+ */
+function deriveJudgeMode(judge: {
+  provider: string;
+  model: string;
+  apiKey: string;
+  baseUrl: string;
+}): JudgeMode {
+  if (judge.provider !== '') return 'other-provider';
+  if (judge.model !== '' || judge.apiKey !== '' || judge.baseUrl !== '') return 'other-model';
+  return 'same';
+}
 
 export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   const t = locale === 'es' ? es : en;
@@ -107,6 +123,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     apiKey: '',
     baseUrl: '',
   });
+  const [judgeMode, setJudgeMode] = useState<JudgeMode>('same');
   const [llmSaving, setLlmSaving] = useState(false);
   const [llmSaveResult, setLlmSaveResult] = useState<'idle' | 'success' | 'error'>('idle');
 
@@ -128,6 +145,22 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
   /* ── Draft validation ── */
 
   /**
+   * The judge values as the mode maps them onto the persisted row (S11).
+   *
+   * Same model sends all four empty — which is what clears them; another model of
+   * this provider sends `judge_model` only; another provider sends all four. Validating
+   * *this* shape rather than the raw form state is what keeps the draft check honest:
+   * a stale value left in state by a mode switch is never sent, so it must not be
+   * validated either.
+   */
+  const effectiveJudge =
+    judgeMode === 'same'
+      ? { provider: '', model: '', apiKey: '', baseUrl: '' }
+      : judgeMode === 'other-model'
+        ? { provider: '', model: judgeConfig.model, apiKey: '', baseUrl: '' }
+        : judgeConfig;
+
+  /**
    * The draft exactly as `llmConfigDraftSchema` reads it.
    *
    * The form holds what the API would store as `null` in an empty string, and always
@@ -142,21 +175,38 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     maxTokens: llmConfig.maxTokens ?? 2048,
     baseUrl: llmConfig.baseUrl ?? '',
     apiKey: llmConfig.apiKey ?? '',
-    judgeProvider: judgeConfig.provider,
-    judgeModel: judgeConfig.model,
-    judgeApiKey: judgeConfig.apiKey,
-    judgeBaseUrl: judgeConfig.baseUrl,
+    judgeProvider: effectiveJudge.provider,
+    judgeModel: effectiveJudge.model,
+    judgeApiKey: effectiveJudge.apiKey,
+    judgeBaseUrl: effectiveJudge.baseUrl,
   };
 
   // Recomputed on every render, never stored: an error disappears the moment the value
   // that caused it is fixed, instead of when some handler remembers to clear it.
   const draftIssues: DraftIssue[] = (() => {
     const parsed = llmConfigDraftSchema.safeParse(draftToValidate);
-    if (parsed.success) return [];
-    return parsed.error.issues.map((issue) => ({
-      field: String(issue.path[0] ?? ''),
-      code: issue.message as LLMConfigIssueCode,
-    }));
+    const issues: DraftIssue[] = parsed.success
+      ? []
+      : parsed.error.issues.map((issue) => ({
+          field: String(issue.path[0] ?? ''),
+          code: issue.message as LLMConfigIssueCode,
+        }));
+    // The modes' own completeness rule (S11): a mode that names its fields must have
+    // them filled. The credential stays a warning, not a gate — the run is what
+    // refuses a cross-provider judge without one, never the form (D9).
+    const modeRequired: string[] =
+      judgeMode === 'other-model'
+        ? ['judgeModel']
+        : judgeMode === 'other-provider'
+          ? ['judgeProvider', 'judgeModel']
+          : [];
+    for (const field of modeRequired) {
+      const value = draftToValidate[field as keyof typeof draftToValidate];
+      if (typeof value === 'string' && value.trim() === '') {
+        issues.push({ field, code: 'required' });
+      }
+    }
+    return issues;
   })();
 
   // Before the first save attempt the form explains itself with the summary below
@@ -201,17 +251,6 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     return issue ? <FieldError>{issueCopy[issue.code]}</FieldError> : null;
   };
 
-  /* ── Prompt Config State ── */
-  const [prompts, setPrompts] = useState<WorkspacePrompt>({
-    systemPrompt: '',
-    instructionTemplate: '',
-    fewShotEnabled: true,
-    fewShotLimit: 3,
-    fewShotThreshold: 0.85,
-  });
-  const [promptSaving, setPromptSaving] = useState(false);
-  const [promptSaveResult, setPromptSaveResult] = useState<'idle' | 'success' | 'error'>('idle');
-
   /* ── Available Models State ── */
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -230,26 +269,15 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     setLoading(true);
     setError(null);
     try {
-      const [llm, promptData] = await Promise.all([
-        getLLMConfig(workspaceId).catch((err) => {
-          if (
-            err instanceof Error &&
-            (err.message.includes('403') || err.message.includes('admin'))
-          ) {
-            return null;
-          }
-          throw err;
-        }),
-        getPrompts(workspaceId).catch((err) => {
-          if (
-            err instanceof Error &&
-            (err.message.includes('403') || err.message.includes('admin'))
-          ) {
-            return null;
-          }
-          throw err;
-        }),
-      ]);
+      const llm = await getLLMConfig(workspaceId).catch((err) => {
+        if (
+          err instanceof Error &&
+          (err.message.includes('403') || err.message.includes('admin'))
+        ) {
+          return null;
+        }
+        throw err;
+      });
 
       if (llm) {
         const loadedProvider = llm.provider || 'ollama';
@@ -264,21 +292,16 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
           baseUrl: llm.baseUrl ?? '',
           apiKey: llm.apiKey ?? '',
         });
-        setJudgeConfig({
+        const loadedJudge = {
           provider: llm.judgeProvider ?? '',
           model: llm.judgeModel ?? '',
           apiKey: llm.judgeApiKey ?? '',
           baseUrl: llm.judgeBaseUrl ?? '',
-        });
-      }
-      if (promptData) {
-        setPrompts({
-          systemPrompt: promptData.systemPrompt ?? '',
-          instructionTemplate: promptData.instructionTemplate ?? '',
-          fewShotEnabled: promptData.fewShotEnabled ?? true,
-          fewShotLimit: promptData.fewShotLimit ?? 3,
-          fewShotThreshold: promptData.fewShotThreshold ?? 0.85,
-        });
+        };
+        setJudgeConfig(loadedJudge);
+        // The mode is derived from the row, never stored: it is how the four persisted
+        // fields read back as one of the three stated relationships.
+        setJudgeMode(deriveJudgeMode(loadedJudge));
       }
     } catch (err) {
       const message =
@@ -440,11 +463,29 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     setCustomModelsProbed(false);
   };
 
+  /* ── Judge Mode Switch ── */
+  const handleJudgeModeChange = (mode: JudgeMode) => {
+    setJudgeMode(mode);
+    if (mode === 'other-model') {
+      // Dropping a judge that ran on its own provider: the model can carry over (it is
+      // the part this mode keeps), but the provider, its credential and its endpoint
+      // are not this mode's values — the same non-portability rule the provider
+      // switches follow.
+      setJudgeConfig((prev) =>
+        prev.provider === '' && prev.apiKey === '' && prev.baseUrl === ''
+          ? prev
+          : { ...prev, provider: '', apiKey: '', baseUrl: '' },
+      );
+    }
+    // 'same' leaves the values in place: nothing is sent from them (the mode maps all
+    // four to the empty string), and switching back restores what was on screen.
+  };
+
   /* ── LLM Save Handler ── */
   const handleLLMSave = async () => {
     const parsed = llmConfigDraftSchema.safeParse(draftToValidate);
 
-    if (!parsed.success) {
+    if (!parsed.success || draftIssues.length > 0) {
       // Nothing is persisted. An incomplete configuration is exactly what leaves the
       // workspace unable to extract, so saving it would only make that state durable.
       setLlmSaveAttempted(true);
@@ -481,12 +522,14 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
         apiKey: parsed.data.apiKey || undefined,
         // The four judge fields always travel explicitly, unlike the siblings above:
         // the payload keeps a stored value when its key is omitted (D9), so the
-        // explicit empty string is the only way the form can clear one. The judge
-        // endpoint trims like the extraction one, but stays an explicit string so a
-        // blank field clears the stored endpoint instead of keeping it.
-        judgeProvider: parsed.data.judgeProvider,
-        judgeModel: parsed.data.judgeModel,
-        judgeApiKey: parsed.data.judgeApiKey,
+        // explicit empty string is the only way the form can clear one. The mode has
+        // already mapped them (`effectiveJudge`): same model sends all four empty,
+        // another model sends `judge_model` only, another provider sends all four.
+        // The judge endpoint trims like the extraction one, but stays an explicit
+        // string so a blank field clears the stored endpoint instead of keeping it.
+        judgeProvider: parsed.data.judgeProvider ?? '',
+        judgeModel: parsed.data.judgeModel ?? '',
+        judgeApiKey: parsed.data.judgeApiKey ?? '',
         judgeBaseUrl: (parsed.data.judgeBaseUrl ?? '').trim(),
       });
       setLlmSaveResult('success');
@@ -506,34 +549,6 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
       setTimeout(() => setLlmSaveResult('idle'), 3000);
     } finally {
       setLlmSaving(false);
-    }
-  };
-
-  /* ── Prompt Save Handler ── */
-  const handlePromptSave = async () => {
-    setPromptSaving(true);
-    setPromptSaveResult('idle');
-    try {
-      await upsertPrompts(workspaceId, {
-        systemPrompt: prompts.systemPrompt || undefined,
-        instructionTemplate: prompts.instructionTemplate || undefined,
-        fewShotEnabled: prompts.fewShotEnabled,
-        fewShotLimit: prompts.fewShotLimit,
-        fewShotThreshold: prompts.fewShotThreshold,
-      });
-      setPromptSaveResult('success');
-      toast.success(t.workspace?.promptSaved ?? 'Prompt configuration saved');
-      setTimeout(() => setPromptSaveResult('idle'), 3000);
-    } catch (err) {
-      setPromptSaveResult('error');
-      const message =
-        err instanceof Error
-          ? err.message
-          : (t.workspace?.promptSaveError ?? 'Failed to save prompts');
-      toast.error(message);
-      setTimeout(() => setPromptSaveResult('idle'), 3000);
-    } finally {
-      setPromptSaving(false);
     }
   };
 
@@ -627,531 +642,645 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
     judgeConfig.apiKey.trim() === '' &&
     judgeConfig.baseUrl.trim() === '';
 
+  /* ── The three judge modes (S11), as the radio offers them ── */
+  const judgeModeOptions: Array<{
+    value: JudgeMode;
+    title: string;
+    description: string;
+  }> = [
+    {
+      value: 'same',
+      title: t.settings?.llm_judge_mode_same ?? 'Same model as extraction',
+      description:
+        t.settings?.llm_judge_mode_same_desc ??
+        'The judge uses the extraction model, provider and credential.',
+    },
+    {
+      value: 'other-model',
+      title: t.settings?.llm_judge_mode_other_model ?? 'Another model of this provider',
+      description:
+        t.settings?.llm_judge_mode_other_model_desc ??
+        'The judge uses another model from the extraction provider, with the same credential.',
+    },
+    {
+      value: 'other-provider',
+      title: t.settings?.llm_judge_mode_other_provider ?? 'Another provider with its own credential',
+      description:
+        t.settings?.llm_judge_mode_other_provider_desc ??
+        'The judge runs on another provider, with its own model, credential and endpoint.',
+    },
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* Two-column grid: LLM Config + Prompt Config */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* ── Section 1: LLM Configuration ── */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Bot className="h-4 w-4 text-(--color-text-secondary)" />
-              <CardTitle>{t.settings?.llm_title ?? 'LLM Configuration'}</CardTitle>
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Bot className="h-4 w-4 text-(--color-text-secondary)" />
+          <CardTitle>{t.settings?.llm_title ?? 'LLM Configuration'}</CardTitle>
+        </div>
+        <CardDescription>
+          {t.settings?.llm_description ??
+            'Configure the AI model used for task extraction in this workspace'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* The workspace's readiness, stated before anything is attempted. Shown
+            while the values on screen cannot extract — which is what makes a fresh
+            workspace explain itself here instead of only after a refused save. */}
+        {missingFields.length > 0 && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-lg border border-(--color-destructive-border) bg-(--color-destructive-bg) p-3"
+          >
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-(--color-destructive-text)">
+                {t.workspace?.llmMissingSummaryTitle ??
+                  'This workspace cannot extract tasks yet'}
+              </p>
+              <p className="text-sm text-(--color-destructive-text)">
+                {t.workspace?.llmMissingSummaryDesc ??
+                  'Complete these fields to enable extraction:'}
+              </p>
+              <ul className="list-disc pl-5 text-sm text-(--color-destructive-text)">
+                {missingFields.map((field) => (
+                  <li key={field}>{labelFor(READINESS_FIELD_TO_FORM_KEY[field])}</li>
+                ))}
+              </ul>
             </div>
-            <CardDescription>
-              {t.settings?.llm_description ??
-                'Configure the AI model used for task extraction in this workspace'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            {/* The workspace's readiness, stated before anything is attempted. Shown
-                while the values on screen cannot extract — which is what makes a fresh
-                workspace explain itself here instead of only after a refused save. */}
-            {missingFields.length > 0 && (
-              <div
-                role="alert"
-                className="flex items-start gap-3 rounded-lg border border-(--color-destructive-border) bg-(--color-destructive-bg) p-3"
+          </div>
+        )}
+
+        {/* ── 1. Provider — the workspace's own provider ── */}
+        <p className="text-sm font-medium text-(--color-text-secondary)">
+          {t.settings?.llm_section_provider ?? 'Provider'}
+        </p>
+
+        {/* Provider */}
+        <Field>
+          <FieldLabel htmlFor="llm-provider">
+            {t.settings?.llm_provider ?? 'Provider'}
+          </FieldLabel>
+          <div className="flex items-start gap-2">
+            <div className="flex-1">
+              {/* Always a select: the name is chosen or registered, never typed into
+                  this field. */}
+              <Select
+                value={llmConfig.provider}
+                open={providerSelectOpen}
+                onOpenChange={setProviderSelectOpen}
+                onValueChange={(val) => {
+                  if (val === null) return;
+                  // The add option is a control, not a provider: it opens the dialog
+                  // and leaves the selection exactly where it was.
+                  if (val === ADD_CUSTOM_PROVIDER_VALUE) {
+                    setProviderDialogTarget(null);
+                    setProviderDialogOpen(true);
+                    setProviderSelectOpen(false);
+                    return;
+                  }
+                  // Switching provider drops the values the previous one owned: a
+                  // model id and an API key are not portable between endpoints. The
+                  // judge block is deliberately untouched here: its provider,
+                  // credential and endpoint are independent under D9, and changing
+                  // how the workspace extracts says nothing about how it judges.
+                  setLlmConfig((prev) => ({
+                    ...prev,
+                    provider: val,
+                    model: '',
+                    apiKey: '',
+                    baseUrl: val === 'ollama' ? 'http://localhost:11434' : '',
+                  }));
+                }}
               >
-                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-(--color-destructive-text)">
-                    {t.workspace?.llmMissingSummaryTitle ??
-                      'This workspace cannot extract tasks yet'}
-                  </p>
-                  <p className="text-sm text-(--color-destructive-text)">
-                    {t.workspace?.llmMissingSummaryDesc ??
-                      'Complete these fields to enable extraction:'}
-                  </p>
-                  <ul className="list-disc pl-5 text-sm text-(--color-destructive-text)">
-                    {missingFields.map((field) => (
-                      <li key={field}>{labelFor(READINESS_FIELD_TO_FORM_KEY[field])}</li>
-                    ))}
-                  </ul>
-                </div>
+                <SelectTrigger id="llm-provider" className="w-full">
+                  <div className="flex items-center gap-2">
+                    {/* Decorative: the label sits beside it. Marking it so keeps the
+                        icon's own accessible name — the Anthropic SVGs carry a
+                        `<title>` that repeats the label — out of the field's name. */}
+                    <ProviderIcon
+                      provider={llmConfig.provider}
+                      theme={resolvedTheme}
+                      className="h-4 w-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span>{providerLabel(llmConfig.provider)}</span>
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {KNOWN_PROVIDERS.map((provider) => (
+                    <SelectItem key={provider} value={provider}>
+                      <ProviderIcon
+                        provider={provider}
+                        theme={resolvedTheme}
+                        className="mr-2 h-4 w-4 shrink-0"
+                        aria-hidden="true"
+                      />
+                      {providerLabel(provider)}
+                    </SelectItem>
+                  ))}
+                  {customProviderNames.length > 0 && <SelectSeparator />}
+                  {customProviderNames.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {/* The same component the trigger above uses, which falls back
+                          to a neutral server glyph for anything outside the four
+                          built-ins: that is what a custom selection already shows in
+                          the collapsed field, so the item and the trigger cannot
+                          disagree about the same provider. */}
+                      <ProviderIcon
+                        provider={name}
+                        theme={resolvedTheme}
+                        className="mr-2 h-4 w-4 shrink-0"
+                        aria-hidden="true"
+                      />
+                      {name}
+                    </SelectItem>
+                  ))}
+                  <SelectSeparator />
+                  <SelectItem value={ADD_CUSTOM_PROVIDER_VALUE}>
+                    <Plus className="mr-2 h-4 w-4 shrink-0" />
+                    {t.workspace?.llmAddCustomProvider ?? 'Add custom provider'}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Rename sits beside the select, and only for a registered custom
+                provider: a known provider's name is not the workspace's to edit. */}
+            {selectedCustomProvider && (
+              <div className="relative">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  title={t.workspace?.llmCustomProviderRenameTitle ?? 'Rename custom provider'}
+                  onClick={() => {
+                    setProviderDialogTarget(selectedCustomProvider);
+                    setProviderDialogOpen(true);
+                  }}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
               </div>
             )}
+          </div>
+          <FieldDescription>
+            {isCustomProvider
+              ? (t.workspace?.llmCustomProviderDesc ??
+                'Enter the provider name. You will need to set the Base URL and API Key manually.')
+              : (t.workspace?.llmProviderDesc ?? 'The AI model provider for task extraction.')}
+          </FieldDescription>
+        </Field>
 
-            {/* Provider */}
-            <Field>
-              <FieldLabel htmlFor="llm-provider">
-                {t.settings?.llm_provider ?? 'Provider'}
-              </FieldLabel>
-              <div className="flex items-start gap-2">
-                <div className="flex-1">
-                  {/* Always a select: the name is chosen or registered, never typed into
-                      this field. */}
-                  <Select
-                    value={llmConfig.provider}
-                    open={providerSelectOpen}
-                    onOpenChange={setProviderSelectOpen}
-                    onValueChange={(val) => {
-                      if (val === null) return;
-                      // The add option is a control, not a provider: it opens the dialog
-                      // and leaves the selection exactly where it was.
-                      if (val === ADD_CUSTOM_PROVIDER_VALUE) {
-                        setProviderDialogTarget(null);
-                        setProviderDialogOpen(true);
-                        setProviderSelectOpen(false);
-                        return;
-                      }
-                      // Switching provider drops the values the previous one owned: a
-                      // model id and an API key are not portable between endpoints. The
-                      // judge block is deliberately untouched here: its provider,
-                      // credential and endpoint are independent under D9, and changing
-                      // how the workspace extracts says nothing about how it judges.
-                      setLlmConfig((prev) => ({
-                        ...prev,
-                        provider: val,
-                        model: '',
-                        apiKey: '',
-                        baseUrl: val === 'ollama' ? 'http://localhost:11434' : '',
-                      }));
-                    }}
-                  >
-                    <SelectTrigger id="llm-provider" className="w-full">
-                      <div className="flex items-center gap-2">
-                        {/* Decorative: the label sits beside it. Marking it so keeps the
-                            icon's own accessible name — the Anthropic SVGs carry a
-                            `<title>` that repeats the label — out of the field's name. */}
-                        <ProviderIcon
-                          provider={llmConfig.provider}
-                          theme={resolvedTheme}
-                          className="h-4 w-4 shrink-0"
-                          aria-hidden="true"
-                        />
-                        <span>{providerLabel(llmConfig.provider)}</span>
-                      </div>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {KNOWN_PROVIDERS.map((provider) => (
-                        <SelectItem key={provider} value={provider}>
-                          <ProviderIcon
-                            provider={provider}
-                            theme={resolvedTheme}
-                            className="mr-2 h-4 w-4 shrink-0"
-                            aria-hidden="true"
-                          />
-                          {providerLabel(provider)}
-                        </SelectItem>
-                      ))}
-                      {customProviderNames.length > 0 && <SelectSeparator />}
-                      {customProviderNames.map((name) => (
-                        <SelectItem key={name} value={name}>
-                          {/* The same component the trigger above uses, which falls back
-                              to a neutral server glyph for anything outside the four
-                              built-ins: that is what a custom selection already shows in
-                              the collapsed field, so the item and the trigger cannot
-                              disagree about the same provider. */}
-                          <ProviderIcon
-                            provider={name}
-                            theme={resolvedTheme}
-                            className="mr-2 h-4 w-4 shrink-0"
-                            aria-hidden="true"
-                          />
-                          {name}
-                        </SelectItem>
-                      ))}
-                      <SelectSeparator />
-                      <SelectItem value={ADD_CUSTOM_PROVIDER_VALUE}>
-                        <Plus className="mr-2 h-4 w-4 shrink-0" />
-                        {t.workspace?.llmAddCustomProvider ?? 'Add custom provider'}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* Rename sits beside the select, and only for a registered custom
-                    provider: a known provider's name is not the workspace's to edit. */}
-                {selectedCustomProvider && (
-                  <div className="relative">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      title={t.workspace?.llmCustomProviderRenameTitle ?? 'Rename custom provider'}
-                      onClick={() => {
-                        setProviderDialogTarget(selectedCustomProvider);
-                        setProviderDialogOpen(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-              <FieldDescription>
-                {isCustomProvider
-                  ? (t.workspace?.llmCustomProviderDesc ??
-                    'Enter the provider name. You will need to set the Base URL and API Key manually.')
-                  : (t.workspace?.llmProviderDesc ?? 'The AI model provider for task extraction.')}
-              </FieldDescription>
-            </Field>
+        {/* ── 2. Extraction — model, temperature, max tokens ── */}
+        <p className="text-sm font-medium text-(--color-text-secondary)">
+          {t.settings?.llm_section_extraction ?? 'Extraction'}
+        </p>
 
-            {/* Model — Combobox for known providers, free Input for custom */}
-            <Field>
-              <FieldLabel htmlFor="llm-model">{t.settings?.llm_ollama_model ?? 'Model'}</FieldLabel>
-              <div className="flex items-start gap-2">
-                <div className="flex-1">
-                  {isCustomProvider ? (
-                    /* Custom provider — the typed text is the model, and the popup is a
-                       catalogue of everything the provider reported. */
-                    <Autocomplete
-                      value={llmConfig.model ?? ''}
-                      onValueChange={(val) =>
-                        setLlmConfig((prev) => ({
-                          ...prev,
-                          model: val,
-                        }))
-                      }
-                      // No built-in filtering. The popup opens as a complete catalogue:
-                      // narrowing it against the field's current text would hide every
-                      // other model, which is the complaint this field exists to fix.
-                      filter={null}
-                      // `Autocomplete.Root` hard-codes this to `false`, so a click in the
-                      // text would reveal nothing. Turned back on so the field behaves
-                      // like the known providers' model field and like a plain select:
-                      // one click anywhere in it opens the catalogue.
-                      openOnInputClick
-                    >
-                      <AutocompleteInput
-                        id="llm-model"
-                        placeholder={
-                          t.workspace?.llmCustomModelPlaceholder ??
-                          'e.g. deepseek-chat, groq-llama-3.3-70b'
-                        }
-                        // The chevron is the explicit affordance for the catalogue, so its
-                        // name carries what the list holds.
-                        triggerLabel={`${t.workspace?.llmCustomModelsDiscovered ?? 'Discovered models'} (${availableModels.length})`}
-                      />
-                      <AutocompletePopup>
-                        <AutocompleteList>
-                          {availableModels.map((m) => (
-                            // The item's `value` is the model id, and its rendered text
-                            // starts with that same id: pressing the entry must write the
-                            // id the provider expects, never the readable name.
-                            <AutocompleteItem key={m.id} value={m.id}>
-                              {m.id}
-                              {/* The space is an explicit text node: JSX drops the
-                                  whitespace around a line break, which would jam the id
-                                  and the readable name together in the accessible name. */}
-                              {m.name !== m.id && (
-                                <>
-                                  {' '}
-                                  <span className="text-(--color-text-tertiary)">{m.name}</span>
-                                </>
-                              )}
-                            </AutocompleteItem>
-                          ))}
-                        </AutocompleteList>
-                        {modelsLoading ? (
-                          <AutocompleteEmpty>
-                            {t.workspace?.llmModelsLoading ?? 'Loading models...'}
-                          </AutocompleteEmpty>
-                        ) : availableModels.length === 0 ? (
-                          <AutocompleteEmpty>
-                            {modelsError
-                              ? modelsError
-                              : (t.workspace?.llmCustomModelsEmpty ??
-                                'The provider returned no models. Type the model id manually.')}
-                          </AutocompleteEmpty>
-                        ) : null}
-                      </AutocompletePopup>
-                    </Autocomplete>
-                  ) : (
-                    /* Known providers — Combobox with auto-populated suggestions */
-                    <Combobox
-                      key={`model-${llmConfig.provider}`}
-                      // Controlled on the persisted model id: without `value` the input starts
-                      // empty, so the field only ever shows its placeholder and the saved
-                      // model stays invisible until the user re-picks it from the list.
-                      value={llmConfig.model || null}
-                      onValueChange={(val) => {
-                        if (val !== null && val !== undefined) {
-                          setLlmConfig((prev) => ({
-                            ...prev,
-                            model: String(val),
-                          }));
-                        }
-                      }}
-                    >
-                      <ComboboxInput
-                        id="llm-model"
-                        disabled={llmConfig.provider !== 'ollama' && !llmConfig.apiKey}
-                        // `readOnly` rides on the input element, not on the combobox root:
-                        // the root would also lock the list selection, while the DOM
-                        // attribute only removes typing. base-ui commits a model solely
-                        // through `onValueChange`, so typed text would show up in the field
-                        // and then revert on blur — a field that looks editable and is not.
-                        readOnly
-                        // No provider default here: any model name in the placeholder reads
-                        // as a model that is already chosen.
-                        placeholder={t.settings?.llm_model_placeholder ?? 'Select a model'}
-                      />
-                      {/* The input text is the model id — the value that gets saved; the
-                          list renders each model's friendly `name` instead. */}
-                      <ComboboxContent>
-                        <ComboboxList>
-                          {availableModels.map((m) => (
-                            <ComboboxItem key={m.id} value={m.id}>
-                              {m.name}
-                            </ComboboxItem>
-                          ))}
-                        </ComboboxList>
-                        {modelsLoading ? (
-                          <ComboboxEmpty>
-                            {t.workspace?.llmModelsLoading ?? 'Loading models...'}
-                          </ComboboxEmpty>
-                        ) : availableModels.length === 0 ? (
-                          <ComboboxEmpty>
-                            {modelsError ? modelsError : noModelsMessage}
-                          </ComboboxEmpty>
-                        ) : null}
-                      </ComboboxContent>
-                    </Combobox>
-                  )}
-                </div>
-                <div className="relative">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={handleRefreshModels}
-                    disabled={modelsLoading || !canProbe}
-                    // A stable name: the button is always the refresh action, and its
-                    // title carries the reason when it cannot run.
-                    aria-label={t.workspace?.llmRefreshModels ?? 'Refresh models'}
-                    title={probeBlockedReason ?? t.workspace?.llmRefreshModels ?? 'Refresh models'}
-                  >
-                    <RotateCw className={`h-4 w-4 ${modelsLoading ? 'animate-spin' : ''}`} />
-                  </Button>
-                </div>
-              </div>
-              {/* A single suggestion mechanism: one dropdown. A native `datalist` was
-                  invisible in Firefox, and an always-visible button block flooded the
-                  card once a provider answered with a dozen models. */}
-              <FieldDescription>
-                {isCustomProvider ? (
-                  /* Custom hints report real state in priority order: a failed probe,
-                     then a probe that came back empty, then the typing hint. Nothing
-                     claims a list is empty before the user has asked for one. */
-                  modelsError ? (
-                    <span className="flex items-center gap-1.5 text-(--color-warning-text)">
-                      <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-                      {modelsError}
-                    </span>
-                  ) : customModelsProbed && availableModels.length === 0 ? (
-                    <span className="flex items-center gap-1.5 text-(--color-warning-text)">
-                      <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-                      {t.workspace?.llmCustomModelsEmpty ??
-                        'The provider returned no models. Type the model id manually.'}
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5 text-(--color-text-tertiary)">
-                      <CircleHelp className="h-3.5 w-3.5 shrink-0" />
-                      {t.workspace?.llmCustomModelHint ??
-                        "Type the model id the provider expects, or load the provider's list for suggestions."}
-                    </span>
-                  )
-                ) : modelsError ? (
-                  <span className="flex items-center gap-1.5 text-(--color-warning-text)">
-                    <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-                    {modelsError}
-                  </span>
-                ) : llmConfig.provider !== 'ollama' && !llmConfig.apiKey ? (
-                  <span className="flex items-center gap-1.5 text-(--color-text-tertiary)">
-                    <CircleHelp className="h-3.5 w-3.5 shrink-0" />
-                    {t.workspace?.llmModelsNoApiKey ??
-                      'Add your API key and save to enable model suggestions.'}
-                  </span>
-                ) : savedModelMissingFromList ? (
-                  <span className="flex items-center gap-1.5 text-(--color-warning-text)">
-                    <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-                    {t.workspace?.llmModelNotInList ??
-                      "The saved model is not in the provider's model list."}
-                  </span>
-                ) : modelListUnavailable ? (
-                  <span className="flex items-center gap-1.5 text-(--color-warning-text)">
-                    <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-                    {noModelsMessage}
-                  </span>
-                ) : (
-                  (t.workspace?.llmModelDesc ??
-                  "The model to use for task extraction, picked from the provider's list.")
-                )}
-              </FieldDescription>
-              {fieldErrorFor('model')}
-            </Field>
-
-            {/* Temperature */}
-            <Field>
-              <FieldLabel htmlFor="llm-temperature">
-                {t.settings?.llm_temperature ?? 'Temperature'}
-              </FieldLabel>
-              <div className="flex items-center gap-3">
-                <Slider
-                  id="llm-temperature"
-                  value={[llmConfig.temperature ?? 0.1]}
-                  onValueChange={(value) =>
+        {/* Model — Combobox for known providers, free Input for custom */}
+        <Field>
+          <FieldLabel htmlFor="llm-model">{t.settings?.llm_ollama_model ?? 'Model'}</FieldLabel>
+          <div className="flex items-start gap-2">
+            <div className="flex-1">
+              {isCustomProvider ? (
+                /* Custom provider — the typed text is the model, and the popup is a
+                   catalogue of everything the provider reported. */
+                <Autocomplete
+                  value={llmConfig.model ?? ''}
+                  onValueChange={(val) =>
                     setLlmConfig((prev) => ({
                       ...prev,
-                      temperature: Array.isArray(value) ? value[0] : value,
+                      model: val,
                     }))
                   }
-                  min={0}
-                  max={2}
-                  step={0.1}
-                  className="flex-1"
-                />
-                <span className="min-w-[2.5rem] text-sm font-medium tabular-nums text-(--color-text-secondary)">
-                  {(llmConfig.temperature ?? 0.1).toFixed(1)}
+                  // No built-in filtering. The popup opens as a complete catalogue:
+                  // narrowing it against the field's current text would hide every
+                  // other model, which is the complaint this field exists to fix.
+                  filter={null}
+                  // `Autocomplete.Root` hard-codes this to `false`, so a click in the
+                  // text would reveal nothing. Turned back on so the field behaves
+                  // like the known providers' model field and like a plain select:
+                  // one click anywhere in it opens the catalogue.
+                  openOnInputClick
+                >
+                  <AutocompleteInput
+                    id="llm-model"
+                    placeholder={
+                      t.workspace?.llmCustomModelPlaceholder ??
+                      'e.g. deepseek-chat, groq-llama-3.3-70b'
+                    }
+                    // The chevron is the explicit affordance for the catalogue, so its
+                    // name carries what the list holds.
+                    triggerLabel={`${t.workspace?.llmCustomModelsDiscovered ?? 'Discovered models'} (${availableModels.length})`}
+                  />
+                  <AutocompletePopup>
+                    <AutocompleteList>
+                      {availableModels.map((m) => (
+                        // The item's `value` is the model id, and its rendered text
+                        // starts with that same id: pressing the entry must write the
+                        // id the provider expects, never the readable name.
+                        <AutocompleteItem key={m.id} value={m.id}>
+                          {m.id}
+                          {/* The space is an explicit text node: JSX drops the
+                              whitespace around a line break, which would jam the id
+                              and the readable name together in the accessible name. */}
+                          {m.name !== m.id && (
+                            <>
+                              {' '}
+                              <span className="text-(--color-text-tertiary)">{m.name}</span>
+                            </>
+                          )}
+                        </AutocompleteItem>
+                      ))}
+                    </AutocompleteList>
+                    {modelsLoading ? (
+                      <AutocompleteEmpty>
+                        {t.workspace?.llmModelsLoading ?? 'Loading models...'}
+                      </AutocompleteEmpty>
+                    ) : availableModels.length === 0 ? (
+                      <AutocompleteEmpty>
+                        {modelsError
+                          ? modelsError
+                          : (t.workspace?.llmCustomModelsEmpty ??
+                            'The provider returned no models. Type the model id manually.')}
+                      </AutocompleteEmpty>
+                    ) : null}
+                  </AutocompletePopup>
+                </Autocomplete>
+              ) : (
+                /* Known providers — Combobox with auto-populated suggestions */
+                <Combobox
+                  key={`model-${llmConfig.provider}`}
+                  // Controlled on the persisted model id: without `value` the input starts
+                  // empty, so the field only ever shows its placeholder and the saved
+                  // model stays invisible until the user re-picks it from the list.
+                  value={llmConfig.model || null}
+                  onValueChange={(val) => {
+                    if (val !== null && val !== undefined) {
+                      setLlmConfig((prev) => ({
+                        ...prev,
+                        model: String(val),
+                      }));
+                    }
+                  }}
+                >
+                  <ComboboxInput
+                    id="llm-model"
+                    disabled={llmConfig.provider !== 'ollama' && !llmConfig.apiKey}
+                    // `readOnly` rides on the input element, not on the combobox root:
+                    // the root would also lock the list selection, while the DOM
+                    // attribute only removes typing. base-ui commits a model solely
+                    // through `onValueChange`, so typed text would show up in the field
+                    // and then revert on blur — a field that looks editable and is not.
+                    readOnly
+                    // No provider default here: any model name in the placeholder reads
+                    // as a model that is already chosen.
+                    placeholder={t.settings?.llm_model_placeholder ?? 'Select a model'}
+                  />
+                  {/* The input text is the model id — the value that gets saved; the
+                      list renders each model's friendly `name` instead. */}
+                  <ComboboxContent>
+                    <ComboboxList>
+                      {availableModels.map((m) => (
+                        <ComboboxItem key={m.id} value={m.id}>
+                          {m.name}
+                        </ComboboxItem>
+                      ))}
+                    </ComboboxList>
+                    {modelsLoading ? (
+                      <ComboboxEmpty>
+                        {t.workspace?.llmModelsLoading ?? 'Loading models...'}
+                      </ComboboxEmpty>
+                    ) : availableModels.length === 0 ? (
+                      <ComboboxEmpty>
+                        {modelsError ? modelsError : noModelsMessage}
+                      </ComboboxEmpty>
+                    ) : null}
+                  </ComboboxContent>
+                </Combobox>
+              )}
+            </div>
+            <div className="relative">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleRefreshModels}
+                disabled={modelsLoading || !canProbe}
+                // A stable name: the button is always the refresh action, and its
+                // title carries the reason when it cannot run.
+                aria-label={t.workspace?.llmRefreshModels ?? 'Refresh models'}
+                title={probeBlockedReason ?? t.workspace?.llmRefreshModels ?? 'Refresh models'}
+              >
+                <RotateCw className={`h-4 w-4 ${modelsLoading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+          </div>
+          {/* A single suggestion mechanism: one dropdown. A native `datalist` was
+              invisible in Firefox, and an always-visible button block flooded the
+              card once a provider answered with a dozen models. */}
+          <FieldDescription>
+            {isCustomProvider ? (
+              /* Custom hints report real state in priority order: a failed probe,
+                 then a probe that came back empty, then the typing hint. Nothing
+                 claims a list is empty before the user has asked for one. */
+              modelsError ? (
+                <span className="flex items-center gap-1.5 text-(--color-warning-text)">
+                  <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                  {modelsError}
                 </span>
-              </div>
-              <FieldDescription>
-                {t.workspace?.llmTemperatureDesc ??
-                  'Lower values = more consistent output. Higher values = more creative.'}
-              </FieldDescription>
-              {fieldErrorFor('temperature')}
-            </Field>
+              ) : customModelsProbed && availableModels.length === 0 ? (
+                <span className="flex items-center gap-1.5 text-(--color-warning-text)">
+                  <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                  {t.workspace?.llmCustomModelsEmpty ??
+                    'The provider returned no models. Type the model id manually.'}
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-(--color-text-tertiary)">
+                  <CircleHelp className="h-3.5 w-3.5 shrink-0" />
+                  {t.workspace?.llmCustomModelHint ??
+                    "Type the model id the provider expects, or load the provider's list for suggestions."}
+                </span>
+              )
+            ) : modelsError ? (
+              <span className="flex items-center gap-1.5 text-(--color-warning-text)">
+                <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                {modelsError}
+              </span>
+            ) : llmConfig.provider !== 'ollama' && !llmConfig.apiKey ? (
+              <span className="flex items-center gap-1.5 text-(--color-text-tertiary)">
+                <CircleHelp className="h-3.5 w-3.5 shrink-0" />
+                {t.workspace?.llmModelsNoApiKey ??
+                  'Add your API key and save to enable model suggestions.'}
+              </span>
+            ) : savedModelMissingFromList ? (
+              <span className="flex items-center gap-1.5 text-(--color-warning-text)">
+                <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                {t.workspace?.llmModelNotInList ??
+                  "The saved model is not in the provider's model list."}
+              </span>
+            ) : modelListUnavailable ? (
+              <span className="flex items-center gap-1.5 text-(--color-warning-text)">
+                <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                {noModelsMessage}
+              </span>
+            ) : (
+              (t.workspace?.llmModelDesc ??
+              "The model to use for task extraction, picked from the provider's list.")
+            )}
+          </FieldDescription>
+          {fieldErrorFor('model')}
+        </Field>
 
-            {/* Max Tokens */}
+        {/* Temperature */}
+        <Field>
+          <FieldLabel htmlFor="llm-temperature">
+            {t.settings?.llm_temperature ?? 'Temperature'}
+          </FieldLabel>
+          <div className="flex items-center gap-3">
+            <Slider
+              id="llm-temperature"
+              value={[llmConfig.temperature ?? 0.1]}
+              onValueChange={(value) =>
+                setLlmConfig((prev) => ({
+                  ...prev,
+                  temperature: Array.isArray(value) ? value[0] : value,
+                }))
+              }
+              min={0}
+              max={2}
+              step={0.1}
+              className="flex-1"
+            />
+            <span className="min-w-[2.5rem] text-sm font-medium tabular-nums text-(--color-text-secondary)">
+              {(llmConfig.temperature ?? 0.1).toFixed(1)}
+            </span>
+          </div>
+          <FieldDescription>
+            {t.workspace?.llmTemperatureDesc ??
+              'Lower values = more consistent output. Higher values = more creative.'}
+          </FieldDescription>
+          {fieldErrorFor('temperature')}
+        </Field>
+
+        {/* Max Tokens */}
+        <Field>
+          <FieldLabel htmlFor="llm-max-tokens">
+            {t.settings?.llm_max_tokens ?? 'Max Tokens'}
+          </FieldLabel>
+          <Input
+            id="llm-max-tokens"
+            type="number"
+            value={llmConfig.maxTokens ?? 2048}
+            onChange={(e) =>
+              setLlmConfig((prev) => ({
+                ...prev,
+                maxTokens: parseInt(e.target.value, 10) || 0,
+              }))
+            }
+            min={256}
+            max={8192}
+            step={256}
+          />
+          <FieldDescription>
+            {t.workspace?.llmMaxTokensDesc ??
+              'Maximum number of tokens the model can generate per response.'}
+          </FieldDescription>
+          {fieldErrorFor('maxTokens')}
+        </Field>
+
+        {/* ── Provider-specific fields ── */}
+        {llmConfig.provider === 'ollama' ? (
+          /* Base URL — required for Ollama */
+          <Field>
+            <FieldLabel htmlFor="llm-base-url">
+              {t.settings?.llm_base_url ?? 'Base URL'}
+            </FieldLabel>
+            <Input
+              id="llm-base-url"
+              type="text"
+              value={llmConfig.baseUrl ?? ''}
+              onChange={(e) =>
+                setLlmConfig((prev) => ({
+                  ...prev,
+                  baseUrl: e.target.value,
+                }))
+              }
+              placeholder="http://localhost:11434"
+            />
+            <FieldDescription>
+              {t.workspace?.llmBaseUrlDesc ?? 'The URL where your Ollama instance is running.'}
+            </FieldDescription>
+            {fieldErrorFor('baseUrl')}
+          </Field>
+        ) : (
+          <>
+            {/* API Key — required for cloud providers */}
             <Field>
-              <FieldLabel htmlFor="llm-max-tokens">
-                {t.settings?.llm_max_tokens ?? 'Max Tokens'}
+              <FieldLabel htmlFor="llm-api-key">
+                {llmConfig.provider === 'openai'
+                  ? (t.settings?.llm_openai_api_key ?? 'API Key')
+                  : llmConfig.provider === 'gemini'
+                    ? (t.settings?.llm_gemini_api_key ?? 'API Key')
+                    : (t.settings?.llm_anthropic_api_key ?? 'API Key')}
               </FieldLabel>
               <Input
-                id="llm-max-tokens"
-                type="number"
-                value={llmConfig.maxTokens ?? 2048}
+                id="llm-api-key"
+                type="password"
+                value={llmConfig.apiKey ?? ''}
                 onChange={(e) =>
                   setLlmConfig((prev) => ({
                     ...prev,
-                    maxTokens: parseInt(e.target.value, 10) || 0,
+                    apiKey: e.target.value,
                   }))
                 }
-                min={256}
-                max={8192}
-                step={256}
+                placeholder={
+                  isCustomProvider || llmConfig.provider === 'openai'
+                    ? 'sk-...'
+                    : llmConfig.provider === 'gemini'
+                      ? 'AIzaSyD-...'
+                      : 'sk-ant-...'
+                }
               />
               <FieldDescription>
-                {t.workspace?.llmMaxTokensDesc ??
-                  'Maximum number of tokens the model can generate per response.'}
+                {t.workspace?.llmApiKeyDesc ??
+                  'Your API key for this provider. It is stored with this workspace on the server — readable only by its admins, and never saved in your browser.'}
               </FieldDescription>
-              {fieldErrorFor('maxTokens')}
+              {fieldErrorFor('apiKey')}
             </Field>
 
-            {/* ── Provider-specific fields ── */}
-            {llmConfig.provider === 'ollama' ? (
-              /* Base URL — required for Ollama */
-              <Field>
-                <FieldLabel htmlFor="llm-base-url">
-                  {t.settings?.llm_base_url ?? 'Base URL'}
-                </FieldLabel>
-                <Input
-                  id="llm-base-url"
-                  type="text"
-                  value={llmConfig.baseUrl ?? ''}
-                  onChange={(e) =>
-                    setLlmConfig((prev) => ({
-                      ...prev,
-                      baseUrl: e.target.value,
-                    }))
-                  }
-                  placeholder="http://localhost:11434"
+            {/* Base URL — optional for cloud providers (proxy/custom endpoint) */}
+            <Field>
+              <FieldLabel htmlFor="llm-base-url">
+                {t.settings?.llm_base_url ?? 'Base URL'}
+              </FieldLabel>
+              <Input
+                id="llm-base-url"
+                type="text"
+                value={llmConfig.baseUrl ?? ''}
+                onChange={(e) =>
+                  setLlmConfig((prev) => ({
+                    ...prev,
+                    baseUrl: e.target.value,
+                  }))
+                }
+                placeholder={
+                  isCustomProvider || llmConfig.provider === 'openai'
+                    ? 'https://api.openai.com/v1'
+                    : 'https://api.anthropic.com'
+                }
+              />
+              <FieldDescription>
+                {t.workspace?.llmBaseUrlCloudDesc ??
+                  'Optional. Leave empty to use the default API endpoint.'}
+              </FieldDescription>
+              {fieldErrorFor('baseUrl')}
+            </Field>
+          </>
+        )}
+
+        {/* ── 3. Judge (D9/S10/S11) ──
+            A second, independent LLM configuration, stated as one of three explicit
+            modes instead of four peer fields. No probe or test button here: the first
+            judged run is the probe, and a bad judge configuration fails as a judged
+            failure. */}
+        <div className="space-y-4 rounded-lg border border-(--color-border) p-4">
+          <div className="flex items-start gap-2">
+            <Gavel className="mt-0.5 h-4 w-4 shrink-0 text-(--color-text-secondary)" />
+            <div className="space-y-1">
+              {/* The group's visible label: the radio group points at it, so the
+                  three options are announced as one choice, not three loose radios. */}
+              <p className="text-sm font-medium" id="llm-judge-mode-label">
+                {t.settings?.llm_judge_title ?? 'Judge configuration'}
+              </p>
+              <p className="text-sm text-(--color-text-secondary)">
+                {t.settings?.llm_judge_description ??
+                  'How the judge relates to the extraction configuration:'}
+              </p>
+            </div>
+          </div>
+
+          {/* One accessible radio group; the option labels carry the meaning, so the
+              mode is stated outright instead of implied by empty fields. */}
+          <RadioGroup
+            value={judgeMode}
+            onValueChange={(value) => {
+              if (typeof value === 'string') handleJudgeModeChange(value as JudgeMode);
+            }}
+            aria-labelledby="llm-judge-mode-label"
+            className="gap-3"
+          >
+            {judgeModeOptions.map((option) => (
+              <div key={option.value} className="flex items-start gap-3">
+                <RadioGroupItem
+                  id={`llm-judge-mode-${option.value}`}
+                  value={option.value}
+                  className="mt-0.5"
                 />
-                <FieldDescription>
-                  {t.workspace?.llmBaseUrlDesc ?? 'The URL where your Ollama instance is running.'}
-                </FieldDescription>
-                {fieldErrorFor('baseUrl')}
-              </Field>
-            ) : (
-              <>
-                {/* API Key — required for cloud providers */}
-                <Field>
-                  <FieldLabel htmlFor="llm-api-key">
-                    {llmConfig.provider === 'openai'
-                      ? (t.settings?.llm_openai_api_key ?? 'API Key')
-                      : llmConfig.provider === 'gemini'
-                        ? (t.settings?.llm_gemini_api_key ?? 'API Key')
-                        : (t.settings?.llm_anthropic_api_key ?? 'API Key')}
-                  </FieldLabel>
-                  <Input
-                    id="llm-api-key"
-                    type="password"
-                    value={llmConfig.apiKey ?? ''}
-                    onChange={(e) =>
-                      setLlmConfig((prev) => ({
-                        ...prev,
-                        apiKey: e.target.value,
-                      }))
-                    }
-                    placeholder={
-                      isCustomProvider || llmConfig.provider === 'openai'
-                        ? 'sk-...'
-                        : llmConfig.provider === 'gemini'
-                          ? 'AIzaSyD-...'
-                          : 'sk-ant-...'
-                    }
-                  />
-                  <FieldDescription>
-                    {t.workspace?.llmApiKeyDesc ??
-                      'Your API key for this provider. It is stored with this workspace on the server — readable only by its admins, and never saved in your browser.'}
-                  </FieldDescription>
-                  {fieldErrorFor('apiKey')}
-                </Field>
-
-                {/* Base URL — optional for cloud providers (proxy/custom endpoint) */}
-                <Field>
-                  <FieldLabel htmlFor="llm-base-url">
-                    {t.settings?.llm_base_url ?? 'Base URL'}
-                  </FieldLabel>
-                  <Input
-                    id="llm-base-url"
-                    type="text"
-                    value={llmConfig.baseUrl ?? ''}
-                    onChange={(e) =>
-                      setLlmConfig((prev) => ({
-                        ...prev,
-                        baseUrl: e.target.value,
-                      }))
-                    }
-                    placeholder={
-                      isCustomProvider || llmConfig.provider === 'openai'
-                        ? 'https://api.openai.com/v1'
-                        : 'https://api.anthropic.com'
-                    }
-                  />
-                  <FieldDescription>
-                    {t.workspace?.llmBaseUrlCloudDesc ??
-                      'Optional. Leave empty to use the default API endpoint.'}
-                  </FieldDescription>
-                  {fieldErrorFor('baseUrl')}
-                </Field>
-              </>
-            )}
-
-            {/* ── Judge block (D9/S10) ──
-                A second, independent LLM configuration, separated from the extraction
-                fields above. Every field left empty falls back to the extraction value
-                field by field; a different provider needs its own credential, which the
-                backend refuses to borrow. No probe or test button here: the first judged
-                run is the probe, and a bad judge configuration fails as a judged
-                failure. */}
-            <div className="space-y-4 rounded-lg border border-(--color-border) p-4">
-              <div className="flex items-start gap-2">
-                <Gavel className="mt-0.5 h-4 w-4 shrink-0 text-(--color-text-secondary)" />
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">
-                    {t.settings?.llm_judge_title ?? 'Judge configuration'}
-                  </p>
-                  {/* The fallback rule and the no-borrowed-credential rule, as rendered
-                      copy — this sentence is the point of the block, so it is never a
-                      tooltip. */}
-                  <p className="text-sm text-(--color-text-secondary)">
-                    {t.settings?.llm_judge_description ??
-                      'Every field left empty uses the extraction configuration. A judge on a different provider requires its own credential: the extraction credential is never sent to another provider.'}
-                  </p>
+                <div className="space-y-0.5">
+                  <label
+                    htmlFor={`llm-judge-mode-${option.value}`}
+                    className="block cursor-pointer text-sm font-medium"
+                  >
+                    {option.title}
+                  </label>
+                  <p className="text-sm text-(--color-text-secondary)">{option.description}</p>
                 </div>
               </div>
+            ))}
+          </RadioGroup>
 
+          {/* Only the fields the chosen mode needs are on the page; each keeps its
+              `<FieldLabel htmlFor>`/id pairing, and the ids survive the restructure
+              because tests and API references address them by name. */}
+          {judgeMode === 'other-model' && (
+            /* Judge model — selection-only, fed by the extraction provider's own
+               model list: the mode is "another model of this provider", so the list
+               the extraction side already probed is exactly the right catalogue. */
+            <Field>
+              <FieldLabel htmlFor="llm-judge-model">
+                {t.settings?.llm_judge_model ?? 'Judge model'}
+              </FieldLabel>
+              <Combobox
+                key={`judge-model-${llmConfig.provider}`}
+                value={judgeConfig.model || null}
+                onValueChange={(val) => {
+                  if (val !== null && val !== undefined) {
+                    setJudgeConfig((prev) => ({ ...prev, model: String(val) }));
+                  }
+                }}
+              >
+                <ComboboxInput
+                  id="llm-judge-model"
+                  readOnly
+                  placeholder={t.settings?.llm_model_placeholder ?? 'Select a model'}
+                />
+                <ComboboxContent>
+                  <ComboboxList>
+                    {availableModels.map((m) => (
+                      <ComboboxItem key={m.id} value={m.id}>
+                        {m.name}
+                      </ComboboxItem>
+                    ))}
+                  </ComboboxList>
+                  {modelsLoading ? (
+                    <ComboboxEmpty>
+                      {t.workspace?.llmModelsLoading ?? 'Loading models...'}
+                    </ComboboxEmpty>
+                  ) : availableModels.length === 0 ? (
+                    <ComboboxEmpty>{modelsError ? modelsError : noModelsMessage}</ComboboxEmpty>
+                  ) : null}
+                </ComboboxContent>
+              </Combobox>
+              <FieldDescription>
+                {t.settings?.llm_judge_model_from_list_desc ??
+                  "Picked from the extraction provider's model list, with the same credential."}
+              </FieldDescription>
+              {fieldErrorFor('judgeModel')}
+            </Field>
+          )}
+
+          {judgeMode === 'other-provider' && (
+            <>
               {/* A warning, not a gate: saving is allowed, and the first judged run is
                   what reports an incomplete judge configuration. */}
               {judgeNeedsOwnCredential && (
@@ -1173,17 +1302,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                   {t.settings?.llm_judge_provider ?? 'Judge provider'}
                 </FieldLabel>
                 <Select
-                  value={judgeConfig.provider === '' ? JUDGE_SAME_AS_EXTRACTION : judgeConfig.provider}
+                  value={judgeConfig.provider === '' ? undefined : judgeConfig.provider}
                   onValueChange={(val) => {
                     if (val === null) return;
-                    if (val === JUDGE_SAME_AS_EXTRACTION) {
-                      // Clearing the judge provider keeps the judge model on purpose:
-                      // extraction provider + judge model is exactly the D7
-                      // configuration the field exists for, and the value stays
-                      // visible in the field, so nothing is dropped silently.
-                      setJudgeConfig((prev) => ({ ...prev, provider: '' }));
-                      return;
-                    }
                     // Switching to another provider follows the same invariant the
                     // extraction provider switch applies: a model id, a credential and
                     // an endpoint are not portable between providers, so the values the
@@ -1208,20 +1329,16 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                       )}
                       <span>
                         {judgeConfig.provider === ''
-                          ? (t.settings?.llm_judge_provider_same ?? 'Same as extraction')
+                          ? (t.settings?.llm_judge_provider_placeholder ?? 'Select a provider')
                           : providerLabel(judgeConfig.provider)}
                       </span>
                     </div>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={JUDGE_SAME_AS_EXTRACTION}>
-                      {t.settings?.llm_judge_provider_same ?? 'Same as extraction'}
-                    </SelectItem>
-                    {/* The same provider options the extraction select offers: the
-                        built-ins plus the workspace's registered custom ones. The add
-                        and rename controls belong to the extraction selection, not to
-                        the judge's. */}
-                    <SelectSeparator />
+                    {/* The same provider options the extraction select offers, minus
+                        the add and rename controls: those belong to the extraction
+                        selection, and "same as extraction" is the radio's first mode,
+                        not an option inside this one. */}
                     {KNOWN_PROVIDERS.map((provider) => (
                       <SelectItem key={provider} value={provider}>
                         <ProviderIcon
@@ -1249,13 +1366,13 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                 </Select>
                 <FieldDescription>
                   {t.workspace?.llmJudgeProviderDesc ??
-                    'Leave it on "Same as extraction" to judge with the extraction provider, or pick another provider.'}
+                    'The provider the judge calls. Its credential is configured below, never borrowed from the extraction.'}
                 </FieldDescription>
                 {fieldErrorFor('judgeProvider')}
               </Field>
 
-              {/* Judge model — free text: no probe path for the judge, and a model id
-                  typed once is exactly what the run sends. */}
+              {/* Judge model — free text: no probe path for the judge on another
+                  provider, and a model id typed once is exactly what the run sends. */}
               <Field>
                 <FieldLabel htmlFor="llm-judge-model">
                   {t.settings?.llm_judge_model ?? 'Judge model'}
@@ -1268,7 +1385,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                 />
                 <FieldDescription>
                   {t.workspace?.llmJudgeModelDesc ??
-                    'The model that judges extractions. Leave empty to use the extraction model.'}
+                    'The model id the judge provider expects, for example gpt-4o-mini.'}
                 </FieldDescription>
                 {fieldErrorFor('judgeModel')}
               </Field>
@@ -1312,136 +1429,26 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
                 </FieldDescription>
                 {fieldErrorFor('judgeBaseUrl')}
               </Field>
-            </div>
+            </>
+          )}
+        </div>
 
-            {/* Save Button */}
-            <div className="flex items-center gap-3 pt-1">
-              <Button onClick={handleLLMSave} disabled={llmSaving} className="w-full sm:w-auto">
-                {llmSaving ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
-                ) : llmSaveResult === 'success' ? (
-                  <Check className="h-4 w-4" />
-                ) : llmSaveResult === 'error' ? (
-                  <X className="h-4 w-4" />
-                ) : null}
-                {llmSaveResult === 'success'
-                  ? (t.workspace?.llmSaved ?? 'Saved')
-                  : (t.settings?.llm_save ?? 'Save LLM Configuration')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* ── Section 2: Prompt Configuration ── */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-(--color-text-secondary)" />
-              <CardTitle>{t.workspace?.promptTitle ?? 'Prompt Configuration'}</CardTitle>
-            </div>
-            <CardDescription>
-              {t.workspace?.promptDescription ??
-                'Customize the prompts used for task extraction in this workspace'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            {/* System Prompt */}
-            <Field>
-              <FieldLabel htmlFor="system-prompt">
-                {t.workspace?.systemPrompt ?? 'System Prompt'}
-              </FieldLabel>
-              <Textarea
-                id="system-prompt"
-                rows={8}
-                className="min-h-20 h-20 w-full resize-y"
-                value={prompts.systemPrompt ?? ''}
-                onChange={(e) =>
-                  setPrompts((prev) => ({
-                    ...prev,
-                    systemPrompt: e.target.value,
-                  }))
-                }
-                placeholder={
-                  t.workspace?.systemPromptPlaceholder ??
-                  'You are an expert software development lead who excels at breaking down user stories into clear, actionable development tasks.'
-                }
-              />
-              <FieldDescription>
-                {t.workspace?.systemPromptDesc ??
-                  "The system-level instruction that sets the AI's role and behavior"}
-              </FieldDescription>
-            </Field>
-
-            {/* Instruction Template */}
-            <Field>
-              <FieldLabel htmlFor="instruction-template">
-                {t.workspace?.instructionTemplate ?? 'Instruction Template'}
-              </FieldLabel>
-              <Textarea
-                id="instruction-template"
-                rows={12}
-                className="min-h-36 h-36 w-full resize-y"
-                value={prompts.instructionTemplate ?? ''}
-                onChange={(e) =>
-                  setPrompts((prev) => ({
-                    ...prev,
-                    instructionTemplate: e.target.value,
-                  }))
-                }
-                placeholder={
-                  t.workspace?.instructionTemplatePlaceholder ??
-                  'Break this user story into smaller development tasks...'
-                }
-              />
-              <FieldDescription>
-                {t.workspace?.instructionTemplateDesc ??
-                  'The instruction prompt with format guidelines and few-shot examples'}
-              </FieldDescription>
-            </Field>
-
-            {/* Few-Shot Config Editor */}
-            <FewShotConfigEditor
-              locale={locale}
-              enabled={prompts.fewShotEnabled ?? true}
-              limit={prompts.fewShotLimit ?? 3}
-              threshold={prompts.fewShotThreshold ?? 0.85}
-              onChange={(value) =>
-                // The editor speaks a generic { enabled, limit, threshold } payload;
-                // the persisted prompt row speaks fewShot*. Map explicitly so the
-                // compiler catches a rename instead of a silent no-op: a spread of the
-                // payload into `prompts` writes keys nobody reads back, which leaves
-                // this controlled switch frozen and the saved values unchanged.
-                setPrompts((prev) => ({
-                  ...prev,
-                  fewShotEnabled: value.enabled,
-                  fewShotLimit: value.limit,
-                  fewShotThreshold: value.threshold,
-                }))
-              }
-            />
-
-            {/* Save Button */}
-            <div className="flex items-center gap-3 pt-1">
-              <Button
-                onClick={handlePromptSave}
-                disabled={promptSaving}
-                className="w-full sm:w-auto"
-              >
-                {promptSaving ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
-                ) : promptSaveResult === 'success' ? (
-                  <Check className="h-4 w-4" />
-                ) : promptSaveResult === 'error' ? (
-                  <X className="h-4 w-4" />
-                ) : null}
-                {promptSaveResult === 'success'
-                  ? (t.workspace?.llmSaved ?? 'Saved')
-                  : (t.workspace?.savePrompts ?? 'Save Prompt Configuration')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        {/* Save Button */}
+        <div className="flex items-center gap-3 pt-1">
+          <Button onClick={handleLLMSave} disabled={llmSaving} className="w-full sm:w-auto">
+            {llmSaving ? (
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+            ) : llmSaveResult === 'success' ? (
+              <Check className="h-4 w-4" />
+            ) : llmSaveResult === 'error' ? (
+              <X className="h-4 w-4" />
+            ) : null}
+            {llmSaveResult === 'success'
+              ? (t.workspace?.llmSaved ?? 'Saved')
+              : (t.settings?.llm_save ?? 'Save LLM Configuration')}
+          </Button>
+        </div>
+      </CardContent>
 
       <CustomProviderDialog
         locale={locale}
@@ -1451,6 +1458,6 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
         onOpenChange={setProviderDialogOpen}
         onSaved={handleProviderSaved}
       />
-    </div>
+    </Card>
   );
 }

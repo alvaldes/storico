@@ -113,6 +113,26 @@ intermediate commit that raises `TypeError` at runtime, and a split by hunk keep
 duplicating the test scaffolding that the split is supposed to make reviewable. Reviewer focus for PR 1 is
 narrow: the judge block in `extraction_task.py`, the coercion in `JudgeResult`, and `0033`.
 
+## Settings page (S11 — owner request, 2026-11-03)
+
+Measured on the running product before deciding (desktop 1340×792, ego-browser against
+`storico.vercel.app`): the LLM card renders **1658 px** tall, the judge block **681 px** of it
+(**41%**), the Prompts card is stretched to the same height while its content ends at **1114**
+leaving **845 px** of dead space (**51%**), the page is **2939 px** tall (**4110 px** on a 390 px
+viewport), and it carries **three** provider-ish card titles, **two** provider selects, **two**
+credential pairs and **four** save buttons.
+
+S11 — the page is organized in four reachable areas — **LLM**, **Prompts**, **Integrations**,
+**Members** — as tabs, with the workspace identity above them and the danger zone at the end of
+Members. The provider is the workspace's: one `Proveedor` for extraction, and the judge states its
+relationship to it in **three explicit modes** (owner's choices, 2026-11-03):
+
+| Mode | Persisted |
+| --- | --- |
+| Same model as extraction (default) | all four judge fields empty |
+| Another model of this provider | `judge_model` set, `judge_provider`/`judge_api_key`/`judge_base_url` empty |
+| Another provider with its own credential | all four set |
+
 ## Specs
 
 S1 — The rubric, verbatim from the 2026-10-17 design, one rubric for experts and judge, 1-7 anchored
@@ -170,6 +190,7 @@ docs that describe it, and every behavior change ships with its test.
 | T5 | Docs and specs: `openspec/specs/llm-as-a-judge/`, `docs/api.md`, `AGENTS.md` row 6 | S9 | inline | `5409040` |
 | T7 | Judge as a second LLM configuration: `judge_provider` / `judge_api_key` / `judge_base_url` + migration `0035`, independent fallback, no credential crossover, readiness as a judged failure, `provider` in the verdict | S10, S4 | inline | `8d9e5af` |
 | T8 | UI: the judge block in the settings form (provider, model, credential, endpoint) with the "empty = same as extraction" rule | S10 | inline | `c6c7795` |
+| T10 | Settings page: tabs shell, prompt editor split out, judge as three-mode choice, identity above and danger zone in Members | S11 | inline | — |
 | T9 | Review hardening: the moved-endpoint rule (a credential never travels to an endpoint it was not configured for), case-folded provider comparison, the `provider` key in the documented examples, and the form's warning aligned with the readiness rule | S10 | inline | this slice |
 | T6 | Review findings: the `tsc` blocker, the judge-model lookup outside the judge's error handling, legacy `format` order, stale "full replace" prose, docstring markup in the published page, the undocumented fourth reading | S5-S7, S9 | inline | this commit |
 

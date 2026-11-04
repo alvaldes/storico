@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { render, waitFor, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { WorkspaceSettings } from '@/components/react/WorkspaceSettings';
 import { useAuthStore } from '@/stores/authStore';
 import { useProjectStore } from '@/stores/projectStore';
@@ -22,6 +23,9 @@ vi.mock('@/components/react/MemberManagement', () => ({
 }));
 vi.mock('@/components/react/LLMConfigEditor', () => ({
   LLMConfigEditor: () => <div data-testid="llm-config-editor" />,
+}));
+vi.mock('@/components/react/PromptConfigEditor', () => ({
+  PromptConfigEditor: () => <div data-testid="prompt-config-editor" />,
 }));
 // Same reason as its neighbours: the form fetches the Trello status on mount, and
 // that fetch has nowhere to go in jsdom. Left real, it renders its load-error line
@@ -122,5 +126,102 @@ describe('WorkspaceSettings — URL id adoption', () => {
     });
     expect(setCurrentWorkspaceSpy).not.toHaveBeenCalled();
     expect(useWorkspaceStore.getState().currentWorkspace).toEqual(workspaceA);
+  });
+});
+
+/* ── The tabs (S11) ──
+ *
+ * The page is organized in four reachable areas — LLM, Prompts, Integrations,
+ * Members — as tabs, with the workspace identity card above them and the danger
+ * zone at the end of Members. Tab switching is client state only: no routing, no
+ * URL sync. Each tab's component owns its own loading state, so a tab whose data
+ * has not settled shows its own spinner, never a broken empty form.
+ */
+describe('WorkspaceSettings — tabs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // The owner sees the danger zone; its placement is what these tests pin.
+    useAuthStore.setState({
+      user: { id: 'user-1', email: 'test@test.com', name: 'Test' },
+      loading: false,
+      isFirstLogin: false,
+    });
+    useProjectStore.setState({
+      projects: [],
+      loading: false,
+      saving: false,
+      error: null,
+      fetchProjects: vi.fn().mockResolvedValue(undefined),
+    });
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspace: null,
+      loading: false,
+      saving: false,
+    });
+    vi.mocked(workspaceApi.getWorkspace).mockResolvedValue(makeWorkspace('ws-b'));
+  });
+
+  it('renders the four tabs with LLM first and selected', async () => {
+    render(<WorkspaceSettings locale="en" workspaceId="ws-b" />);
+
+    expect(await screen.findByTestId('llm-config-editor')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'LLM' })).toHaveAttribute('aria-selected', 'true');
+    for (const name of ['Prompts', 'Integrations', 'Members']) {
+      expect(screen.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'false');
+    }
+  });
+
+  it('switching tabs shows the right area and hides the others', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceSettings locale="en" workspaceId="ws-b" />);
+    await screen.findByTestId('llm-config-editor');
+
+    await user.click(screen.getByRole('tab', { name: 'Prompts' }));
+    expect(screen.getByTestId('prompt-config-editor')).toBeVisible();
+    expect(screen.getByTestId('llm-config-editor')).not.toBeVisible();
+
+    await user.click(screen.getByRole('tab', { name: 'Integrations' }));
+    expect(screen.getByTestId('trello-credentials-form')).toBeVisible();
+    expect(screen.getByTestId('prompt-config-editor')).not.toBeVisible();
+
+    await user.click(screen.getByRole('tab', { name: 'Members' }));
+    expect(screen.getByTestId('member-management')).toBeVisible();
+    expect(screen.getByTestId('trello-credentials-form')).not.toBeVisible();
+  });
+
+  it('keeps the danger zone at the end of the Members tab, hidden elsewhere', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceSettings locale="en" workspaceId="ws-b" />);
+    await screen.findByTestId('llm-config-editor');
+
+    // While another tab is up, the danger zone is not on the page: the button is
+    // hidden along with its panel (role queries need `hidden: true` to see it).
+    expect(
+      screen.getByRole('button', { name: 'Delete workspace', hidden: true }),
+    ).not.toBeVisible();
+
+    await user.click(screen.getByRole('tab', { name: 'Members' }));
+
+    expect(screen.getByTestId('member-management')).toBeVisible();
+    expect(
+      screen.getByText('Delete workspace', { selector: '[data-slot=card-title]' }),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Delete workspace' })).toBeVisible();
+  });
+
+  it('keeps the workspace identity above the tabs', async () => {
+    render(<WorkspaceSettings locale="en" workspaceId="ws-b" />);
+    await screen.findByTestId('llm-config-editor');
+
+    // The identity card is the one holding the workspace name input; the tablist
+    // must follow it in document order and never live inside it.
+    const identityCard = screen.getByDisplayValue('ws-b').closest('[data-slot=card]');
+    const tablist = screen.getByRole('tablist');
+    expect(identityCard).not.toBeNull();
+    expect(identityCard!.contains(tablist)).toBe(false);
+    expect(
+      identityCard!.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
