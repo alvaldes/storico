@@ -683,7 +683,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
             'Configure the AI model used for task extraction in this workspace'}
         </CardDescription>
       </CardHeader>
-      <CardContent className="max-w-3xl space-y-5">
+      <CardContent className="max-w-5xl space-y-5">
         {/* The workspace's readiness, stated before anything is attempted. Shown
             while the values on screen cannot extract — which is what makes a fresh
             workspace explain itself here instead of only after a refused save. */}
@@ -711,6 +711,12 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
           </div>
         )}
 
+        {/* Two columns on wide screens: the extraction configuration on the left,
+            the judge on the right — one is the workspace's own connection, the other
+            is the optional second one that reads against it. Stacked below `lg`,
+            where two half-width columns of form fields stop being readable. */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="space-y-5">
         {/* ── 1. Connection — the workspace's own provider, credential and endpoint.
                Titled "Conexión" because the field right below it is already
                labelled "Proveedor": a heading that repeats its own first label
@@ -1181,6 +1187,8 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
           </>
         )}
 
+          </div>
+          <div className="space-y-5">
         {/* ── 3. Judge (D9/S10/S11) ──
             A second, independent LLM configuration, stated as one of three explicit
             modes instead of four peer fields. No probe or test button here: the first
@@ -1434,6 +1442,9 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
               </Field>
             </>
           )}
+        </div>
+
+        </div>
         </div>
 
         {/* Save Button */}
