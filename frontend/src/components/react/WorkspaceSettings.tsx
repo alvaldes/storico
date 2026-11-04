@@ -11,6 +11,7 @@ import {
   CardFooter,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -24,6 +25,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { MemberManagement } from '@/components/react/MemberManagement';
 import { LLMConfigEditor } from '@/components/react/LLMConfigEditor';
+import { PromptConfigEditor } from '@/components/react/PromptConfigEditor';
 import { TrelloCredentialsForm } from '@/components/react/TrelloCredentialsForm';
 import { IconPicker, IconTrigger } from '@/components/ui/icon-picker';
 import * as workspaceApi from '@/lib/workspace-api';
@@ -225,7 +227,7 @@ export function WorkspaceSettings({ locale, workspaceId }: WorkspaceSettingsProp
         </p>
       </div>
 
-      {/* ── Section 1: General (Workspace Info) ── */}
+      {/* ── Workspace identity, above the areas (S11) ── */}
       {!loading && (
         <Card>
           <CardHeader>
@@ -297,145 +299,171 @@ export function WorkspaceSettings({ locale, workspaceId }: WorkspaceSettingsProp
           </div>
         </div>
       ) : (
-        <>
-          {/* LLM Config + Prompt Config Editor */}
-          <LLMConfigEditor locale={locale} workspaceId={wsId} />
+        /* ── The four areas (S11). Client state only: no routing, no URL sync.
+            Panels stay mounted so each area loads once, the way the page did when
+            every card rendered at once — an area that has not finished loading
+            shows its own spinner, never a broken empty form. ── */
+        <Tabs defaultValue="llm">
+          <TabsList>
+            <TabsTrigger value="llm">{t.workspace?.settingsTabLlm ?? 'LLM'}</TabsTrigger>
+            <TabsTrigger value="prompts">{t.workspace?.settingsTabPrompts ?? 'Prompts'}</TabsTrigger>
+            <TabsTrigger value="integrations">
+              {t.workspace?.settingsTabIntegrations ?? 'Integrations'}
+            </TabsTrigger>
+            <TabsTrigger value="members">{t.workspace?.settingsTabMembers ?? 'Members'}</TabsTrigger>
+          </TabsList>
 
-          {/* Trello credentials: the pair is admin-only, the status line is
-              readable by any member so they learn the workspace is not
+          {/* LLM: provider, extraction and the judge's three modes, one save. */}
+          <TabsContent value="llm" keepMounted>
+            <LLMConfigEditor locale={locale} workspaceId={wsId} />
+          </TabsContent>
+
+          {/* Prompts: the editor the LLM card used to carry, verbatim. */}
+          <TabsContent value="prompts" keepMounted>
+            <PromptConfigEditor locale={locale} workspaceId={wsId} />
+          </TabsContent>
+
+          {/* Integrations: Trello credentials. The pair is admin-only, the status
+              line is readable by any member so they learn the workspace is not
               configured before triggering an export that cannot finish. */}
-          <TrelloCredentialsForm locale={locale} workspaceId={wsId} isAdmin={wsRole === 'admin'} />
+          <TabsContent value="integrations" keepMounted>
+            <TrelloCredentialsForm locale={locale} workspaceId={wsId} isAdmin={wsRole === 'admin'} />
+          </TabsContent>
 
-          {/* ── Section 3: Member Management ── */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-(--color-text-secondary)" />
-                <CardTitle>{t.workspace?.teamMembersTitle ?? 'Team Members'}</CardTitle>
-              </div>
-              <CardDescription>
-                {t.workspace?.teamMembersDesc ??
-                  'Manage members, roles, and ownership for this workspace'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <MemberManagement locale={locale} workspaceId={wsId} />
-            </CardContent>
-          </Card>
+          {/* Members: the roster and, at the end, the danger zone (owner only). */}
+          <TabsContent value="members" keepMounted>
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-(--color-text-secondary)" />
+                    <CardTitle>{t.workspace?.teamMembersTitle ?? 'Team Members'}</CardTitle>
+                  </div>
+                  <CardDescription>
+                    {t.workspace?.teamMembersDesc ??
+                      'Manage members, roles, and ownership for this workspace'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <MemberManagement locale={locale} workspaceId={wsId} />
+                </CardContent>
+              </Card>
 
-          {/* ── Section 4: Danger Zone (owner only) ── */}
-          {isOwner && (
-            <Card className="border-(--color-destructive-border)">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <TriangleAlert className="h-4 w-4 text-destructive" />
-                  <CardTitle className="text-destructive">
-                    {t.workspace?.deleteTitle ?? 'Delete workspace'}
-                  </CardTitle>
-                </div>
-                <CardDescription>
-                  {t.workspace?.deleteDescription ??
-                    'Permanently delete this workspace and all its data. This action cannot be undone.'}
-                </CardDescription>
-              </CardHeader>
-              <CardFooter className="bg-(--color-destructive-bg) border-t-(--color-destructive-border) justify-end">
-                <AlertDialog
-                  open={deleteOpen}
-                  onOpenChange={(open) => {
-                    setDeleteOpen(open);
-                    if (open) {
-                      setDeleteName('');
-                      setDeleteVerify('');
-                      setDeleteError(null);
-                    }
-                  }}
-                >
-                  <AlertDialogTrigger render={<Button variant="destructive" />}>
-                    <Trash2 className="h-4 w-4" />
-                    {t.workspace?.deleteButton ?? 'Delete workspace'}
-                  </AlertDialogTrigger>
-                  <AlertDialogContent size="default" className="min-w-[500px]">
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>
-                        {t.workspace?.deleteConfirmTitle ?? 'Delete Workspace'}
-                      </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        {t.workspace?.deleteConfirmDescription ??
-                          'This will permanently delete the workspace and related resources like Projects, User Stories and Tasks.'}
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-
-                    <div className="-mx-4 border-y border-(--color-border) bg-(--color-surface-secondary)/30 px-4 py-4 space-y-5">
-                      {/* Step 1: type workspace name */}
-                      <label className="flex flex-col gap-2">
-                        <p className="text-sm text-(--color-text)">
-                          {t.workspace?.deleteConfirmNameLabel ?? 'To confirm, type'}{' '}
-                          <b className="font-semibold break-all">{wsName}</b>
-                        </p>
-                        <Input
-                          value={deleteName}
-                          onChange={(e) => {
-                            setDeleteName(e.target.value);
-                            setDeleteError(null);
-                          }}
-                          disabled={deleteSaving}
-                        />
-                      </label>
-
-                      {/* Step 2: type verification phrase */}
-                      <label className="flex flex-col gap-2">
-                        <p className="text-sm text-(--color-text)">
-                          {t.workspace?.deleteConfirmPhraseLabel ?? 'To confirm, type'}{' '}
-                          <b className="font-semibold" translate="no">
-                            {verifyPhrase}
-                          </b>
-                        </p>
-                        <Input
-                          value={deleteVerify}
-                          onChange={(e) => {
-                            setDeleteVerify(e.target.value);
-                            setDeleteError(null);
-                          }}
-                          disabled={deleteSaving}
-                        />
-                      </label>
+              {/* ── Danger Zone (owner only) ── */}
+              {isOwner && (
+                <Card className="border-(--color-destructive-border)">
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <TriangleAlert className="h-4 w-4 text-destructive" />
+                      <CardTitle className="text-destructive">
+                        {t.workspace?.deleteTitle ?? 'Delete workspace'}
+                      </CardTitle>
                     </div>
-
-                    {/* Warning note */}
-                    <div className="flex items-start gap-3 rounded-md border border-(--color-destructive-border) bg-(--color-destructive-bg) p-3">
-                      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                      <p className="text-sm text-(--color-destructive-text)">
-                        {(
-                          t.workspace?.deleteConfirmNote ?? 'Deleting {name} cannot be undone.'
-                        ).replace('{name}', wsName)}
-                      </p>
-                    </div>
-
-                    {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
-
-                    <AlertDialogFooter>
-                      <AlertDialogCancel disabled={deleteSaving}>
-                        {t.common?.cancel ?? 'Cancel'}
-                      </AlertDialogCancel>
-                      <AlertDialogAction
-                        variant="destructive"
-                        onClick={handleDeleteWorkspace}
-                        disabled={!canDelete || deleteSaving}
-                      >
-                        {deleteSaving ? (
-                          <RotateCw className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
+                    <CardDescription>
+                      {t.workspace?.deleteDescription ??
+                        'Permanently delete this workspace and all its data. This action cannot be undone.'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardFooter className="bg-(--color-destructive-bg) border-t-(--color-destructive-border) justify-end">
+                    <AlertDialog
+                      open={deleteOpen}
+                      onOpenChange={(open) => {
+                        setDeleteOpen(open);
+                        if (open) {
+                          setDeleteName('');
+                          setDeleteVerify('');
+                          setDeleteError(null);
+                        }
+                      }}
+                    >
+                      <AlertDialogTrigger render={<Button variant="destructive" />}>
+                        <Trash2 className="h-4 w-4" />
                         {t.workspace?.deleteButton ?? 'Delete workspace'}
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </CardFooter>
-            </Card>
-          )}
-        </>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent size="default" className="min-w-[500px]">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>
+                            {t.workspace?.deleteConfirmTitle ?? 'Delete Workspace'}
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            {t.workspace?.deleteConfirmDescription ??
+                              'This will permanently delete the workspace and related resources like Projects, User Stories and Tasks.'}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+
+                        <div className="-mx-4 border-y border-(--color-border) bg-(--color-surface-secondary)/30 px-4 py-4 space-y-5">
+                          {/* Step 1: type workspace name */}
+                          <label className="flex flex-col gap-2">
+                            <p className="text-sm text-(--color-text)">
+                              {t.workspace?.deleteConfirmNameLabel ?? 'To confirm, type'}{' '}
+                              <b className="font-semibold break-all">{wsName}</b>
+                            </p>
+                            <Input
+                              value={deleteName}
+                              onChange={(e) => {
+                                setDeleteName(e.target.value);
+                                setDeleteError(null);
+                              }}
+                              disabled={deleteSaving}
+                            />
+                          </label>
+
+                          {/* Step 2: type verification phrase */}
+                          <label className="flex flex-col gap-2">
+                            <p className="text-sm text-(--color-text)">
+                              {t.workspace?.deleteConfirmPhraseLabel ?? 'To confirm, type'}{' '}
+                              <b className="font-semibold" translate="no">
+                                {verifyPhrase}
+                              </b>
+                            </p>
+                            <Input
+                              value={deleteVerify}
+                              onChange={(e) => {
+                                setDeleteVerify(e.target.value);
+                                setDeleteError(null);
+                              }}
+                              disabled={deleteSaving}
+                            />
+                          </label>
+                        </div>
+
+                        {/* Warning note */}
+                        <div className="flex items-start gap-3 rounded-md border border-(--color-destructive-border) bg-(--color-destructive-bg) p-3">
+                          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                          <p className="text-sm text-(--color-destructive-text)">
+                            {(
+                              t.workspace?.deleteConfirmNote ?? 'Deleting {name} cannot be undone.'
+                            ).replace('{name}', wsName)}
+                          </p>
+                        </div>
+
+                        {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
+
+                        <AlertDialogFooter>
+                          <AlertDialogCancel disabled={deleteSaving}>
+                            {t.common?.cancel ?? 'Cancel'}
+                          </AlertDialogCancel>
+                          <AlertDialogAction
+                            variant="destructive"
+                            onClick={handleDeleteWorkspace}
+                            disabled={!canDelete || deleteSaving}
+                          >
+                            {deleteSaving ? (
+                              <RotateCw className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                            {t.workspace?.deleteButton ?? 'Delete workspace'}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </CardFooter>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
