@@ -683,7 +683,7 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
             'Configure the AI model used for task extraction in this workspace'}
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-5">
+      <CardContent className="max-w-3xl space-y-5">
         {/* The workspace's readiness, stated before anything is attempted. Shown
             while the values on screen cannot extract — which is what makes a fresh
             workspace explain itself here instead of only after a refused save. */}
@@ -711,9 +711,12 @@ export function LLMConfigEditor({ locale, workspaceId }: LLMConfigEditorProps) {
           </div>
         )}
 
-        {/* ── 1. Provider — the workspace's own provider ── */}
+        {/* ── 1. Connection — the workspace's own provider, credential and endpoint.
+               Titled "Conexión" because the field right below it is already
+               labelled "Proveedor": a heading that repeats its own first label
+               reads as a rendering mistake. ── */}
         <p className="text-sm font-medium text-(--color-text-secondary)">
-          {t.settings?.llm_section_provider ?? 'Provider'}
+          {t.settings?.llm_section_connection ?? 'Connection'}
         </p>
 
         {/* Provider */}

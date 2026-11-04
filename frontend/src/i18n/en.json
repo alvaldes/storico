@@ -510,6 +510,7 @@
     "llm_judge_api_key": "Judge API key",
     "llm_judge_base_url": "Judge Base URL",
     "llm_section_provider": "Provider",
+    "llm_section_connection": "Connection",
     "llm_section_extraction": "Extraction",
     "llm_temperature": "Temperature",
     "llm_max_tokens": "Max Tokens",
